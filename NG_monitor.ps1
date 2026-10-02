@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v77 「正常な映像と比べる」判定（かんたん設定・暗い場所に強い）・自動保存・NG画像保存
+﻿# NG MONITOR - v78 不具合修正（ログ消失・誤って「正常」表示・二重起動・表示倍率の違うモニターでの位置ズレ ほか）
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -6,18 +6,39 @@ Add-Type -AssemblyName System.Drawing -ErrorAction Stop
 # 画面部品を1つも作る前に、必ずここで呼ぶ必要がある（後から呼ぶとエラーになる）
 [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
 
-# Prevent Windows DPI scaling from changing mouse coordinates in the area selector.
-if (-not ([System.Management.Automation.PSTypeName]'DpiHelper').Type) {
+# 画面の座標を、どのモニターでも実際のピクセルでそろえる。
+# 表示倍率（100%・125%・150%など）が違うモニターを並べていると、従来の方法では
+# 「選んだ範囲」と「実際に読み取る範囲」がずれることがあったため、モニターごとの
+# 表示倍率に対応した方法を優先して使う（古いWindowsでは従来の方法に戻る）。
+if (-not ([System.Management.Automation.PSTypeName]'DpiHelper77').Type) {
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public static class DpiHelper {
-    [DllImport("user32.dll")]
-    public static extern bool SetProcessDPIAware();
+public static class DpiHelper77 {
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    [DllImport("shcore.dll")] static extern int SetProcessDpiAwareness(int value);
+    [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    public static string Enable() {
+        try { if (SetProcessDpiAwarenessContext(new IntPtr(-4))) return "PerMonitorV2"; } catch (Exception) {}
+        try { if (SetProcessDpiAwareness(2) == 0) return "PerMonitor"; } catch (Exception) {}
+        try { if (SetProcessDPIAware()) return "System"; } catch (Exception) {}
+        return "Unchanged";
+    }
 }
 "@
 }
-[DpiHelper]::SetProcessDPIAware() | Out-Null
+$script:dpiMode=[DpiHelper77]::Enable()
+
+# ---- 二重起動の防止 ----
+# 2つ起動すると、ブザーが二重に鳴る・設定ファイルを上書きし合う・もう片方の画面を
+# カメラ映像と間違えて検査する、といった問題が起きるため、1つだけにする。
+$script:instanceMutex=New-Object System.Threading.Mutex($false,'Local\NG_MONITOR_SINGLE_INSTANCE')
+$script:ownsInstance=$false
+try { $script:ownsInstance=$script:instanceMutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $script:ownsInstance=$true }
+if(-not $script:ownsInstance) {
+    [void][System.Windows.Forms.MessageBox]::Show("NGモニターはすでに起動しています。`r`n`r`nタスクバー、または画面右下の通知領域（トレイ）のアイコンから開いてください。",'NG モニター',[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Information)
+    return
+}
 
 # 音を作るための小さなプログラム（種類・音量を反映したWAVファイルをその場で作る）
 if (-not ([System.Management.Automation.PSTypeName]'BuzzGen').Type) {
@@ -651,6 +672,8 @@ $script:autoStart = $false        # 起動したら自動で監視を始める�
 $script:settingsDirty = $false    # 設定が変わった → 少し待ってから自動保存する
 $script:dirtySince = [datetime]::MinValue
 $script:autoSaveFailed = $false
+$script:pendingLogRows = New-Object System.Collections.ArrayList   # まだCSVに書けていないログの行
+$script:logWriteBlocked = $false
 $script:okFrameCount = 10         # 「正常」を記録する時に撮る枚数（約1.5秒）
 $script:maxDiffRefs = 6           # 1つのエリアに記録できる「正常」の見本の数（昼・夜など）
 
@@ -679,13 +702,36 @@ function Write-NGLogHeaderIfNeeded {
 
 function Write-NGLogRow($timestamp,$areaName,$eventType,$ratio,$durationSec) {
     if(-not $script:loggingEnabled) { return }
+    $ratioText=$(if($null -ne $ratio){([double]$ratio).ToString([System.Globalization.CultureInfo]::InvariantCulture)}else{''})
+    $durationText=$(if($null -ne $durationSec){([math]::Round($durationSec,1)).ToString([System.Globalization.CultureInfo]::InvariantCulture)}else{''})
+    $areaNameSafe=([string]$areaName) -replace '"','""'
+    $row=('"'+$timestamp+'","'+$areaNameSafe+'","'+$eventType+'","'+$ratioText+'","'+$durationText+'"')
+    if($script:pendingLogRows.Count -lt 10000) { [void]$script:pendingLogRows.Add($row) }
+    [void](Flush-NGLog)
+}
+
+function Flush-NGLog {
+    # ログのCSVをExcelで開いたままにすると、書き込めずに記録が消えていた。
+    # 書けなかった行は覚えておき、Excelを閉じた後に自動で書き込む。
+    if($script:pendingLogRows.Count -eq 0) { return $true }
     try {
         Write-NGLogHeaderIfNeeded
-        $ratioText=$(if($null -ne $ratio){([double]$ratio).ToString([System.Globalization.CultureInfo]::InvariantCulture)}else{''})
-        $durationText=$(if($null -ne $durationSec){([math]::Round($durationSec,1)).ToString([System.Globalization.CultureInfo]::InvariantCulture)}else{''})
-        $areaNameSafe=([string]$areaName) -replace '"','""'
-        $row=('"'+$timestamp+'","'+$areaNameSafe+'","'+$eventType+'","'+$ratioText+'","'+$durationText+'"')
-        Add-Content -LiteralPath $script:logPath -Value $row -Encoding UTF8
+        Add-Content -LiteralPath $script:logPath -Value ([string[]]$script:pendingLogRows.ToArray([string])) -Encoding UTF8 -ErrorAction Stop
+        $script:pendingLogRows.Clear()
+        $script:logWriteBlocked=$false
+        return $true
+    } catch {
+        $script:logWriteBlocked=$true
+        return $false
+    }
+}
+
+function Save-PendingLogOnExit {
+    # 終了する時まで書き込めなかった行は、別のファイルに残す（記録を失わないように）
+    if(Flush-NGLog) { return }
+    try {
+        $alt=Join-Path $PSScriptRoot ('ng_monitor_log_未書き込み_'+(Get-Date -Format 'yyyyMMdd_HHmmss')+'.csv')
+        Set-Content -LiteralPath $alt -Value (@('"日時","エリア","種別","一致率(%)","継続時間(秒)"')+[string[]]$script:pendingLogRows.ToArray([string])) -Encoding UTF8 -ErrorAction Stop
     } catch {}
 }
 
@@ -715,7 +761,7 @@ function Get-BuzzerSoundPath($type,$volume) {
         $bytes=[BuzzGen]::Build($type,([double]$volume/100.0),44100)
         $tmp=$path+'.tmp'
         [IO.File]::WriteAllBytes($tmp,$bytes)
-        Move-Item -LiteralPath $tmp -Destination $path -Force
+        Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
         return $path
     } catch {
         return (Join-Path $PSScriptRoot 'BUZZER.wav')
@@ -745,7 +791,8 @@ function BuzzStart($seconds,$type,$volume) {
         $argList=@('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',('"'+$worker+'"'),'-Seconds',$sec,'-SoundPath',('"'+$soundPath+'"'))
         $psExe=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         if (-not (Test-Path -LiteralPath $psExe)) { $psExe='powershell.exe' }
-        $proc=Start-Process -FilePath $psExe -ArgumentList $argList -WindowStyle Hidden -PassThru
+        $proc=Start-Process -FilePath $psExe -ArgumentList $argList -WindowStyle Hidden -PassThru -ErrorAction Stop
+        if($null -eq $proc) { return $false }
         $script:buzzerProcess=$proc.Id
         $script:buzzerUntil=(Get-Date).AddSeconds($sec)
         return $true
@@ -1123,8 +1170,8 @@ function Save-SettingsFile($path) {
         $cur=Get-CurrentSettingsObject
         # いったん別名で書いてから置き換える（書き込み中に電源が切れても設定ファイルが壊れないように）
         $tmp=$path+'.tmp'
-        $cur | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $tmp -Encoding UTF8
-        Move-Item -LiteralPath $tmp -Destination $path -Force
+        $cur | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $tmp -Encoding UTF8 -ErrorAction Stop
+        Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
         $script:settingsPath=$path
         Remember-LastSettingsPath $path
         return $true
@@ -1151,7 +1198,7 @@ function Save-SettingsIfDirty([switch]$Now) {
 
 function Read-SettingsData($path) {
     # 古い形式（名前付きで複数保存する Profiles 形式）も読めるようにしておく
-    $raw=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $raw=Get-Content -LiteralPath $path -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
     if($null -eq $raw) { return $null }
     $names=@($raw.PSObject.Properties.Name)
     if($names -contains 'Profiles') {
@@ -1275,8 +1322,10 @@ function LoadLastUsedSettingsIfAny {
 
 function Save-WindowState {
     try {
-        $b=$(if($script:miniMode -and $script:fullSize){New-Object System.Drawing.Rectangle($f.Left,$f.Top,$script:fullSize.Width,$script:fullSize.Height)}else{$f.Bounds})
+        $b=$f.Bounds
         if($f.WindowState -ne [System.Windows.Forms.FormWindowState]::Normal) { $b=$f.RestoreBounds }
+        # ミニ表示中は、ミニの小さな大きさではなく、ふだんの大きさを覚えておく
+        if($script:miniMode -and $script:fullSize) { $b=New-Object System.Drawing.Rectangle($b.X,$b.Y,$script:fullSize.Width,$script:fullSize.Height) }
         [PSCustomObject]@{ X=$b.X; Y=$b.Y; W=$b.Width; H=$b.Height; Mini=$script:miniMode; TopMost=$f.TopMost; AutoStart=$script:autoStart; SaveImages=$script:saveImages } |
             ConvertTo-Json | Set-Content -LiteralPath $script:windowStatePath -Encoding UTF8
     } catch {}
@@ -1955,9 +2004,14 @@ $savedWindow=Read-WindowState
 if($savedWindow) {
     try {
         $r=New-Object System.Drawing.Rectangle([int]$savedWindow.X,[int]$savedWindow.Y,[int]$savedWindow.W,[int]$savedWindow.H)
-        if([System.Windows.Forms.SystemInformation]::VirtualScreen.IntersectsWith($r) -and $r.Width -ge $f.MinimumSize.Width -and $r.Height -ge $f.MinimumSize.Height) {
+        if([System.Windows.Forms.SystemInformation]::VirtualScreen.IntersectsWith($r)) {
             $f.StartPosition=[System.Windows.Forms.FormStartPosition]::Manual
-            $f.Bounds=$r
+            if($r.Width -ge $f.MinimumSize.Width -and $r.Height -ge (Px 400)) {
+                $f.Bounds=$r
+            } else {
+                # 保存されていた大きさが小さすぎる時（以前のバージョンの不具合）は、位置だけ使う
+                $f.Location=$r.Location
+            }
             $script:fullSize=$f.Size
         }
         if($null -ne $savedWindow.TopMost) { $topMostCheck.Checked=[bool]$savedWindow.TopMost; $f.TopMost=[bool]$savedWindow.TopMost }
@@ -2462,6 +2516,15 @@ function Record-ColorSample($kind) {
     }
 }
 
+function New-AreaName {
+    # 「エリアN」が今ある名前と重ならないようにする（エリア2を消した後などに同じ名前が2つできていた）
+    do {
+        $script:areaCounter++
+        $name='エリア'+$script:areaCounter
+    } while(@($script:areas | Where-Object { $_.Name -eq $name }).Count -gt 0)
+    return $name
+}
+
 function Update-SettingsPathLabel {
     $settingsPathLabel.Text=('設定は自動で保存されます：'+$script:settingsPath)
 }
@@ -2664,8 +2727,7 @@ $pick.Add_Click({
             $bmp=GrabBitmap $script:area
             $rgb=[NgVision77]::AverageColor($bmp)
             $bmp.Dispose()
-            $script:areaCounter++
-            $newArea=New-MonitorArea ('エリア'+$script:areaCounter) $script:area ([System.Drawing.Color]::FromArgb($rgb[0],$rgb[1],$rgb[2]))
+            $newArea=New-MonitorArea (New-AreaName) $script:area ([System.Drawing.Color]::FromArgb($rgb[0],$rgb[1],$rgb[2]))
             Set-AreaRect $newArea $script:area
             [void]$script:areas.Add($newArea)
             $areaList.SelectedIndex=-1
@@ -2919,15 +2981,16 @@ $saveImagesCheck.Add_CheckedChanged({ $script:saveImages=$saveImagesCheck.Checke
 $openImagesBtn.Add_Click({
     try {
         if(-not (Test-Path -LiteralPath $script:imageDir)) { [void](New-Item -ItemType Directory -Path $script:imageDir -Force) }
-        Start-Process -FilePath $script:imageDir
+        Start-Process -FilePath $script:imageDir -ErrorAction Stop
     } catch {
         [void](Show-Message '画像フォルダを開けませんでした。' ([System.Windows.Forms.MessageBoxIcon]::Warning))
     }
 })
 $openLogBtn.Add_Click({
     try {
+        [void](Flush-NGLog)
         Write-NGLogHeaderIfNeeded
-        Start-Process -FilePath $script:logPath
+        Start-Process -FilePath $script:logPath -ErrorAction Stop
     } catch {
         [void](Show-Message 'ログファイルを開けませんでした。' ([System.Windows.Forms.MessageBoxIcon]::Warning))
     }
@@ -2975,8 +3038,18 @@ $timer.Add_Tick({
         $occluded=New-Object System.Collections.ArrayList
         $failed=New-Object System.Collections.ArrayList
         $newNGs=New-Object System.Collections.ArrayList
+        $notReady=New-Object System.Collections.ArrayList
+        $offScreen=New-Object System.Collections.ArrayList
         foreach($a in $script:areas) {
-            if(Test-AreaOccluded $a.Rect) {
+            if(-not (Test-AreaReady $a)) {
+                # 監視中に見本を消した・追加したばかり等。判定できないので知らせる（以前は「すべて正常」と表示していた）
+                $a.LastRatio=$null
+                [void]$notReady.Add($a.Name)
+            } elseif(-not (Test-AreaOnScreen $a.Rect)) {
+                # モニターが外れた・配置が変わった。画面外は真っ黒に写り、誤ってNGになるため判定しない
+                $a.CaptureFailed=$true
+                [void]$offScreen.Add($a.Name)
+            } elseif(Test-AreaOccluded $a.Rect) {
                 # 自分の画面を検査してしまわないよう、重なっている間は判定しない（前の状態を保つ）
                 $a.Occluded=$true
                 [void]$occluded.Add($a.Name)
@@ -3020,6 +3093,12 @@ $timer.Add_Tick({
             SetStatusPanel $colorWarn $textOnWarn ('⚠ この画面が「'+($occluded -join '、')+'」に重なっていて監視できません。画面を動かしてください。')
         } elseif($failed.Count -gt 0) {
             SetStatusPanel $colorWarn $textOnWarn ('⚠ 画面を読み取れません（'+($failed -join '、')+'）。画面ロック・スリープ・リモート切断を確認してください。')
+        } elseif($offScreen.Count -gt 0) {
+            SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($offScreen -join '、')+'」が画面の外にあり監視できません。モニターの接続・配置を確認し、「範囲を選び直す」をしてください。')
+        } elseif($notReady.Count -gt 0) {
+            SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($notReady -join '、')+'」は正常の見本が無いため監視できていません。「① 正常な状態を記録」を押してください。')
+        } elseif($script:logWriteBlocked) {
+            SetStatusPanel $colorWarn $textOnWarn '監視中（すべて正常）｜ ⚠ ログのCSVが開かれていて書き込めません。Excelを閉じると自動で書き込みます。'
         } else {
             SetStatusPanel $colorRunning $textOnRunning ($script:areas.Count.ToString()+'箇所を監視中　｜　すべて正常')
         }
@@ -3034,6 +3113,7 @@ $previewTimer.Interval=500
 $previewTimer.Add_Tick({
     try {
         Save-SettingsIfDirty
+        if($script:pendingLogRows.Count -gt 0) { [void](Flush-NGLog) }
         if($script:miniMode -or -not $f.Visible -or $f.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) { return }
         UpdateAreaPreview
         if(-not $script:running) { $areaList.Invalidate() }
@@ -3094,6 +3174,7 @@ function Cleanup-OnExit {
     try { $previewTimer.Stop() } catch {}
     BuzzStop
     Close-OpenNGEpisodes 'NG解除（アプリ終了）'
+    Save-PendingLogOnExit
     try { [NgWin77]::KeepAwake($false) } catch {}
     Save-SettingsIfDirty -Now
     Save-WindowState
@@ -3153,6 +3234,7 @@ $previewTimer.Start()
 
 [void]$f.ShowDialog()
 $notifyIcon.Dispose()
+try { $script:instanceMutex.ReleaseMutex() } catch {}
 
 } catch {
     # 想定外のエラーで終了する場合、黙って落ちるのではなく必ず画面とログに残す

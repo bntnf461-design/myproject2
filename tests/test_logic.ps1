@@ -12,11 +12,12 @@ if($PSVersionTable.PSEdition -eq 'Core') {
     Add-Type -ReferencedAssemblies System.Drawing.dll -TypeDefinition $cs
 }
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$null,[ref]$null)
-$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName'
+$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName'
 foreach($fd in $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)) { if($want -contains $fd.Name){ . ([scriptblock]::Create($fd.Extent.Text)) } }
 $tmp=Join-Path ([IO.Path]::GetTempPath()) ('ngt_'+[guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 $script:areas=New-Object System.Collections.ArrayList; $script:areaCounter=0; $script:monitorIntervalSec=0.2
 $script:logPath=Join-Path $tmp 'log.csv'; $script:errorLogPath=Join-Path $tmp 'err.log'; $script:loggingEnabled=$true
+$script:pendingLogRows=New-Object System.Collections.ArrayList; $script:logWriteBlocked=$false
 $script:lastPathPointerFile=Join-Path $tmp 'last.txt'; $script:settingsPath=Join-Path $tmp 'settings.json'
 function SetStatusPanel { }
 $fail=0
@@ -93,5 +94,24 @@ T 'no NG before refs recorded (null ratio)' (-not (Update-AreaJudgement $j $null
 T 'file name sanitised' ((Get-SafeFileName 'a/b') -eq 'a_b')
 $log=Get-Content $script:logPath -Encoding UTF8
 T "log rows written ($($log.Count) lines)" ($log.Count -ge 3 -and $log[0] -like '"日時"*')
+
+# --- ログのCSVがExcelで開かれていても、記録を失わない ---
+$before=@(Get-Content $script:logPath -Encoding UTF8).Count
+$lock=[System.IO.File]::Open($script:logPath,'Open','ReadWrite','None')
+Write-NGLogRow 't1' 'L' 'NG発生' 12.5 $null
+Write-NGLogRow 't2' 'L' 'NG解除' 1.0 3.2
+T 'rows kept in memory while file is locked' ($script:logWriteBlocked -and $script:pendingLogRows.Count -eq 2)
+$lock.Close()
+T 'rows written after file is released' ((Flush-NGLog) -and $script:pendingLogRows.Count -eq 0 -and @(Get-Content $script:logPath -Encoding UTF8).Count -eq $before+2)
+
+# --- 設定の保存に失敗した時は「失敗」と分かる ---
+T 'save to a missing folder reports failure' (-not (Save-SettingsFile (Join-Path $tmp 'no_such_dir/x.json')))
+
+# --- 新しいエリア名が重ならない ---
+$script:areas.Clear()
+foreach($n in 'エリア1','エリア3'){ [void]$script:areas.Add((New-MonitorArea $n $rect ([System.Drawing.Color]::Black))) }
+$script:areaCounter=2
+$n1=New-AreaName
+T "new area name does not duplicate (got $n1)" ($n1 -eq 'エリア4')
 Remove-Item $tmp -Recurse -Force
 "--- failures: $fail ---"; if($fail){exit 1}
