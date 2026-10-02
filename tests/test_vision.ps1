@@ -147,6 +147,34 @@ function Textured($title,$baseLevel,$contrast,$noise){
 Textured '明るい場所・模様のある背景' 90 60 8
 Textured '暗い場所・模様のある背景' 18 14 6
 
+# ---------------- 異常の時だけ出る画面が出たらNG（v80） ----------------
+Add-Type -TypeDefinition (Get-Content (Join-Path $PSScriptRoot 'HmiGen.cs') -Raw)
+$HW=[HmiGen]::W; $HH=[HmiGen]::H; $HBW=$HW+2*$GM; $HBH=$HH+2*$GM
+function HmiRef([scriptblock]$make,$n){
+    $a=New-Object 'float[][][]' $n
+    for($i=0;$i -lt $n;$i++){ $a[$i]=[NgDiff79]::SampleBuf((& $make ($i+1)),$HBW,$HBH,$HBW*4,4,$GM,$GM,$HW,$HH) }
+    return ,[NgDiff79]::BuildReference($a,$HW,$HH)
+}
+function Join-Refs { $r=New-Object 'float[][]' ($args.Count*4); for($i=0;$i -lt $args.Count;$i++){ for($j=0;$j -lt 4;$j++){ $r[4*$i+$j]=$args[$i][$j] } }; return ,$r }
+$hNg=HmiRef { param($i) [HmiGen]::Frame(1,5,1,0,0,$GM,4) } 1                       # 異常の画面：1枚（画像ファイルから読み込んだ場合と同じ）
+$hOk=HmiRef { param($i) [HmiGen]::Frame(10+$i,$i,0,0,0,$GM,4) } 10                  # 正常な画面：値が変わる10コマ
+$hInfo=HmiRef { param($i) [HmiGen]::Frame(200+$i,$i*3,3,0,0,$GM,4) } 3             # 関係ない案内画面
+$ngArr=Join-Refs $hNg
+$setups=@(@('異常の画面だけ記録',(New-Object 'float[][]' 0)),@('異常＋正常な画面を記録',(Join-Refs $hOk)),@('異常＋正常＋案内画面も正常として記録',(Join-Refs $hOk $hInfo)))
+foreach($su in $setups){
+    "=== 異常の画面が出たらNG：$($su[0])（しきい値 90%） ==="
+    $cases=@(@('正常（値が変化）',23,0,0,0,$false),@('正常（別の値）',41,0,0,0,$false),@('正常・2pxずれ',17,0,2,1,$false),
+             @('異常の画面が出た',33,1,0,0,$true),@('異常の画面（別のメッセージ）',12,2,0,0,$true),@('異常の画面・2pxずれ',8,1,-2,2,$true),
+             @('関係ない案内画面（同じ形・青）',30,3,0,0,$false))
+    foreach($c in $cases){
+        $v=[NgDiff79]::MatchImageBuf($ngArr,$su[1],([HmiGen]::Frame(100+$c[1],$c[1],$c[2],$c[3],$c[4],$GM,4)),$HBW,$HBH,$HBW*4,4,$GM,$GM,$HW,$HH,50,$null)
+        Check $c[0] ($v -ge 90) $c[5] $v '%'
+    }
+}
+"=== 参考：値が変わる画面を「正常な映像と比べる」で見ると ==="
+$v=[NgDiff79]::ScoreImageBuf((Join-Refs $hOk),([HmiGen]::Frame(141,41,0,0,0,$GM,4)),$HBW,$HBH,$HBW*4,4,$GM,$GM,$HW,$HH,50,$null)
+"参考：正常（別の値）が 違い {0:N2}% → {1}" -f $v,$(if($v -ge 0.15){'誤ってNGになる（このような画面には「異常の画面が出たらNG」が向いている）'}else{'OK'})
+
 "=== 保存用の圧縮・復元 ==="
 $v=[float[]]@(0,1.5,12.25,255,4000); $u=[NgBlock79]::Unpack([NgBlock79]::Pack($v))
 Check '圧縮して戻しても同じ値' ((($v | % {$_}) -join ',') -ne (($u | % {$_}) -join ',')) $false 0 ''

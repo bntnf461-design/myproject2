@@ -12,7 +12,7 @@ if($PSVersionTable.PSEdition -eq 'Core') {
     Add-Type -ReferencedAssemblies System.Drawing.dll -TypeDefinition $cs
 }
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$null,[ref]$null)
-$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent'
+$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays'
 foreach($fd in $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)) { if($want -contains $fd.Name){ . ([scriptblock]::Create($fd.Extent.Text)) } }
 $tmp=Join-Path ([IO.Path]::GetTempPath()) ('ngt_'+[guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 $script:areas=New-Object System.Collections.ArrayList; $script:areaCounter=0; $script:monitorIntervalSec=0.2
@@ -72,6 +72,26 @@ $l=$script:areas[0]; Update-DiffRefArray $l
 $fr=Frame 120; $s1=[NgDiff79]::ScoreSample($l.DiffRefArray,$fr[0],$fr[1],90,60,50,$null)
 $fr=Frame 200; $s2=[NgDiff79]::ScoreSample($l.DiffRefArray,$fr[0],$fr[1],90,60,50,$null)
 T "v78 references still judge correctly (normal $([math]::Round($s1,1))%, changed $([math]::Round($s2,1))%)" ($l.DiffRefs.Count -eq 2 -and $l.DiffRefs[0][0].Length -eq 0 -and $l.DiffThreshold -eq 3 -and $s1 -lt 1 -and $s2 -gt 50)
+
+# --- 「異常の画面が出たらNG」の見本も保存・読み込みできる ---
+$script:areas.Clear()
+$m=New-MonitorArea '警報画面' $rect ([System.Drawing.Color]::Black); Set-AreaRect $m $rect; $m.Mode='match'; $m.MatchThreshold=88; $m.MatchSensitivity=40
+$fr=New-Object 'float[][][]' 1; $fr[0]=Frame 200; [void]$m.MatchNgRefs.Add([NgDiff79]::BuildReference($fr,90,60))
+$fr=New-Object 'float[][][]' 3; for($i=0;$i -lt 3;$i++){ $fr[$i]=Frame 40 }; [void]$m.MatchOkRefs.Add([NgDiff79]::BuildReference($fr,90,60))
+[void]$script:areas.Add($m)
+T 'save match settings' (Save-SettingsFile $script:settingsPath)
+$script:areas.Clear()
+T 'load match settings' (Load-SettingsFile $script:settingsPath)
+$m2=$script:areas[0]
+T 'mode / threshold / sensitivity restored' ($m2.Mode -eq 'match' -and $m2.MatchThreshold -eq 88 -and $m2.MatchSensitivity -eq 40)
+T 'abnormal and normal screen samples restored' ($m2.MatchNgRefs.Count -eq 1 -and $m2.MatchOkRefs.Count -eq 1 -and (Test-AreaReady $m2))
+Update-MatchArrays $m2
+$fr=Frame 200; $hit=[NgDiff79]::MatchSample($m2.MatchNgArray,$m2.MatchOkArray,$fr[0],40)
+$fr=Frame 40;  $miss=[NgDiff79]::MatchSample($m2.MatchNgArray,$m2.MatchOkArray,$fr[0],40)
+T "restored samples still judge correctly (abnormal $([math]::Round($hit))%, normal $([math]::Round($miss))%)" ($hit -ge 90 -and $miss -lt 50)
+T 'NG when the score reaches the threshold' ((Test-RatioIsNG $m2 88) -and -not (Test-RatioIsNG $m2 87.9))
+$m3=New-MonitorArea 'y' $rect ([System.Drawing.Color]::Black); $m3.Mode='match'
+T 'match area without samples is not ready' (-not (Test-AreaReady $m3))
 
 # --- references from a different-sized area are dropped, not misused ---
 $raw=$json | ConvertFrom-Json; $raw.Areas[0].W=300

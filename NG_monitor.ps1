@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v79 「比べる」判定の精度向上（小さな異常・映像のずれ・時計表示に強く）
+﻿# NG MONITOR - v80 「異常の時だけ出る画面が出たらNG」判定を追加
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -913,6 +913,84 @@ public static class NgDiff79 {
         return best == double.MaxValue ? -1 : best;
     }
 
+    // ===== "the abnormal screen appeared" detection =====
+    // ngRefs : references of the abnormal screen(s)   { fine, fineNoise, coarse, coarseNoise } x n
+    // okRefs : references of the normal screen(s) (optional, may be empty)
+    // Score (0-100) = how much the area looks like the abnormal screen. When a normal
+    // screen is known, only the cells where the abnormal screen differs from the
+    // normal one (e.g. the alarm banner / popup) are judged, so screens that share
+    // the same layout do not match by accident.
+    public static double MatchImage(float[][] ngRefs, float[][] okRefs, Bitmap bmp, int ix, int iy, int iw, int ih, double sens, float[] mapFine) {
+        int stride, bpp;
+        byte[] buf = NgVision79.ReadPixels(bmp, out stride, out bpp);
+        return MatchImageBuf(ngRefs, okRefs, buf, bmp.Width, bmp.Height, stride, bpp, ix, iy, iw, ih, sens, mapFine);
+    }
+
+    public static double MatchImageBuf(float[][] ngRefs, float[][] okRefs, byte[] buf, int bw, int bh, int stride, int bpp,
+                                       int ix, int iy, int iw, int ih, double sens, float[] mapFine) {
+        var ii = new Integral(buf, bw, bh, stride, bpp);
+        var li = new LumIntegral(buf, bw, bh, stride, bpp);
+        int fw, fh;
+        GridFor(iw, ih, FineCells, out fw, out fh);
+        int dxMin = -Math.Min(MaxShift, ix), dxMax = Math.Min(MaxShift, bw - ix - iw);
+        int dyMin = -Math.Min(MaxShift, iy), dyMax = Math.Min(MaxShift, bh - iy - ih);
+        int[] fex = Edges(iw, fw), fey = Edges(ih, fh);
+        double best = -1;
+        float[] tmp = mapFine == null ? null : new float[mapFine.Length];
+        for (int k = 0; k + 3 < ngRefs.Length; k += 4) {
+            if (ngRefs[k].Length != fw * fh * 3) continue;
+            int bdx, bdy;
+            FindShift(li, ToLum(ngRefs[k]), ix, iy, fex, fey, dxMin, dxMax, dyMin, dyMax, out bdx, out bdy);
+            float[] cur = Means(ii, ix + bdx, iy + bdy, iw, ih, fw, fh);
+            double s = MatchCore(ngRefs[k], ngRefs[k + 1], okRefs, cur, sens, tmp);
+            if (s > best) { best = s; if (mapFine != null) Array.Copy(tmp, mapFine, mapFine.Length); }
+        }
+        return best;
+    }
+
+    // Already-aligned sample (used for recorded samples / tuning).
+    public static double MatchSample(float[][] ngRefs, float[][] okRefs, float[] fine, double sens) {
+        double best = -1;
+        for (int k = 0; k + 3 < ngRefs.Length; k += 4) {
+            if (ngRefs[k].Length != fine.Length) continue;
+            best = Math.Max(best, MatchCore(ngRefs[k], ngRefs[k + 1], okRefs, fine, sens, null));
+        }
+        return best;
+    }
+
+    // Cells where the abnormal screen clearly differs from EVERY recorded normal screen
+    // (record other harmless screens, e.g. an info popup, as "normal" to exclude what they share).
+    // Returns null when no normal screen is known (or they look the same): then all cells count.
+    public static bool[] DistinctiveCells(float[] ngFine, float[][] okRefs, double sens) {
+        if (okRefs == null) return null;
+        int nb = ngFine.Length / 3, cnt = 0;
+        bool[] mask = null;
+        for (int j = 0; j + 3 < okRefs.Length; j += 4) {
+            if (okRefs[j].Length != ngFine.Length) continue;
+            float[] v = CellScores(okRefs[j], okRefs[j + 1], ngFine, sens);
+            if (mask == null) { mask = new bool[nb]; for (int b = 0; b < nb; b++) mask[b] = true; }
+            for (int b = 0; b < nb; b++) if (v[b] < 0.5f) mask[b] = false;
+        }
+        if (mask == null) return null;
+        for (int b = 0; b < nb; b++) if (mask[b]) cnt++;
+        if (cnt < Math.Max(4, nb / 500)) return null;
+        return mask;
+    }
+
+    static double MatchCore(float[] ngFine, float[] ngNoise, float[][] okRefs, float[] cur, double sens, float[] map) {
+        int nb = ngFine.Length / 3;
+        float[] v = CellScores(ngFine, ngNoise, cur, sens);      // 1 = this cell differs from the abnormal screen
+        bool[] mask = DistinctiveCells(ngFine, okRefs, sens);
+        double sum = 0; int n = 0;
+        for (int b = 0; b < nb; b++) {
+            bool use = mask == null || mask[b];
+            if (map != null) map[b] = use ? 1f - v[b] : 0f;     // overlay: parts that look like the abnormal screen
+            if (!use) continue;
+            sum += 1.0 - v[b]; n++;
+        }
+        return n == 0 ? 0 : 100.0 * sum / n;
+    }
+
     // With an NG sample: choose the LEAST sensitive setting that still separates
     // the NG sample clearly from the OK samples (most robust against everyday
     // variation that the short recording did not see).
@@ -1165,6 +1243,11 @@ function New-MonitorArea($name,$rect,$color) {
         DiffGridH=0
         DiffFineW=0            # 細かいマス目（約4800）の数。小さな異常用
         DiffFineH=0
+        # 「異常の画面が出たらNG」用
+        MatchNgRefs=(New-Object System.Collections.ArrayList)   # 異常の画面の見本（複数可）
+        MatchOkRefs=(New-Object System.Collections.ArrayList)   # 正常な画面の見本（任意・複数可）
+        MatchSensitivity=50
+        MatchThreshold=90      # 異常の画面との一致度がこの値（%）以上ならNG
         DiffRefs=(New-Object System.Collections.ArrayList)   # 正常の見本（各要素は {平均, ゆらぎ} の組）。昼・夜など複数可
         ConfirmFrames=2        # この回数だけ続けてNGになったらNG確定（瞬間的なノイズを無視）
         BuzzerSeconds=2
@@ -1182,6 +1265,10 @@ function New-MonitorArea($name,$rect,$color) {
         DiffRefArray=$null
         DiffOkFrames=$null     # 正常を記録した時の各コマ（{細かい, 粗い} の組の一覧）
         DiffNgMeans=$null      # 異常を記録した時の {細かい, 粗い}
+        MatchNgArray=$null
+        MatchOkArray=$null
+        MatchNgSamples=$null   # 記録した異常の画面のコマ（この起動中だけ）
+        MatchOkSamples=$null   # 記録した正常な画面のコマ（この起動中だけ）
         OkSnap=$null
         NgSnap=$null
         OkRatio=$null
@@ -1209,7 +1296,27 @@ function Clear-AreaSamples($a) {
     $a.OkSnap=$null; $a.NgSnap=$null
     $a.OkRatio=$null; $a.NgRatio=$null
     $a.DiffOkFrames=$null; $a.DiffNgMeans=$null
+    $a.MatchNgSamples=$null; $a.MatchOkSamples=$null
     $a.TuneText=$null; $a.TuneColor=$null
+}
+
+function Clear-MatchReference($a) {
+    $a.MatchNgRefs.Clear(); $a.MatchOkRefs.Clear()
+    $a.MatchNgArray=$null; $a.MatchOkArray=$null
+    $a.MatchNgSamples=$null; $a.MatchOkSamples=$null
+    $a.LastMap=$null
+}
+
+function ConvertTo-RefArray($list) {
+    # 見本の一覧を {細かい, ゆらぎ, 粗い, ゆらぎ} x 枚数 の形に並べる
+    $arr=New-Object 'float[][]' ($list.Count*4)
+    for($i=0;$i -lt $list.Count;$i++) { for($j=0;$j -lt 4;$j++) { $arr[4*$i+$j]=$list[$i][$j] } }
+    return ,$arr
+}
+
+function Update-MatchArrays($a) {
+    $a.MatchNgArray=ConvertTo-RefArray $a.MatchNgRefs
+    $a.MatchOkArray=ConvertTo-RefArray $a.MatchOkRefs
 }
 
 function Clear-DiffReference($a) {
@@ -1231,22 +1338,36 @@ function Update-DiffRefArray($a) {
 
 function Test-AreaReady($a) {
     if($a.Mode -eq 'diff') { return ($a.DiffRefs.Count -gt 0) }
+    if($a.Mode -eq 'match') { return ($a.MatchNgRefs.Count -gt 0) }
     return $true
 }
 
 function Get-JudgeThreshold($a) {
     if($a.Mode -eq 'diff') { return [double]$a.DiffThreshold }
+    if($a.Mode -eq 'match') { return [double]$a.MatchThreshold }
     return [double]$a.NGThreshold
 }
 
 function Get-JudgeDirection($a) {
-    if($a.Mode -eq 'diff') { return 'appear' }   # 「比べる」は、違いが大きいほどNG
+    if($a.Mode -ne 'color') { return 'appear' }   # 「比べる」は違いが大きいほど、「異常の画面」は似ているほどNG
     return $a.Direction
 }
 
 function Get-AreaRatio($bmp,$a,[switch]$WithMap) {
     # 色で判定：指定した色に一致する割合（%）
     # 比べる　：正常の見本と違っている部分の割合（%）。見本が無ければ $null
+    # 異常画面：異常の画面にどれだけ似ているか（%）。見本が無ければ $null
+    if($a.Mode -eq 'match') {
+        if(-not $a.MatchNgArray) { Update-MatchArrays $a }
+        if($a.MatchNgRefs.Count -eq 0) { return $null }
+        $off=Get-InnerOffset $bmp $a
+        $map=$null
+        if($WithMap) { $map=New-Object 'float[]' ($a.DiffFineW*$a.DiffFineH) }
+        $score=[NgDiff79]::MatchImage($a.MatchNgArray,$a.MatchOkArray,$bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height,[double]$a.MatchSensitivity,$map)
+        if($WithMap) { $a.LastMap=$map }
+        if($score -lt 0) { return $null }
+        return [math]::Round($score,1)
+    }
     if($a.Mode -eq 'diff') {
         if(-not $a.DiffRefArray) { Update-DiffRefArray $a }
         if(-not $a.DiffRefArray) { return $null }
@@ -1302,6 +1423,24 @@ function Update-AreaJudgement($a,$ratio,$nowTime,$nowText) {
 function Update-SampleRatios($a) {
     # 記録したOK/NGの見本を、今の設定で判定したら何%になるか（メーターの▼の位置）
     try {
+        if($a.Mode -eq 'match') {
+            if(-not $a.MatchNgArray) { Update-MatchArrays $a }
+            $a.OkRatio=$null; $a.NgRatio=$null
+            if($a.MatchNgRefs.Count -gt 0) {
+                $sens=[double]$a.MatchSensitivity
+                if($a.MatchOkSamples) {
+                    $mx=0.0
+                    foreach($fr in $a.MatchOkSamples) { $mx=[Math]::Max($mx,[NgDiff79]::MatchSample($a.MatchNgArray,$a.MatchOkArray,$fr[0],$sens)) }
+                    $a.OkRatio=[math]::Round($mx,1)
+                }
+                if($a.MatchNgSamples) {
+                    $mn=100.0
+                    foreach($fr in $a.MatchNgSamples) { $mn=[Math]::Min($mn,[NgDiff79]::MatchSample($a.MatchNgArray,$a.MatchOkArray,$fr[0],$sens)) }
+                    $a.NgRatio=[math]::Round($mn,1)
+                }
+            }
+            return
+        }
         if($a.Mode -eq 'diff') {
             if(-not $a.DiffRefArray) { Update-DiffRefArray $a }
             $a.OkRatio=$null; $a.NgRatio=$null
@@ -1353,7 +1492,7 @@ function GrabBitmap($rect) {
 # 監視ループ専用：エリアごとにBitmapを使い回してCPU・メモリの負担を減らす
 function Get-CaptureRect($a) {
     # 「比べる」では、映像のわずかなずれを直すため、範囲の周り3ピクセルも一緒に撮る
-    if($a.Mode -ne 'diff') { return $a.Rect }
+    if($a.Mode -eq 'color') { return $a.Rect }
     $m=3
     $vs=[System.Windows.Forms.SystemInformation]::VirtualScreen
     $x0=[Math]::Max($vs.X,$a.Rect.X-$m); $y0=[Math]::Max($vs.Y,$a.Rect.Y-$m)
@@ -1512,7 +1651,10 @@ function Get-CurrentSettingsObject {
             Mode=$a.Mode
             DiffSensitivity=$a.DiffSensitivity; DiffThreshold=$a.DiffThreshold
             DiffGridW=$a.DiffGridW; DiffGridH=$a.DiffGridH
-            DiffRefs=@($a.DiffRefs | ForEach-Object { [PSCustomObject]@{ Means=[NgBlock79]::Pack($_[2]); Noise=[NgBlock79]::Pack($_[3]); FineMeans=[NgBlock79]::Pack($_[0]); FineNoise=[NgBlock79]::Pack($_[1]) } })
+            DiffRefs=@($a.DiffRefs | ForEach-Object { ConvertTo-PackedRef $_ })
+            MatchSensitivity=$a.MatchSensitivity; MatchThreshold=$a.MatchThreshold
+            MatchNgRefs=@($a.MatchNgRefs | ForEach-Object { ConvertTo-PackedRef $_ })
+            MatchOkRefs=@($a.MatchOkRefs | ForEach-Object { ConvertTo-PackedRef $_ })
             ConfirmFrames=$a.ConfirmFrames
             BuzzerSeconds=$a.BuzzerSeconds; BuzzerType=$a.BuzzerType; BuzzerVolume=$a.BuzzerVolume
         }
@@ -1521,6 +1663,31 @@ function Get-CurrentSettingsObject {
         IntervalSec=$script:monitorIntervalSec
         Areas=$areaObjs
     }
+}
+
+function ConvertTo-PackedRef($ref) {
+    return [PSCustomObject]@{ Means=[NgBlock79]::Pack($ref[2]); Noise=[NgBlock79]::Pack($ref[3]); FineMeans=[NgBlock79]::Pack($ref[0]); FineNoise=[NgBlock79]::Pack($ref[1]) }
+}
+
+function ConvertFrom-PackedRef($rd,$a,[switch]$RequireFine) {
+    # 保存した見本を読み戻す。範囲の大きさが違う・壊れている場合は $null
+    if($null -eq $rd -or -not $rd.Means -or -not $rd.Noise) { return $null }
+    try {
+        $nc=$a.DiffGridW*$a.DiffGridH; $nf=$a.DiffFineW*$a.DiffFineH
+        $means=[NgBlock79]::Unpack([string]$rd.Means)
+        $noise=[NgBlock79]::Unpack([string]$rd.Noise)
+        if($means.Length -ne $nc*3 -or $noise.Length -ne $nc) { return $null }
+        $ref=New-Object 'float[][]' 4
+        $ref[0]=New-Object 'float[]' 0; $ref[1]=New-Object 'float[]' 0   # v78 までの見本には細かいマス目が無い
+        $ref[2]=$means; $ref[3]=$noise
+        if($rd.FineMeans -and $rd.FineNoise) {
+            $fm=[NgBlock79]::Unpack([string]$rd.FineMeans)
+            $fz=[NgBlock79]::Unpack([string]$rd.FineNoise)
+            if($fm.Length -eq $nf*3 -and $fz.Length -eq $nf) { $ref[0]=$fm; $ref[1]=$fz }
+        }
+        if($RequireFine -and $ref[0].Length -eq 0) { return $null }
+        return ,$ref
+    } catch { return $null }
 }
 
 function Save-SettingsFile($path) {
@@ -1620,7 +1787,7 @@ function Apply-SettingsObject($data) {
             $newArea.HueMatchMode=$(if($null -ne $ad.HueMatchMode){[bool]$ad.HueMatchMode}else{$legacyHueMode})
             $newArea.Direction=$(if($ad.Direction -eq 'disappear'){'disappear'}else{'appear'})
             # 以前のバージョンで作った設定は「色で判定」のまま動かす
-            $newArea.Mode=$(if($ad.Mode -eq 'diff'){'diff'}else{'color'})
+            $newArea.Mode=$(if($ad.Mode -eq 'diff' -or $ad.Mode -eq 'match'){[string]$ad.Mode}else{'color'})
             $newArea.DiffSensitivity=ClampInt $ad.DiffSensitivity 0 100 50
             # v78 までの「比べる」の値（初期値3）はそのまま使う。細かい判定の初期値は0.15
             $newArea.DiffThreshold=ClampDouble $ad.DiffThreshold 0.05 100 0.15
@@ -1646,6 +1813,12 @@ function Apply-SettingsObject($data) {
                         }
                     } catch {}
                 }
+            }
+            $newArea.MatchSensitivity=ClampInt $ad.MatchSensitivity 0 100 50
+            $newArea.MatchThreshold=ClampDouble $ad.MatchThreshold 1 100 90
+            if(([int]$ad.DiffGridW -eq $gw) -and ([int]$ad.DiffGridH -eq $gh)) {
+                foreach($rd in @($ad.MatchNgRefs)) { $r2=ConvertFrom-PackedRef $rd $newArea -RequireFine; if($r2) { [void]$newArea.MatchNgRefs.Add($r2) } }
+                foreach($rd in @($ad.MatchOkRefs)) { $r2=ConvertFrom-PackedRef $rd $newArea -RequireFine; if($r2) { [void]$newArea.MatchOkRefs.Add($r2) } }
             }
             $newArea.ConfirmFrames=ClampInt $ad.ConfirmFrames 1 20 2
             $newArea.BuzzerSeconds=ClampInt $ad.BuzzerSeconds 1 60 $legacyBuzzerSeconds
@@ -1803,6 +1976,39 @@ function Show-Message($text,$icon,$buttons) {
     if(-not $buttons) { $buttons=[System.Windows.Forms.MessageBoxButtons]::OK }
     # 本体が「常に手前」でも隠れないよう、必ず本体を親にして表示する
     return [System.Windows.Forms.MessageBox]::Show($f,$text,'NG モニター',$buttons,$icon)
+}
+
+function Show-Choice($title,$prompt,[string[]]$choices) {
+    # 大きなボタンを縦に並べた選択画面。押したボタンの番号（0～）を返す。閉じたら最後の番号
+    $d=New-Object System.Windows.Forms.Form
+    $d.Text=$title
+    $d.AutoScaleMode=[System.Windows.Forms.AutoScaleMode]::None
+    $d.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $d.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent
+    $d.MaximizeBox=$false; $d.MinimizeBox=$false; $d.ShowInTaskbar=$false
+    $d.Font=UIFont 10
+    $lbl=New-Object System.Windows.Forms.Label
+    $lbl.AutoSize=$true; $lbl.Text=$prompt
+    $lbl.MaximumSize=New-Object System.Drawing.Size((Px 460),0)
+    $lbl.Location=New-Object System.Drawing.Point((Px 16),(Px 14))
+    $d.Controls.Add($lbl)
+    $script:choiceResult=$choices.Count-1
+    $y=$lbl.Bottom+(Px 14)
+    for($i=0;$i -lt $choices.Count;$i++) {
+        $b=New-Object System.Windows.Forms.Button
+        $b.Text=$choices[$i]
+        $b.Tag=$i
+        $b.Font=UIFont 10 -Bold
+        $b.Size=New-Object System.Drawing.Size((Px 460),(Px 44))
+        $b.Location=New-Object System.Drawing.Point((Px 16),$y)
+        $b.Add_Click({ $script:choiceResult=[int]$this.Tag; $this.FindForm().Close() })
+        $d.Controls.Add($b)
+        $y+=Px 52
+    }
+    $d.ClientSize=New-Object System.Drawing.Size((Px 492),($y+(Px 6)))
+    [void]$d.ShowDialog($f)
+    $d.Dispose()
+    return $script:choiceResult
 }
 
 function Show-TextInput($title,$prompt,$default) {
@@ -2195,15 +2401,20 @@ $modeRow=New-Row
 $modeLabel=New-Label '判定のしかた：' 9.5 -Bold
 $rbModeDiff=New-Object System.Windows.Forms.RadioButton
 $rbModeDiff.Text='正常な映像と比べる（おすすめ・かんたん）'
+$rbModeMatch=New-Object System.Windows.Forms.RadioButton
+$rbModeMatch.Text='異常の時だけ出る画面が出たらNG'
 $rbModeColor=New-Object System.Windows.Forms.RadioButton
 $rbModeColor.Text='色で判定する（従来の方法）'
-foreach($rb in @($rbModeDiff,$rbModeColor)) {
+foreach($rb in @($rbModeDiff,$rbModeMatch,$rbModeColor)) {
     $rb.AutoSize=$true; $rb.Font=UIFont 9.5; $rb.ForeColor=$textPrimary; $rb.Enabled=$false
     $rb.Anchor=[System.Windows.Forms.AnchorStyles]::Left
     $rb.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 3),(Px 12),(Px 3))
 }
 $rbModeDiff.Checked=$true
-Add-Controls $modeRow @($modeLabel,$rbModeDiff,$rbModeColor)
+$modeChoices=New-Column
+Add-Controls $modeChoices @($rbModeDiff,$rbModeMatch,$rbModeColor)
+$modeLabel.Anchor=[System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Top
+Add-Controls $modeRow @($modeLabel,$modeChoices)
 $modeRow.Margin=New-Object System.Windows.Forms.Padding(0,(Px 8),0,(Px 2))
 $g2.Body.Controls.Add($modeRow)
 
@@ -2463,7 +2674,9 @@ function Slider-ToThreshold($a,$v) {
 }
 
 function UpdateNGHintText($a) {
-    if($a -and $a.Mode -eq 'diff') {
+    if($a -and $a.Mode -eq 'match') {
+        $ngHint.Text='映っている画面が、記録した「異常の画面」にこの割合以上似ていたらNG（初期値 90%）'
+    } elseif($a -and $a.Mode -eq 'diff') {
         $ngHint.Text='正常と違う部分のうち、いちばん大きなかたまりが範囲のこの割合以上ならNG（小さな部品の欠けは 0.1～0.5% 程度）'
     } elseif($a -and $a.Direction -eq 'disappear') {
         $ngHint.Text='一致率がこの値を下回ったらNG判定（色が消えた時）'
@@ -2473,7 +2686,11 @@ function UpdateNGHintText($a) {
 }
 
 function Update-ColorLabel($a) {
-    if($a -and $a.Mode -eq 'diff') {
+    if($a -and $a.Mode -eq 'match') {
+        $n=$a.MatchNgRefs.Count; $m=$a.MatchOkRefs.Count
+        $colorLabel.Text=$(if($n -gt 0){'異常の画面の見本：'+$n+'枚　正常な画面の見本：'+$m+'枚'}else{'異常の画面の見本：まだ記録していません'})
+        $colorLabel.ForeColor=$(if($n -gt 0){[System.Drawing.Color]::FromArgb(140,220,150)}else{[System.Drawing.Color]::FromArgb(255,190,110)})
+    } elseif($a -and $a.Mode -eq 'diff') {
         $n=$a.DiffRefs.Count
         $colorLabel.Text=$(if($n -gt 0){'正常の見本：'+$n+'枚 記録済み'}else{'正常の見本：まだ記録していません'})
         $colorLabel.ForeColor=$(if($n -gt 0){[System.Drawing.Color]::FromArgb(140,220,150)}else{[System.Drawing.Color]::FromArgb(255,190,110)})
@@ -2491,6 +2708,14 @@ function Update-TuneLabel($a) {
     if($a.TuneText) {
         $tuneResultLabel.ForeColor=$a.TuneColor
         $tuneResultLabel.Text=$a.TuneText
+    } elseif($a.Mode -eq 'match') {
+        if($a.MatchNgRefs.Count -gt 0) {
+            $tuneResultLabel.ForeColor=[System.Drawing.Color]::FromArgb(140,220,150)
+            $tuneResultLabel.Text='設定できています。「▶ 監視スタート」で、異常の画面が出た時に鳴ります。'
+        } else {
+            $tuneResultLabel.ForeColor=[System.Drawing.Color]::FromArgb(255,190,110)
+            $tuneResultLabel.Text='異常の画面が出ている時に「① 異常の画面を記録」を押すか、「＋ 画像ファイルから読み込む」で画像を読み込んでください。'
+        }
     } elseif($a.Mode -eq 'diff') {
         if($a.DiffRefs.Count -gt 0) {
             $tuneResultLabel.ForeColor=[System.Drawing.Color]::FromArgb(140,220,150)
@@ -2513,13 +2738,27 @@ function Update-TuneLabel($a) {
 
 function Update-ModeUI($a) {
     # 判定のしかたに合わせて、ボタン・説明・スライダーの意味を切り替える
-    $diff=(-not $a) -or ($a.Mode -eq 'diff')
-    $addOkBtn.Visible=$diff
-    $eyedropBtn.Visible=-not $diff
-    $dirRow.Visible=-not $diff
-    $hueModeCheck.Visible=-not $diff
-    $clearRefsBtn.Visible=$diff
-    if($diff) {
+    $mode=$(if($a){$a.Mode}else{'diff'})
+    $diff=($mode -eq 'diff')
+    $color=($mode -eq 'color')
+    $addOkBtn.Visible=-not $color
+    $eyedropBtn.Visible=$color
+    $dirRow.Visible=$color
+    $hueModeCheck.Visible=$color
+    $clearRefsBtn.Visible=-not $color
+    if($mode -eq 'match') {
+        $tuneHint.Text='異常の時だけ出る画面（警報画面・エラー表示など）が表示されている時に「① 異常の画面を記録」を押します。その画面が出ていない時は、前に撮った画像（スクリーンショットや ng_images の画像）を「＋ 画像ファイルから」で読み込めます。正常な画面も「② 正常な画面を記録」で覚えさせると、より確実になります。'
+        $recordOkBtn.Text='① 異常の画面を記録'
+        $addOkBtn.Text='＋ 画像ファイルから読み込む'
+        $recordNgBtn.Text='② 正常な画面を記録（任意・おすすめ）'
+        $clearRefsBtn.Text='記録した見本（異常・正常）をすべて消す'
+        $meterTitle.Text='異常の画面との一致度（黄色い線＝しきい値、緑▼＝記録した正常、赤▼＝記録した異常）'
+        $sensLabel.Text='見分けの感度：'
+        $sensHint.Text='感度を上げる → 細かな違いも「別の画面」とみなす（一致度が下がる）／ 下げる → 多少違っても同じ画面とみなす'
+        $ngLabel.Text='NGにする一致度：'
+    } elseif($diff) {
+        $addOkBtn.Text='＋ 別の正常も追加（昼・夜など）'
+        $clearRefsBtn.Text='記録した正常の見本をすべて消す'
         $tuneHint.Text='画面が正常な時に「① 正常な状態を記録」を押すだけで設定完了です。昼と夜で映り方が変わる場合は、夜にも「＋ 別の正常も追加」を押してください。異常を画面に出せる場合は「② 異常を記録」で、感度も自動で合わせます。'
         $recordOkBtn.Text='① 正常な状態を記録'
         $recordNgBtn.Text='② 異常を記録（任意）'
@@ -2544,11 +2783,11 @@ function LoadAreaSettingsIntoSliders {
     $script:suppressEvents=$true
     try {
         $en=($null -ne $a)
-        foreach($c in @($rbModeDiff,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn)) { $c.Enabled=$en }
+        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn)) { $c.Enabled=$en }
         if($en) {
-            if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } else { $rbModeColor.Checked=$true }
+            if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } elseif($a.Mode -eq 'match') { $rbModeMatch.Checked=$true } else { $rbModeColor.Checked=$true }
             if($a.Direction -eq 'disappear') { $rbDisappear.Checked=$true } else { $rbAppear.Checked=$true }
-            $sens=$(if($a.Mode -eq 'diff'){$a.DiffSensitivity}else{$a.Sensitivity})
+            $sens=$(if($a.Mode -eq 'diff'){$a.DiffSensitivity}elseif($a.Mode -eq 'match'){$a.MatchSensitivity}else{$a.Sensitivity})
             $thr=Get-JudgeThreshold $a
             Set-ThresholdSliderRange $a
             $sensTrack.Value=$sens
@@ -2557,9 +2796,13 @@ function LoadAreaSettingsIntoSliders {
             $ngPercentLabel.Text=Format-Percent $thr
             $hueModeCheck.Checked=$a.HueMatchMode
             $confirmBox.Value=[decimal]$a.ConfirmFrames
-            $recordNgBtn.Enabled=($a.Mode -ne 'diff') -or ($a.DiffRefs.Count -gt 0)
-            $addOkBtn.Enabled=($a.DiffRefs.Count -gt 0)
-            $clearRefsBtn.Enabled=($a.DiffRefs.Count -gt 0)
+            if($a.Mode -eq 'match') {
+                $clearRefsBtn.Enabled=($a.MatchNgRefs.Count+$a.MatchOkRefs.Count) -gt 0
+            } else {
+                $recordNgBtn.Enabled=($a.Mode -ne 'diff') -or ($a.DiffRefs.Count -gt 0)
+                $addOkBtn.Enabled=($a.DiffRefs.Count -gt 0)
+                $clearRefsBtn.Enabled=($a.DiffRefs.Count -gt 0)
+            }
             $g2.Group.Text=('② 検出の設定：'+$a.Name)
             $g3.Group.Text=('③ ブザー：'+$a.Name)
             $areaSettingsLabel.Text=($a.Name+' の設定を編集中')
@@ -2605,7 +2848,7 @@ function Update-MeterLabel {
         return
     }
     $isNG=Test-RatioIsNG $a $a.LastRatio
-    $prefix=$(if($a.Mode -eq 'diff'){'違い '}else{''})
+    $prefix=$(if($a.Mode -eq 'diff'){'違い '}elseif($a.Mode -eq 'match'){'一致 '}else{''})
     $meterValueLabel.Text=($prefix+(Format-Percent $a.LastRatio)+'　→ '+$(if($isNG){'NG'}else{'OK'}))
     $meterValueLabel.ForeColor=$(if($isNG){[System.Drawing.Color]::FromArgb(255,120,120)}else{[System.Drawing.Color]::FromArgb(140,220,150)})
 }
@@ -2662,7 +2905,7 @@ function UpdateAreaPreview {
             $a.Occluded=$false
             $a.LastRatio=Get-AreaRatio $bmp $a -WithMap
         }
-        if($a.Mode -eq 'diff' -and -not $hidden -and -not $script:eyedropper) { Draw-DiffOverlay $bmp $a }
+        if($a.Mode -ne 'color' -and -not $hidden -and -not $script:eyedropper) { Draw-DiffOverlay $bmp $a }
         $old=$areaPreviewBox.Image
         $areaPreviewBox.Image=$bmp
         if($old) { $old.Dispose() }
@@ -2670,6 +2913,8 @@ function UpdateAreaPreview {
             $info+="`r`n⚠ 画面の外にはみ出しています。「範囲を選び直す」で選び直してください。"
         } elseif($hidden) {
             $info+="`r`n⚠ この画面の下に隠れています。この画面を動かすか「ミニ表示」にしてください。"
+        } elseif($a.Mode -eq 'match' -and $a.MatchNgRefs.Count -gt 0) {
+            $info+="`r`n赤い部分＝異常の画面と同じに見える場所"
         } elseif($a.Mode -eq 'diff' -and $a.DiffRefs.Count -gt 0) {
             $info+="`r`n赤い部分＝正常と違うと判断した場所（橙は小さすぎてNGにしない違い）"
         }
@@ -2734,6 +2979,7 @@ function Set-AreaRect($a,$rect) {
     $a.Rect=$rect
     Clear-AreaBuffers $a
     Clear-DiffReference $a
+    Clear-MatchReference $a
     Set-AreaGrids $a
 }
 
@@ -2840,6 +3086,152 @@ function Record-DiffNG($a) {
     SetStatusPanel $colorReady $textOnReady ($a.Name+'：自動調整が完了しました')
 }
 
+function Add-MatchReference($a,$list,$samples,[switch]$Ng) {
+    $ref=[NgDiff79]::BuildReference($samples,$a.Rect.Width,$a.Rect.Height)
+    if($Ng) {
+        [void]$a.MatchNgRefs.Add($ref)
+        $old=@(); if($a.MatchNgSamples) { $old=@($a.MatchNgSamples) }
+        $a.MatchNgSamples=[float[][][]](@($old)+@($samples))
+    } else {
+        [void]$a.MatchOkRefs.Add($ref)
+        $old=@(); if($a.MatchOkSamples) { $old=@($a.MatchOkSamples) }
+        $a.MatchOkSamples=[float[][][]](@($old)+@($samples))
+    }
+    Update-MatchArrays $a
+}
+
+function Update-MatchTuning($a) {
+    # 記録した異常・正常の見本から、NGにする一致度を決める
+    Reset-AreaWithLog $a 'NG解除（見本を記録）'
+    Update-SampleRatios $a
+    $ng=$a.NgRatio; $ok=$a.OkRatio
+    $qc=[System.Drawing.Color]::FromArgb(140,220,150)
+    if($null -ne $ok -and $null -ne $ng) {
+        $thr=[Math]::Min(90.0,$ng-3.0)
+        if($thr -le $ok+3.0) {
+            $thr=($ok+$ng)/2.0
+            $quality='△ 正常な画面と異常の画面がよく似ていて、見分けにくい状態です。異常の時に変わる部分だけを小さく囲み直すと安定します。'
+            $qc=[System.Drawing.Color]::FromArgb(255,190,110)
+        } elseif(($ng-$ok) -ge 30) {
+            $quality='◎ 正常な画面と異常の画面をはっきり見分けられます。'
+        } else {
+            $quality='○ 見分けられます。'
+        }
+        $a.MatchThreshold=[Math]::Max(1,[Math]::Min(100,[int][Math]::Round($thr)))
+        $a.TuneText=('正常な画面：一致 '+$ok+'% ／ 異常の画面：一致 '+$ng+'% → '+$a.MatchThreshold+'% 以上似ていたらNG'+"`r`n"+$quality)
+    } else {
+        $a.MatchThreshold=90
+        $a.TuneText=('異常の画面の見本を記録しました（'+$a.MatchNgRefs.Count+'枚）。この画面が出たら鳴ります。'+"`r`n"+'正常な画面に戻ったら「② 正常な画面を記録」も押すと、似た別の画面で鳴ってしまうのを防げます。')
+    }
+    $a.TuneColor=$qc
+    LoadAreaSettingsIntoSliders
+    UpdateAreaPreview
+    $areaList.Invalidate()
+    Mark-SettingsDirty
+}
+
+function Record-MatchNG($a) {
+    # 今映っている「異常の時だけ出る画面」を見本として記録する
+    if(-not (Test-CanRecord $a)) { return $false }
+    if($a.MatchNgRefs.Count -ge $script:maxDiffRefs) {
+        [void](Show-Message ('異常の画面の見本は '+$script:maxDiffRefs+' 枚までです。「詳しい設定」の「記録した見本をすべて消す」で消してから記録し直してください。') ([System.Windows.Forms.MessageBoxIcon]::Information))
+        return $false
+    }
+    if($a.DiffFineW -le 0) { Set-AreaGrids $a }
+    try { $frames=Capture-DiffFrames $a 3 150 ($a.Name+'：異常の画面を記録中') }
+    catch { [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning)); return $false }
+    Add-MatchReference $a $a.MatchNgRefs $frames -Ng
+    Update-MatchTuning $a
+    SetStatusPanel $colorReady $textOnReady ($a.Name+'：異常の画面を記録しました（'+$a.MatchNgRefs.Count+'枚）')
+    return $true
+}
+
+function Record-MatchOK($a) {
+    # 正常な画面を記録する（似た別の画面で鳴らないように、見分ける場所をしぼるため）
+    if(-not (Test-CanRecord $a)) { return }
+    if($a.MatchOkRefs.Count -ge $script:maxDiffRefs) {
+        [void](Show-Message ('正常な画面の見本は '+$script:maxDiffRefs+' 枚までです。') ([System.Windows.Forms.MessageBoxIcon]::Information))
+        return
+    }
+    if($a.DiffFineW -le 0) { Set-AreaGrids $a }
+    try { $frames=Capture-DiffFrames $a $script:okFrameCount 150 ($a.Name+'：正常な画面を記録中') }
+    catch { [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning)); return }
+    Add-MatchReference $a $a.MatchOkRefs $frames
+    Update-MatchTuning $a
+    SetStatusPanel $colorReady $textOnReady ($a.Name+'：正常な画面を記録しました（'+$a.MatchOkRefs.Count+'枚）')
+}
+
+function Get-ImageForArea($img,$a) {
+    # 読み込んだ画像を、監視範囲と同じ大きさの画像にする。
+    # 返り値：@(画像, 説明)。合わせられない場合は画像が $null
+    $w=$a.Rect.Width; $h=$a.Rect.Height
+    $vs=[System.Windows.Forms.SystemInformation]::VirtualScreen
+    $src=$null; $note=''
+    if($img.Width -eq $w -and $img.Height -eq $h) {
+        $src=New-Object System.Drawing.Rectangle(0,0,$w,$h); $note='範囲と同じ大きさの画像'
+    } elseif($img.Width -eq $vs.Width -and $img.Height -eq $vs.Height) {
+        $src=New-Object System.Drawing.Rectangle(($a.Rect.X-$vs.X),($a.Rect.Y-$vs.Y),$w,$h); $note='画面全体のスクリーンショット'
+    } elseif($img.Width -eq $w+160 -and $img.Height -eq $h+160) {
+        $src=New-Object System.Drawing.Rectangle(80,80,$w,$h); $note='このアプリが保存したNG画像'
+    } else {
+        foreach($scr in [System.Windows.Forms.Screen]::AllScreens) {
+            $b=$scr.Bounds
+            if($img.Width -eq $b.Width -and $img.Height -eq $b.Height -and $b.Contains($a.Rect)) {
+                $src=New-Object System.Drawing.Rectangle(($a.Rect.X-$b.X),($a.Rect.Y-$b.Y),$w,$h); $note='モニター1台分のスクリーンショット'; break
+            }
+        }
+    }
+    $out=New-Object System.Drawing.Bitmap($w,$h)
+    $g=[System.Drawing.Graphics]::FromImage($out)
+    try {
+        if($src) {
+            $g.DrawImage($img,(New-Object System.Drawing.Rectangle(0,0,$w,$h)),$src,[System.Drawing.GraphicsUnit]::Pixel)
+        } else {
+            # 切り抜いた画像など：範囲の大きさに合わせて伸び縮みさせる
+            $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.DrawImage($img,0,0,$w,$h)
+            $note='大きさが範囲と違うため、範囲に合わせて拡大・縮小しました'
+        }
+    } finally { $g.Dispose() }
+    return @($out,$note)
+}
+
+function Import-MatchNGFromFile($a) {
+    # 異常の画面がいま出ていない時のために、前に撮った画像から見本を作る
+    if($a.MatchNgRefs.Count -ge $script:maxDiffRefs) {
+        [void](Show-Message ('異常の画面の見本は '+$script:maxDiffRefs+' 枚までです。') ([System.Windows.Forms.MessageBoxIcon]::Information))
+        return
+    }
+    $dlg=New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title='異常の画面の画像を選ぶ（スクリーンショット・ng_images の画像など）'
+    $dlg.Filter='画像 (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp|すべてのファイル (*.*)|*.*'
+    try { if(Test-Path -LiteralPath $script:imageDir) { $dlg.InitialDirectory=$script:imageDir } } catch {}
+    if($dlg.ShowDialog($f) -ne [System.Windows.Forms.DialogResult]::OK) { $dlg.Dispose(); return }
+    $file=$dlg.FileName; $dlg.Dispose()
+    $img=$null; $bmp=$null
+    try {
+        # ファイルを開いたままにしないよう、メモリに読み込んでから使う
+        $bytes=[System.IO.File]::ReadAllBytes($file)
+        $ms=New-Object System.IO.MemoryStream(,$bytes)
+        $img=[System.Drawing.Image]::FromStream($ms)
+        if($a.DiffFineW -le 0) { Set-AreaGrids $a }
+        $res=Get-ImageForArea $img $a
+        $bmp=$res[0]
+        $smp=New-Object 'float[][][]' 1
+        $smp[0]=[NgDiff79]::Sample($bmp,0,0,$a.Rect.Width,$a.Rect.Height)
+        Add-MatchReference $a $a.MatchNgRefs $smp -Ng
+        Update-MatchTuning $a
+        $a.TuneText=($a.TuneText+"`r`n（読み込んだ画像："+$res[1]+'）')
+        Update-TuneLabel $a
+        SetStatusPanel $colorReady $textOnReady ($a.Name+'：画像から異常の画面を読み込みました（'+[System.IO.Path]::GetFileName($file)+'）')
+    } catch {
+        [void](Show-Message ('画像を読み込めませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning))
+    } finally {
+        if($bmp) { $bmp.Dispose() }
+        if($img) { $img.Dispose() }
+    }
+}
+
 function Invoke-AutoTune($a) {
     $res=[NgVision79]::AutoTune($a.OkSnap,$a.NgSnap,$a.Color)
     if($null -eq $res) {
@@ -2943,6 +3335,13 @@ function Update-SettingsPathLabel {
 function Set-AreaMode($mode) {
     $a=Get-SelectedArea
     if(-not $a -or $a.Mode -eq $mode) { return }
+    Set-AreaModeFor $a $mode
+    $msg=$(if($mode -eq 'diff'){'：「正常な映像と比べる」にしました'}elseif($mode -eq 'match'){'：「異常の時だけ出る画面が出たらNG」にしました。異常の画面を記録してください'}else{'：「色で判定する」にしました。「かんたん設定」でOK/NGを記録してください'})
+    SetStatusPanel $colorReady $textOnReady ($a.Name+$msg)
+}
+
+function Set-AreaModeFor($a,$mode) {
+    if($a.Mode -eq $mode) { return }
     Reset-AreaWithLog $a 'NG解除（判定のしかたを変更）'
     $a.Mode=$mode
     Clear-AreaBuffers $a      # 撮る範囲（周りの余白の有無）が変わるため
@@ -2955,19 +3354,27 @@ function Set-AreaMode($mode) {
     UpdateAreaPreview
     $areaList.Invalidate()
     Mark-SettingsDirty
-    $msg=$(if($mode -eq 'diff'){'：「正常な映像と比べる」にしました'}else{'：「色で判定する」にしました。「かんたん設定」でOK/NGを記録してください'})
-    SetStatusPanel $colorReady $textOnReady ($a.Name+$msg)
 }
 
 function Start-AreaSetupWizard($a) {
     # エリアを追加した直後に、質問1つで設定を終わらせる
-    $ans=Show-Message ($a.Name+" を追加しました。`r`n`r`n今、このエリアの映像は「正常」ですか？`r`n`r`n「はい」を押すと、今の映像を正常の見本として記録して、設定が完了します。`r`n（約2秒かかります。その間、画面を動かさないでください）`r`n`r`n今が正常でない場合は「いいえ」を押し、正常になってから②の「① 正常な状態を記録」を押してください。") ([System.Windows.Forms.MessageBoxIcon]::Question) ([System.Windows.Forms.MessageBoxButtons]::YesNo)
-    if($ans -eq [System.Windows.Forms.DialogResult]::Yes) {
+    $choice=Show-Choice ($a.Name+' を追加しました') ("今、このエリアには何が映っていますか？`r`n（記録には約2秒かかります。その間、画面を動かさないでください）") @(
+        '正常な画面が映っている（違いが出たら鳴らす）',
+        '異常の時だけ出る画面が映っている（この画面が出たら鳴らす）',
+        'あとで設定する')
+    if($choice -eq 0) {
+        Set-AreaModeFor $a 'diff'
         if(Record-DiffOK $a) {
             SetStatusPanel $colorReady $textOnReady ($a.Name+'：設定完了！「▶ 監視スタート」で監視できます。')
         }
+    } elseif($choice -eq 1) {
+        Set-AreaModeFor $a 'match'
+        LoadAreaSettingsIntoSliders
+        if(Record-MatchNG $a) {
+            SetStatusPanel $colorReady $textOnReady ($a.Name+'：設定完了！この画面が出たら鳴ります。正常な画面に戻ったら「② 正常な画面を記録」も押すとより確実です。')
+        }
     } else {
-        SetStatusPanel $colorReady $textOnReady ($a.Name+'を追加しました。画面が正常な時に「① 正常な状態を記録」を押してください。')
+        SetStatusPanel $colorReady $textOnReady ($a.Name+'を追加しました。②で判定のしかたを選び、見本を記録してください。')
     }
 }
 
@@ -2980,14 +3387,14 @@ $areaList.Add_DrawItem({
         $b=$e.Bounds
         $pad=Px 6
         $sw=Px 18
-        $swColor=$(if($a.Mode -eq 'diff'){[System.Drawing.Color]::FromArgb(88,166,255)}else{$a.Color})
+        $swColor=$(if($a.Mode -eq 'diff'){[System.Drawing.Color]::FromArgb(88,166,255)}elseif($a.Mode -eq 'match'){[System.Drawing.Color]::FromArgb(230,90,90)}else{$a.Color})
         $swBrush=New-Object System.Drawing.SolidBrush($swColor)
         $e.Graphics.FillRectangle($swBrush,($b.X+$pad),($b.Y+[int](($b.Height-$sw)/2)),$sw,$sw)
         $swBrush.Dispose()
         $textY=$b.Y+[int](($b.Height-$script:areaListNameFont.Height)/2)
-        $dirText=$(if($a.Mode -eq 'diff'){'[比]'}elseif($a.Direction -eq 'disappear'){'[消]'}else{'[出]'})
+        $dirText=$(if($a.Mode -eq 'diff'){'[比]'}elseif($a.Mode -eq 'match'){'[異画]'}elseif($a.Direction -eq 'disappear'){'[消]'}else{'[出]'})
         $e.Graphics.DrawString(($dirText+' '+$a.Name),$script:areaListNameFont,$script:areaListNameBrush,($b.X+$pad*2+$sw),$textY)
-        $word=$(if($a.Mode -eq 'diff'){'違い '}else{'一致率 '})
+        $word=$(if($a.Mode -eq 'diff'){'違い '}elseif($a.Mode -eq 'match'){'一致 '}else{'一致率 '})
         $ratioText=$(if($null -ne $a.LastRatio -and -not $a.Occluded){$word+(Format-Percent $a.LastRatio)}else{$word+'－'})
         $ratioText+=(' ／ しきい値 '+(Format-Percent (Get-JudgeThreshold $a)))
         $e.Graphics.DrawString($ratioText,$script:areaListNameFont,$script:areaListSubBrush,($b.X+[int]($b.Width*0.40)),$textY)
@@ -3171,7 +3578,7 @@ $repickBtn.Add_Click({
             Set-AreaRect $a $script:area
             RefreshAreaListUI
             Mark-SettingsDirty
-            if($a.Mode -eq 'diff') { Start-AreaSetupWizard $a }
+            if($a.Mode -ne 'color') { Start-AreaSetupWizard $a }
             else { SetStatusPanel $colorReady $textOnReady ($a.Name+'の範囲を選び直しました。「かんたん設定」をやり直してください。') }
         }
     } finally {
@@ -3241,6 +3648,7 @@ $areaPreviewBox.Add_MouseClick({
 $recordOkBtn.Add_Click({
     $a=Get-SelectedArea
     if(-not $a) { return }
+    if($a.Mode -eq 'match') { [void](Record-MatchNG $a); return }
     if($a.Mode -eq 'diff') {
         if($a.DiffRefs.Count -gt 0) {
             $ans=Show-Message ("記録済みの正常の見本（"+$a.DiffRefs.Count+"枚）を、今の映像で置き換えます。よろしいですか？`r`n`r`n（昼・夜など、今までの見本も残したい場合は「いいえ」を押して「＋ 別の正常も追加」を使ってください）") ([System.Windows.Forms.MessageBoxIcon]::Question) ([System.Windows.Forms.MessageBoxButtons]::YesNo)
@@ -3253,20 +3661,24 @@ $recordOkBtn.Add_Click({
 })
 $addOkBtn.Add_Click({
     $a=Get-SelectedArea
-    if($a) { [void](Record-DiffOK $a -Append) }
+    if(-not $a) { return }
+    if($a.Mode -eq 'match') { Import-MatchNGFromFile $a } else { [void](Record-DiffOK $a -Append) }
 })
 $recordNgBtn.Add_Click({
     $a=Get-SelectedArea
     if(-not $a) { return }
-    if($a.Mode -eq 'diff') { Record-DiffNG $a } else { Record-ColorSample 'NG' }
+    if($a.Mode -eq 'match') { Record-MatchOK $a }
+    elseif($a.Mode -eq 'diff') { Record-DiffNG $a }
+    else { Record-ColorSample 'NG' }
 })
 $clearRefsBtn.Add_Click({
     $a=Get-SelectedArea
     if(-not $a) { return }
-    $ans=Show-Message ($a.Name+' の正常の見本をすべて消しますか？（消した後は記録し直すまで監視できません）') ([System.Windows.Forms.MessageBoxIcon]::Question) ([System.Windows.Forms.MessageBoxButtons]::YesNo)
+    $what=$(if($a.Mode -eq 'match'){'記録した見本（異常の画面・正常な画面）'}else{'正常の見本'})
+    $ans=Show-Message ($a.Name+' の'+$what+'をすべて消しますか？（消した後は記録し直すまで監視できません）') ([System.Windows.Forms.MessageBoxIcon]::Question) ([System.Windows.Forms.MessageBoxButtons]::YesNo)
     if($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     Reset-AreaWithLog $a 'NG解除（見本の削除）'
-    Clear-DiffReference $a
+    if($a.Mode -eq 'match') { Clear-MatchReference $a } else { Clear-DiffReference $a }
     $a.TuneText=$null
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
@@ -3277,6 +3689,10 @@ $clearRefsBtn.Add_Click({
 $rbModeDiff.Add_CheckedChanged({
     if($script:suppressEvents -or -not $rbModeDiff.Checked) { return }
     Set-AreaMode 'diff'
+})
+$rbModeMatch.Add_CheckedChanged({
+    if($script:suppressEvents -or -not $rbModeMatch.Checked) { return }
+    Set-AreaMode 'match'
 })
 $rbModeColor.Add_CheckedChanged({
     if($script:suppressEvents -or -not $rbModeColor.Checked) { return }
@@ -3289,7 +3705,7 @@ $sensTrack.Add_ValueChanged({
     if($script:suppressEvents) { return }
     $a=Get-SelectedArea
     if(-not $a) { return }
-    if($a.Mode -eq 'diff') { $a.DiffSensitivity=$sensTrack.Value } else { $a.Sensitivity=$sensTrack.Value }
+    if($a.Mode -eq 'diff') { $a.DiffSensitivity=$sensTrack.Value } elseif($a.Mode -eq 'match') { $a.MatchSensitivity=$sensTrack.Value } else { $a.Sensitivity=$sensTrack.Value }
     Update-SampleRatios $a
     Update-LiveRatioFromPreview
     Mark-SettingsDirty
@@ -3331,7 +3747,7 @@ $ngTrack.Add_ValueChanged({
     if($a) { $ngPercentLabel.Text=Format-Percent (Slider-ToThreshold $a $ngTrack.Value) } else { $ngPercentLabel.Text=$ngTrack.Value.ToString()+'%' }
     if($script:suppressEvents) { return }
     if(-not $a) { return }
-    if($a.Mode -eq 'diff') { $a.DiffThreshold=Slider-ToThreshold $a $ngTrack.Value } else { $a.NGThreshold=$ngTrack.Value }
+    if($a.Mode -eq 'diff') { $a.DiffThreshold=Slider-ToThreshold $a $ngTrack.Value } elseif($a.Mode -eq 'match') { $a.MatchThreshold=$ngTrack.Value } else { $a.NGThreshold=$ngTrack.Value }
     Mark-SettingsDirty
     Update-MeterLabel
     $meterBox.Invalidate()
@@ -3421,7 +3837,7 @@ $start.Add_Click({
     }
     $notReady=@($script:areas | Where-Object { -not (Test-AreaReady $_) } | ForEach-Object { $_.Name })
     if($notReady.Count -gt 0) {
-        [void](Show-Message (($notReady -join '、')+" は、まだ正常の見本を記録していません。`r`n`r`n一覧でそのエリアを選び、画面が正常な時に②の「① 正常な状態を記録」を押してください。") ([System.Windows.Forms.MessageBoxIcon]::Warning))
+        [void](Show-Message (($notReady -join '、')+" は、まだ見本を記録していません。`r`n`r`n一覧でそのエリアを選び、②の「かんたん設定」で見本を記録してください。`r`n（正常な映像と比べる：正常な時に「①」／ 異常の画面が出たらNG：異常の画面が出ている時に「①」か画像ファイルから）") ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return
     }
     Save-SettingsIfDirty -Now
@@ -3510,7 +3926,7 @@ $timer.Add_Tick({
         } elseif($offScreen.Count -gt 0) {
             SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($offScreen -join '、')+'」が画面の外にあり監視できません。モニターの接続・配置を確認し、「範囲を選び直す」をしてください。')
         } elseif($notReady.Count -gt 0) {
-            SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($notReady -join '、')+'」は正常の見本が無いため監視できていません。「① 正常な状態を記録」を押してください。')
+            SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($notReady -join '、')+'」は見本が無いため監視できていません。②の「かんたん設定」で見本を記録してください。')
         } elseif($script:logWriteBlocked) {
             SetStatusPanel $colorWarn $textOnWarn '監視中（すべて正常）｜ ⚠ ログのCSVが開かれていて書き込めません。Excelを閉じると自動で書き込みます。'
         } else {
