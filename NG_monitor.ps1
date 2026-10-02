@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v78 不具合修正（ログ消失・誤って「正常」表示・二重起動・表示倍率の違うモニターでの位置ズレ ほか）
+﻿# NG MONITOR - v79 「比べる」判定の精度向上（小さな異常・映像のずれ・時計表示に強く）
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -122,7 +122,7 @@ public static class BuzzGen {
 
 # 画面の色を読み取って判定する部分（高速化のためC#で書いている）
 # ・一致率の計算、スポイトでの色の取得、OK/NGの見本からの自動調整
-if (-not ([System.Management.Automation.PSTypeName]'NgVision77').Type) {
+if (-not ([System.Management.Automation.PSTypeName]'NgVision79').Type) {
 Add-Type -ReferencedAssemblies 'System.Drawing.dll' -TypeDefinition @'
 using System;
 using System.Drawing;
@@ -130,7 +130,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 // NOTE: Windows PowerShell 5.1 compiles this with the C# 5 compiler.
 // Do not use C# 6+ syntax ($"...", =>, out var, ?., nameof).
-public static class NgVision77 {
+public static class NgVision79 {
     // Pixels are first box-averaged 2x2 (Downsample) and then every cell is
     // evaluated: this halves camera noise, which matters most in dark scenes.
     public const int Step = 1;
@@ -399,7 +399,7 @@ public static class NgVision77 {
 // Is any window of this app (main window, pop-ups, message boxes) actually on
 // top of the given screen rectangle? Checks a 3x3 grid of points, so a window
 // that merely overlaps but lies *behind* the camera viewer is not counted.
-public static class NgWin77 {
+public static class NgWin79 {
     [StructLayout(LayoutKind.Sequential)]
     struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
@@ -444,7 +444,7 @@ public static class NgWin77 {
 //  - grey / infra-red night pictures are compared on brightness only
 //  - several normal pictures (e.g. day and night) can be recorded; the closest one is used
 // The score is the percentage of blocks that differ from normal (0-100).
-public static class NgDiff77 {
+public static class NgBlock79 {
     public static void GridFor(int w, int h, out int gw, out int gh) {
         double bs = Math.Max(3.0, Math.Sqrt((double)w * h / 400.0));
         gw = Math.Max(1, (int)Math.Ceiling(w / bs));
@@ -453,7 +453,7 @@ public static class NgDiff77 {
 
     public static float[] BlockMeans(Bitmap bmp, int gw, int gh) {
         int stride, bpp;
-        byte[] buf = NgVision77.ReadPixels(bmp, out stride, out bpp);
+        byte[] buf = NgVision79.ReadPixels(bmp, out stride, out bpp);
         return BlockMeansBuf(buf, bmp.Width, bmp.Height, stride, bpp, gw, gh);
     }
 
@@ -601,6 +601,341 @@ public static class NgDiff77 {
     }
 
     static double Sq(double v) { return v * v; }
+    static double MaxCh(float[] m, int b) { return Math.Max(m[b * 3], Math.Max(m[b * 3 + 1], m[b * 3 + 2])); }
+}
+
+// v79 "compare with the normal picture", second generation.
+//  - two scales: a fine grid (about 4800 cells, for small defects) and the
+//    coarse grid of v77 (about 400 blocks, for faint but large changes in the dark)
+//  - the picture is captured with a few extra pixels around the area and
+//    aligned (up to +-3 px) to the normal picture before comparing, so a
+//    slightly shifted picture / shaking camera does not look like a change
+//  - the score is the size of the LARGEST CONNECTED changed region (% of the
+//    area), so scattered noise never adds up while a small solid defect counts
+//  - each cell's learned flicker is spread to its neighbours and has a floor
+// A reference ("normal picture") is { fine, fineNoise, coarse, coarseNoise };
+// references recorded by v77/v78 have only the coarse pair (fine = empty).
+public static class NgDiff79 {
+    public const int FineCells = 4800, CoarseCells = 400, MaxShift = 3;
+
+    public static void GridFor(int w, int h, int cells, out int gw, out int gh) {
+        double bs = Math.Max(cells >= 1000 ? 1.0 : 3.0, Math.Sqrt((double)w * h / cells));
+        gw = Math.Max(1, (int)Math.Ceiling(w / bs));
+        gh = Math.Max(1, (int)Math.Ceiling(h / bs));
+    }
+
+    // ---- integral image: the mean of any rectangle in O(1) ----
+    public sealed class Integral {
+        public int W, H; public double[] R, G, B;
+        public Integral(byte[] buf, int w, int h, int stride, int bpp) {
+            W = w; H = h; int n = (w + 1) * (h + 1);
+            R = new double[n]; G = new double[n]; B = new double[n];
+            for (int y = 0; y < h; y++) {
+                double sr = 0, sg = 0, sb = 0; int row = y * stride;
+                for (int x = 0; x < w; x++) {
+                    int i = row + x * bpp;
+                    if (i + 2 < buf.Length) { sb += buf[i]; sg += buf[i + 1]; sr += buf[i + 2]; }
+                    int o = (y + 1) * (w + 1) + (x + 1), u = y * (w + 1) + (x + 1);
+                    R[o] = R[u] + sr; G[o] = G[u] + sg; B[o] = B[u] + sb;
+                }
+            }
+        }
+        public void Mean(int x0, int y0, int x1, int y1, float[] m, int b) {
+            int s = W + 1; double n = (double)(x1 - x0) * (y1 - y0);
+            if (n <= 0) { m[b * 3] = m[b * 3 + 1] = m[b * 3 + 2] = 0; return; }
+            int a = y0 * s + x0, c = y0 * s + x1, d = y1 * s + x0, e = y1 * s + x1;
+            m[b * 3]     = (float)((R[e] - R[c] - R[d] + R[a]) / n);
+            m[b * 3 + 1] = (float)((G[e] - G[c] - G[d] + G[a]) / n);
+            m[b * 3 + 2] = (float)((B[e] - B[c] - B[d] + B[a]) / n);
+        }
+    }
+
+    // Brightness-only integral image, used for the (frequent) shift search.
+    public sealed class LumIntegral {
+        public int W, H; public double[] Y;
+        public LumIntegral(byte[] buf, int w, int h, int stride, int bpp) {
+            W = w; H = h; Y = new double[(w + 1) * (h + 1)];
+            for (int y = 0; y < h; y++) {
+                double s = 0; int row = y * stride;
+                for (int x = 0; x < w; x++) {
+                    int i = row + x * bpp;
+                    if (i + 2 < buf.Length) s += 0.114 * buf[i] + 0.587 * buf[i + 1] + 0.299 * buf[i + 2];
+                    Y[(y + 1) * (w + 1) + x + 1] = Y[y * (w + 1) + x + 1] + s;
+                }
+            }
+        }
+    }
+
+    static int[] Edges(int len, int cells) {
+        int[] e = new int[cells + 1];
+        for (int i = 0; i <= cells; i++) e[i] = (int)(((long)i * len + cells - 1) / cells);
+        return e;
+    }
+
+    static float[] LumMeans(LumIntegral li, int ox, int oy, int[] ex, int[] ey) {
+        int gw = ex.Length - 1, gh = ey.Length - 1, s = li.W + 1;
+        float[] m = new float[gw * gh];
+        for (int by = 0; by < gh; by++) {
+            int y0 = Math.Max(0, oy + ey[by]), y1 = Math.Min(li.H, oy + ey[by + 1]);
+            for (int bx = 0; bx < gw; bx++) {
+                int x0 = Math.Max(0, ox + ex[bx]), x1 = Math.Min(li.W, ox + ex[bx + 1]);
+                double n = (double)(x1 - x0) * (y1 - y0);
+                m[by * gw + bx] = n <= 0 ? 0f : (float)((li.Y[y1 * s + x1] - li.Y[y0 * s + x1] - li.Y[y1 * s + x0] + li.Y[y0 * s + x0]) / n);
+            }
+        }
+        return m;
+    }
+
+    static double LumCost(float[] refY, float[] cur) {
+        double sr = 0, sc = 0;
+        for (int b = 0; b < cur.Length; b++) { sr += refY[b]; sc += cur[b]; }
+        double g = sc > 1 ? sr / sc : 1;
+        g = Math.Max(0.75, Math.Min(1.33, g));
+        double cost = 0;
+        for (int b = 0; b < cur.Length; b++) cost += Math.Min(40.0, Math.Abs(refY[b] - cur[b] * g));
+        return cost / cur.Length;
+    }
+
+    // Find the picture shift (up to MaxShift px) that best matches the reference:
+    // first every 2 px, then +-1 px around the best one.
+    static void FindShift(LumIntegral li, float[] refY, int ix, int iy, int[] ex, int[] ey,
+                          int dxMin, int dxMax, int dyMin, int dyMax, out int bdx, out int bdy) {
+        bdx = 0; bdy = 0;
+        double best = LumCost(refY, LumMeans(li, ix, iy, ex, ey));
+        int cx = 0, cy = 0;
+        for (int pass = 0; pass < 2; pass++) {
+            int step = pass == 0 ? 2 : 1, cx0 = cx, cy0 = cy;
+            for (int dy = cy0 - step; dy <= cy0 + step; dy += step) for (int dx = cx0 - step; dx <= cx0 + step; dx += step) {
+                if ((dx == 0 && dy == 0) || dx < dxMin || dx > dxMax || dy < dyMin || dy > dyMax) continue;
+                double c = LumCost(refY, LumMeans(li, ix + dx, iy + dy, ex, ey)) + 0.01 * (Math.Abs(dx) + Math.Abs(dy));
+                if (c < best) { best = c; bdx = dx; bdy = dy; }
+            }
+            cx = bdx; cy = bdy;
+            if (pass == 0 && (dxMax - dxMin) > 4) {   // reach +-3: also try the far corners of the 2-px grid
+                for (int dy = -2; dy <= 2; dy += 2) foreach (int dx in new int[] { -3, 3 }) {
+                    if (dx < dxMin || dx > dxMax || dy < dyMin || dy > dyMax) continue;
+                    double c = LumCost(refY, LumMeans(li, ix + dx, iy + dy, ex, ey)) + 0.01 * (Math.Abs(dx) + Math.Abs(dy));
+                    if (c < best) { best = c; bdx = dx; bdy = dy; cx = dx; cy = dy; }
+                }
+            }
+        }
+    }
+
+    static float[] ToLum(float[] m) {
+        float[] y = new float[m.Length / 3];
+        for (int b = 0; b < y.Length; b++) y[b] = (float)(0.299 * m[b * 3] + 0.587 * m[b * 3 + 1] + 0.114 * m[b * 3 + 2]);
+        return y;
+    }
+
+    // Cell means of the inner window (ox,oy,iw,ih). Cell boundaries are the same
+    // as NgBlock79.BlockMeansBuf, so v77/v78 coarse references stay valid.
+    public static float[] Means(Integral ii, int ox, int oy, int iw, int ih, int gw, int gh) {
+        float[] m = new float[gw * gh * 3];
+        for (int by = 0; by < gh; by++) {
+            int y0 = oy + (int)(((long)by * ih + gh - 1) / gh), y1 = oy + (int)(((long)(by + 1) * ih + gh - 1) / gh);
+            for (int bx = 0; bx < gw; bx++) {
+                int x0 = ox + (int)(((long)bx * iw + gw - 1) / gw), x1 = ox + (int)(((long)(bx + 1) * iw + gw - 1) / gw);
+                ii.Mean(Math.Max(0, x0), Math.Max(0, y0), Math.Min(ii.W, x1), Math.Min(ii.H, y1), m, by * gw + bx);
+            }
+        }
+        return m;
+    }
+
+    // { fine, coarse } cell means of the inner window, no alignment (used when recording).
+    public static float[][] SampleBuf(byte[] buf, int bw, int bh, int stride, int bpp, int ix, int iy, int iw, int ih) {
+        var ii = new Integral(buf, bw, bh, stride, bpp);
+        int fw, fh, cw, ch;
+        GridFor(iw, ih, FineCells, out fw, out fh); GridFor(iw, ih, CoarseCells, out cw, out ch);
+        return new float[][] { Means(ii, ix, iy, iw, ih, fw, fh), Means(ii, ix, iy, iw, ih, cw, ch) };
+    }
+    public static float[][] Sample(Bitmap bmp, int ix, int iy, int iw, int ih) {
+        int stride, bpp;
+        byte[] buf = NgVision79.ReadPixels(bmp, out stride, out bpp);
+        return SampleBuf(buf, bmp.Width, bmp.Height, stride, bpp, ix, iy, iw, ih);
+    }
+
+    // From several { fine, coarse } samples of the normal state build a reference.
+    public static float[][] BuildReference(float[][][] samples, int iw, int ih) {
+        int fw, fh, cw, ch;
+        GridFor(iw, ih, FineCells, out fw, out fh); GridFor(iw, ih, CoarseCells, out cw, out ch);
+        float[][] fine = new float[samples.Length][], coarse = new float[samples.Length][];
+        for (int i = 0; i < samples.Length; i++) { fine[i] = samples[i][0]; coarse[i] = samples[i][1]; }
+        float[][] f = OneScale(fine, fw, fh), c = OneScale(coarse, cw, ch);
+        return new float[][] { f[0], f[1], c[0], c[1] };
+    }
+
+    static float[][] OneScale(float[][] frames, int gw, int gh) {
+        int n3 = frames[0].Length, nb = n3 / 3;
+        float[] mean = new float[n3];
+        foreach (float[] fr in frames) for (int i = 0; i < n3; i++) mean[i] += fr[i] / frames.Length;
+        float[] noise = new float[nb];
+        foreach (float[] fr in frames) {
+            float[] d = NgBlock79.BlockDist(mean, fr, null);
+            for (int b = 0; b < nb; b++) if (d[b] > noise[b]) noise[b] = d[b];
+        }
+        // spread to neighbours (edges that happened to be still during recording)
+        float[] spread = new float[nb];
+        for (int y = 0; y < gh; y++) for (int x = 0; x < gw; x++) {
+            float mx = 0;
+            for (int yy = Math.Max(0, y - 1); yy <= Math.Min(gh - 1, y + 1); yy++)
+                for (int xx = Math.Max(0, x - 1); xx <= Math.Min(gw - 1, x + 1); xx++) mx = Math.Max(mx, noise[yy * gw + xx]);
+            spread[y * gw + x] = Math.Max(noise[y * gw + x], 0.6f * mx);
+        }
+        // floor: never assume a cell is quieter than the typical cell
+        float[] sorted = (float[])spread.Clone(); Array.Sort(sorted);
+        float floor = sorted[nb / 2];
+        for (int b = 0; b < nb; b++) spread[b] = Math.Max(spread[b], floor);
+        return new float[][] { mean, spread };
+    }
+
+    // Per-cell "how clearly changed" (0..1) for one scale.
+    static float[] CellScores(float[] refm, float[] noise, float[] cur, double sens) {
+        int nb = refm.Length / 3;
+        float[] bright = new float[nb];
+        float[] d = NgBlock79.BlockDist(refm, cur, bright);
+        float[] v = new float[nb];
+        for (int b = 0; b < nb; b++) {
+            double thr = NgBlock79.Threshold(sens, noise[b], bright[b]);
+            if (MaxCh(refm, b) >= 248 || MaxCh(cur, b) >= 248) thr = thr * 2.0 + 20.0;
+            double ramp = Math.Max(2.0, 0.25 * thr);
+            double s = (d[b] - thr) / (2.0 * ramp) + 0.5;
+            v[b] = (float)(s < 0 ? 0 : (s > 1 ? 1 : s));
+        }
+        return v;
+    }
+
+    // Largest 8-connected region of changed cells: its weight as % of all cells.
+    // keep (optional) receives 1 for the cells of that region (for the preview overlay).
+    public static double LargestRegion(float[] v, int gw, int gh, float[] keep) {
+        int nb = gw * gh;
+        int[] label = new int[nb];
+        int[] stack = new int[nb];
+        double best = 0; int bestLabel = 0, next = 0;
+        for (int s = 0; s < nb; s++) {
+            if (v[s] < 0.5f || label[s] != 0) continue;
+            next++; double mass = 0; int sp = 0; stack[sp++] = s; label[s] = next;
+            while (sp > 0) {
+                int c = stack[--sp]; mass += v[c];
+                int cx = c % gw, cy = c / gw;
+                for (int yy = Math.Max(0, cy - 1); yy <= Math.Min(gh - 1, cy + 1); yy++)
+                    for (int xx = Math.Max(0, cx - 1); xx <= Math.Min(gw - 1, cx + 1); xx++) {
+                        int q = yy * gw + xx;
+                        if (label[q] == 0 && v[q] >= 0.5f) { label[q] = next; stack[sp++] = q; }
+                    }
+            }
+            if (mass > best) { best = mass; bestLabel = next; }
+        }
+        if (keep != null) for (int b = 0; b < nb; b++) keep[b] = (bestLabel != 0 && label[b] == bestLabel) ? 1f : (v[b] >= 0.5f ? 0.5f : 0f);
+        return 100.0 * best / nb;
+    }
+
+    // Score of already-aligned cell means against all references (closest wins).
+    // refs = { fine0, fineNoise0, coarse0, coarseNoise0, fine1, ... } (fine may be empty for old references)
+    public static double ScoreSample(float[][] refs, float[] fine, float[] coarse, int iw, int ih, double sens, float[] mapFine) {
+        return ScoreSample2(refs, fine, coarse, null, null, iw, ih, sens, mapFine);
+    }
+
+    static float[] MinOf(float[] a, float[] b) {
+        if (b == null) return a;
+        float[] r = new float[a.Length];
+        for (int i = 0; i < a.Length; i++) r[i] = Math.Min(a[i], b[i]);
+        return r;
+    }
+
+    // fine2/coarse2 (optional): the same picture WITHOUT shift correction. A cell only
+    // counts as changed if it differs both with and without the correction:
+    //  - the camera picture moved a little  -> unchanged after correction
+    //  - overlays of the viewer (clock, labels) did not move -> unchanged without it
+    //  - a real defect                      -> changed either way
+    static double ScoreSample2(float[][] refs, float[] fine, float[] coarse, float[] fine2, float[] coarse2, int iw, int ih, double sens, float[] mapFine) {
+        int fw, fh, cw, ch;
+        GridFor(iw, ih, FineCells, out fw, out fh); GridFor(iw, ih, CoarseCells, out cw, out ch);
+        double best = double.MaxValue;
+        float[] tmp = mapFine == null ? null : new float[mapFine.Length];
+        for (int k = 0; k + 3 < refs.Length; k += 4) {
+            double sc = 0;
+            bool hasFine = refs[k].Length == fine.Length && refs[k].Length > 0;
+            if (hasFine) sc = LargestRegion(MinOf(CellScores(refs[k], refs[k + 1], fine, sens), fine2 == null ? null : CellScores(refs[k], refs[k + 1], fine2, sens)), fw, fh, tmp);
+            if (refs[k + 2].Length == coarse.Length) {
+                float[] cv = MinOf(CellScores(refs[k + 2], refs[k + 3], coarse, sens), coarse2 == null ? null : CellScores(refs[k + 2], refs[k + 3], coarse2, sens));
+                double cs = LargestRegion(cv, cw, ch, null);
+                if (cs > sc) {
+                    sc = cs;
+                    if (tmp != null) UpsampleMap(cv, cw, ch, tmp, fw, fh);
+                }
+            } else if (!hasFine) continue;
+            if (sc < best) { best = sc; if (mapFine != null) Array.Copy(tmp, mapFine, mapFine.Length); }
+        }
+        return best == double.MaxValue ? -1 : best;
+    }
+
+    static void UpsampleMap(float[] cv, int cw, int ch, float[] dst, int fw, int fh) {
+        for (int y = 0; y < fh; y++) for (int x = 0; x < fw; x++)
+            dst[y * fw + x] = cv[Math.Min(ch - 1, y * ch / fh) * cw + Math.Min(cw - 1, x * cw / fw)] >= 0.5f ? 1f : 0f;
+    }
+
+    // Full pipeline on a captured picture that includes a margin around the area:
+    // find the shift (up to MaxShift px) that best matches each reference, then score.
+    public static double ScoreImage(float[][] refs, Bitmap bmp, int ix, int iy, int iw, int ih, double sens, float[] mapFine) {
+        int stride, bpp;
+        byte[] buf = NgVision79.ReadPixels(bmp, out stride, out bpp);
+        return ScoreImageBuf(refs, buf, bmp.Width, bmp.Height, stride, bpp, ix, iy, iw, ih, sens, mapFine);
+    }
+
+    public static double ScoreImageBuf(float[][] refs, byte[] buf, int bw, int bh, int stride, int bpp,
+                                       int ix, int iy, int iw, int ih, double sens, float[] mapFine) {
+        var ii = new Integral(buf, bw, bh, stride, bpp);
+        var li = new LumIntegral(buf, bw, bh, stride, bpp);
+        int fw, fh, cw, ch;
+        GridFor(iw, ih, FineCells, out fw, out fh); GridFor(iw, ih, CoarseCells, out cw, out ch);
+        int dxMin = -Math.Min(MaxShift, ix), dxMax = Math.Min(MaxShift, bw - ix - iw);
+        int dyMin = -Math.Min(MaxShift, iy), dyMax = Math.Min(MaxShift, bh - iy - ih);
+        int[] fex = Edges(iw, fw), fey = Edges(ih, fh), cex = Edges(iw, cw), cey = Edges(ih, ch);
+        double best = double.MaxValue;
+        float[] tmp = mapFine == null ? null : new float[mapFine.Length];
+        float[] fine0 = null, coarse0 = null;
+        for (int k = 0; k + 3 < refs.Length; k += 4) {
+            bool useFine = refs[k].Length == fw * fh * 3;
+            float[] refY = ToLum(useFine ? refs[k] : refs[k + 2]);
+            int bdx, bdy;
+            FindShift(li, refY, ix, iy, useFine ? fex : cex, useFine ? fey : cey, dxMin, dxMax, dyMin, dyMax, out bdx, out bdy);
+            float[] fine = Means(ii, ix + bdx, iy + bdy, iw, ih, fw, fh);
+            float[] coarse = Means(ii, ix + bdx, iy + bdy, iw, ih, cw, ch);
+            float[] f2 = null, c2 = null;
+            if (bdx != 0 || bdy != 0) {
+                if (fine0 == null) { fine0 = Means(ii, ix, iy, iw, ih, fw, fh); coarse0 = Means(ii, ix, iy, iw, ih, cw, ch); }
+                f2 = fine0; c2 = coarse0;
+            }
+            float[][] one = new float[][] { refs[k], refs[k + 1], refs[k + 2], refs[k + 3] };
+            double s = ScoreSample2(one, fine, coarse, f2, c2, iw, ih, sens, tmp);
+            if (s >= 0 && s < best) { best = s; if (mapFine != null) Array.Copy(tmp, mapFine, mapFine.Length); }
+        }
+        return best == double.MaxValue ? -1 : best;
+    }
+
+    // With an NG sample: choose the LEAST sensitive setting that still separates
+    // the NG sample clearly from the OK samples (most robust against everyday
+    // variation that the short recording did not see).
+    // okSamples / ng are { fine, coarse } pairs. Returns { sensitivity, okMax, ngScore }.
+    public static double[] Tune(float[][] refs, float[][][] okSamples, float[][] ng, int iw, int ih) {
+        double[] ok = new double[21], ngs = new double[21], gap = new double[21];
+        double maxGap = 0;
+        for (int i = 0; i <= 20; i++) {
+            int s = i * 5;
+            double okMax = 0;
+            if (okSamples != null) foreach (float[][] o in okSamples) okMax = Math.Max(okMax, ScoreSample(refs, o[0], o[1], iw, ih, s, null));
+            ok[i] = okMax; ngs[i] = ScoreSample(refs, ng[0], ng[1], iw, ih, s, null);
+            gap[i] = ngs[i] - 3.0 * okMax;
+            if (gap[i] > maxGap) maxGap = gap[i];
+        }
+        for (int i = 0; i <= 20; i++)
+            if (maxGap > 0 && gap[i] >= 0.7 * maxGap && ok[i] <= 0.05) return new double[] { i * 5, ok[i], ngs[i] };
+        int bi = 10;
+        for (int i = 0; i <= 20; i++) if (gap[i] > gap[bi]) bi = i;
+        return new double[] { bi * 5, ok[bi], ngs[bi] };
+    }
+
+    static double Y(float[] m, int b) { return 0.299 * m[b * 3] + 0.587 * m[b * 3 + 1] + 0.114 * m[b * 3 + 2]; }
     static double MaxCh(float[] m, int b) { return Math.Max(m[b * 3], Math.Max(m[b * 3 + 1], m[b * 3 + 2])); }
 }
 '@
@@ -825,9 +1160,11 @@ function New-MonitorArea($name,$rect,$color) {
         NGThreshold=15
         HueMatchMode=$false
         DiffSensitivity=50     # 「比べる」の感度（大きいほど小さな違いでもNG）
-        DiffThreshold=3        # 「比べる」で、映像のこの割合（%）以上が変わったらNG
-        DiffGridW=0
+        DiffThreshold=0.15     # 「比べる」で、いちばん大きな「違う部分」が範囲のこの割合（%）以上ならNG
+        DiffGridW=0            # 粗いマス目（約400）の数。v77/v78 の見本と同じ
         DiffGridH=0
+        DiffFineW=0            # 細かいマス目（約4800）の数。小さな異常用
+        DiffFineH=0
         DiffRefs=(New-Object System.Collections.ArrayList)   # 正常の見本（各要素は {平均, ゆらぎ} の組）。昼・夜など複数可
         ConfirmFrames=2        # この回数だけ続けてNGになったらNG確定（瞬間的なノイズを無視）
         BuzzerSeconds=2
@@ -843,8 +1180,8 @@ function New-MonitorArea($name,$rect,$color) {
         Occluded=$false
         CaptureFailed=$false
         DiffRefArray=$null
-        DiffOkFrames=$null
-        DiffNgMeans=$null
+        DiffOkFrames=$null     # 正常を記録した時の各コマ（{細かい, 粗い} の組の一覧）
+        DiffNgMeans=$null      # 異常を記録した時の {細かい, 粗い}
         OkSnap=$null
         NgSnap=$null
         OkRatio=$null
@@ -885,10 +1222,10 @@ function Clear-DiffReference($a) {
 }
 
 function Update-DiffRefArray($a) {
-    # 判定用に {平均0, ゆらぎ0, 平均1, ゆらぎ1, ...} の形へ並べ直しておく
+    # 判定用に {細かい0, ゆらぎ0, 粗い0, ゆらぎ0, 細かい1, ...} の形へ並べ直しておく
     if($a.DiffRefs.Count -eq 0) { $a.DiffRefArray=$null; return }
-    $arr=New-Object 'float[][]' ($a.DiffRefs.Count*2)
-    for($i=0;$i -lt $a.DiffRefs.Count;$i++) { $arr[2*$i]=$a.DiffRefs[$i][0]; $arr[2*$i+1]=$a.DiffRefs[$i][1] }
+    $arr=New-Object 'float[][]' ($a.DiffRefs.Count*4)
+    for($i=0;$i -lt $a.DiffRefs.Count;$i++) { for($j=0;$j -lt 4;$j++) { $arr[4*$i+$j]=$a.DiffRefs[$i][$j] } }
     $a.DiffRefArray=$arr
 }
 
@@ -913,15 +1250,15 @@ function Get-AreaRatio($bmp,$a,[switch]$WithMap) {
     if($a.Mode -eq 'diff') {
         if(-not $a.DiffRefArray) { Update-DiffRefArray $a }
         if(-not $a.DiffRefArray) { return $null }
-        $means=[NgDiff77]::BlockMeans($bmp,$a.DiffGridW,$a.DiffGridH)
+        $off=Get-InnerOffset $bmp $a
         $map=$null
-        if($WithMap) { $map=New-Object 'float[]' ($a.DiffGridW*$a.DiffGridH) }
-        $score=[NgDiff77]::ScoreMulti($a.DiffRefArray,$means,[double]$a.DiffSensitivity,$map)
+        if($WithMap) { $map=New-Object 'float[]' ($a.DiffFineW*$a.DiffFineH) }
+        $score=[NgDiff79]::ScoreImage($a.DiffRefArray,$bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height,[double]$a.DiffSensitivity,$map)
         if($WithMap) { $a.LastMap=$map }
         if($score -lt 0) { return $null }
-        return [math]::Round($score,1)
+        return [math]::Round($score,2)
     }
-    return [math]::Round([NgVision77]::Ratio($bmp,$a.Color,[double]$a.Sensitivity,[bool]$a.HueMatchMode),1)
+    return [math]::Round([NgVision79]::Ratio($bmp,$a.Color,[double]$a.Sensitivity,[bool]$a.HueMatchMode),1)
 }
 
 function Test-RatioIsNG($a,$ratio) {
@@ -968,13 +1305,14 @@ function Update-SampleRatios($a) {
         if($a.Mode -eq 'diff') {
             if(-not $a.DiffRefArray) { Update-DiffRefArray $a }
             $a.OkRatio=$null; $a.NgRatio=$null
+            $w=$a.Rect.Width; $h=$a.Rect.Height
             if($a.DiffRefArray -and $a.DiffOkFrames) {
                 $mx=0.0
-                foreach($fr in $a.DiffOkFrames) { $mx=[Math]::Max($mx,[NgDiff77]::ScoreMulti($a.DiffRefArray,$fr,[double]$a.DiffSensitivity,$null)) }
-                $a.OkRatio=[math]::Round($mx,1)
+                foreach($fr in $a.DiffOkFrames) { $mx=[Math]::Max($mx,[NgDiff79]::ScoreSample($a.DiffRefArray,$fr[0],$fr[1],$w,$h,[double]$a.DiffSensitivity,$null)) }
+                $a.OkRatio=[math]::Round($mx,2)
             }
             if($a.DiffRefArray -and $a.DiffNgMeans) {
-                $a.NgRatio=[math]::Round([NgDiff77]::ScoreMulti($a.DiffRefArray,$a.DiffNgMeans,[double]$a.DiffSensitivity,$null),1)
+                $a.NgRatio=[math]::Round([NgDiff79]::ScoreSample($a.DiffRefArray,$a.DiffNgMeans[0],$a.DiffNgMeans[1],$w,$h,[double]$a.DiffSensitivity,$null),2)
             }
         } else {
             $a.OkRatio=$(if($a.OkSnap){Get-AreaRatio $a.OkSnap $a}else{$null})
@@ -1013,8 +1351,26 @@ function GrabBitmap($rect) {
 }
 
 # 監視ループ専用：エリアごとにBitmapを使い回してCPU・メモリの負担を減らす
+function Get-CaptureRect($a) {
+    # 「比べる」では、映像のわずかなずれを直すため、範囲の周り3ピクセルも一緒に撮る
+    if($a.Mode -ne 'diff') { return $a.Rect }
+    $m=3
+    $vs=[System.Windows.Forms.SystemInformation]::VirtualScreen
+    $x0=[Math]::Max($vs.X,$a.Rect.X-$m); $y0=[Math]::Max($vs.Y,$a.Rect.Y-$m)
+    $x1=[Math]::Min($vs.Right,$a.Rect.Right+$m); $y1=[Math]::Min($vs.Bottom,$a.Rect.Bottom+$m)
+    if($x1 -le $x0 -or $y1 -le $y0) { return $a.Rect }
+    return (New-Object System.Drawing.Rectangle($x0,$y0,($x1-$x0),($y1-$y0)))
+}
+
+function Get-InnerOffset($bmp,$a) {
+    # 撮った画像の中で、監視範囲そのものがどこから始まるか
+    if($bmp.Width -eq $a.Rect.Width -and $bmp.Height -eq $a.Rect.Height) { return @(0,0) }
+    $cap=Get-CaptureRect $a
+    return @(($a.Rect.X-$cap.X),($a.Rect.Y-$cap.Y))
+}
+
 function GrabBitmapForArea($a) {
-    $rect=$a.Rect
+    $rect=Get-CaptureRect $a
     if(($null -eq $a.MonBmp) -or ($a.MonBmpSize.Width -ne $rect.Width) -or ($a.MonBmpSize.Height -ne $rect.Height)) {
         Clear-AreaBuffers $a
         $a.MonBmp=New-Object System.Drawing.Bitmap($rect.Width,$rect.Height)
@@ -1028,7 +1384,7 @@ function GrabBitmapForArea($a) {
 function Test-AreaOccluded($rect) {
     # このアプリ自身の画面（本体・ポップアップ・確認画面）が監視エリアの上に重なっていると、
     # カメラ映像ではなくこのアプリの画面を検査してしまう。重なりを検出する。
-    try { return [NgWin77]::CoveredByOwnWindow($rect.X,$rect.Y,$rect.Width,$rect.Height) } catch { return $false }
+    try { return [NgWin79]::CoveredByOwnWindow($rect.X,$rect.Y,$rect.Width,$rect.Height) } catch { return $false }
 }
 
 function Test-AreaOnScreen($rect) {
@@ -1052,22 +1408,25 @@ function Capture-AreaUnobstructed($rect) {
 }
 
 function Capture-DiffFrames($a,$count,$intervalMs,$label) {
-    # 何枚か続けて撮り、ブロックごとの平均色の一覧（float[][]）を返す。
+    # 何枚か続けて撮り、マス目ごとの平均色（{細かい, 粗い} の組）の一覧を返す。
     # 1枚だけでなく何枚も撮ることで、「普段からちらつく部分」も覚えられる。
-    $rect=$a.Rect
+    $rect=Get-CaptureRect $a
     $hid=$false
-    if($f.Visible -and (Test-AreaOccluded $rect)) {
+    if($f.Visible -and (Test-AreaOccluded $a.Rect)) {
         $f.Hide()
         $hid=$true
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 250
     }
-    $frames=New-Object 'float[][]' $count
+    $frames=New-Object 'float[][][]' $count
     $g2.Group.Enabled=$false   # 記録中にボタンを二重に押されないように
     try {
         for($i=0;$i -lt $count;$i++) {
             $bmp=GrabBitmap $rect
-            try { $frames[$i]=[NgDiff77]::BlockMeans($bmp,$a.DiffGridW,$a.DiffGridH) } finally { $bmp.Dispose() }
+            try {
+                $off=Get-InnerOffset $bmp $a
+                $frames[$i]=[NgDiff79]::Sample($bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height)
+            } finally { $bmp.Dispose() }
             if($label) { SetStatusPanel $colorReady $textOnReady ($label+'（'+($i+1)+'/'+$count+'）…画面を動かさないでください') }
             [System.Windows.Forms.Application]::DoEvents()
             if($i -lt $count-1) { Start-Sleep -Milliseconds $intervalMs }
@@ -1153,7 +1512,7 @@ function Get-CurrentSettingsObject {
             Mode=$a.Mode
             DiffSensitivity=$a.DiffSensitivity; DiffThreshold=$a.DiffThreshold
             DiffGridW=$a.DiffGridW; DiffGridH=$a.DiffGridH
-            DiffRefs=@($a.DiffRefs | ForEach-Object { [PSCustomObject]@{ Means=[NgDiff77]::Pack($_[0]); Noise=[NgDiff77]::Pack($_[1]) } })
+            DiffRefs=@($a.DiffRefs | ForEach-Object { [PSCustomObject]@{ Means=[NgBlock79]::Pack($_[2]); Noise=[NgBlock79]::Pack($_[3]); FineMeans=[NgBlock79]::Pack($_[0]); FineNoise=[NgBlock79]::Pack($_[1]) } })
             ConfirmFrames=$a.ConfirmFrames
             BuzzerSeconds=$a.BuzzerSeconds; BuzzerType=$a.BuzzerType; BuzzerVolume=$a.BuzzerVolume
         }
@@ -1226,6 +1585,11 @@ function Load-SettingsFile($path) {
     }
 }
 
+function ClampDouble($value,$min,$max,$default) {
+    if($null -eq $value) { return $default }
+    try { return [Math]::Max([double]$min,[Math]::Min([double]$max,[double]$value)) } catch { return $default }
+}
+
 function ClampInt($value,$min,$max,$default) {
     if($null -eq $value) { return $default }
     try { return [Math]::Max($min,[Math]::Min($max,[int]$value)) } catch { return $default }
@@ -1258,20 +1622,27 @@ function Apply-SettingsObject($data) {
             # 以前のバージョンで作った設定は「色で判定」のまま動かす
             $newArea.Mode=$(if($ad.Mode -eq 'diff'){'diff'}else{'color'})
             $newArea.DiffSensitivity=ClampInt $ad.DiffSensitivity 0 100 50
-            $newArea.DiffThreshold=ClampInt $ad.DiffThreshold 1 100 3
-            $gw=0; $gh=0
-            [NgDiff77]::GridFor($rect.Width,$rect.Height,[ref]$gw,[ref]$gh)
-            $newArea.DiffGridW=$gw; $newArea.DiffGridH=$gh
+            # v78 までの「比べる」の値（初期値3）はそのまま使う。細かい判定の初期値は0.15
+            $newArea.DiffThreshold=ClampDouble $ad.DiffThreshold 0.05 100 0.15
+            Set-AreaGrids $newArea
+            $gw=$newArea.DiffGridW; $gh=$newArea.DiffGridH
+            $fn=$newArea.DiffFineW*$newArea.DiffFineH
             if(([int]$ad.DiffGridW -eq $gw) -and ([int]$ad.DiffGridH -eq $gh)) {
                 foreach($rd in @($ad.DiffRefs)) {
                     if($null -eq $rd -or -not $rd.Means -or -not $rd.Noise) { continue }
                     try {
-                        $means=[NgDiff77]::Unpack([string]$rd.Means)
-                        $noise=[NgDiff77]::Unpack([string]$rd.Noise)
+                        $means=[NgBlock79]::Unpack([string]$rd.Means)
+                        $noise=[NgBlock79]::Unpack([string]$rd.Noise)
                         if($means.Length -eq $gw*$gh*3 -and $noise.Length -eq $gw*$gh) {
-                            $pair=New-Object 'float[][]' 2
-                            $pair[0]=$means; $pair[1]=$noise
-                            [void]$newArea.DiffRefs.Add($pair)
+                            $ref=New-Object 'float[][]' 4
+                            $ref[0]=New-Object 'float[]' 0; $ref[1]=New-Object 'float[]' 0   # v78 までの見本には細かいマス目が無い
+                            $ref[2]=$means; $ref[3]=$noise
+                            if($rd.FineMeans -and $rd.FineNoise) {
+                                $fm=[NgBlock79]::Unpack([string]$rd.FineMeans)
+                                $fz=[NgBlock79]::Unpack([string]$rd.FineNoise)
+                                if($fm.Length -eq $fn*3 -and $fz.Length -eq $fn) { $ref[0]=$fm; $ref[1]=$fz }
+                            }
+                            [void]$newArea.DiffRefs.Add($ref)
                         }
                     } catch {}
                 }
@@ -2070,9 +2441,30 @@ function RefreshAreaListUI {
     $areaList.Invalidate()
 }
 
+function Format-Percent($v) {
+    $d=[double]$v
+    if($d -lt 10) { return ($d.ToString('0.0#')+'%') }
+    return ($d.ToString('0.#')+'%')
+}
+
+function Set-ThresholdSliderRange($a) {
+    # 色で判定：1～100%（1%きざみ）／ 比べる：0.05～20%（0.05%きざみ）
+    if($a.Mode -eq 'diff') { $ngTrack.Minimum=1; $ngTrack.Maximum=400 } else { $ngTrack.Minimum=1; $ngTrack.Maximum=100 }
+}
+
+function Threshold-ToSlider($a,$t) {
+    if($a.Mode -eq 'diff') { return [int][Math]::Round([double]$t/0.05) }
+    return [int]$t
+}
+
+function Slider-ToThreshold($a,$v) {
+    if($a.Mode -eq 'diff') { return [Math]::Round([int]$v*0.05,2) }
+    return [int]$v
+}
+
 function UpdateNGHintText($a) {
     if($a -and $a.Mode -eq 'diff') {
-        $ngHint.Text='映像のうち、この割合（%）以上が正常と違っていたらNG'
+        $ngHint.Text='正常と違う部分のうち、いちばん大きなかたまりが範囲のこの割合以上ならNG（小さな部品の欠けは 0.1～0.5% 程度）'
     } elseif($a -and $a.Direction -eq 'disappear') {
         $ngHint.Text='一致率がこの値を下回ったらNG判定（色が消えた時）'
     } else {
@@ -2157,11 +2549,12 @@ function LoadAreaSettingsIntoSliders {
             if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } else { $rbModeColor.Checked=$true }
             if($a.Direction -eq 'disappear') { $rbDisappear.Checked=$true } else { $rbAppear.Checked=$true }
             $sens=$(if($a.Mode -eq 'diff'){$a.DiffSensitivity}else{$a.Sensitivity})
-            $thr=$(if($a.Mode -eq 'diff'){$a.DiffThreshold}else{$a.NGThreshold})
+            $thr=Get-JudgeThreshold $a
+            Set-ThresholdSliderRange $a
             $sensTrack.Value=$sens
             $sensPercentLabel.Text=$sens.ToString()
-            $ngTrack.Value=$thr
-            $ngPercentLabel.Text=$thr.ToString()+'%'
+            $ngTrack.Value=[Math]::Max($ngTrack.Minimum,[Math]::Min($ngTrack.Maximum,(Threshold-ToSlider $a $thr)))
+            $ngPercentLabel.Text=Format-Percent $thr
             $hueModeCheck.Checked=$a.HueMatchMode
             $confirmBox.Value=[decimal]$a.ConfirmFrames
             $recordNgBtn.Enabled=($a.Mode -ne 'diff') -or ($a.DiffRefs.Count -gt 0)
@@ -2178,6 +2571,7 @@ function LoadAreaSettingsIntoSliders {
             $rbModeDiff.Checked=$true
             $rbAppear.Checked=$true
             $sensTrack.Value=50; $sensPercentLabel.Text='50'
+            $ngTrack.Minimum=1; $ngTrack.Maximum=100
             $ngTrack.Value=15; $ngPercentLabel.Text='15%'
             $hueModeCheck.Checked=$false
             $confirmBox.Value=2
@@ -2212,25 +2606,29 @@ function Update-MeterLabel {
     }
     $isNG=Test-RatioIsNG $a $a.LastRatio
     $prefix=$(if($a.Mode -eq 'diff'){'違い '}else{''})
-    $meterValueLabel.Text=($prefix+$a.LastRatio.ToString('0.0')+'%　→ '+$(if($isNG){'NG'}else{'OK'}))
+    $meterValueLabel.Text=($prefix+(Format-Percent $a.LastRatio)+'　→ '+$(if($isNG){'NG'}else{'OK'}))
     $meterValueLabel.ForeColor=$(if($isNG){[System.Drawing.Color]::FromArgb(255,120,120)}else{[System.Drawing.Color]::FromArgb(140,220,150)})
 }
 
 function Draw-DiffOverlay($bmp,$a) {
     # 「正常と違う」と判断したブロックを赤く塗って、何を見て判定しているか分かるようにする
-    if(-not $a.LastMap -or $a.DiffGridW -le 0) { return }
+    # 赤＝NGの判定に使った「いちばん大きな違う部分」、橙＝それ以外の小さな違い
+    if(-not $a.LastMap -or $a.DiffFineW -le 0) { return }
+    $off=Get-InnerOffset $bmp $a
     $g=[System.Drawing.Graphics]::FromImage($bmp)
-    $br=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(130,255,40,40))
+    $brMain=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140,255,40,40))
+    $brSub=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(90,255,170,40))
     try {
-        $gw=$a.DiffGridW; $gh=$a.DiffGridH
+        $gw=$a.DiffFineW; $gh=$a.DiffFineH; $iw=$a.Rect.Width; $ih=$a.Rect.Height
         for($b=0;$b -lt $a.LastMap.Length;$b++) {
-            if($a.LastMap[$b] -lt 0.5) { continue }
+            $v=$a.LastMap[$b]
+            if($v -lt 0.25) { continue }
             $bx=$b % $gw; $by=[int][Math]::Floor($b/$gw)
-            $x0=[int][Math]::Floor($bx*$bmp.Width/$gw); $x1=[int][Math]::Floor(($bx+1)*$bmp.Width/$gw)
-            $y0=[int][Math]::Floor($by*$bmp.Height/$gh); $y1=[int][Math]::Floor(($by+1)*$bmp.Height/$gh)
-            $g.FillRectangle($br,$x0,$y0,[Math]::Max(1,$x1-$x0),[Math]::Max(1,$y1-$y0))
+            $x0=$off[0]+[int][Math]::Ceiling($bx*$iw/$gw); $x1=$off[0]+[int][Math]::Ceiling(($bx+1)*$iw/$gw)
+            $y0=$off[1]+[int][Math]::Ceiling($by*$ih/$gh); $y1=$off[1]+[int][Math]::Ceiling(($by+1)*$ih/$gh)
+            $g.FillRectangle($(if($v -ge 0.75){$brMain}else{$brSub}),$x0,$y0,[Math]::Max(1,$x1-$x0),[Math]::Max(1,$y1-$y0))
         }
-    } finally { $br.Dispose(); $g.Dispose() }
+    } finally { $brMain.Dispose(); $brSub.Dispose(); $g.Dispose() }
 }
 
 function Update-LiveRatioFromPreview {
@@ -2252,7 +2650,7 @@ function UpdateAreaPreview {
     }
     $info=($a.Name+'　位置 X='+$a.Rect.X+' Y='+$a.Rect.Y+'　大きさ '+$a.Rect.Width+'×'+$a.Rect.Height)
     try {
-        $bmp=GrabBitmap $a.Rect
+        $bmp=GrabBitmap (Get-CaptureRect $a)
         $hidden=Test-AreaOccluded $a.Rect
         if($script:running) {
             # 監視中は、監視タイマーが計算した値・違いの場所をそのまま使う
@@ -2273,7 +2671,7 @@ function UpdateAreaPreview {
         } elseif($hidden) {
             $info+="`r`n⚠ この画面の下に隠れています。この画面を動かすか「ミニ表示」にしてください。"
         } elseif($a.Mode -eq 'diff' -and $a.DiffRefs.Count -gt 0) {
-            $info+="`r`n赤い部分＝正常と違うと判断した場所"
+            $info+="`r`n赤い部分＝正常と違うと判断した場所（橙は小さすぎてNGにしない違い）"
         }
     } catch {
         $info+="`r`n⚠ この範囲の画面を読み取れません。"
@@ -2325,7 +2723,7 @@ function Stop-Monitoring($reasonText) {
     $script:running=$false
     BuzzStop
     Close-OpenNGEpisodes
-    try { [NgWin77]::KeepAwake($false) } catch {}
+    try { [NgWin79]::KeepAwake($false) } catch {}
     Update-RunButtons
     $areaList.Invalidate()
     if($reasonText) { SetStatusPanel $colorIdle $textOnIdle $reasonText }
@@ -2336,9 +2734,15 @@ function Set-AreaRect($a,$rect) {
     $a.Rect=$rect
     Clear-AreaBuffers $a
     Clear-DiffReference $a
+    Set-AreaGrids $a
+}
+
+function Set-AreaGrids($a) {
     $gw=0; $gh=0
-    [NgDiff77]::GridFor($rect.Width,$rect.Height,[ref]$gw,[ref]$gh)
+    [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::CoarseCells,[ref]$gw,[ref]$gh)
     $a.DiffGridW=$gw; $a.DiffGridH=$gh
+    [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::FineCells,[ref]$gw,[ref]$gh)
+    $a.DiffFineW=$gw; $a.DiffFineH=$gh
 }
 
 function Test-CanRecord($a) {
@@ -2357,22 +2761,26 @@ function Record-DiffOK($a,[switch]$Append) {
         [void](Show-Message ('正常の見本は '+$script:maxDiffRefs+' 枚までです。「詳しい設定」の「記録した正常の見本をすべて消す」で消してから記録し直してください。') ([System.Windows.Forms.MessageBoxIcon]::Information))
         return $false
     }
-    if($a.DiffGridW -le 0) { Set-AreaRect $a $a.Rect }
+    if($a.DiffFineW -le 0) { Set-AreaGrids $a }
     try {
         $frames=Capture-DiffFrames $a $script:okFrameCount 150 ($a.Name+'：正常な状態を記録中')
     } catch {
         [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return $false
     }
-    $ref=[NgDiff77]::BuildReference($frames)
+    $ref=[NgDiff79]::BuildReference($frames,$a.Rect.Width,$a.Rect.Height)
     Reset-AreaWithLog $a 'NG解除（正常の見本を記録）'
-    if(-not $Append) { $a.DiffRefs.Clear(); $a.DiffOkFrames=$null; $a.DiffNgMeans=$null }
+    if(-not $Append) {
+        $a.DiffRefs.Clear(); $a.DiffOkFrames=$null; $a.DiffNgMeans=$null
+        # 記録し直したら、感度・しきい値も新しい判定方法の初期値に戻す
+        $a.DiffSensitivity=50; $a.DiffThreshold=0.15
+    }
     [void]$a.DiffRefs.Add($ref)
     Update-DiffRefArray $a
     $all=New-Object System.Collections.ArrayList
     if($a.DiffOkFrames) { foreach($fr in $a.DiffOkFrames) { [void]$all.Add($fr) } }
     foreach($fr in $frames) { [void]$all.Add($fr) }
-    $a.DiffOkFrames=[float[][]]$all.ToArray([float[]])
+    $a.DiffOkFrames=[float[][][]]$all.ToArray([float[][]])
     Update-SampleRatios $a
     $n=$a.DiffRefs.Count
     $a.TuneColor=[System.Drawing.Color]::FromArgb(140,220,150)
@@ -2398,13 +2806,15 @@ function Record-DiffNG($a) {
         [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return
     }
-    $ng=[NgDiff77]::BuildReference($frames)[0]   # 3枚の平均
+    $avg=[NgDiff79]::BuildReference($frames,$a.Rect.Width,$a.Rect.Height)   # 3枚の平均
+    $ng=New-Object 'float[][]' 2
+    $ng[0]=$avg[0]; $ng[1]=$avg[2]
     $a.DiffNgMeans=$ng
     $okFrames=$a.DiffOkFrames
-    if(-not $okFrames) { $okFrames=New-Object 'float[][]' 0 }
-    $res=[NgDiff77]::Tune($a.DiffRefArray,$okFrames,$ng)
-    $okMax=[math]::Round($res[1],1); $ngScore=[math]::Round($res[2],1)
-    if(($ngScore-$okMax) -lt 1.5) {
+    if(-not $okFrames) { $okFrames=New-Object 'float[][][]' 0 }
+    $res=[NgDiff79]::Tune($a.DiffRefArray,$okFrames,$ng,$a.Rect.Width,$a.Rect.Height)
+    $okMax=[math]::Round($res[1],2); $ngScore=[math]::Round($res[2],2)
+    if(($ngScore-$okMax) -lt 0.1) {
         $a.TuneColor=[System.Drawing.Color]::FromArgb(255,150,150)
         $a.TuneText='正常と異常の映像にほとんど違いがありませんでした。異常がきちんと画面に映っている時に押し直すか、範囲をもっと小さく囲んでください。'
         Update-SampleRatios $a
@@ -2414,13 +2824,14 @@ function Record-DiffNG($a) {
     }
     Reset-AreaWithLog $a 'NG解除（自動調整）'
     $a.DiffSensitivity=[int]$res[0]
-    $a.DiffThreshold=[Math]::Max(1,[Math]::Min(100,[int][Math]::Round(($okMax+$ngScore)/2)))
+    # しきい値は正常と異常の真ん中（0.05%きざみ）
+    $a.DiffThreshold=[Math]::Round([Math]::Max(0.05,[Math]::Min(20.0,[Math]::Round(($okMax+$ngScore)/2/0.05)*0.05)),2)
     $gap=$ngScore-$okMax
-    if($gap -ge 15) { $quality='◎ 正常と異常の差が大きく、安定して判定できます。'; $qc=[System.Drawing.Color]::FromArgb(140,220,150) }
-    elseif($gap -ge 5) { $quality='○ 判定できます。'; $qc=[System.Drawing.Color]::FromArgb(140,220,150) }
+    if($gap -ge 1.0 -and $okMax -le 0.05) { $quality='◎ 正常と異常の差が大きく、安定して判定できます。'; $qc=[System.Drawing.Color]::FromArgb(140,220,150) }
+    elseif($gap -ge 0.25) { $quality='○ 判定できます。'; $qc=[System.Drawing.Color]::FromArgb(140,220,150) }
     else { $quality='△ 差が小さいため、誤判定のおそれがあります。異常の部分だけを小さく囲み直すと安定します。'; $qc=[System.Drawing.Color]::FromArgb(255,190,110) }
     $a.TuneColor=$qc
-    $a.TuneText=('自動調整しました：正常時 '+$okMax+'% ／ 異常時 '+$ngScore+'% → '+$a.DiffThreshold+'% 以上違ったらNG（感度 '+$a.DiffSensitivity+'）'+"`r`n"+$quality)
+    $a.TuneText=('自動調整しました：正常時 '+$okMax+'% ／ 異常時 '+$ngScore+'% → '+(Format-Percent $a.DiffThreshold)+' 以上違ったらNG（感度 '+$a.DiffSensitivity+'）'+"`r`n"+$quality)
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
@@ -2430,7 +2841,7 @@ function Record-DiffNG($a) {
 }
 
 function Invoke-AutoTune($a) {
-    $res=[NgVision77]::AutoTune($a.OkSnap,$a.NgSnap,$a.Color)
+    $res=[NgVision79]::AutoTune($a.OkSnap,$a.NgSnap,$a.Color)
     if($null -eq $res) {
         Update-SampleRatios $a
         $a.TuneColor=[System.Drawing.Color]::FromArgb(255,150,150)
@@ -2456,7 +2867,7 @@ function Invoke-AutoTune($a) {
             $a.OkSnap.Dispose(); $a.NgSnap.Dispose()
             $a.OkSnap=$okCrop; $a.NgSnap=$ngCrop
             Set-AreaRect $a (New-Object System.Drawing.Rectangle(($a.Rect.X+$cx0),($a.Rect.Y+$cy0),$crop.Width,$crop.Height))
-            $res2=[NgVision77]::AutoTune($a.OkSnap,$a.NgSnap,$a.Color)
+            $res2=[NgVision79]::AutoTune($a.OkSnap,$a.NgSnap,$a.Color)
             if($null -ne $res2) { $res=$res2 }
             $tightened=$true
         }
@@ -2534,6 +2945,8 @@ function Set-AreaMode($mode) {
     if(-not $a -or $a.Mode -eq $mode) { return }
     Reset-AreaWithLog $a 'NG解除（判定のしかたを変更）'
     $a.Mode=$mode
+    Clear-AreaBuffers $a      # 撮る範囲（周りの余白の有無）が変わるため
+    if($a.DiffFineW -le 0) { Set-AreaGrids $a }
     $a.TuneText=$null
     $a.LastRatio=$null
     $a.LastMap=$null
@@ -2575,8 +2988,8 @@ $areaList.Add_DrawItem({
         $dirText=$(if($a.Mode -eq 'diff'){'[比]'}elseif($a.Direction -eq 'disappear'){'[消]'}else{'[出]'})
         $e.Graphics.DrawString(($dirText+' '+$a.Name),$script:areaListNameFont,$script:areaListNameBrush,($b.X+$pad*2+$sw),$textY)
         $word=$(if($a.Mode -eq 'diff'){'違い '}else{'一致率 '})
-        $ratioText=$(if($null -ne $a.LastRatio -and -not $a.Occluded){$word+$a.LastRatio.ToString('0.0')+'%'}else{$word+'－'})
-        $ratioText+=(' ／ しきい値 '+(Get-JudgeThreshold $a)+'%')
+        $ratioText=$(if($null -ne $a.LastRatio -and -not $a.Occluded){$word+(Format-Percent $a.LastRatio)}else{$word+'－'})
+        $ratioText+=(' ／ しきい値 '+(Format-Percent (Get-JudgeThreshold $a)))
         $e.Graphics.DrawString($ratioText,$script:areaListNameFont,$script:areaListSubBrush,($b.X+[int]($b.Width*0.40)),$textY)
         if(-not (Test-AreaReady $a)) { $st='未設定'; $br=$script:areaListWarnBrush }
         elseif($a.Occluded) { $st='重なり'; $br=$script:areaListWarnBrush }
@@ -2609,9 +3022,10 @@ $meterBox.Add_Paint({
     # 「比べる」の値は小さいことが多いので、目盛りの最大を自動で合わせる（色で判定は 0～100%）
     $scale=100.0
     if($a.Mode -eq 'diff') {
-        $want=[Math]::Max(10.0,(Get-JudgeThreshold $a)*4.0)
+        $want=[Math]::Max(0.5,(Get-JudgeThreshold $a)*4.0)
         foreach($v in @($a.LastRatio,$a.NgRatio)) { if($null -ne $v) { $want=[Math]::Max($want,[double]$v*1.2) } }
-        $scale=[Math]::Min(100.0,[Math]::Ceiling($want/10.0)*10.0)
+        $scale=100.0
+        foreach($step in @(0.5,1,2,5,10,20,50,100)) { if($step -ge $want) { $scale=[double]$step; break } }
     }
     if($null -ne $a.LastRatio -and -not $a.Occluded) {
         $fillW=[int]($inner*[Math]::Min($scale,[double]$a.LastRatio)/$scale)
@@ -2637,7 +3051,7 @@ $meterBox.Add_Paint({
     $pen.Dispose()
     if($scale -lt 100) {
         $fnt=UIFont 7.5
-        $txt=('最大 '+$scale+'%')
+        $txt=('最大 '+(Format-Percent $scale))
         $sz=$g.MeasureString($txt,$fnt)
         $g.DrawString($txt,$fnt,$script:areaListSubBrush,($w-$sz.Width-(Px 2)),($h-$sz.Height))
         $fnt.Dispose()
@@ -2725,7 +3139,7 @@ $pick.Add_Click({
         if($script:area) {
             # 「色で判定」に切り替えた時のために、範囲の平均色も覚えておく
             $bmp=GrabBitmap $script:area
-            $rgb=[NgVision77]::AverageColor($bmp)
+            $rgb=[NgVision79]::AverageColor($bmp)
             $bmp.Dispose()
             $newArea=New-MonitorArea (New-AreaName) $script:area ([System.Drawing.Color]::FromArgb($rgb[0],$rgb[1],$rgb[2]))
             Set-AreaRect $newArea $script:area
@@ -2813,7 +3227,7 @@ $areaPreviewBox.Add_MouseClick({
     $ox=($pw-$img.Width*$scale)/2.0; $oy=($ph-$img.Height*$scale)/2.0
     $ix=[int](($_.X-$ox)/$scale); $iy=[int](($_.Y-$oy)/$scale)
     if($ix -lt 0 -or $iy -lt 0 -or $ix -ge $img.Width -or $iy -ge $img.Height) { return }
-    $rgb=[NgVision77]::AverageColorAt([System.Drawing.Bitmap]$img,$ix,$iy,2)
+    $rgb=[NgVision79]::AverageColorAt([System.Drawing.Bitmap]$img,$ix,$iy,2)
     $a.Color=[System.Drawing.Color]::FromArgb($rgb[0],$rgb[1],$rgb[2])
     Update-SampleRatios $a
     Mark-SettingsDirty
@@ -2913,11 +3327,11 @@ $rbDisappear.Add_CheckedChanged({
     SetStatusPanel $colorReady $textOnReady ($a.Name+'：色が「消えたら」NGにする設定にしました')
 })
 $ngTrack.Add_ValueChanged({
-    $ngPercentLabel.Text=$ngTrack.Value.ToString()+'%'
-    if($script:suppressEvents) { return }
     $a=Get-SelectedArea
+    if($a) { $ngPercentLabel.Text=Format-Percent (Slider-ToThreshold $a $ngTrack.Value) } else { $ngPercentLabel.Text=$ngTrack.Value.ToString()+'%' }
+    if($script:suppressEvents) { return }
     if(-not $a) { return }
-    if($a.Mode -eq 'diff') { $a.DiffThreshold=$ngTrack.Value } else { $a.NGThreshold=$ngTrack.Value }
+    if($a.Mode -eq 'diff') { $a.DiffThreshold=Slider-ToThreshold $a $ngTrack.Value } else { $a.NGThreshold=$ngTrack.Value }
     Mark-SettingsDirty
     Update-MeterLabel
     $meterBox.Invalidate()
@@ -3012,7 +3426,7 @@ $start.Add_Click({
     }
     Save-SettingsIfDirty -Now
     foreach($a in $script:areas) { Reset-AreaRuntime $a; $a.LastRatio=$null }
-    try { [NgWin77]::KeepAwake($true) } catch {}
+    try { [NgWin79]::KeepAwake($true) } catch {}
     # この画面が監視エリアに重なっていると正しく検査できないので、自動でミニ表示にする
     $overlap=$false
     foreach($a in $script:areas) { if(Test-AreaOccluded $a.Rect) { $overlap=$true } }
@@ -3175,7 +3589,7 @@ function Cleanup-OnExit {
     BuzzStop
     Close-OpenNGEpisodes 'NG解除（アプリ終了）'
     Save-PendingLogOnExit
-    try { [NgWin77]::KeepAwake($false) } catch {}
+    try { [NgWin79]::KeepAwake($false) } catch {}
     Save-SettingsIfDirty -Now
     Save-WindowState
     $notifyIcon.Visible=$false

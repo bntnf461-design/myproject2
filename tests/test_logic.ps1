@@ -12,7 +12,7 @@ if($PSVersionTable.PSEdition -eq 'Core') {
     Add-Type -ReferencedAssemblies System.Drawing.dll -TypeDefinition $cs
 }
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$null,[ref]$null)
-$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName'
+$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent'
 foreach($fd in $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)) { if($want -contains $fd.Name){ . ([scriptblock]::Create($fd.Extent.Text)) } }
 $tmp=Join-Path ([IO.Path]::GetTempPath()) ('ngt_'+[guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 $script:areas=New-Object System.Collections.ArrayList; $script:areaCounter=0; $script:monitorIntervalSec=0.2
@@ -29,8 +29,9 @@ $a=New-MonitorArea '1号機 "ランプ"' $rect ([System.Drawing.Color]::FromArgb
 Set-AreaRect $a $rect
 $gw=$a.DiffGridW; $gh=$a.DiffGridH
 $rnd=[Random]::new(3)
-function Frame($base){ $m=New-Object 'float[]' ($gw*$gh*3); for($i=0;$i -lt $m.Length;$i++){ $m[$i]=$base+$rnd.Next(-3,4) }; return ,$m }
-foreach($base in 40,120){ $fr=New-Object 'float[][]' 5; for($i=0;$i -lt 5;$i++){ $fr[$i]=Frame $base }; [void]$a.DiffRefs.Add([NgDiff77]::BuildReference($fr)) }
+# 一様な明るさ $base の疑似画像（90x60）から {細かい, 粗い} のマス目平均を作る
+function Frame($base){ $buf=New-Object 'byte[]' (90*60*4); for($i=0;$i -lt $buf.Length;$i++){ $buf[$i]=[byte][Math]::Max(0,[Math]::Min(255,$base+$rnd.Next(-3,4))) }; return ,[NgDiff79]::SampleBuf($buf,90,60,360,4,0,0,90,60) }
+foreach($base in 40,120){ $fr=New-Object 'float[][][]' 5; for($i=0;$i -lt 5;$i++){ $fr[$i]=Frame $base }; [void]$a.DiffRefs.Add([NgDiff79]::BuildReference($fr,90,60)) }
 $a.DiffSensitivity=65; $a.DiffThreshold=7; $a.ConfirmFrames=3; $a.BuzzerType=4
 [void]$script:areas.Add($a)
 $b=New-MonitorArea 'エリア2' (New-Object System.Drawing.Rectangle(0,0,40,40)) ([System.Drawing.Color]::FromArgb(200,30,30))
@@ -43,6 +44,7 @@ T 'no temp file left' (-not (Test-Path ($script:settingsPath+'.tmp')))
 
 # --- reload ---
 $origMeans=$a.DiffRefs[1][0]
+T 'new references have the fine grid' ($a.DiffRefs[0].Length -eq 4 -and $a.DiffRefs[0][0].Length -eq $a.DiffFineW*$a.DiffFineH*3 -and $a.DiffFineW*$a.DiffFineH -gt 1000)
 $script:areas.Clear()
 T 'load settings' (Load-SettingsFile $script:settingsPath)
 $a2=$script:areas[0]; $b2=$script:areas[1]
@@ -51,15 +53,25 @@ T 'name with quotes restored' ($a2.Name -eq '1号機 "ランプ"')
 T 'mode diff restored' ($a2.Mode -eq 'diff')
 T 'two references restored' ($a2.DiffRefs.Count -eq 2)
 $maxErr=0; for($i=0;$i -lt $origMeans.Length;$i++){ $maxErr=[Math]::Max($maxErr,[Math]::Abs($origMeans[$i]-$a2.DiffRefs[1][0][$i])) }
-T "reference values preserved (max error $maxErr)" ($maxErr -le 0.05)
+T "reference values preserved incl. fine grid (max error $maxErr)" ($maxErr -le 0.05 -and $origMeans.Length -gt 0)
 T 'diff sensitivity/threshold restored' ($a2.DiffSensitivity -eq 65 -and $a2.DiffThreshold -eq 7 -and $a2.ConfirmFrames -eq 3 -and $a2.BuzzerType -eq 4)
 T 'colour area restored' ($b2.Mode -eq 'color' -and $b2.Direction -eq 'disappear' -and $b2.NGThreshold -eq 40)
 T 'area is ready' (Test-AreaReady $a2)
 Update-DiffRefArray $a2
-$score=[NgDiff77]::ScoreMulti($a2.DiffRefArray,(Frame 120),50,$null)
+$fr=Frame 120; $score=[NgDiff79]::ScoreSample($a2.DiffRefArray,$fr[0],$fr[1],90,60,50,$null)
 T "normal frame scores ~0 against restored refs ($([math]::Round($score,1)))" ($score -lt 1)
-$score=[NgDiff77]::ScoreMulti($a2.DiffRefArray,(Frame 200),50,$null)
+$fr=Frame 200; $score=[NgDiff79]::ScoreSample($a2.DiffRefArray,$fr[0],$fr[1],90,60,50,$null)
 T "very different frame scores high ($([math]::Round($score,1)))" ($score -gt 50)
+
+# --- v78 で保存した設定（細かいマス目なしの見本、しきい値3）もそのまま使える ---
+$v78=$json | ConvertFrom-Json
+foreach($rd in $v78.Areas[0].DiffRefs){ $rd.PSObject.Properties.Remove('FineMeans'); $rd.PSObject.Properties.Remove('FineNoise') }
+$v78.Areas[0].DiffThreshold=3
+Apply-SettingsObject $v78
+$l=$script:areas[0]; Update-DiffRefArray $l
+$fr=Frame 120; $s1=[NgDiff79]::ScoreSample($l.DiffRefArray,$fr[0],$fr[1],90,60,50,$null)
+$fr=Frame 200; $s2=[NgDiff79]::ScoreSample($l.DiffRefArray,$fr[0],$fr[1],90,60,50,$null)
+T "v78 references still judge correctly (normal $([math]::Round($s1,1))%, changed $([math]::Round($s2,1))%)" ($l.DiffRefs.Count -eq 2 -and $l.DiffRefs[0][0].Length -eq 0 -and $l.DiffThreshold -eq 3 -and $s1 -lt 1 -and $s2 -gt 50)
 
 # --- references from a different-sized area are dropped, not misused ---
 $raw=$json | ConvertFrom-Json; $raw.Areas[0].W=300
