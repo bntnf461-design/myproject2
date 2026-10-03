@@ -12,13 +12,14 @@ if($PSVersionTable.PSEdition -eq 'Core') {
     Add-Type -ReferencedAssemblies System.Drawing.dll -TypeDefinition $cs
 }
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$null,[ref]$null)
-$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays'
+$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays','Update-AreaMasks','Get-AdaptRate','Reset-TodayIfNeeded','Add-TodayEvent','Read-TodayStatsFromLog','Format-Duration','Get-TodaySummaryText'
 foreach($fd in $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)) { if($want -contains $fd.Name){ . ([scriptblock]::Create($fd.Extent.Text)) } }
 $tmp=Join-Path ([IO.Path]::GetTempPath()) ('ngt_'+[guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 $script:areas=New-Object System.Collections.ArrayList; $script:areaCounter=0; $script:monitorIntervalSec=0.2
 $script:logPath=Join-Path $tmp 'log.csv'; $script:errorLogPath=Join-Path $tmp 'err.log'; $script:loggingEnabled=$true
 $script:pendingLogRows=New-Object System.Collections.ArrayList; $script:logWriteBlocked=$false
 $script:lastPathPointerFile=Join-Path $tmp 'last.txt'; $script:settingsPath=Join-Path $tmp 'settings.json'
+$script:maxMasks=20; $script:running=$false; $script:today=@{ Date=(Get-Date).Date; Count=0; TotalSec=0.0; Last=$null }
 function SetStatusPanel { }
 $fail=0
 function T($name,$cond){ if($cond){"PASS $name"}else{"FAIL $name"; $script:fail++} }
@@ -92,6 +93,61 @@ T "restored samples still judge correctly (abnormal $([math]::Round($hit))%, nor
 T 'NG when the score reaches the threshold' ((Test-RatioIsNG $m2 88) -and -not (Test-RatioIsNG $m2 87.9))
 $m3=New-MonitorArea 'y' $rect ([System.Drawing.Color]::Black); $m3.Mode='match'
 T 'match area without samples is not ready' (-not (Test-AreaReady $m3))
+
+# --- v81：除外する場所・明るさの自動追従の設定も保存・読み込みできる ---
+$script:areas.Clear()
+$x=New-MonitorArea 'アーム' $rect ([System.Drawing.Color]::Black); Set-AreaRect $x $rect
+foreach($base in 40,120){ $fr=New-Object 'float[][][]' 5; for($i=0;$i -lt 5;$i++){ $fr[$i]=Frame $base }; [void]$x.DiffRefs.Add([NgDiff79]::BuildReference($fr,90,60)) }
+[void]$x.Masks.Add((New-Object System.Drawing.Rectangle(5,6,20,30))); [void]$x.Masks.Add((New-Object System.Drawing.Rectangle(80,50,40,40)))
+$x.AdaptDrift=$false
+[void]$script:areas.Add($x)
+T 'save masks' (Save-SettingsFile $script:settingsPath)
+$script:areas.Clear()
+T 'load masks' (Load-SettingsFile $script:settingsPath)
+$x2=$script:areas[0]
+T "masks restored and clipped to the area ($($x2.Masks.Count): $($x2.Masks[1]))" ($x2.Masks.Count -eq 2 -and $x2.Masks[0].Width -eq 20 -and $x2.Masks[1].Width -eq 10 -and $x2.Masks[1].Height -eq 10)
+T 'adapt option restored' ($x2.AdaptDrift -eq $false)
+Update-AreaMasks $x2
+T 'mask cells computed' ($x2.MaskReady -and $null -ne $x2.FineMask -and $x2.FineMask.Length -eq $x2.DiffFineW*$x2.DiffFineH)
+T 'old files without masks: adapt on, no masks' ((New-MonitorArea 'n' $rect ([System.Drawing.Color]::Black)).AdaptDrift -and $script:areas[0].Masks.Count -eq 2)
+Set-AreaRect $x2 (New-Object System.Drawing.Rectangle(0,0,50,50))
+T 'masks cleared when the area is picked again' ($x2.Masks.Count -eq 0 -and -not $x2.MaskReady)
+# 監視中の自動追従は複製に対して行い、記録した見本（保存する方）は変えない
+$y=New-MonitorArea 'y' $rect ([System.Drawing.Color]::Black); Set-AreaRect $y $rect
+$fr=New-Object 'float[][][]' 5; for($i=0;$i -lt 5;$i++){ $fr[$i]=Frame 100 }; [void]$y.DiffRefs.Add([NgDiff79]::BuildReference($fr,90,60))
+Update-DiffRefArray $y
+$y.DiffRefArray[0][0]=999
+T 'working copy is separate from the recorded reference' ($y.DiffRefs[0][0][0] -ne 999)
+T 'no adaptation while stopped' ((Get-AdaptRate $y) -eq 0)
+$script:running=$true; $script:monitorIntervalSec=0.2
+T 'slow adaptation while monitoring' ([Math]::Abs((Get-AdaptRate $y)-0.002) -lt 1e-9)
+$y.AdaptDrift=$false
+T 'no adaptation when switched off' ((Get-AdaptRate $y) -eq 0)
+$script:running=$false
+
+# --- v81：今日のNGの集計（ログから読み直す） ---
+$script:areas.Clear()
+$d=Get-Date -Format 'yyyy-MM-dd'
+$todayLog=Join-Path $tmp 'today.csv'
+Set-Content $todayLog -Encoding UTF8 -Value @('"日時","エリア","種別","一致率(%)","継続時間(秒)"',
+  ('"2000-01-01 10:00:00","old","NG発生","5",""'),
+  ('"'+$d+' 08:00:00","A ""1""","NG発生","5",""'),
+  ('"'+$d+' 08:01:30","A ""1""","NG解除","0.1","90"'),
+  ('"'+$d+' 09:15:00","B","NG発生","5",""'),
+  ('"'+$d+' 09:15:20","B","確認","5","20"'),
+  ('"'+$d+' 09:16:00","B","NG解除（監視停止）","","60"'))
+$keepLog=$script:logPath; $script:logPath=$todayLog
+Read-TodayStatsFromLog
+$script:logPath=$keepLog
+T "today's NG count and time read from the log ($($script:today.Count) / $($script:today.TotalSec))" ($script:today.Count -eq 2 -and $script:today.TotalSec -eq 150 -and ([datetime]$script:today.Last).ToString('HH:mm') -eq '09:15')
+$txt=Get-TodaySummaryText
+T "summary text ($txt)" ($txt -like '*2回*' -and $txt -like '*2分30秒*' -and $txt -like '*09:15*')
+T 'duration format' ((Format-Duration 5) -eq '5秒' -and (Format-Duration 3725) -eq '1時間2分')
+# 判定がNGになったら今日の回数が増え、確認済みは新しいNGで消える
+$j0=New-MonitorArea 'J0' $rect ([System.Drawing.Color]::Black); $j0.DiffThreshold=1; $j0.ConfirmFrames=1; $j0.Acked=$true
+$c0=$script:today.Count
+[void](Update-AreaJudgement $j0 5 (Get-Date) 't')
+T 'new NG counted and not yet acknowledged' ($script:today.Count -eq $c0+1 -and $j0.WasNG -and -not $j0.Acked)
 
 # --- references from a different-sized area are dropped, not misused ---
 $raw=$json | ConvertFrom-Json; $raw.Areas[0].W=300

@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v80 「異常の時だけ出る画面が出たらNG」判定を追加
+﻿# NG MONITOR - v81 精度（明るさの自動追従・除外する場所・長めに記録）と使いやすさ（タイル表示・確認ボタン・今日の集計）
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -500,7 +500,12 @@ public static class NgBlock79 {
         // Only moderate drift is compensated, so a lamp that lights up the whole
         // area is still seen as a change.
         double g = Math.Max(0.75, Math.Min(1.33, ratios[nb / 2]));
-        bool useColour = colR / nb >= 4.0 && colC * g / nb >= 4.0;
+        // Colour is left out only when one picture is in colour and the other is not
+        // (a camera that switches to black-and-white infrared at night). When both are
+        // nearly colourless (a dim, greyish scene) colour is still compared, so a red
+        // lamp that lights up at about the same brightness is not missed.
+        double cr = colR / nb, cc = colC * g / nb, cMax = Math.Max(cr, cc);
+        bool useColour = !(cMax >= 4.0 && Math.Min(cr, cc) < 0.35 * cMax);
         float[] d = new float[nb];
         for (int b = 0; b < nb; b++) {
             double yr = Y(refm, b), yc = Y(cur, b) * g;
@@ -686,35 +691,68 @@ public static class NgDiff79 {
         return m;
     }
 
-    static double LumCost(float[] refY, float[] cur) {
-        double sr = 0, sc = 0;
-        for (int b = 0; b < cur.Length; b++) { sr += refY[b]; sc += cur[b]; }
+    static double LumCost(float[] refY, float[] cur) { return LumCost(refY, cur, null); }
+
+    static double LumCost(float[] refY, float[] cur, float[] mask) {
+        double sr = 0, sc = 0; int n = 0;
+        for (int b = 0; b < cur.Length; b++) { if (mask != null && mask[b] > 0.5f) continue; sr += refY[b]; sc += cur[b]; n++; }
+        if (n == 0) return 0;
         double g = sc > 1 ? sr / sc : 1;
         g = Math.Max(0.75, Math.Min(1.33, g));
         double cost = 0;
-        for (int b = 0; b < cur.Length; b++) cost += Math.Min(40.0, Math.Abs(refY[b] - cur[b] * g));
-        return cost / cur.Length;
+        for (int b = 0; b < cur.Length; b++) { if (mask != null && mask[b] > 0.5f) continue; cost += Math.Min(40.0, Math.Abs(refY[b] - cur[b] * g)); }
+        return cost / n;
+    }
+
+    // Cells (of a gw x gh grid over an iw x ih area) that the user excluded.
+    // rects = { x, y, w, h, x, y, w, h, ... } in area pixels. A cell is excluded
+    // when at least 30% of it is covered. Returns null when nothing is excluded.
+    public static float[] CellMask(int iw, int ih, int gw, int gh, int[] rects) {
+        if (rects == null || rects.Length < 4) return null;
+        int[] ex = Edges(iw, gw), ey = Edges(ih, gh);
+        float[] m = new float[gw * gh]; bool any = false;
+        for (int by = 0; by < gh; by++) for (int bx = 0; bx < gw; bx++) {
+            int x0 = ex[bx], x1 = ex[bx + 1], y0 = ey[by], y1 = ey[by + 1];
+            double area = Math.Max(1, (x1 - x0) * (y1 - y0)), cov = 0;
+            for (int r = 0; r + 3 < rects.Length; r += 4) {
+                int ox = Math.Max(0, Math.Min(x1, rects[r] + rects[r + 2]) - Math.Max(x0, rects[r]));
+                int oy = Math.Max(0, Math.Min(y1, rects[r + 1] + rects[r + 3]) - Math.Max(y0, rects[r + 1]));
+                cov += ox * oy;
+            }
+            if (cov / area >= 0.3) { m[by * gw + bx] = 1f; any = true; }
+        }
+        return any ? m : null;
+    }
+
+    static void ApplyMask(float[] v, float[] mask) {
+        if (mask == null || mask.Length != v.Length) return;
+        for (int b = 0; b < v.Length; b++) if (mask[b] > 0.5f) v[b] = 0f;
     }
 
     // Find the picture shift (up to MaxShift px) that best matches the reference:
     // first every 2 px, then +-1 px around the best one.
     static void FindShift(LumIntegral li, float[] refY, int ix, int iy, int[] ex, int[] ey,
                           int dxMin, int dxMax, int dyMin, int dyMax, out int bdx, out int bdy) {
+        FindShift(li, refY, ix, iy, ex, ey, dxMin, dxMax, dyMin, dyMax, null, out bdx, out bdy);
+    }
+
+    static void FindShift(LumIntegral li, float[] refY, int ix, int iy, int[] ex, int[] ey,
+                          int dxMin, int dxMax, int dyMin, int dyMax, float[] mask, out int bdx, out int bdy) {
         bdx = 0; bdy = 0;
-        double best = LumCost(refY, LumMeans(li, ix, iy, ex, ey));
+        double best = LumCost(refY, LumMeans(li, ix, iy, ex, ey), mask);
         int cx = 0, cy = 0;
         for (int pass = 0; pass < 2; pass++) {
             int step = pass == 0 ? 2 : 1, cx0 = cx, cy0 = cy;
             for (int dy = cy0 - step; dy <= cy0 + step; dy += step) for (int dx = cx0 - step; dx <= cx0 + step; dx += step) {
                 if ((dx == 0 && dy == 0) || dx < dxMin || dx > dxMax || dy < dyMin || dy > dyMax) continue;
-                double c = LumCost(refY, LumMeans(li, ix + dx, iy + dy, ex, ey)) + 0.01 * (Math.Abs(dx) + Math.Abs(dy));
+                double c = LumCost(refY, LumMeans(li, ix + dx, iy + dy, ex, ey), mask) + 0.01 * (Math.Abs(dx) + Math.Abs(dy));
                 if (c < best) { best = c; bdx = dx; bdy = dy; }
             }
             cx = bdx; cy = bdy;
             if (pass == 0 && (dxMax - dxMin) > 4) {   // reach +-3: also try the far corners of the 2-px grid
                 for (int dy = -2; dy <= 2; dy += 2) foreach (int dx in new int[] { -3, 3 }) {
                     if (dx < dxMin || dx > dxMax || dy < dyMin || dy > dyMax) continue;
-                    double c = LumCost(refY, LumMeans(li, ix + dx, iy + dy, ex, ey)) + 0.01 * (Math.Abs(dx) + Math.Abs(dy));
+                    double c = LumCost(refY, LumMeans(li, ix + dx, iy + dy, ex, ey), mask) + 0.01 * (Math.Abs(dx) + Math.Abs(dy));
                     if (c < best) { best = c; bdx = dx; bdy = dy; cx = dx; cy = dy; }
                 }
             }
@@ -848,6 +886,20 @@ public static class NgDiff79 {
     //  - overlays of the viewer (clock, labels) did not move -> unchanged without it
     //  - a real defect                      -> changed either way
     static double ScoreSample2(float[][] refs, float[] fine, float[] coarse, float[] fine2, float[] coarse2, int iw, int ih, double sens, float[] mapFine) {
+        return ScoreSample3(refs, fine, coarse, fine2, coarse2, iw, ih, sens, mapFine, null, null);
+    }
+
+    public static double ScoreSampleMasked(float[][] refs, float[] fine, float[] coarse, int iw, int ih, double sens, float[] fineMask, float[] coarseMask) {
+        return ScoreSample3(refs, fine, coarse, null, null, iw, ih, sens, null, fineMask, coarseMask);
+    }
+
+    static float[] Cells(float[] refm, float[] noise, float[] a, float[] b, double sens, float[] mask) {
+        float[] v = MinOf(CellScores(refm, noise, a, sens), b == null ? null : CellScores(refm, noise, b, sens));
+        ApplyMask(v, mask);
+        return v;
+    }
+
+    static double ScoreSample3(float[][] refs, float[] fine, float[] coarse, float[] fine2, float[] coarse2, int iw, int ih, double sens, float[] mapFine, float[] fineMask, float[] coarseMask) {
         int fw, fh, cw, ch;
         GridFor(iw, ih, FineCells, out fw, out fh); GridFor(iw, ih, CoarseCells, out cw, out ch);
         double best = double.MaxValue;
@@ -855,9 +907,9 @@ public static class NgDiff79 {
         for (int k = 0; k + 3 < refs.Length; k += 4) {
             double sc = 0;
             bool hasFine = refs[k].Length == fine.Length && refs[k].Length > 0;
-            if (hasFine) sc = LargestRegion(MinOf(CellScores(refs[k], refs[k + 1], fine, sens), fine2 == null ? null : CellScores(refs[k], refs[k + 1], fine2, sens)), fw, fh, tmp);
+            if (hasFine) sc = LargestRegion(Cells(refs[k], refs[k + 1], fine, fine2, sens, fineMask), fw, fh, tmp);
             if (refs[k + 2].Length == coarse.Length) {
-                float[] cv = MinOf(CellScores(refs[k + 2], refs[k + 3], coarse, sens), coarse2 == null ? null : CellScores(refs[k + 2], refs[k + 3], coarse2, sens));
+                float[] cv = Cells(refs[k + 2], refs[k + 3], coarse, coarse2, sens, coarseMask);
                 double cs = LargestRegion(cv, cw, ch, null);
                 if (cs > sc) {
                     sc = cs;
@@ -884,6 +936,25 @@ public static class NgDiff79 {
 
     public static double ScoreImageBuf(float[][] refs, byte[] buf, int bw, int bh, int stride, int bpp,
                                        int ix, int iy, int iw, int ih, double sens, float[] mapFine) {
+        return ScoreImageBufEx(refs, buf, bw, bh, stride, bpp, ix, iy, iw, ih, sens, mapFine, null, null, 0, 0);
+    }
+
+    public static double ScoreImageEx(float[][] refs, Bitmap bmp, int ix, int iy, int iw, int ih, double sens, float[] mapFine,
+                                      float[] fineMask, float[] coarseMask, double adaptRate, double adaptBelow) {
+        int stride, bpp;
+        byte[] buf = NgVision79.ReadPixels(bmp, out stride, out bpp);
+        return ScoreImageBufEx(refs, buf, bmp.Width, bmp.Height, stride, bpp, ix, iy, iw, ih, sens, mapFine, fineMask, coarseMask, adaptRate, adaptBelow);
+    }
+
+    // fineMask / coarseMask (optional): cells the user excluded (1 = ignore).
+    // adaptRate > 0: when the picture is clearly normal (score below adaptBelow), the
+    // matching reference follows the picture very slowly, cell by cell, but only in
+    // cells that look unchanged. Slow lighting drift over hours is followed; sudden
+    // changes and anything judged NG are never absorbed. (The caller keeps the
+    // recorded references untouched and passes working copies.)
+    public static double ScoreImageBufEx(float[][] refs, byte[] buf, int bw, int bh, int stride, int bpp,
+                                         int ix, int iy, int iw, int ih, double sens, float[] mapFine,
+                                         float[] fineMask, float[] coarseMask, double adaptRate, double adaptBelow) {
         var ii = new Integral(buf, bw, bh, stride, bpp);
         var li = new LumIntegral(buf, bw, bh, stride, bpp);
         int fw, fh, cw, ch;
@@ -892,13 +963,14 @@ public static class NgDiff79 {
         int dyMin = -Math.Min(MaxShift, iy), dyMax = Math.Min(MaxShift, bh - iy - ih);
         int[] fex = Edges(iw, fw), fey = Edges(ih, fh), cex = Edges(iw, cw), cey = Edges(ih, ch);
         double best = double.MaxValue;
+        int bestK = -1; float[] bestFine = null, bestCoarse = null, bestF2 = null, bestC2 = null;
         float[] tmp = mapFine == null ? null : new float[mapFine.Length];
         float[] fine0 = null, coarse0 = null;
         for (int k = 0; k + 3 < refs.Length; k += 4) {
             bool useFine = refs[k].Length == fw * fh * 3;
             float[] refY = ToLum(useFine ? refs[k] : refs[k + 2]);
             int bdx, bdy;
-            FindShift(li, refY, ix, iy, useFine ? fex : cex, useFine ? fey : cey, dxMin, dxMax, dyMin, dyMax, out bdx, out bdy);
+            FindShift(li, refY, ix, iy, useFine ? fex : cex, useFine ? fey : cey, dxMin, dxMax, dyMin, dyMax, useFine ? fineMask : coarseMask, out bdx, out bdy);
             float[] fine = Means(ii, ix + bdx, iy + bdy, iw, ih, fw, fh);
             float[] coarse = Means(ii, ix + bdx, iy + bdy, iw, ih, cw, ch);
             float[] f2 = null, c2 = null;
@@ -907,10 +979,27 @@ public static class NgDiff79 {
                 f2 = fine0; c2 = coarse0;
             }
             float[][] one = new float[][] { refs[k], refs[k + 1], refs[k + 2], refs[k + 3] };
-            double s = ScoreSample2(one, fine, coarse, f2, c2, iw, ih, sens, tmp);
-            if (s >= 0 && s < best) { best = s; if (mapFine != null) Array.Copy(tmp, mapFine, mapFine.Length); }
+            double s = ScoreSample3(one, fine, coarse, f2, c2, iw, ih, sens, tmp, fineMask, coarseMask);
+            if (s >= 0 && s < best) {
+                best = s; bestK = k; bestFine = fine; bestCoarse = coarse; bestF2 = f2; bestC2 = c2;
+                if (mapFine != null) Array.Copy(tmp, mapFine, mapFine.Length);
+            }
+        }
+        if (bestK >= 0 && adaptRate > 0 && best < adaptBelow) {
+            if (refs[bestK].Length == bestFine.Length && bestFine.Length > 0)
+                Follow(refs[bestK], Cells(refs[bestK], refs[bestK + 1], bestFine, bestF2, sens, fineMask), bestFine, adaptRate);
+            if (refs[bestK + 2].Length == bestCoarse.Length)
+                Follow(refs[bestK + 2], Cells(refs[bestK + 2], refs[bestK + 3], bestCoarse, bestC2, sens, coarseMask), bestCoarse, adaptRate);
         }
         return best == double.MaxValue ? -1 : best;
+    }
+
+    static void Follow(float[] refm, float[] v, float[] cur, double rate) {
+        int nb = v.Length;
+        for (int b = 0; b < nb; b++) {
+            if (v[b] > 0.1f) continue;          // looks changed: never learn it
+            for (int c = 0; c < 3; c++) refm[b * 3 + c] += (float)(rate * (cur[b * 3 + c] - refm[b * 3 + c]));
+        }
     }
 
     // ===== "the abnormal screen appeared" detection =====
@@ -928,6 +1017,17 @@ public static class NgDiff79 {
 
     public static double MatchImageBuf(float[][] ngRefs, float[][] okRefs, byte[] buf, int bw, int bh, int stride, int bpp,
                                        int ix, int iy, int iw, int ih, double sens, float[] mapFine) {
+        return MatchImageBufEx(ngRefs, okRefs, buf, bw, bh, stride, bpp, ix, iy, iw, ih, sens, mapFine, null);
+    }
+
+    public static double MatchImageEx(float[][] ngRefs, float[][] okRefs, Bitmap bmp, int ix, int iy, int iw, int ih, double sens, float[] mapFine, float[] fineMask) {
+        int stride, bpp;
+        byte[] buf = NgVision79.ReadPixels(bmp, out stride, out bpp);
+        return MatchImageBufEx(ngRefs, okRefs, buf, bmp.Width, bmp.Height, stride, bpp, ix, iy, iw, ih, sens, mapFine, fineMask);
+    }
+
+    public static double MatchImageBufEx(float[][] ngRefs, float[][] okRefs, byte[] buf, int bw, int bh, int stride, int bpp,
+                                         int ix, int iy, int iw, int ih, double sens, float[] mapFine, float[] fineMask) {
         var ii = new Integral(buf, bw, bh, stride, bpp);
         var li = new LumIntegral(buf, bw, bh, stride, bpp);
         int fw, fh;
@@ -940,9 +1040,9 @@ public static class NgDiff79 {
         for (int k = 0; k + 3 < ngRefs.Length; k += 4) {
             if (ngRefs[k].Length != fw * fh * 3) continue;
             int bdx, bdy;
-            FindShift(li, ToLum(ngRefs[k]), ix, iy, fex, fey, dxMin, dxMax, dyMin, dyMax, out bdx, out bdy);
+            FindShift(li, ToLum(ngRefs[k]), ix, iy, fex, fey, dxMin, dxMax, dyMin, dyMax, fineMask, out bdx, out bdy);
             float[] cur = Means(ii, ix + bdx, iy + bdy, iw, ih, fw, fh);
-            double s = MatchCore(ngRefs[k], ngRefs[k + 1], okRefs, cur, sens, tmp);
+            double s = MatchCore(ngRefs[k], ngRefs[k + 1], okRefs, cur, sens, tmp, fineMask);
             if (s > best) { best = s; if (mapFine != null) Array.Copy(tmp, mapFine, mapFine.Length); }
         }
         return best;
@@ -950,10 +1050,14 @@ public static class NgDiff79 {
 
     // Already-aligned sample (used for recorded samples / tuning).
     public static double MatchSample(float[][] ngRefs, float[][] okRefs, float[] fine, double sens) {
+        return MatchSampleMasked(ngRefs, okRefs, fine, sens, null);
+    }
+
+    public static double MatchSampleMasked(float[][] ngRefs, float[][] okRefs, float[] fine, double sens, float[] fineMask) {
         double best = -1;
         for (int k = 0; k + 3 < ngRefs.Length; k += 4) {
             if (ngRefs[k].Length != fine.Length) continue;
-            best = Math.Max(best, MatchCore(ngRefs[k], ngRefs[k + 1], okRefs, fine, sens, null));
+            best = Math.Max(best, MatchCore(ngRefs[k], ngRefs[k + 1], okRefs, fine, sens, null, fineMask));
         }
         return best;
     }
@@ -977,13 +1081,13 @@ public static class NgDiff79 {
         return mask;
     }
 
-    static double MatchCore(float[] ngFine, float[] ngNoise, float[][] okRefs, float[] cur, double sens, float[] map) {
+    static double MatchCore(float[] ngFine, float[] ngNoise, float[][] okRefs, float[] cur, double sens, float[] map, float[] userMask) {
         int nb = ngFine.Length / 3;
         float[] v = CellScores(ngFine, ngNoise, cur, sens);      // 1 = this cell differs from the abnormal screen
         bool[] mask = DistinctiveCells(ngFine, okRefs, sens);
         double sum = 0; int n = 0;
         for (int b = 0; b < nb; b++) {
-            bool use = mask == null || mask[b];
+            bool use = (mask == null || mask[b]) && (userMask == null || userMask.Length != nb || userMask[b] <= 0.5f);
             if (map != null) map[b] = use ? 1f - v[b] : 0f;     // overlay: parts that look like the abnormal screen
             if (!use) continue;
             sum += 1.0 - v[b]; n++;
@@ -996,13 +1100,17 @@ public static class NgDiff79 {
     // variation that the short recording did not see).
     // okSamples / ng are { fine, coarse } pairs. Returns { sensitivity, okMax, ngScore }.
     public static double[] Tune(float[][] refs, float[][][] okSamples, float[][] ng, int iw, int ih) {
+        return TuneMasked(refs, okSamples, ng, iw, ih, null, null);
+    }
+
+    public static double[] TuneMasked(float[][] refs, float[][][] okSamples, float[][] ng, int iw, int ih, float[] fineMask, float[] coarseMask) {
         double[] ok = new double[21], ngs = new double[21], gap = new double[21];
         double maxGap = 0;
         for (int i = 0; i <= 20; i++) {
             int s = i * 5;
             double okMax = 0;
-            if (okSamples != null) foreach (float[][] o in okSamples) okMax = Math.Max(okMax, ScoreSample(refs, o[0], o[1], iw, ih, s, null));
-            ok[i] = okMax; ngs[i] = ScoreSample(refs, ng[0], ng[1], iw, ih, s, null);
+            if (okSamples != null) foreach (float[][] o in okSamples) okMax = Math.Max(okMax, ScoreSampleMasked(refs, o[0], o[1], iw, ih, s, fineMask, coarseMask));
+            ok[i] = okMax; ngs[i] = ScoreSampleMasked(refs, ng[0], ng[1], iw, ih, s, fineMask, coarseMask);
             gap[i] = ngs[i] - 3.0 * okMax;
             if (gap[i] > maxGap) maxGap = gap[i];
         }
@@ -1033,30 +1141,32 @@ function UIFont([double]$size,[switch]$Bold) {
 }
 
 # ---- 色の定義（状態がひと目でわかるように） ----
-$colorIdle      = [System.Drawing.Color]::FromArgb(235,235,235)   # 灰色：まだ何もしていない
-$colorReady     = [System.Drawing.Color]::FromArgb(255,244,204)   # 黄色：準備できた
-$colorRunning   = [System.Drawing.Color]::FromArgb(214,245,214)   # 緑色：正常に監視中
-$colorWarn      = [System.Drawing.Color]::FromArgb(255,196,120)   # 橙色：監視できていないエリアがある
-$colorAlarm     = [System.Drawing.Color]::FromArgb(255,76,76)     # 赤色：異常検知！
+$colorIdle      = [System.Drawing.Color]::FromArgb(27,38,56)      # 紺：まだ何もしていない
+$colorReady     = [System.Drawing.Color]::FromArgb(56,46,14)      # 黄土：準備できた
+$colorRunning   = [System.Drawing.Color]::FromArgb(15,51,38)      # 深緑：正常に監視中
+$colorWarn      = [System.Drawing.Color]::FromArgb(74,44,10)      # 橙：監視できていないエリアがある
+$colorAlarm     = [System.Drawing.Color]::FromArgb(214,40,52)     # 赤：異常検知！
+$colorAcked     = [System.Drawing.Color]::FromArgb(92,30,36)      # くすんだ赤：NGを確認済み（元に戻るのを待っている）
 $colorGreenBtn  = [System.Drawing.Color]::FromArgb(46,160,67)
 $colorRedBtn    = [System.Drawing.Color]::FromArgb(200,45,45)
 $colorBlueBtn   = [System.Drawing.Color]::FromArgb(0,112,192)
 $colorYellowBtn = [System.Drawing.Color]::FromArgb(255,193,7)
 $colorGrayBtn   = [System.Drawing.Color]::FromArgb(60,80,102)
-$textOnReady    = [System.Drawing.Color]::FromArgb(90,70,0)
-$textOnIdle     = [System.Drawing.Color]::FromArgb(60,60,60)
-$textOnError    = [System.Drawing.Color]::FromArgb(150,30,30)
-$textOnRunning  = [System.Drawing.Color]::FromArgb(20,90,20)
-$textOnWarn     = [System.Drawing.Color]::FromArgb(90,40,0)
+$textOnReady    = [System.Drawing.Color]::FromArgb(253,224,138)
+$textOnIdle     = [System.Drawing.Color]::FromArgb(203,213,225)
+$textOnError    = [System.Drawing.Color]::FromArgb(255,157,157)
+$textOnRunning  = [System.Drawing.Color]::FromArgb(110,231,183)
+$textOnWarn     = [System.Drawing.Color]::FromArgb(245,180,83)
+$textOnAcked    = [System.Drawing.Color]::FromArgb(255,208,208)
 
 # ---- ダーク系の背景テーマ ----
-$formBgDark    = [System.Drawing.Color]::FromArgb(13,20,32)
-$cardBgDark    = [System.Drawing.Color]::FromArgb(22,34,50)
-$headerBgDark  = [System.Drawing.Color]::FromArgb(16,24,38)
+$formBgDark    = [System.Drawing.Color]::FromArgb(7,11,20)
+$cardBgDark    = [System.Drawing.Color]::FromArgb(14,22,38)
+$headerBgDark  = [System.Drawing.Color]::FromArgb(11,17,30)
 $accentBlue    = [System.Drawing.Color]::FromArgb(88,166,255)
 $textPrimary   = [System.Drawing.Color]::FromArgb(226,232,240)
 $textSecondary = [System.Drawing.Color]::FromArgb(148,163,184)
-$inputBgDark   = [System.Drawing.Color]::FromArgb(32,46,64)
+$inputBgDark   = [System.Drawing.Color]::FromArgb(27,38,56)
 
 # ---- 状態 ----
 $script:area = $null
@@ -1075,6 +1185,9 @@ $script:windowStatePath = Join-Path $PSScriptRoot 'ng_monitor_window.json'
 $script:loggingEnabled = $true
 $script:miniMode = $false
 $script:eyedropper = $false
+$script:maskMode = $false         # プレビューの上をドラッグして「除外する場所」を囲んでいる
+$script:maskDragStart = $null
+$script:maskDragNow = $null
 $script:lastErrorLogAt = [datetime]::MinValue
 $script:lastErrorDialogAt = [datetime]::MinValue
 $script:lastStatusText = $null
@@ -1088,6 +1201,9 @@ $script:autoSaveFailed = $false
 $script:pendingLogRows = New-Object System.Collections.ArrayList   # まだCSVに書けていないログの行
 $script:logWriteBlocked = $false
 $script:okFrameCount = 10         # 「正常」を記録する時に撮る枚数（約1.5秒）
+$script:longFrameCount = 150      # 「長めに記録」の時に撮る枚数（約30秒。動くアーム・人の出入りなども覚える）
+$script:maxMasks = 20             # 1つのエリアに指定できる「除外する場所」の数
+$script:today = @{ Date=(Get-Date).Date; Count=0; TotalSec=0.0; Last=$null }   # 今日のNGの集計（画面上部に表示）
 $script:maxDiffRefs = 6           # 1つのエリアに記録できる「正常」の見本の数（昼・夜など）
 
 # ================== ログ ==================
@@ -1113,7 +1229,68 @@ function Write-NGLogHeaderIfNeeded {
     }
 }
 
+function Reset-TodayIfNeeded {
+    if($script:today.Date -ne (Get-Date).Date) { $script:today=@{ Date=(Get-Date).Date; Count=0; TotalSec=0.0; Last=$null } }
+}
+
+function Add-TodayEvent($eventType,$durationSec,$time) {
+    # 今日のNGの回数・NGだった時間を数える（画面上部の「今日」の表示用）
+    Reset-TodayIfNeeded
+    if($time -and ([datetime]$time).Date -ne $script:today.Date) { return }
+    $et=[string]$eventType
+    if($et -eq 'NG発生') {
+        $script:today.Count=$script:today.Count+1
+        $script:today.Last=$time
+    } elseif($et.StartsWith('NG解除') -and $null -ne $durationSec) {
+        $script:today.TotalSec=$script:today.TotalSec+[double]$durationSec
+    }
+}
+
+function Read-TodayStatsFromLog {
+    # 起動した時に、今日のぶんをログのCSVから読み直す（再起動しても「今日」の集計が消えないように）
+    $script:today=@{ Date=(Get-Date).Date; Count=0; TotalSec=0.0; Last=$null }
+    try {
+        if(-not (Test-Path -LiteralPath $script:logPath)) { return }
+        $prefix='"'+(Get-Date -Format 'yyyy-MM-dd')
+        $re=New-Object System.Text.RegularExpressions.Regex('^"([^"]*)","(?:[^"]|"")*","([^"]*)","[^"]*","([^"]*)"')
+        foreach($line in [System.IO.File]::ReadAllLines($script:logPath,[System.Text.Encoding]::UTF8)) {
+            if(-not $line.StartsWith($prefix)) { continue }
+            $m=$re.Match($line)
+            if(-not $m.Success) { continue }
+            $t=[datetime]::MinValue
+            if(-not [datetime]::TryParseExact($m.Groups[1].Value,'yyyy-MM-dd HH:mm:ss',[System.Globalization.CultureInfo]::InvariantCulture,[System.Globalization.DateTimeStyles]::None,[ref]$t)) { continue }
+            $d=$null
+            $dv=0.0
+            if([double]::TryParse($m.Groups[3].Value,[System.Globalization.NumberStyles]::Float,[System.Globalization.CultureInfo]::InvariantCulture,[ref]$dv)) { $d=$dv }
+            Add-TodayEvent $m.Groups[2].Value $d $t
+        }
+    } catch {}
+}
+
+function Format-Duration($sec) {
+    $s=[int][Math]::Floor([double]$sec)
+    if($s -lt 60) { return ($s.ToString()+'秒') }
+    if($s -lt 3600) { return ([int][Math]::Floor($s/60)).ToString()+'分'+($s % 60).ToString()+'秒' }
+    return ([int][Math]::Floor($s/3600)).ToString()+'時間'+([int][Math]::Floor(($s % 3600)/60)).ToString()+'分'
+}
+
+function Get-TodaySummaryText {
+    Reset-TodayIfNeeded
+    $now=Get-Date
+    $total=[double]$script:today.TotalSec
+    foreach($a in $script:areas) {
+        if($a.WasNG -and $a.NGSince) {
+            $from=$(if($a.NGSince -lt $script:today.Date){$script:today.Date}else{$a.NGSince})
+            $total+=($now-$from).TotalSeconds
+        }
+    }
+    $text='今日のNG：'+$script:today.Count+'回　｜　NGだった時間：'+(Format-Duration $total)
+    if($script:today.Last) { $text+='　｜　最後のNG：'+([datetime]$script:today.Last).ToString('HH:mm') }
+    return $text
+}
+
 function Write-NGLogRow($timestamp,$areaName,$eventType,$ratio,$durationSec) {
+    Add-TodayEvent $eventType $durationSec (Get-Date)
     if(-not $script:loggingEnabled) { return }
     $ratioText=$(if($null -ne $ratio){([double]$ratio).ToString([System.Globalization.CultureInfo]::InvariantCulture)}else{''})
     $durationText=$(if($null -ne $durationSec){([math]::Round($durationSec,1)).ToString([System.Globalization.CultureInfo]::InvariantCulture)}else{''})
@@ -1248,6 +1425,8 @@ function New-MonitorArea($name,$rect,$color) {
         MatchOkRefs=(New-Object System.Collections.ArrayList)   # 正常な画面の見本（任意・複数可）
         MatchSensitivity=50
         MatchThreshold=90      # 異常の画面との一致度がこの値（%）以上ならNG
+        Masks=(New-Object System.Collections.ArrayList)   # 判定から外す場所（範囲の中の四角）。正常でも動くアーム・時計など
+        AdaptDrift=$true       # 「比べる」：朝・夕方などの、ゆっくりした明るさの変化に自動で合わせる
         DiffRefs=(New-Object System.Collections.ArrayList)   # 正常の見本（各要素は {平均, ゆらぎ} の組）。昼・夜など複数可
         ConfirmFrames=2        # この回数だけ続けてNGになったらNG確定（瞬間的なノイズを無視）
         BuzzerSeconds=2
@@ -1278,6 +1457,12 @@ function New-MonitorArea($name,$rect,$color) {
         MonBmp=$null
         MonGfx=$null
         MonBmpSize=(New-Object System.Drawing.Size(0,0))
+        FineMask=$null         # 除外する場所を、判定のマス目ごとの印にしたもの
+        CoarseMask=$null
+        MaskReady=$false
+        Acked=$false           # 今のNGを「確認しました」済み
+        Thumb=$null            # エリア一覧に出す小さな映像
+        ThumbAt=[datetime]::MinValue
     }
 }
 
@@ -1288,6 +1473,7 @@ function Reset-AreaRuntime($a) {
     $a.OKStreak=0
     $a.Occluded=$false
     $a.CaptureFailed=$false
+    $a.Acked=$false
 }
 
 function Clear-AreaSamples($a) {
@@ -1329,11 +1515,31 @@ function Clear-DiffReference($a) {
 }
 
 function Update-DiffRefArray($a) {
-    # 判定用に {細かい0, ゆらぎ0, 粗い0, ゆらぎ0, 細かい1, ...} の形へ並べ直しておく
+    # 判定用に {細かい0, ゆらぎ0, 粗い0, ゆらぎ0, 細かい1, ...} の形へ並べ直しておく。
+    # 明るさの自動追従で少しずつ書き換わるので、記録した見本（保存する方）とは別の複製を使う。
     if($a.DiffRefs.Count -eq 0) { $a.DiffRefArray=$null; return }
     $arr=New-Object 'float[][]' ($a.DiffRefs.Count*4)
-    for($i=0;$i -lt $a.DiffRefs.Count;$i++) { for($j=0;$j -lt 4;$j++) { $arr[4*$i+$j]=$a.DiffRefs[$i][$j] } }
+    for($i=0;$i -lt $a.DiffRefs.Count;$i++) { for($j=0;$j -lt 4;$j++) { $arr[4*$i+$j]=[float[]]$a.DiffRefs[$i][$j].Clone() } }
     $a.DiffRefArray=$arr
+}
+
+function Update-AreaMasks($a) {
+    # 除外する場所（四角）を、判定のマス目ごとの「使わない」印に直しておく
+    $a.FineMask=$null; $a.CoarseMask=$null; $a.MaskReady=$true
+    if($a.Masks.Count -eq 0) { return }
+    if($a.DiffFineW -le 0) { Set-AreaGrids $a }
+    $list=New-Object 'System.Collections.Generic.List[int]'
+    foreach($m in $a.Masks) { $list.Add([int]$m.X); $list.Add([int]$m.Y); $list.Add([int]$m.Width); $list.Add([int]$m.Height) }
+    $r=$list.ToArray()
+    $a.FineMask=[NgDiff79]::CellMask($a.Rect.Width,$a.Rect.Height,$a.DiffFineW,$a.DiffFineH,$r)
+    $a.CoarseMask=[NgDiff79]::CellMask($a.Rect.Width,$a.Rect.Height,$a.DiffGridW,$a.DiffGridH,$r)
+}
+
+function Get-AdaptRate($a) {
+    # 監視中だけ、見本を明るさのゆっくりした変化に合わせる（約100秒かけて追いつく速さ）。
+    # 急な変化・NGと判断した部分は覚えない（NgDiff79.ScoreImageEx の中で判断）。
+    if(-not $script:running -or -not $a.AdaptDrift) { return 0.0 }
+    return [Math]::Min(0.02,[double]$script:monitorIntervalSec/100.0)
 }
 
 function Test-AreaReady($a) {
@@ -1363,7 +1569,8 @@ function Get-AreaRatio($bmp,$a,[switch]$WithMap) {
         $off=Get-InnerOffset $bmp $a
         $map=$null
         if($WithMap) { $map=New-Object 'float[]' ($a.DiffFineW*$a.DiffFineH) }
-        $score=[NgDiff79]::MatchImage($a.MatchNgArray,$a.MatchOkArray,$bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height,[double]$a.MatchSensitivity,$map)
+        if(-not $a.MaskReady) { Update-AreaMasks $a }
+        $score=[NgDiff79]::MatchImageEx($a.MatchNgArray,$a.MatchOkArray,$bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height,[double]$a.MatchSensitivity,$map,$a.FineMask)
         if($WithMap) { $a.LastMap=$map }
         if($score -lt 0) { return $null }
         return [math]::Round($score,1)
@@ -1374,7 +1581,9 @@ function Get-AreaRatio($bmp,$a,[switch]$WithMap) {
         $off=Get-InnerOffset $bmp $a
         $map=$null
         if($WithMap) { $map=New-Object 'float[]' ($a.DiffFineW*$a.DiffFineH) }
-        $score=[NgDiff79]::ScoreImage($a.DiffRefArray,$bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height,[double]$a.DiffSensitivity,$map)
+        if(-not $a.MaskReady) { Update-AreaMasks $a }
+        $below=[Math]::Min(0.075,[double]$a.DiffThreshold*0.5)
+        $score=[NgDiff79]::ScoreImageEx($a.DiffRefArray,$bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height,[double]$a.DiffSensitivity,$map,$a.FineMask,$a.CoarseMask,(Get-AdaptRate $a),$below)
         if($WithMap) { $a.LastMap=$map }
         if($score -lt 0) { return $null }
         return [math]::Round($score,2)
@@ -1408,6 +1617,7 @@ function Update-AreaJudgement($a,$ratio,$nowTime,$nowText) {
     if((-not $a.WasNG) -and $a.NGStreak -ge $need) {
         $a.WasNG=$true
         $a.NGSince=$nowTime
+        $a.Acked=$false
         Write-NGLogRow $nowText $a.Name 'NG発生' $ratio $null
         return $true
     }
@@ -1423,6 +1633,7 @@ function Update-AreaJudgement($a,$ratio,$nowTime,$nowText) {
 function Update-SampleRatios($a) {
     # 記録したOK/NGの見本を、今の設定で判定したら何%になるか（メーターの▼の位置）
     try {
+        if(-not $a.MaskReady) { Update-AreaMasks $a }
         if($a.Mode -eq 'match') {
             if(-not $a.MatchNgArray) { Update-MatchArrays $a }
             $a.OkRatio=$null; $a.NgRatio=$null
@@ -1430,12 +1641,12 @@ function Update-SampleRatios($a) {
                 $sens=[double]$a.MatchSensitivity
                 if($a.MatchOkSamples) {
                     $mx=0.0
-                    foreach($fr in $a.MatchOkSamples) { $mx=[Math]::Max($mx,[NgDiff79]::MatchSample($a.MatchNgArray,$a.MatchOkArray,$fr[0],$sens)) }
+                    foreach($fr in $a.MatchOkSamples) { $mx=[Math]::Max($mx,[NgDiff79]::MatchSampleMasked($a.MatchNgArray,$a.MatchOkArray,$fr[0],$sens,$a.FineMask)) }
                     $a.OkRatio=[math]::Round($mx,1)
                 }
                 if($a.MatchNgSamples) {
                     $mn=100.0
-                    foreach($fr in $a.MatchNgSamples) { $mn=[Math]::Min($mn,[NgDiff79]::MatchSample($a.MatchNgArray,$a.MatchOkArray,$fr[0],$sens)) }
+                    foreach($fr in $a.MatchNgSamples) { $mn=[Math]::Min($mn,[NgDiff79]::MatchSampleMasked($a.MatchNgArray,$a.MatchOkArray,$fr[0],$sens,$a.FineMask)) }
                     $a.NgRatio=[math]::Round($mn,1)
                 }
             }
@@ -1447,11 +1658,11 @@ function Update-SampleRatios($a) {
             $w=$a.Rect.Width; $h=$a.Rect.Height
             if($a.DiffRefArray -and $a.DiffOkFrames) {
                 $mx=0.0
-                foreach($fr in $a.DiffOkFrames) { $mx=[Math]::Max($mx,[NgDiff79]::ScoreSample($a.DiffRefArray,$fr[0],$fr[1],$w,$h,[double]$a.DiffSensitivity,$null)) }
+                foreach($fr in $a.DiffOkFrames) { $mx=[Math]::Max($mx,[NgDiff79]::ScoreSampleMasked($a.DiffRefArray,$fr[0],$fr[1],$w,$h,[double]$a.DiffSensitivity,$a.FineMask,$a.CoarseMask)) }
                 $a.OkRatio=[math]::Round($mx,2)
             }
             if($a.DiffRefArray -and $a.DiffNgMeans) {
-                $a.NgRatio=[math]::Round([NgDiff79]::ScoreSample($a.DiffRefArray,$a.DiffNgMeans[0],$a.DiffNgMeans[1],$w,$h,[double]$a.DiffSensitivity,$null),2)
+                $a.NgRatio=[math]::Round([NgDiff79]::ScoreSampleMasked($a.DiffRefArray,$a.DiffNgMeans[0],$a.DiffNgMeans[1],$w,$h,[double]$a.DiffSensitivity,$a.FineMask,$a.CoarseMask),2)
             }
         } else {
             $a.OkRatio=$(if($a.OkSnap){Get-AreaRatio $a.OkSnap $a}else{$null})
@@ -1479,6 +1690,28 @@ function Clear-AreaBuffers($a) {
 function Dispose-MonitorArea($a) {
     Clear-AreaBuffers $a
     Clear-AreaSamples $a
+    try { if($a.Thumb) { $a.Thumb.Dispose() } } catch {}
+    $a.Thumb=$null
+}
+
+function Update-AreaThumb($a,$bmp) {
+    # エリア一覧のタイルに出す小さな映像を作る（判定の印を描く前の画像から）
+    try {
+        $off=Get-InnerOffset $bmp $a
+        $tw=Px 160; $th=Px 72
+        $s=[Math]::Min($tw/[double]$a.Rect.Width,$th/[double]$a.Rect.Height)
+        $w=[Math]::Max(1,[int]($a.Rect.Width*$s)); $h=[Math]::Max(1,[int]($a.Rect.Height*$s))
+        $t=New-Object System.Drawing.Bitmap($w,$h)
+        $g=[System.Drawing.Graphics]::FromImage($t)
+        try {
+            $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::Bilinear
+            $g.DrawImage($bmp,(New-Object System.Drawing.Rectangle(0,0,$w,$h)),(New-Object System.Drawing.Rectangle($off[0],$off[1],$a.Rect.Width,$a.Rect.Height)),[System.Drawing.GraphicsUnit]::Pixel)
+        } finally { $g.Dispose() }
+        $old=$a.Thumb
+        $a.Thumb=$t
+        $a.ThumbAt=Get-Date
+        if($old) { $old.Dispose() }
+    } catch {}
 }
 
 function GrabBitmap($rect) {
@@ -1566,7 +1799,7 @@ function Capture-DiffFrames($a,$count,$intervalMs,$label) {
                 $off=Get-InnerOffset $bmp $a
                 $frames[$i]=[NgDiff79]::Sample($bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height)
             } finally { $bmp.Dispose() }
-            if($label) { SetStatusPanel $colorReady $textOnReady ($label+'（'+($i+1)+'/'+$count+'）…画面を動かさないでください') }
+            if($label) { SetStatusPanel $colorReady $textOnReady ($label+'（'+($i+1)+'/'+$count+'）…このウィンドウやカメラの画面は動かさないでください') }
             [System.Windows.Forms.Application]::DoEvents()
             if($i -lt $count-1) { Start-Sleep -Milliseconds $intervalMs }
         }
@@ -1655,6 +1888,8 @@ function Get-CurrentSettingsObject {
             MatchSensitivity=$a.MatchSensitivity; MatchThreshold=$a.MatchThreshold
             MatchNgRefs=@($a.MatchNgRefs | ForEach-Object { ConvertTo-PackedRef $_ })
             MatchOkRefs=@($a.MatchOkRefs | ForEach-Object { ConvertTo-PackedRef $_ })
+            Masks=@($a.Masks | ForEach-Object { [PSCustomObject]@{ X=$_.X; Y=$_.Y; W=$_.Width; H=$_.Height } })
+            AdaptDrift=[bool]$a.AdaptDrift
             ConfirmFrames=$a.ConfirmFrames
             BuzzerSeconds=$a.BuzzerSeconds; BuzzerType=$a.BuzzerType; BuzzerVolume=$a.BuzzerVolume
         }
@@ -1820,6 +2055,16 @@ function Apply-SettingsObject($data) {
                 foreach($rd in @($ad.MatchNgRefs)) { $r2=ConvertFrom-PackedRef $rd $newArea -RequireFine; if($r2) { [void]$newArea.MatchNgRefs.Add($r2) } }
                 foreach($rd in @($ad.MatchOkRefs)) { $r2=ConvertFrom-PackedRef $rd $newArea -RequireFine; if($r2) { [void]$newArea.MatchOkRefs.Add($r2) } }
             }
+            # 除外する場所（範囲の中に収まるものだけ）
+            $inner=New-Object System.Drawing.Rectangle(0,0,$rect.Width,$rect.Height)
+            foreach($md in @($ad.Masks)) {
+                if($null -eq $md -or $newArea.Masks.Count -ge $script:maxMasks) { continue }
+                try {
+                    $mr=[System.Drawing.Rectangle]::Intersect((New-Object System.Drawing.Rectangle([int]$md.X,[int]$md.Y,[int]$md.W,[int]$md.H)),$inner)
+                    if($mr.Width -gt 0 -and $mr.Height -gt 0) { [void]$newArea.Masks.Add($mr) }
+                } catch {}
+            }
+            $newArea.AdaptDrift=$(if($null -ne $ad.AdaptDrift){[bool]$ad.AdaptDrift}else{$true})
             $newArea.ConfirmFrames=ClampInt $ad.ConfirmFrames 1 20 2
             $newArea.BuzzerSeconds=ClampInt $ad.BuzzerSeconds 1 60 $legacyBuzzerSeconds
             $newArea.BuzzerType=ClampInt $ad.BuzzerType 0 7 $legacyBuzzerType
@@ -2316,9 +2561,24 @@ $status.TextAlign=[System.Drawing.ContentAlignment]::MiddleCenter
 $status.Font=UIFont 12 -Bold
 $status.ForeColor=$textOnIdle
 $statusPanel.Controls.Add($status)
+$statusPanel.Padding=New-Object System.Windows.Forms.Padding((Px 10))
+# NGの時だけ出る「確認しました」ボタン（音を止め、表示を「確認済み」にする）
+$ackBtn=New-Button '✔ 確認しました' ([System.Drawing.Color]::White) ([System.Drawing.Color]::FromArgb(170,20,32)) 11 150 50
+$ackBtn.AutoSize=$false
+$ackBtn.Dock=[System.Windows.Forms.DockStyle]::Right
+$ackBtn.Width=Px 160
+$ackBtn.Visible=$false
+$statusPanel.Controls.Add($ackBtn)
 Set-RoundedRegion $statusPanel 10
+$summaryLabel=New-Object System.Windows.Forms.Label
+$summaryLabel.AutoSize=$false
+$summaryLabel.Font=UIFont 9
+$summaryLabel.ForeColor=$textSecondary
+$summaryLabel.BackColor=[System.Drawing.Color]::Transparent
+$summaryLabel.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft
+$topBar.Controls.Add($summaryLabel)
 
-$topBar.Height=(Px 8)+(Px 50)+(Px 8)+(Px 70)+(Px 8)
+$topBar.Height=(Px 8)+(Px 50)+(Px 8)+(Px 78)+(Px 24)+(Px 4)
 $topBar.Add_Layout({
     $w=$topBar.ClientSize.Width-(Px 24)
     $gap=Px 8
@@ -2327,7 +2587,8 @@ $topBar.Add_Layout({
     $start.SetBounds((Px 12),(Px 8),$bw,(Px 50))
     $silence.SetBounds(($start.Right+$gap),(Px 8),$sw,(Px 50))
     $stop.SetBounds(($silence.Right+$gap),(Px 8),($w-$bw-$sw-2*$gap),(Px 50))
-    $statusPanel.SetBounds((Px 12),($start.Bottom+(Px 8)),$w,(Px 70))
+    $statusPanel.SetBounds((Px 12),($start.Bottom+(Px 8)),$w,(Px 78))
+    $summaryLabel.SetBounds((Px 16),($statusPanel.Bottom+(Px 2)),($w-(Px 8)),(Px 24))
 })
 
 # --- 設定（スクロールできる） ---
@@ -2354,7 +2615,7 @@ $areaCountLabel=New-Label 'まだエリアがありません' 9 -Bold $textSecon
 Add-Controls $row @($pick,$repickBtn,$renameBtn,$deleteAreaBtn,$areaCountLabel)
 $g1.Body.Controls.Add($row)
 
-$pickHint=New-Label '「＋ エリアを追加」を押し、ランプなど見張りたい部分だけをドラッグで小さく囲みます。複数のカメラ・場所を追加できます。' 8.5 -color $textSecondary
+$pickHint=New-Label '「＋ エリアを追加」を押し、ランプなど見張りたい部分だけをドラッグで小さく囲みます。複数のカメラ・場所を追加できます。下のタイルをクリックすると、そのエリアの設定に切り替わります。' 8.5 -color $textSecondary
 $pickHint.MaximumSize=New-Object System.Drawing.Size((Px 720),0)
 $g1.Body.Controls.Add($pickHint)
 
@@ -2367,7 +2628,19 @@ $areaList.BackColor=$inputBgDark
 $areaList.ForeColor=$textPrimary
 $areaList.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
 $areaList.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 4),(Px 3),(Px 3))
+$areaList.Visible=$false   # 選択の管理だけに使う（表示は下のタイル）
 $g1.Body.Controls.Add($areaList)
+
+# エリアのタイル（今の映像・状態・メーターを並べて表示。クリックで選ぶ、ダブルクリックで画面上の位置を表示）
+$tileBoard=New-Object System.Windows.Forms.PictureBox
+$tileBoard.BackColor=$cardBgDark
+$tileBoard.Size=New-Object System.Drawing.Size((Px 720),(Px 160))
+$tileBoard.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 6),(Px 3),(Px 3))
+$tileBoard.Cursor=[System.Windows.Forms.Cursors]::Hand
+$g1.Body.Controls.Add($tileBoard)
+$script:tileW=Px 172
+$script:tileH=Px 160
+$script:tileGap=Px 8
 
 # ---------- ② 検出の設定 ----------
 $g2=New-Group '② 検出の設定'
@@ -2392,7 +2665,13 @@ $previewBtnRow=New-Row
 $highlightBtn=New-Button '画面で位置を確認' $colorGrayBtn $null 8.5 120 30
 $eyedropBtn=New-Button 'スポイトで色を選ぶ' $colorGrayBtn $null 8.5 120 30
 Add-Controls $previewBtnRow @($highlightBtn,$eyedropBtn)
-Add-Controls $previewCol @($areaPreviewInfoLabel,$colorLabel,$previewBtnRow)
+$maskBtnRow=New-Row
+$maskBtn=New-Button '除外する場所を指定' ([System.Drawing.Color]::FromArgb(70,70,110)) $null 8.5 120 30
+$maskClearBtn=New-Button '除外を全部消す' $colorGrayBtn $null 8.5 100 30
+Add-Controls $maskBtnRow @($maskBtn,$maskClearBtn)
+$maskHint=New-Label '正常でも動く場所（アーム・人の通り道・時計など）は、左の映像の上をドラッグして囲むと判定から外せます。' 8 -color $textSecondary
+$maskHint.MaximumSize=New-Object System.Drawing.Size((Px 500),0)
+Add-Controls $previewCol @($areaPreviewInfoLabel,$colorLabel,$previewBtnRow,$maskBtnRow,$maskHint)
 Add-Controls $previewRow @($areaPreviewBox,$previewCol)
 $g2.Body.Controls.Add($previewRow)
 
@@ -2431,6 +2710,11 @@ $addOkBtn=New-Button '＋ 別の正常も追加（昼・夜など）' ([System.D
 $recordNgBtn=New-Button '② 異常を記録（任意）' $colorRedBtn $null 9.5 150 36
 Add-Controls $tuneRow @($recordOkBtn,$addOkBtn,$recordNgBtn)
 $g2.Body.Controls.Add($tuneRow)
+$longRecordCheck=New-Object System.Windows.Forms.CheckBox
+$longRecordCheck.Text='長めに記録する（約30秒）… アームや人など、正常でも動くものが映る場所向け'
+$longRecordCheck.AutoSize=$true; $longRecordCheck.Font=UIFont 9; $longRecordCheck.ForeColor=$textPrimary
+$longRecordCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 2),(Px 3),(Px 2))
+$g2.Body.Controls.Add($longRecordCheck)
 $tuneResultLabel=New-Label '' 9 -color $textPrimary
 $tuneResultLabel.MaximumSize=New-Object System.Drawing.Size((Px 720),0)
 $g2.Body.Controls.Add($tuneResultLabel)
@@ -2502,8 +2786,12 @@ $confirmBox.Enabled=$false
 $confirmUnit=New-Label '回続けてNGならNG確定（一瞬の映像の乱れ・人の横切りを無視）' 8.5 -color $textSecondary
 Add-Controls $confirmRow @($confirmLabel,$confirmBox,$confirmUnit)
 
+$adaptCheck=New-Object System.Windows.Forms.CheckBox
+$adaptCheck.Text='朝・夕方など、ゆっくりした明るさの変化に自動で合わせる（おすすめ。急な変化・異常は覚えません）'
+$adaptCheck.AutoSize=$true; $adaptCheck.Font=UIFont 9; $adaptCheck.ForeColor=$textPrimary; $adaptCheck.Enabled=$false
+$adaptCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 4),(Px 3),(Px 4))
 $clearRefsBtn=New-Button '記録した正常の見本をすべて消す' ([System.Drawing.Color]::FromArgb(120,50,50)) $null 8.5 150 30
-Add-Controls $advancedPanel @($dirRow,$sensRow,$sensHint,$hueModeCheck,$ngRow,$ngHint,$confirmRow,$clearRefsBtn)
+Add-Controls $advancedPanel @($dirRow,$sensRow,$sensHint,$hueModeCheck,$ngRow,$ngHint,$confirmRow,$adaptCheck,$clearRefsBtn)
 
 # ---------- ③ ブザー ----------
 $g3=New-Group '③ ブザー（エリアごとに設定）'
@@ -2649,7 +2937,8 @@ function RefreshAreaListUI {
     $repickBtn.Enabled=$hasSel; $renameBtn.Enabled=$hasSel; $deleteAreaBtn.Enabled=$hasSel
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    Update-TileBoardSize
+    $tileBoard.Invalidate()
 }
 
 function Format-Percent($v) {
@@ -2746,6 +3035,10 @@ function Update-ModeUI($a) {
     $dirRow.Visible=$color
     $hueModeCheck.Visible=$color
     $clearRefsBtn.Visible=-not $color
+    $maskBtnRow.Visible=-not $color
+    $maskHint.Visible=-not $color
+    $adaptCheck.Visible=$diff
+    $longRecordCheck.Visible=$diff
     if($mode -eq 'match') {
         $tuneHint.Text='異常の時だけ出る画面（警報画面・エラー表示など）が表示されている時に「① 異常の画面を記録」を押します。その画面が出ていない時は、前に撮った画像（スクリーンショットや ng_images の画像）を「＋ 画像ファイルから」で読み込めます。正常な画面も「② 正常な画面を記録」で覚えさせると、より確実になります。'
         $recordOkBtn.Text='① 異常の画面を記録'
@@ -2783,7 +3076,7 @@ function LoadAreaSettingsIntoSliders {
     $script:suppressEvents=$true
     try {
         $en=($null -ne $a)
-        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn)) { $c.Enabled=$en }
+        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck)) { $c.Enabled=$en }
         if($en) {
             if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } elseif($a.Mode -eq 'match') { $rbModeMatch.Checked=$true } else { $rbModeColor.Checked=$true }
             if($a.Direction -eq 'disappear') { $rbDisappear.Checked=$true } else { $rbAppear.Checked=$true }
@@ -2796,6 +3089,9 @@ function LoadAreaSettingsIntoSliders {
             $ngPercentLabel.Text=Format-Percent $thr
             $hueModeCheck.Checked=$a.HueMatchMode
             $confirmBox.Value=[decimal]$a.ConfirmFrames
+            $adaptCheck.Checked=[bool]$a.AdaptDrift
+            $maskClearBtn.Enabled=($a.Masks.Count -gt 0)
+            $maskClearBtn.Text=$(if($a.Masks.Count -gt 0){'除外を全部消す（'+$a.Masks.Count+'か所）'}else{'除外を全部消す'})
             if($a.Mode -eq 'match') {
                 $clearRefsBtn.Enabled=($a.MatchNgRefs.Count+$a.MatchOkRefs.Count) -gt 0
             } else {
@@ -2829,6 +3125,7 @@ function LoadAreaSettingsIntoSliders {
         Update-ColorLabel $a
         Update-TuneLabel $a
         Set-Eyedropper $false
+        Set-MaskMode $false
     } finally {
         $script:suppressEvents=$false
     }
@@ -2874,12 +3171,227 @@ function Draw-DiffOverlay($bmp,$a) {
     } finally { $brMain.Dispose(); $brSub.Dispose(); $g.Dispose() }
 }
 
+function Draw-MaskOverlay($bmp,$a) {
+    # 除外した場所を斜線で示す（ここは判定に使わない）
+    if($a.Masks.Count -eq 0) { return }
+    $off=Get-InnerOffset $bmp $a
+    $g=[System.Drawing.Graphics]::FromImage($bmp)
+    $hb=New-Object System.Drawing.Drawing2D.HatchBrush([System.Drawing.Drawing2D.HatchStyle]::WideDownwardDiagonal,[System.Drawing.Color]::FromArgb(170,160,170,255),[System.Drawing.Color]::FromArgb(70,20,20,40))
+    $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(220,170,180,255),1)
+    try {
+        foreach($m in $a.Masks) {
+            $r=New-Object System.Drawing.Rectangle(($m.X+$off[0]),($m.Y+$off[1]),$m.Width,$m.Height)
+            $g.FillRectangle($hb,$r)
+            $g.DrawRectangle($pen,$r)
+        }
+    } finally { $hb.Dispose(); $pen.Dispose(); $g.Dispose() }
+}
+
+function Convert-PreviewPoint($x,$y) {
+    # プレビュー（拡大表示）の上の位置を、表示している画像の中の位置に直す。画像の外なら $null
+    $img=$areaPreviewBox.Image
+    if(-not $img) { return $null }
+    $pw=$areaPreviewBox.ClientSize.Width; $ph=$areaPreviewBox.ClientSize.Height
+    $scale=[Math]::Min($pw/[double]$img.Width,$ph/[double]$img.Height)
+    if($scale -le 0) { return $null }
+    $ox=($pw-$img.Width*$scale)/2.0; $oy=($ph-$img.Height*$scale)/2.0
+    return @(([double]$x-$ox)/$scale,([double]$y-$oy)/$scale)
+}
+
+function Set-MaskMode($on) {
+    $script:maskMode=[bool]$on
+    $script:maskDragStart=$null; $script:maskDragNow=$null
+    if($script:maskMode) {
+        if($script:eyedropper) { Set-Eyedropper $false }
+        $maskBtn.Text='除外の指定をやめる'
+        $areaPreviewBox.Cursor=[System.Windows.Forms.Cursors]::Cross
+    } else {
+        $maskBtn.Text='除外する場所を指定'
+        if(-not $script:eyedropper) { $areaPreviewBox.Cursor=[System.Windows.Forms.Cursors]::Default }
+    }
+    $areaPreviewBox.Invalidate()
+}
+
+function Add-AreaMask($a,$x0,$y0,$x1,$y1) {
+    # 画像の中の位置（周りの余白込み）で囲んだ四角を、エリアの中の四角にして追加する
+    $img=$areaPreviewBox.Image
+    if(-not $img) { return $false }
+    $off=Get-InnerOffset $img $a
+    $l=[int][Math]::Floor([Math]::Min($x0,$x1))-$off[0]; $t=[int][Math]::Floor([Math]::Min($y0,$y1))-$off[1]
+    $r=[int][Math]::Ceiling([Math]::Max($x0,$x1))-$off[0]; $b=[int][Math]::Ceiling([Math]::Max($y0,$y1))-$off[1]
+    $rect=[System.Drawing.Rectangle]::Intersect((New-Object System.Drawing.Rectangle($l,$t,($r-$l),($b-$t))),(New-Object System.Drawing.Rectangle(0,0,$a.Rect.Width,$a.Rect.Height)))
+    if($rect.Width -lt 2 -or $rect.Height -lt 2) { return $false }
+    if($rect.Width*$rect.Height -ge 0.9*$a.Rect.Width*$a.Rect.Height) {
+        [void](Show-Message 'エリアのほぼ全部を除外すると、何も判定できなくなります。動く部分だけを小さく囲んでください。' ([System.Windows.Forms.MessageBoxIcon]::Information))
+        return $false
+    }
+    if($a.Masks.Count -ge $script:maxMasks) {
+        [void](Show-Message ('除外する場所は '+$script:maxMasks+' か所までです。') ([System.Windows.Forms.MessageBoxIcon]::Information))
+        return $false
+    }
+    [void]$a.Masks.Add($rect)
+    $a.MaskReady=$false
+    return $true
+}
+
+function Get-AreaState($a) {
+    # タイルに出す状態：@(文字, 色)
+    if(-not (Test-AreaReady $a)) { return @('未設定',[System.Drawing.Color]::FromArgb(245,180,83)) }
+    if($a.Occluded) { return @('重なり',[System.Drawing.Color]::FromArgb(245,180,83)) }
+    if($a.CaptureFailed) { return @('読取不可',[System.Drawing.Color]::FromArgb(245,180,83)) }
+    if(-not $script:running) { return @('待機',$textSecondary) }
+    if($a.WasNG) { if($a.Acked) { return @('NG 確認済',[System.Drawing.Color]::FromArgb(255,150,150)) } else { return @('NG',[System.Drawing.Color]::FromArgb(255,93,93)) } }
+    if($a.NGStreak -gt 0) { return @('確認中',[System.Drawing.Color]::FromArgb(251,191,36)) }
+    return @('OK',[System.Drawing.Color]::FromArgb(52,211,153))
+}
+
+function Get-MeterScale($a) {
+    # 「比べる」の値は小さいことが多いので、目盛りの最大を自動で合わせる（ほかは 0～100%）
+    if($a.Mode -ne 'diff') { return 100.0 }
+    $want=[Math]::Max(0.5,(Get-JudgeThreshold $a)*4.0)
+    foreach($v in @($a.LastRatio,$a.NgRatio)) { if($null -ne $v) { $want=[Math]::Max($want,[double]$v*1.2) } }
+    foreach($step in @(0.5,1,2,5,10,20,50,100)) { if($step -ge $want) { return [double]$step } }
+    return 100.0
+}
+
+function Get-NGReasonText($a) {
+    $r=$a.LastRatio
+    if($null -eq $r) { return '' }
+    if($a.Mode -eq 'diff') { return ('正常と違う（違い '+(Format-Percent $r)+'）') }
+    if($a.Mode -eq 'match') { return ('異常の画面が出ている（一致 '+(Format-Percent $r)+'）') }
+    if($a.Direction -eq 'disappear') { return ('色が消えた（'+(Format-Percent $r)+'）') }
+    return ('色が出た（'+(Format-Percent $r)+'）')
+}
+
+function Get-NGSinceText($a,$now) {
+    if(-not $a.NGSince) { return '' }
+    return (([datetime]$a.NGSince).ToString('HH:mm:ss')+' から（'+(Format-Duration ($now-$a.NGSince).TotalSeconds)+'）')
+}
+
+function New-RoundPath($r,$rad) {
+    $d=[Math]::Max(2,$rad*2)
+    $path=New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddArc($r.X,$r.Y,$d,$d,180,90)
+    $path.AddArc(($r.Right-$d),$r.Y,$d,$d,270,90)
+    $path.AddArc(($r.Right-$d),($r.Bottom-$d),$d,$d,0,90)
+    $path.AddArc($r.X,($r.Bottom-$d),$d,$d,90,90)
+    $path.CloseFigure()
+    return $path
+}
+
+function Get-TileColumns {
+    return [Math]::Max(1,[int][Math]::Floor(($tileBoard.ClientSize.Width+$script:tileGap)/($script:tileW+$script:tileGap)))
+}
+
+function Get-TileRect($i) {
+    $cols=Get-TileColumns
+    $c=$i % $cols; $r=[int][Math]::Floor($i/$cols)
+    return (New-Object System.Drawing.Rectangle(($c*($script:tileW+$script:tileGap)),($r*($script:tileH+$script:tileGap)),$script:tileW,$script:tileH))
+}
+
+function Update-TileBoardSize {
+    $cols=Get-TileColumns
+    $rows=[int][Math]::Ceiling(($script:areas.Count+1)/[double]$cols)
+    $h=$rows*($script:tileH+$script:tileGap)-$script:tileGap
+    if($tileBoard.Height -ne $h) { $tileBoard.Height=$h }
+}
+
+function Draw-AreaTile($g,$a,$r,$selected) {
+    $st=Get-AreaState $a
+    $stColor=$st[1]
+    $pad=Px 7
+    $path=New-RoundPath $r (Px 10)
+    $bg=New-Object System.Drawing.SolidBrush($(if($a.WasNG -and $script:running -and -not $a.Acked){[System.Drawing.Color]::FromArgb(58,16,22)}else{$inputBgDark}))
+    $g.FillPath($bg,$path); $bg.Dispose()
+    $edge=$(if($selected){$accentBlue}elseif($a.WasNG -and $script:running){$stColor}else{[System.Drawing.Color]::FromArgb(40,54,78)})
+    $pen=New-Object System.Drawing.Pen($edge,$(if($selected -or ($a.WasNG -and $script:running)){(Px 2)}else{1}))
+    $g.DrawPath($pen,$path); $pen.Dispose(); $path.Dispose()
+    # 映像
+    $th=New-Object System.Drawing.Rectangle(($r.X+$pad),($r.Y+$pad),($r.Width-2*$pad),(Px 72))
+    $tb=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(11,17,30))
+    $g.FillRectangle($tb,$th); $tb.Dispose()
+    if($a.Thumb) {
+        try {
+            $s=[Math]::Min($th.Width/[double]$a.Thumb.Width,$th.Height/[double]$a.Thumb.Height)
+            $w=[int]($a.Thumb.Width*$s); $h=[int]($a.Thumb.Height*$s)
+            $g.DrawImage($a.Thumb,($th.X+[int](($th.Width-$w)/2)),($th.Y+[int](($th.Height-$h)/2)),$w,$h)
+        } catch {}
+    } else {
+        $g.DrawString('映像なし',$script:tileSmallFont,$script:areaListSubBrush,($th.X+(Px 6)),($th.Y+(Px 6)))
+    }
+    # 状態の札
+    $pill=$st[0]
+    $ps=$g.MeasureString($pill,$script:tilePillFont)
+    $pr=New-Object System.Drawing.Rectangle(($th.X+(Px 4)),($th.Y+(Px 4)),([int]$ps.Width+(Px 8)),([int]$ps.Height+(Px 2)))
+    $pp=New-RoundPath $pr ([int]($pr.Height/2))
+    $pb=New-Object System.Drawing.SolidBrush($stColor)
+    $g.FillPath($pb,$pp); $pb.Dispose(); $pp.Dispose()
+    $g.DrawString($pill,$script:tilePillFont,$script:tilePillTextBrush,($pr.X+(Px 4)),($pr.Y+(Px 1)))
+    # 判定のしかた
+    $tag=$(if($a.Mode -eq 'diff'){'比べる'}elseif($a.Mode -eq 'match'){'異常画面'}else{'色'})
+    $ts=$g.MeasureString($tag,$script:tileSmallFont)
+    $tr=New-Object System.Drawing.RectangleF(($th.Right-$ts.Width-(Px 6)),($th.Y+(Px 4)),($ts.Width+(Px 2)),$ts.Height)
+    $g.FillRectangle($script:tileTagBrush,$tr)
+    $g.DrawString($tag,$script:tileSmallFont,$script:areaListNameBrush,($tr.X+(Px 1)),$tr.Y)
+    # 名前
+    $nr=New-Object System.Drawing.RectangleF(($r.X+$pad),($th.Bottom+(Px 4)),($r.Width-2*$pad),($script:tileNameFont.Height+(Px 2)))
+    $g.DrawString($a.Name,$script:tileNameFont,$script:areaListNameBrush,$nr,$script:tileEllipsis)
+    # メーター（黄色い線＝しきい値）
+    $my=[int]$nr.Bottom+(Px 4)
+    $mr=New-Object System.Drawing.Rectangle(($r.X+$pad),$my,($r.Width-2*$pad),(Px 6))
+    $g.FillRectangle($script:tileMeterBgBrush,$mr)
+    $scale=Get-MeterScale $a
+    if($null -ne $a.LastRatio -and -not $a.Occluded) {
+        $fw=[int]($mr.Width*[Math]::Min($scale,[double]$a.LastRatio)/$scale)
+        $fb=New-Object System.Drawing.SolidBrush($(if(Test-RatioIsNG $a $a.LastRatio){[System.Drawing.Color]::FromArgb(255,93,93)}else{[System.Drawing.Color]::FromArgb(52,211,153)}))
+        $g.FillRectangle($fb,$mr.X,$mr.Y,$fw,$mr.Height); $fb.Dispose()
+    }
+    $tx=$mr.X+[int]($mr.Width*[Math]::Min($scale,(Get-JudgeThreshold $a))/$scale)
+    $g.FillRectangle($script:tileThrBrush,($tx-1),($my-(Px 3)),(Px 2),($mr.Height+(Px 6)))
+    # 数値
+    $word=$(if($a.Mode -eq 'diff'){'違い '}elseif($a.Mode -eq 'match'){'一致 '}else{'一致率 '})
+    $val=$(if($null -ne $a.LastRatio -and -not $a.Occluded){Format-Percent $a.LastRatio}else{'－'})
+    $vr=New-Object System.Drawing.RectangleF(($r.X+$pad),($mr.Bottom+(Px 4)),($r.Width-2*$pad),($script:tileSmallFont.Height+(Px 2)))
+    $g.DrawString(($word+$val+' ／ '+(Format-Percent (Get-JudgeThreshold $a))),$script:tileSmallFont,$script:areaListSubBrush,$vr,$script:tileEllipsis)
+}
+
+function Draw-AddTile($g,$r) {
+    $path=New-RoundPath $r (Px 10)
+    $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(70,90,120),(Px 2))
+    $pen.DashStyle=[System.Drawing.Drawing2D.DashStyle]::Dash
+    $g.DrawPath($pen,$path); $pen.Dispose(); $path.Dispose()
+    $sf=New-Object System.Drawing.StringFormat
+    $sf.Alignment=[System.Drawing.StringAlignment]::Center
+    $sf.LineAlignment=[System.Drawing.StringAlignment]::Center
+    $g.DrawString("＋`r`nエリアを追加",$script:tileNameFont,$script:areaListSubBrush,(New-Object System.Drawing.RectangleF($r.X,$r.Y,$r.Width,$r.Height)),$sf)
+    $sf.Dispose()
+}
+
+function Update-IdleThumbs {
+    # 監視していない時も、タイルの映像をときどき新しくする（2秒ごと、選んでいないエリア）
+    $now=Get-Date
+    $sel=Get-SelectedArea
+    foreach($a in $script:areas) {
+        if($a -eq $sel -or ($now-$a.ThumbAt).TotalSeconds -lt 2) { continue }
+        if(-not (Test-AreaOnScreen $a.Rect) -or (Test-AreaOccluded $a.Rect)) { continue }
+        try {
+            $bmp=GrabBitmap (Get-CaptureRect $a)
+            try { Update-AreaThumb $a $bmp } finally { $bmp.Dispose() }
+        } catch {}
+    }
+}
+
+function Update-TodaySummary {
+    $t=Get-TodaySummaryText
+    if($summaryLabel.Text -ne $t) { $summaryLabel.Text=$t }
+}
+
 function Update-LiveRatioFromPreview {
     # 設定を変えた直後に、今のプレビュー画像で計算し直す（新しく撮影はしない）
     $a=Get-SelectedArea
     if(-not $a -or $script:running) { return }
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
 }
 
 function UpdateAreaPreview {
@@ -2905,7 +3417,9 @@ function UpdateAreaPreview {
             $a.Occluded=$false
             $a.LastRatio=Get-AreaRatio $bmp $a -WithMap
         }
+        if(-not $hidden) { Update-AreaThumb $a $bmp }
         if($a.Mode -ne 'color' -and -not $hidden -and -not $script:eyedropper) { Draw-DiffOverlay $bmp $a }
+        if($a.Mode -ne 'color') { Draw-MaskOverlay $bmp $a }
         $old=$areaPreviewBox.Image
         $areaPreviewBox.Image=$bmp
         if($old) { $old.Dispose() }
@@ -2929,6 +3443,7 @@ function UpdateAreaPreview {
 
 function Set-Eyedropper($on) {
     $script:eyedropper=[bool]$on
+    if($script:eyedropper -and $script:maskMode) { $script:maskMode=$false; $script:maskDragStart=$null; $maskBtn.Text='除外する場所を指定' }
     if($script:eyedropper) {
         $eyedropBtn.Text='スポイトをやめる'
         $areaPreviewBox.Cursor=[System.Windows.Forms.Cursors]::Cross
@@ -2969,8 +3484,9 @@ function Stop-Monitoring($reasonText) {
     BuzzStop
     Close-OpenNGEpisodes
     try { [NgWin79]::KeepAwake($false) } catch {}
+    $ackBtn.Visible=$false
     Update-RunButtons
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     if($reasonText) { SetStatusPanel $colorIdle $textOnIdle $reasonText }
 }
 
@@ -2980,6 +3496,7 @@ function Set-AreaRect($a,$rect) {
     Clear-AreaBuffers $a
     Clear-DiffReference $a
     Clear-MatchReference $a
+    $a.Masks.Clear()          # 除外する場所も範囲の中の位置なので、選び直したら消す
     Set-AreaGrids $a
 }
 
@@ -2989,6 +3506,7 @@ function Set-AreaGrids($a) {
     $a.DiffGridW=$gw; $a.DiffGridH=$gh
     [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::FineCells,[ref]$gw,[ref]$gh)
     $a.DiffFineW=$gw; $a.DiffFineH=$gh
+    $a.MaskReady=$false
 }
 
 function Test-CanRecord($a) {
@@ -3008,8 +3526,10 @@ function Record-DiffOK($a,[switch]$Append) {
         return $false
     }
     if($a.DiffFineW -le 0) { Set-AreaGrids $a }
+    $count=$script:okFrameCount; $interval=150; $what='正常な状態を記録中'
+    if($longRecordCheck.Checked) { $count=$script:longFrameCount; $interval=200; $what='正常な状態を長めに記録中（約30秒。いつも通り動かしたままでOK）' }
     try {
-        $frames=Capture-DiffFrames $a $script:okFrameCount 150 ($a.Name+'：正常な状態を記録中')
+        $frames=Capture-DiffFrames $a $count $interval ($a.Name+'：'+$what)
     } catch {
         [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return $false
@@ -3025,7 +3545,9 @@ function Record-DiffOK($a,[switch]$Append) {
     Update-DiffRefArray $a
     $all=New-Object System.Collections.ArrayList
     if($a.DiffOkFrames) { foreach($fr in $a.DiffOkFrames) { [void]$all.Add($fr) } }
-    foreach($fr in $frames) { [void]$all.Add($fr) }
+    # 長めに記録した時は、メーターの▼の計算が重くならないよう30コマ程度に間引いて覚える
+    $step=[Math]::Max(1,[int][Math]::Ceiling($frames.Length/30.0))
+    for($i=0;$i -lt $frames.Length;$i+=$step) { [void]$all.Add($frames[$i]) }
     $a.DiffOkFrames=[float[][][]]$all.ToArray([float[][]])
     Update-SampleRatios $a
     $n=$a.DiffRefs.Count
@@ -3033,7 +3555,7 @@ function Record-DiffOK($a,[switch]$Append) {
     $a.TuneText=('正常の見本を記録しました（全部で '+$n+' 枚）。これで監視できます。'+"`r`n"+'異常を画面に出せる場合は「② 異常を記録」を押すと、感度をさらに合わせられます。')
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     Mark-SettingsDirty
     SetStatusPanel $colorReady $textOnReady ($a.Name+'：正常の見本を記録しました（'+$n+'枚）')
     return $true
@@ -3058,7 +3580,8 @@ function Record-DiffNG($a) {
     $a.DiffNgMeans=$ng
     $okFrames=$a.DiffOkFrames
     if(-not $okFrames) { $okFrames=New-Object 'float[][][]' 0 }
-    $res=[NgDiff79]::Tune($a.DiffRefArray,$okFrames,$ng,$a.Rect.Width,$a.Rect.Height)
+    if(-not $a.MaskReady) { Update-AreaMasks $a }
+    $res=[NgDiff79]::TuneMasked($a.DiffRefArray,$okFrames,$ng,$a.Rect.Width,$a.Rect.Height,$a.FineMask,$a.CoarseMask)
     $okMax=[math]::Round($res[1],2); $ngScore=[math]::Round($res[2],2)
     if(($ngScore-$okMax) -lt 0.1) {
         $a.TuneColor=[System.Drawing.Color]::FromArgb(255,150,150)
@@ -3081,7 +3604,7 @@ function Record-DiffNG($a) {
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     Mark-SettingsDirty
     SetStatusPanel $colorReady $textOnReady ($a.Name+'：自動調整が完了しました')
 }
@@ -3126,7 +3649,7 @@ function Update-MatchTuning($a) {
     $a.TuneColor=$qc
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     Mark-SettingsDirty
 }
 
@@ -3283,7 +3806,7 @@ function Invoke-AutoTune($a) {
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     Mark-SettingsDirty
     SetStatusPanel $colorReady $textOnReady ($a.Name+'：自動調整が完了しました')
 }
@@ -3352,7 +3875,7 @@ function Set-AreaModeFor($a,$mode) {
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     Mark-SettingsDirty
 }
 
@@ -3379,37 +3902,43 @@ function Start-AreaSetupWizard($a) {
 }
 
 # ================== イベント ==================
-$areaList.Add_DrawItem({
-    $e=$_
-    $e.DrawBackground()
-    if($e.Index -ge 0 -and $e.Index -lt $script:areas.Count) {
-        $a=$script:areas[$e.Index]
-        $b=$e.Bounds
-        $pad=Px 6
-        $sw=Px 18
-        $swColor=$(if($a.Mode -eq 'diff'){[System.Drawing.Color]::FromArgb(88,166,255)}elseif($a.Mode -eq 'match'){[System.Drawing.Color]::FromArgb(230,90,90)}else{$a.Color})
-        $swBrush=New-Object System.Drawing.SolidBrush($swColor)
-        $e.Graphics.FillRectangle($swBrush,($b.X+$pad),($b.Y+[int](($b.Height-$sw)/2)),$sw,$sw)
-        $swBrush.Dispose()
-        $textY=$b.Y+[int](($b.Height-$script:areaListNameFont.Height)/2)
-        $dirText=$(if($a.Mode -eq 'diff'){'[比]'}elseif($a.Mode -eq 'match'){'[異画]'}elseif($a.Direction -eq 'disappear'){'[消]'}else{'[出]'})
-        $e.Graphics.DrawString(($dirText+' '+$a.Name),$script:areaListNameFont,$script:areaListNameBrush,($b.X+$pad*2+$sw),$textY)
-        $word=$(if($a.Mode -eq 'diff'){'違い '}elseif($a.Mode -eq 'match'){'一致 '}else{'一致率 '})
-        $ratioText=$(if($null -ne $a.LastRatio -and -not $a.Occluded){$word+(Format-Percent $a.LastRatio)}else{$word+'－'})
-        $ratioText+=(' ／ しきい値 '+(Format-Percent (Get-JudgeThreshold $a)))
-        $e.Graphics.DrawString($ratioText,$script:areaListNameFont,$script:areaListSubBrush,($b.X+[int]($b.Width*0.40)),$textY)
-        if(-not (Test-AreaReady $a)) { $st='未設定'; $br=$script:areaListWarnBrush }
-        elseif($a.Occluded) { $st='重なり'; $br=$script:areaListWarnBrush }
-        elseif($a.CaptureFailed) { $st='読取不可'; $br=$script:areaListWarnBrush }
-        elseif(-not $script:running) { $st='待機'; $br=$script:areaListSubBrush }
-        elseif($a.WasNG) { $st='NG'; $br=$script:areaListNgBrush }
-        elseif($a.NGStreak -gt 0) { $st='確認中'; $br=$script:areaListWarnBrush }
-        else { $st='OK'; $br=$script:areaListOkBrush }
-        $stSize=$e.Graphics.MeasureString($st,$script:areaListStatusFont)
-        $e.Graphics.DrawString($st,$script:areaListStatusFont,$br,($b.Right-$stSize.Width-$pad),$textY)
+$tileBoard.Add_Paint({
+    $g=$_.Graphics
+    $g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.TextRenderingHint=[System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+    $g.Clear($cardBgDark)
+    $sel=$areaList.SelectedIndex
+    for($i=0;$i -lt $script:areas.Count;$i++) {
+        try { Draw-AreaTile $g $script:areas[$i] (Get-TileRect $i) ($i -eq $sel) } catch {}
     }
-    $e.DrawFocusRectangle()
+    Draw-AddTile $g (Get-TileRect $script:areas.Count)
 })
+$tileBoard.Add_MouseDown({
+    if($_.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+    for($i=0;$i -le $script:areas.Count;$i++) {
+        if((Get-TileRect $i).Contains($_.Location)) {
+            if($i -eq $script:areas.Count) { $pick.PerformClick() }
+            elseif($areaList.SelectedIndex -ne $i) { $areaList.SelectedIndex=$i; $tileBoard.Invalidate() }
+            return
+        }
+    }
+})
+$tileBoard.Add_MouseDoubleClick({
+    for($i=0;$i -lt $script:areas.Count;$i++) {
+        if((Get-TileRect $i).Contains($_.Location)) { Show-AreaHighlight $script:areas[$i].Rect; return }
+    }
+})
+$tileBoard.Add_SizeChanged({ $tileBoard.Invalidate() })
+$script:tileNameFont=UIFont 9.5 -Bold
+$script:tileSmallFont=UIFont 8
+$script:tilePillFont=UIFont 8 -Bold
+$script:tilePillTextBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(10,15,25))
+$script:tileTagBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(170,7,11,20))
+$script:tileMeterBgBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45,58,80))
+$script:tileThrBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(251,191,36))
+$script:tileEllipsis=New-Object System.Drawing.StringFormat
+$script:tileEllipsis.Trimming=[System.Drawing.StringTrimming]::EllipsisCharacter
+$script:tileEllipsis.FormatFlags=[System.Drawing.StringFormatFlags]::NoWrap
 $script:areaListNameFont=UIFont 9.5
 $script:areaListStatusFont=UIFont 9.5 -Bold
 $script:areaListNameBrush=New-Object System.Drawing.SolidBrush($textPrimary)
@@ -3427,13 +3956,7 @@ $meterBox.Add_Paint({
     $pad=Px 3
     $inner=$w-2*$pad
     # 「比べる」の値は小さいことが多いので、目盛りの最大を自動で合わせる（色で判定は 0～100%）
-    $scale=100.0
-    if($a.Mode -eq 'diff') {
-        $want=[Math]::Max(0.5,(Get-JudgeThreshold $a)*4.0)
-        foreach($v in @($a.LastRatio,$a.NgRatio)) { if($null -ne $v) { $want=[Math]::Max($want,[double]$v*1.2) } }
-        $scale=100.0
-        foreach($step in @(0.5,1,2,5,10,20,50,100)) { if($step -ge $want) { $scale=[double]$step; break } }
-    }
+    $scale=Get-MeterScale $a
     if($null -ne $a.LastRatio -and -not $a.Occluded) {
         $fillW=[int]($inner*[Math]::Min($scale,[double]$a.LastRatio)/$scale)
         $isNG=Test-RatioIsNG $a $a.LastRatio
@@ -3471,6 +3994,7 @@ $areaList.Add_SelectedIndexChanged({
     $repickBtn.Enabled=$hasSel; $renameBtn.Enabled=$hasSel; $deleteAreaBtn.Enabled=$hasSel
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
+    $tileBoard.Invalidate()
 })
 
 $saveBtn.Add_Click({
@@ -3629,10 +4153,9 @@ $areaPreviewBox.Add_MouseClick({
     $img=$areaPreviewBox.Image
     if(-not $a -or -not $img) { return }
     # 拡大表示（Zoom）の余白を考えて、クリック位置を画像の座標に直す
-    $pw=$areaPreviewBox.ClientSize.Width; $ph=$areaPreviewBox.ClientSize.Height
-    $scale=[Math]::Min($pw/[double]$img.Width,$ph/[double]$img.Height)
-    $ox=($pw-$img.Width*$scale)/2.0; $oy=($ph-$img.Height*$scale)/2.0
-    $ix=[int](($_.X-$ox)/$scale); $iy=[int](($_.Y-$oy)/$scale)
+    $pt=Convert-PreviewPoint $_.X $_.Y
+    if(-not $pt) { return }
+    $ix=[int]$pt[0]; $iy=[int]$pt[1]
     if($ix -lt 0 -or $iy -lt 0 -or $ix -ge $img.Width -or $iy -ge $img.Height) { return }
     $rgb=[NgVision79]::AverageColorAt([System.Drawing.Bitmap]$img,$ix,$iy,2)
     $a.Color=[System.Drawing.Color]::FromArgb($rgb[0],$rgb[1],$rgb[2])
@@ -3643,6 +4166,87 @@ $areaPreviewBox.Add_MouseClick({
     Update-TuneLabel $a
     Update-LiveRatioFromPreview
     SetStatusPanel $colorReady $textOnReady ($a.Name+'の検出する色を R'+$rgb[0]+' G'+$rgb[1]+' B'+$rgb[2]+' に変更しました')
+})
+
+$areaPreviewBox.Add_MouseDown({
+    if(-not $script:maskMode -or $_.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+    $script:maskDragStart=$_.Location
+    $script:maskDragNow=$_.Location
+})
+$areaPreviewBox.Add_MouseMove({
+    if(-not $script:maskMode -or -not $script:maskDragStart) { return }
+    $script:maskDragNow=$_.Location
+    $areaPreviewBox.Invalidate()
+})
+$areaPreviewBox.Add_MouseUp({
+    if(-not $script:maskMode -or -not $script:maskDragStart) { return }
+    $a=Get-SelectedArea
+    $p0=Convert-PreviewPoint $script:maskDragStart.X $script:maskDragStart.Y
+    $p1=Convert-PreviewPoint $_.X $_.Y
+    $script:maskDragStart=$null; $script:maskDragNow=$null
+    if($a -and $p0 -and $p1 -and (Add-AreaMask $a $p0[0] $p0[1] $p1[0] $p1[1])) {
+        Set-MaskMode $false
+        Update-SampleRatios $a
+        LoadAreaSettingsIntoSliders
+        UpdateAreaPreview
+        $tileBoard.Invalidate()
+        Mark-SettingsDirty
+        SetStatusPanel $colorReady $textOnReady ($a.Name+'：囲んだ場所を判定から外しました（全部で '+$a.Masks.Count+' か所）')
+    } else {
+        $areaPreviewBox.Invalidate()
+    }
+})
+$areaPreviewBox.Add_Paint({
+    if(-not $script:maskMode -or -not $script:maskDragStart -or -not $script:maskDragNow) { return }
+    $x=[Math]::Min($script:maskDragStart.X,$script:maskDragNow.X); $y=[Math]::Min($script:maskDragStart.Y,$script:maskDragNow.Y)
+    $w=[Math]::Abs($script:maskDragNow.X-$script:maskDragStart.X); $h=[Math]::Abs($script:maskDragNow.Y-$script:maskDragStart.Y)
+    $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,210,60),2)
+    $pen.DashStyle=[System.Drawing.Drawing2D.DashStyle]::Dash
+    $_.Graphics.DrawRectangle($pen,$x,$y,$w,$h)
+    $pen.Dispose()
+})
+$maskBtn.Add_Click({
+    $a=Get-SelectedArea
+    if(-not $a) { return }
+    Set-MaskMode (-not $script:maskMode)
+    if($script:maskMode) { SetStatusPanel $colorReady $textOnReady ($a.Name+'：左の映像の上で、判定から外したい場所をドラッグで囲んでください') }
+})
+$maskClearBtn.Add_Click({
+    $a=Get-SelectedArea
+    if(-not $a -or $a.Masks.Count -eq 0) { return }
+    $a.Masks.Clear()
+    $a.MaskReady=$false
+    Reset-AreaWithLog $a 'NG解除（除外の変更）'
+    Update-SampleRatios $a
+    LoadAreaSettingsIntoSliders
+    UpdateAreaPreview
+    $tileBoard.Invalidate()
+    Mark-SettingsDirty
+    SetStatusPanel $colorReady $textOnReady ($a.Name+'：除外する場所をすべて消しました（エリア全体で判定します）')
+})
+$adaptCheck.Add_CheckedChanged({
+    if($script:suppressEvents) { return }
+    $a=Get-SelectedArea
+    if(-not $a) { return }
+    $a.AdaptDrift=$adaptCheck.Checked
+    if(-not $a.AdaptDrift) { Update-DiffRefArray $a }   # 合わせた分を捨てて、記録した見本に戻す
+    Mark-SettingsDirty
+})
+$ackBtn.Add_Click({
+    # NGを見て「確認しました」：音を止め、表示を確認済みにする（元に戻ったら自動で解除）
+    $now=Get-Date
+    $nowText=$now.ToString('yyyy-MM-dd HH:mm:ss')
+    foreach($a in $script:areas) {
+        if($a.WasNG -and -not $a.Acked) {
+            $a.Acked=$true
+            $dur=$(if($a.NGSince){($now-$a.NGSince).TotalSeconds}else{$null})
+            Write-NGLogRow $nowText $a.Name '確認' $a.LastRatio $dur
+        }
+    }
+    BuzzStop
+    $ackBtn.Visible=$false
+    Update-RunButtons
+    $tileBoard.Invalidate()
 })
 
 $recordOkBtn.Add_Click({
@@ -3683,7 +4287,7 @@ $clearRefsBtn.Add_Click({
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
     Mark-SettingsDirty
 })
 $rbModeDiff.Add_CheckedChanged({
@@ -3751,7 +4355,7 @@ $ngTrack.Add_ValueChanged({
     Mark-SettingsDirty
     Update-MeterLabel
     $meterBox.Invalidate()
-    $areaList.Invalidate()
+    $tileBoard.Invalidate()
 })
 $confirmBox.Add_ValueChanged({
     if($script:suppressEvents) { return }
@@ -3889,6 +4493,7 @@ $timer.Add_Tick({
                     $bmp=GrabBitmapForArea $a
                     $ratio=Get-AreaRatio $bmp $a -WithMap:(-not $script:miniMode)
                     $a.CaptureFailed=$false
+                    if(-not $script:miniMode -and ($nowTime-$a.ThumbAt).TotalSeconds -ge 1) { Update-AreaThumb $a $bmp }
                     if(Update-AreaJudgement $a $ratio $nowTime $nowText) { [void]$newNGs.Add($a) }
                 } catch {
                     # 画面ロック中・リモートデスクトップ切断中などは画面を読み取れない。黙って止まらず知らせる。
@@ -3899,7 +4504,7 @@ $timer.Add_Tick({
             }
             if($a.WasNG) { [void]$ngAreas.Add($a) }
         }
-        $areaList.Invalidate()
+        $tileBoard.Invalidate()
         if(-not $script:miniMode) { Update-MeterLabel; $meterBox.Invalidate() }
 
         foreach($a in $newNGs) { Save-NGImage $a $nowTime }
@@ -3916,9 +4521,18 @@ $timer.Add_Tick({
                 } catch {}
             }
         }
+        $showAck=$false
         if($ngAreas.Count -gt 0) {
             $names=(($ngAreas | ForEach-Object { $_.Name }) -join '、')
-            SetStatusPanel $colorAlarm ([System.Drawing.Color]::White) ('⚠ NG検知！　'+$names)
+            $unacked=@($ngAreas | Where-Object { -not $_.Acked })
+            $first=$(if($unacked.Count -gt 0){$unacked[0]}else{$ngAreas[0]})
+            $line2=((Get-NGReasonText $first)+'　'+(Get-NGSinceText $first $nowTime)).Trim()
+            if($unacked.Count -gt 0) {
+                SetStatusPanel $colorAlarm ([System.Drawing.Color]::White) ('⚠ NG　'+$names+"`r`n"+$line2)
+                $showAck=$true
+            } else {
+                SetStatusPanel $colorAcked $textOnAcked ('確認済み：'+$names+'（元に戻ると自動で解除）'+"`r`n"+$line2)
+            }
         } elseif($occluded.Count -gt 0) {
             SetStatusPanel $colorWarn $textOnWarn ('⚠ この画面が「'+($occluded -join '、')+'」に重なっていて監視できません。画面を動かしてください。')
         } elseif($failed.Count -gt 0) {
@@ -3930,8 +4544,10 @@ $timer.Add_Tick({
         } elseif($script:logWriteBlocked) {
             SetStatusPanel $colorWarn $textOnWarn '監視中（すべて正常）｜ ⚠ ログのCSVが開かれていて書き込めません。Excelを閉じると自動で書き込みます。'
         } else {
-            SetStatusPanel $colorRunning $textOnRunning ($script:areas.Count.ToString()+'箇所を監視中　｜　すべて正常')
+            SetStatusPanel $colorRunning $textOnRunning ('✔ すべて正常　｜　'+$script:areas.Count.ToString()+'箇所を監視中')
         }
+        if($ackBtn.Visible -ne $showAck) { $ackBtn.Visible=$showAck }
+        Update-TodaySummary
     } catch {
         Write-ErrorLogThrottled ('監視中のエラー: '+$_.Exception.ToString())
     }
@@ -3946,7 +4562,7 @@ $previewTimer.Add_Tick({
         if($script:pendingLogRows.Count -gt 0) { [void](Flush-NGLog) }
         if($script:miniMode -or -not $f.Visible -or $f.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) { return }
         UpdateAreaPreview
-        if(-not $script:running) { $areaList.Invalidate() }
+        if(-not $script:running) { Update-IdleThumbs; Update-TodaySummary; $tileBoard.Invalidate() }
     } catch {}
 })
 
@@ -4039,6 +4655,8 @@ $f.Add_FormClosing({
 })
 
 # ================== 起動 ==================
+Read-TodayStatsFromLog
+Update-TodaySummary
 RefreshAreaListUI
 Update-RunButtons
 if($script:loadedAtStartup -and $script:areas.Count -gt 0) {

@@ -27,6 +27,10 @@ public static class SceneGen {
     // defect: 0 none, 1 small part missing (8x8 at 100,40), 2 lamp lit (14x14 at 30,70), 3 hand/object (large, 40x40)
     // clock: draws a changing "timestamp" box at the top-left (value changes the pattern)
     public static byte[] Frame(int seed, int dx, int dy, double gain, int noise, int defect, int clock, int captureMargin) {
+        return Frame(seed, dx, dy, gain, noise, defect, clock, captureMargin, -1);
+    }
+    // arm: position step of a moving arm (-1 = none)
+    public static byte[] Frame(int seed, int dx, int dy, double gain, int noise, int defect, int clock, int captureMargin, int arm) {
         var r = new Random(seed);
         int MW = W + 20;
         int cw = W + 2*captureMargin, ch = H + 2*captureMargin;
@@ -40,6 +44,11 @@ public static class SceneGen {
             if (defect == 1 && px >= 100 && px < 108 && py >= 40 && py < 48) { R = holeLevel; G = holeLevel; B = holeLevel + 1; }  // part missing
             if (defect == 2 && px >= 30 && px < 44 && py >= 70 && py < 84) { R = 235; G = 60; B = 40; }          // lamp lit
             if (defect == 3 && px >= 60 && px < 100 && py >= 30 && py < 70) { R = 180; G = 140; B = 120; }      // object
+            if (defect == 4 && px >= 50 && px < 62 && py >= 95 && py < 110) { R = 235; G = 60; B = 40; }         // a lamp near the moving arm
+            if (arm >= 0) {                                                                                        // a moving arm (normal operation) in x 4..44, y 60..112
+                int ay = 60 + (arm * 7) % 40;
+                if (px >= 4 && px < 44 && py >= ay && py < ay + 12) { R = 200; G = 200; B = 70; }
+            }
             int qx = x - captureMargin, qy = y - captureMargin;               // clock is on the viewer, does not move
             if (clock >= 0 && qx >= 4 && qx < 40 && qy >= 4 && qy < 12) {
                 int digit = ((qx - 4) / 6 + clock) % 3;

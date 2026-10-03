@@ -175,6 +175,56 @@ foreach($su in $setups){
 $v=[NgDiff79]::ScoreImageBuf((Join-Refs $hOk),([HmiGen]::Frame(141,41,0,0,0,$GM,4)),$HBW,$HBH,$HBW*4,4,$GM,$GM,$HW,$HH,50,$null)
 "参考：正常（別の値）が 違い {0:N2}% → {1}" -f $v,$(if($v -ge 0.15){'誤ってNGになる（このような画面には「異常の画面が出たらNG」が向いている）'}else{'OK'})
 
+"=== v81：明るさがゆっくり変わる（1.0 → 0.55）。自動追従あり ==="
+[SceneGen]::Init(7,90,60)
+$smp=New-Object 'float[][][]' 10
+for($i=0;$i -lt 10;$i++){ $smp[$i]=[NgDiff79]::SampleBuf(([SceneGen]::Frame(100+$i,0,0,1.0,8,0,0,$GM)),$BW,$BH,$BW*4,4,$GM,$GM,$GW,$GH) }
+$dref=[NgDiff79]::BuildReference($smp,$GW,$GH)
+$work=New-Object 'float[][]' 4; for($j=0;$j -lt 4;$j++){ $work[$j]=[float[]]$dref[$j].Clone() }
+function ScA($refs,$buf,$fm,$cm,$rate){ [NgDiff79]::ScoreImageBufEx($refs,$buf,$BW,$BH,$BW*4,4,$GM,$GM,$GW,$GH,50,$null,$fm,$cm,$rate,0.075) }
+$fpNo=0; $fpAd=0
+for($t=0;$t -le 90;$t++){
+    $g=1.0-0.45*$t/90
+    if((ScA $dref ([SceneGen]::Frame(1000+$t,0,0,$g,8,0,0,$GM)) $null $null 0) -ge 0.15){ $fpNo++ }
+    for($r=0;$r -lt 20;$r++){ $s=ScA $work ([SceneGen]::Frame(1000+$t,0,0,$g,8,0,0,$GM)) $null $null 0.002; if($r -eq 0 -and $s -ge 0.15){ $fpAd++ } }
+}
+"参考：自動追従なしだと 誤NG {0}/91 コマ" -f $fpNo
+Check '自動追従あり：誤NG（91コマ中）' ($fpAd -gt 0) $false $fpAd 'コマ'
+$v=ScA $work ([SceneGen]::Frame(3000,0,0,0.55,8,1,0,$GM)) $null $null 0.002
+Check '暗くなった後：小さな部品なし' ($v -ge 0.15) $true $v '%'
+$v=ScA $work ([SceneGen]::Frame(3001,0,0,0.55,8,4,0,$GM)) $null $null 0.002
+Check '暗くなった後：ランプ点灯' ($v -ge 0.15) $true $v '%'
+$held=0; for($r=0;$r -lt 300;$r++){ if((ScA $work ([SceneGen]::Frame(4000+$r,0,0,0.55,8,1,0,$GM)) $null $null 0.002) -ge 0.15){ $held++ } }
+Check '部品なしが300回続いても覚え込まない' ($held -eq 300) $true $held '回NG'
+Check '記録した見本は書き換わらない' ([NgDiff79]::ScoreImageBuf($dref,([SceneGen]::Frame(5,0,0,1.0,8,0,0,$GM)),$BW,$BH,$BW*4,4,$GM,$GM,$GW,$GH,50,$null) -ge 0.15) $false 0 ''
+
+"=== v81：正常でも動くアーム。除外する場所を指定 ==="
+$smp=New-Object 'float[][][]' 10
+for($i=0;$i -lt 10;$i++){ $smp[$i]=[NgDiff79]::SampleBuf(([SceneGen]::Frame(100+$i,0,0,1.0,8,0,0,$GM,$i)),$BW,$BH,$BW*4,4,$GM,$GM,$GW,$GH) }
+$aref=[NgDiff79]::BuildReference($smp,$GW,$GH)
+$mx=0; for($k=0;$k -lt 20;$k++){ $mx=[Math]::Max($mx,(ScA $aref ([SceneGen]::Frame(2000+$k,0,0,1.0,8,0,0,$GM,13+$k)) $null $null 0)) }
+"参考：除外しないと アームが動くだけで 違い 最大 {0:N2}%" -f $mx
+$fw=0;$fh=0;[NgDiff79]::GridFor($GW,$GH,[NgDiff79]::FineCells,[ref]$fw,[ref]$fh); $cw=0;$ch=0;[NgDiff79]::GridFor($GW,$GH,[NgDiff79]::CoarseCells,[ref]$cw,[ref]$ch)
+$fm=[NgDiff79]::CellMask($GW,$GH,$fw,$fh,[int[]]@(2,56,46,60)); $cm=[NgDiff79]::CellMask($GW,$GH,$cw,$ch,[int[]]@(2,56,46,60))
+$mx=0; for($k=0;$k -lt 20;$k++){ $mx=[Math]::Max($mx,(ScA $aref ([SceneGen]::Frame(2000+$k,0,0,1.0,8,0,0,$GM,13+$k)) $fm $cm 0)) }
+Check '除外あり：アームが動く（正常）' ($mx -ge 0.15) $false $mx '%'
+$v=ScA $aref ([SceneGen]::Frame(2100,0,0,1.0,8,1,0,$GM,17)) $fm $cm 0
+Check '除外あり：離れた場所の部品なし' ($v -ge 0.15) $true $v '%'
+$v=ScA $aref ([SceneGen]::Frame(2101,0,0,1.0,8,4,0,$GM,19)) $fm $cm 0
+Check '除外あり：除外のすぐ外のランプ点灯' ($v -ge 0.15) $true $v '%'
+$o=New-Object 'float[][][]' 1; $o[0]=[NgDiff79]::SampleBuf(([SceneGen]::Frame(2200,0,0,1.0,8,0,0,$GM,25)),$BW,$BH,$BW*4,4,$GM,$GM,$GW,$GH)
+$v=[NgDiff79]::ScoreSampleMasked($aref,$o[0][0],$o[0][1],$GW,$GH,50,$fm,$cm)
+Check '除外あり：記録したコマの判定（メーターの▼）' ($v -ge 0.15) $false $v '%'
+
+"=== v81：除外せず「長めに記録（150コマ）」でアームの動きを覚える ==="
+$long=New-Object 'float[][][]' 150
+for($i=0;$i -lt 150;$i++){ $long[$i]=[NgDiff79]::SampleBuf(([SceneGen]::Frame(5000+$i,0,0,1.0,8,0,0,$GM,$i)),$BW,$BH,$BW*4,4,$GM,$GM,$GW,$GH) }
+$lref=[NgDiff79]::BuildReference($long,$GW,$GH)
+$mx=0; for($k=0;$k -lt 20;$k++){ $mx=[Math]::Max($mx,(ScA $lref ([SceneGen]::Frame(2000+$k,0,0,1.0,8,0,0,$GM,13+$k)) $null $null 0)) }
+Check '長めに記録：アームが動く（正常）' ($mx -ge 0.15) $false $mx '%'
+$v=ScA $lref ([SceneGen]::Frame(2100,0,0,1.0,8,1,0,$GM,17)) $null $null 0
+Check '長めに記録：部品なし' ($v -ge 0.15) $true $v '%'
+
 "=== 保存用の圧縮・復元 ==="
 $v=[float[]]@(0,1.5,12.25,255,4000); $u=[NgBlock79]::Unpack([NgBlock79]::Pack($v))
 Check '圧縮して戻しても同じ値' ((($v | % {$_}) -join ',') -ne (($u | % {$_}) -join ',')) $false 0 ''
