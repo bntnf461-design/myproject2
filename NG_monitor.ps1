@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v81 精度（明るさの自動追従・除外する場所・長めに記録）と使いやすさ（タイル表示・確認ボタン・今日の集計）
+﻿# NG MONITOR - v82 時間帯で監視（20:00を過ぎて電源が入っていたら鳴らす 等）・NGが○秒続いたら鳴らす・鳴らし直し
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -1429,6 +1429,12 @@ function New-MonitorArea($name,$rect,$color) {
         AdaptDrift=$true       # 「比べる」：朝・夕方などの、ゆっくりした明るさの変化に自動で合わせる
         DiffRefs=(New-Object System.Collections.ArrayList)   # 正常の見本（各要素は {平均, ゆらぎ} の組）。昼・夜など複数可
         ConfirmFrames=2        # この回数だけ続けてNGになったらNG確定（瞬間的なノイズを無視）
+        ScheduleOn=$false      # 決まった時間帯だけ監視する（例：20:00～翌6:00 に電源が入っていたら鳴らす）
+        ScheduleStart='20:00'
+        ScheduleEnd='06:00'    # 開始より前の時刻なら「翌日の」この時刻まで
+        ScheduleDays=127       # 監視する曜日（日=1 月=2 火=4 水=8 木=16 金=32 土=64、開始時刻の曜日で判断）
+        NGDelaySec=0           # NGの状態がこの秒数続いたら鳴らす（ドアの開けっぱなし等。0＝すぐ）
+        RepeatMin=0            # NGの間、この分ごとに鳴らし直す（0＝1回だけ。「確認しました」で止まる）
         BuzzerSeconds=2
         BuzzerType=0
         BuzzerVolume=80
@@ -1461,6 +1467,9 @@ function New-MonitorArea($name,$rect,$color) {
         CoarseMask=$null
         MaskReady=$false
         Acked=$false           # 今のNGを「確認しました」済み
+        RawNGSince=$null       # NGの状態になり始めた時刻（待ち時間の計算用）
+        LastBuzzAt=$null       # 最後に鳴らした時刻（鳴らし直し用）
+        OutOfHours=$false      # 監視する時間帯の外
         Thumb=$null            # エリア一覧に出す小さな映像
         ThumbAt=[datetime]::MinValue
     }
@@ -1474,6 +1483,50 @@ function Reset-AreaRuntime($a) {
     $a.Occluded=$false
     $a.CaptureFailed=$false
     $a.Acked=$false
+    $a.RawNGSince=$null
+    $a.LastBuzzAt=$null
+    $a.OutOfHours=$false
+}
+
+function ConvertTo-Minutes($text) {
+    # 'HH:mm' → 0時からの分。読めない時は $null
+    $m=[regex]::Match([string]$text,'^\s*(\d{1,2}):(\d{2})\s*$')
+    if(-not $m.Success) { return $null }
+    $h=[int]$m.Groups[1].Value; $mi=[int]$m.Groups[2].Value
+    if($h -gt 23 -or $mi -gt 59) { return $null }
+    return ($h*60+$mi)
+}
+
+function Test-AreaInSchedule($a,$now) {
+    # 今が「監視する時間帯」の中かどうか。時間帯を使わない設定なら常に中。
+    # 終了が開始より前（20:00～6:00 など）は日をまたぐ。曜日は「時間帯が始まった日」の曜日で見る。
+    if(-not $a.ScheduleOn) { return $true }
+    $st=ConvertTo-Minutes $a.ScheduleStart; $en=ConvertTo-Minutes $a.ScheduleEnd
+    if($null -eq $st -or $null -eq $en) { return $true }
+    $t=([datetime]$now).Hour*60+([datetime]$now).Minute
+    $day=([datetime]$now).Date
+    if($st -lt $en) { $in=($t -ge $st -and $t -lt $en) }
+    elseif($st -gt $en) {
+        if($t -ge $st) { $in=$true }
+        elseif($t -lt $en) { $in=$true; $day=$day.AddDays(-1) }
+        else { $in=$false }
+    } else { $in=$true }   # 開始＝終了：一日中（曜日だけで決める）
+    if(-not $in) { return $false }
+    $bit=[int][Math]::Pow(2,[int]$day.DayOfWeek)
+    return ((([int]$a.ScheduleDays) -band $bit) -ne 0)
+}
+
+function Get-ScheduleText($a) {
+    if(-not $a.ScheduleOn) { return '' }
+    $st=ConvertTo-Minutes $a.ScheduleStart; $en=ConvertTo-Minutes $a.ScheduleEnd
+    $text=$(if($null -ne $st -and $null -ne $en -and $en -lt $st){$a.ScheduleStart+'～翌'+$a.ScheduleEnd}elseif($st -eq $en){'終日'}else{$a.ScheduleStart+'～'+$a.ScheduleEnd})
+    $days=[int]$a.ScheduleDays
+    if($days -ne 127) {
+        $names=@('日','月','火','水','木','金','土')
+        $sel=@(); for($i=0;$i -lt 7;$i++){ if(($days -band [int][Math]::Pow(2,$i)) -ne 0){ $sel+=$names[$i] } }
+        $text+='（'+($sel -join '')+'）'
+    }
+    return $text
 }
 
 function Clear-AreaSamples($a) {
@@ -1612,9 +1665,14 @@ function Update-AreaJudgement($a,$ratio,$nowTime,$nowText) {
         $margin=[Math]::Min(3.0,$t*0.25)
         $rawNG=$(if($a.WasNG){$ratio -ge ($t-$margin)}else{$ratio -ge $t})
     }
-    if($rawNG) { $a.NGStreak=$a.NGStreak+1; $a.OKStreak=0 } else { $a.OKStreak=$a.OKStreak+1; $a.NGStreak=0 }
+    if($rawNG) {
+        $a.NGStreak=$a.NGStreak+1; $a.OKStreak=0
+        if(-not $a.RawNGSince) { $a.RawNGSince=$nowTime }
+    } else { $a.OKStreak=$a.OKStreak+1; $a.NGStreak=0; $a.RawNGSince=$null }
     $need=[Math]::Max(1,[int]$a.ConfirmFrames)
-    if((-not $a.WasNG) -and $a.NGStreak -ge $need) {
+    # 待ち時間：NGの状態が NGDelaySec 秒続いてから確定（ドアを開けてすぐ閉めた時などは鳴らさない）
+    $waited=$(if($a.RawNGSince){(([datetime]$nowTime)-([datetime]$a.RawNGSince)).TotalSeconds}else{0})
+    if((-not $a.WasNG) -and $a.NGStreak -ge $need -and $waited -ge [double]$a.NGDelaySec) {
         $a.WasNG=$true
         $a.NGSince=$nowTime
         $a.Acked=$false
@@ -1890,6 +1948,8 @@ function Get-CurrentSettingsObject {
             MatchOkRefs=@($a.MatchOkRefs | ForEach-Object { ConvertTo-PackedRef $_ })
             Masks=@($a.Masks | ForEach-Object { [PSCustomObject]@{ X=$_.X; Y=$_.Y; W=$_.Width; H=$_.Height } })
             AdaptDrift=[bool]$a.AdaptDrift
+            ScheduleOn=[bool]$a.ScheduleOn; ScheduleStart=$a.ScheduleStart; ScheduleEnd=$a.ScheduleEnd; ScheduleDays=$a.ScheduleDays
+            NGDelaySec=$a.NGDelaySec; RepeatMin=$a.RepeatMin
             ConfirmFrames=$a.ConfirmFrames
             BuzzerSeconds=$a.BuzzerSeconds; BuzzerType=$a.BuzzerType; BuzzerVolume=$a.BuzzerVolume
         }
@@ -2066,6 +2126,12 @@ function Apply-SettingsObject($data) {
             }
             $newArea.AdaptDrift=$(if($null -ne $ad.AdaptDrift){[bool]$ad.AdaptDrift}else{$true})
             $newArea.ConfirmFrames=ClampInt $ad.ConfirmFrames 1 20 2
+            $newArea.ScheduleOn=$(if($null -ne $ad.ScheduleOn){[bool]$ad.ScheduleOn}else{$false})
+            if($null -ne (ConvertTo-Minutes $ad.ScheduleStart)) { $newArea.ScheduleStart=[string]$ad.ScheduleStart }
+            if($null -ne (ConvertTo-Minutes $ad.ScheduleEnd)) { $newArea.ScheduleEnd=[string]$ad.ScheduleEnd }
+            $newArea.ScheduleDays=ClampInt $ad.ScheduleDays 0 127 127
+            $newArea.NGDelaySec=ClampInt $ad.NGDelaySec 0 86400 0
+            $newArea.RepeatMin=ClampInt $ad.RepeatMin 0 1440 0
             $newArea.BuzzerSeconds=ClampInt $ad.BuzzerSeconds 1 60 $legacyBuzzerSeconds
             $newArea.BuzzerType=ClampInt $ad.BuzzerType 0 7 $legacyBuzzerType
             $newArea.BuzzerVolume=ClampInt $ad.BuzzerVolume 0 100 $legacyBuzzerVolume
@@ -2823,6 +2889,66 @@ $test.Enabled=$false
 Add-Controls $buzzRow2 @($volLabel,$volTrack,$volPercentLabel,$test)
 $g3.Body.Controls.Add($buzzRow2)
 
+# 鳴らす条件（時間帯・待ち時間・鳴らし直し）
+$whenTitle=New-Label '鳴らす条件' 9.5 -Bold ([System.Drawing.Color]::FromArgb(255,210,90))
+$whenTitle.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 10),(Px 3),(Px 1))
+$g3.Body.Controls.Add($whenTitle)
+$schedCheck=New-Object System.Windows.Forms.CheckBox
+$schedCheck.Text='決まった時間帯だけ監視する（例：20:00 を過ぎても機械の電源が入っていたら鳴らす）'
+$schedCheck.AutoSize=$true; $schedCheck.Font=UIFont 9; $schedCheck.ForeColor=$textPrimary; $schedCheck.Enabled=$false
+$schedCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 3),(Px 3),(Px 3))
+$g3.Body.Controls.Add($schedCheck)
+function New-TimePicker {
+    $t=New-Object System.Windows.Forms.DateTimePicker
+    $t.Format=[System.Windows.Forms.DateTimePickerFormat]::Custom
+    $t.CustomFormat='HH:mm'
+    $t.ShowUpDown=$true
+    $t.Font=UIFont 10
+    $t.Width=Px 80
+    $t.Value=[datetime]::Today
+    $t.Enabled=$false
+    $t.Anchor=[System.Windows.Forms.AnchorStyles]::Left
+    Stop-WheelChange $t
+    return $t
+}
+$schedRow=New-Row
+$schedStartLabel=New-Label '　時間帯：'
+$schedStart=New-TimePicker
+$schedTilde=New-Label '～'
+$schedEnd=New-TimePicker
+$schedNote=New-Label '（終わりが始まりより前なら翌日まで。同じ時刻なら一日中）' 8.5 -color $textSecondary
+Add-Controls $schedRow @($schedStartLabel,$schedStart,$schedTilde,$schedEnd,$schedNote)
+$g3.Body.Controls.Add($schedRow)
+$daysRow=New-Row
+$daysLabel=New-Label '　曜日：'
+Add-Controls $daysRow @($daysLabel)
+$dayChecks=@()
+foreach($dn in @('日','月','火','水','木','金','土')) {
+    $c=New-Object System.Windows.Forms.CheckBox
+    $c.Text=$dn; $c.AutoSize=$true; $c.Font=UIFont 9; $c.ForeColor=$textPrimary; $c.Enabled=$false; $c.Checked=$true
+    $c.Anchor=[System.Windows.Forms.AnchorStyles]::Left
+    $c.Margin=New-Object System.Windows.Forms.Padding((Px 2),(Px 3),(Px 2),(Px 3))
+    $dayChecks+=$c
+    [void]$daysRow.Controls.Add($c)
+}
+$daysNote=New-Label '（夜をまたぐ時間帯は、始まった日の曜日）' 8.5 -color $textSecondary
+[void]$daysRow.Controls.Add($daysNote)
+$g3.Body.Controls.Add($daysRow)
+$delayRow=New-Row
+$delayLabel=New-Label 'NGの状態が'
+$delayBox=New-Number 0 86400 0 0 10 80
+$delayBox.Enabled=$false
+$delayUnit=New-Label '秒 続いたら鳴らす（0＝すぐ。ドアの開けっぱなし等は 60～300 秒など）' 8.5 -color $textSecondary
+Add-Controls $delayRow @($delayLabel,$delayBox,$delayUnit)
+$g3.Body.Controls.Add($delayRow)
+$repeatRow=New-Row
+$repeatLabel=New-Label 'NGの間、'
+$repeatBox=New-Number 0 1440 0 0 1 70
+$repeatBox.Enabled=$false
+$repeatUnit=New-Label '分ごとに鳴らし直す（0＝1回だけ。「確認しました」を押すと止まります）' 8.5 -color $textSecondary
+Add-Controls $repeatRow @($repeatLabel,$repeatBox,$repeatUnit)
+$g3.Body.Controls.Add($repeatRow)
+
 # ---------- ④ その他 ----------
 $g4=New-Group '④ その他'
 $settingsFlow.Controls.Add($g4.Group)
@@ -3076,7 +3202,7 @@ function LoadAreaSettingsIntoSliders {
     $script:suppressEvents=$true
     try {
         $en=($null -ne $a)
-        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck)) { $c.Enabled=$en }
+        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck,$schedCheck,$delayBox,$repeatBox)) { $c.Enabled=$en }
         if($en) {
             if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } elseif($a.Mode -eq 'match') { $rbModeMatch.Checked=$true } else { $rbModeColor.Checked=$true }
             if($a.Direction -eq 'disappear') { $rbDisappear.Checked=$true } else { $rbAppear.Checked=$true }
@@ -3102,6 +3228,14 @@ function LoadAreaSettingsIntoSliders {
             $g2.Group.Text=('② 検出の設定：'+$a.Name)
             $g3.Group.Text=('③ ブザー：'+$a.Name)
             $areaSettingsLabel.Text=($a.Name+' の設定を編集中')
+            $schedCheck.Checked=[bool]$a.ScheduleOn
+            $sm=ConvertTo-Minutes $a.ScheduleStart; if($null -eq $sm) { $sm=1200 }
+            $em=ConvertTo-Minutes $a.ScheduleEnd; if($null -eq $em) { $em=360 }
+            $schedStart.Value=[datetime]::Today.AddMinutes($sm)
+            $schedEnd.Value=[datetime]::Today.AddMinutes($em)
+            for($i=0;$i -lt 7;$i++) { $dayChecks[$i].Checked=(([int]$a.ScheduleDays -band [int][Math]::Pow(2,$i)) -ne 0) }
+            $delayBox.Value=[decimal][Math]::Min(86400,[Math]::Max(0,[int]$a.NGDelaySec))
+            $repeatBox.Value=[decimal][Math]::Min(1440,[Math]::Max(0,[int]$a.RepeatMin))
             $secBox.Value=[decimal]$a.BuzzerSeconds
             $typeCombo.SelectedIndex=[Math]::Max(0,[Math]::Min(7,$a.BuzzerType))
             $volTrack.Value=$a.BuzzerVolume
@@ -3126,6 +3260,7 @@ function LoadAreaSettingsIntoSliders {
         Update-TuneLabel $a
         Set-Eyedropper $false
         Set-MaskMode $false
+        Update-ScheduleEnabled
     } finally {
         $script:suppressEvents=$false
     }
@@ -3240,8 +3375,15 @@ function Get-AreaState($a) {
     if($a.Occluded) { return @('重なり',[System.Drawing.Color]::FromArgb(245,180,83)) }
     if($a.CaptureFailed) { return @('読取不可',[System.Drawing.Color]::FromArgb(245,180,83)) }
     if(-not $script:running) { return @('待機',$textSecondary) }
+    if($a.OutOfHours) { return @('時間外',$textSecondary) }
     if($a.WasNG) { if($a.Acked) { return @('NG 確認済',[System.Drawing.Color]::FromArgb(255,150,150)) } else { return @('NG',[System.Drawing.Color]::FromArgb(255,93,93)) } }
-    if($a.NGStreak -gt 0) { return @('確認中',[System.Drawing.Color]::FromArgb(251,191,36)) }
+    if($a.NGStreak -gt 0) {
+        if([int]$a.NGDelaySec -gt 0 -and $a.RawNGSince) {
+            $left=[int][Math]::Ceiling([double]$a.NGDelaySec-((Get-Date)-$a.RawNGSince).TotalSeconds)
+            if($left -gt 0) { return @(('あと'+(Format-Duration $left)),[System.Drawing.Color]::FromArgb(251,191,36)) }
+        }
+        return @('確認中',[System.Drawing.Color]::FromArgb(251,191,36))
+    }
     return @('OK',[System.Drawing.Color]::FromArgb(52,211,153))
 }
 
@@ -3352,7 +3494,10 @@ function Draw-AreaTile($g,$a,$r,$selected) {
     $word=$(if($a.Mode -eq 'diff'){'違い '}elseif($a.Mode -eq 'match'){'一致 '}else{'一致率 '})
     $val=$(if($null -ne $a.LastRatio -and -not $a.Occluded){Format-Percent $a.LastRatio}else{'－'})
     $vr=New-Object System.Drawing.RectangleF(($r.X+$pad),($mr.Bottom+(Px 4)),($r.Width-2*$pad),($script:tileSmallFont.Height+(Px 2)))
-    $g.DrawString(($word+$val+' ／ '+(Format-Percent (Get-JudgeThreshold $a))),$script:tileSmallFont,$script:areaListSubBrush,$vr,$script:tileEllipsis)
+    $extra=''
+    if($a.ScheduleOn) { $extra+='　'+(Get-ScheduleText $a) }
+    if([int]$a.NGDelaySec -gt 0) { $extra+='　'+(Format-Duration $a.NGDelaySec)+'待ち' }
+    $g.DrawString(($word+$val+' ／ '+(Format-Percent (Get-JudgeThreshold $a))+$extra),$script:tileSmallFont,$script:areaListSubBrush,$vr,$script:tileEllipsis)
 }
 
 function Draw-AddTile($g,$r) {
@@ -4232,6 +4377,48 @@ $adaptCheck.Add_CheckedChanged({
     if(-not $a.AdaptDrift) { Update-DiffRefArray $a }   # 合わせた分を捨てて、記録した見本に戻す
     Mark-SettingsDirty
 })
+function Update-ScheduleEnabled {
+    $on=$schedCheck.Enabled -and $schedCheck.Checked
+    $schedStart.Enabled=$on; $schedEnd.Enabled=$on
+    foreach($c in $dayChecks) { $c.Enabled=$on }
+}
+function Save-ScheduleFromUI {
+    if($script:suppressEvents) { return }
+    $a=Get-SelectedArea
+    if(-not $a) { return }
+    $a.ScheduleOn=$schedCheck.Checked
+    $a.ScheduleStart=$schedStart.Value.ToString('HH:mm')
+    $a.ScheduleEnd=$schedEnd.Value.ToString('HH:mm')
+    $d=0; for($i=0;$i -lt 7;$i++) { if($dayChecks[$i].Checked) { $d=$d -bor [int][Math]::Pow(2,$i) } }
+    $a.ScheduleDays=$d
+    Update-ScheduleEnabled
+    Mark-SettingsDirty
+    $tileBoard.Invalidate()
+}
+$schedCheck.Add_CheckedChanged({
+    Save-ScheduleFromUI
+    if($script:suppressEvents) { return }
+    $a=Get-SelectedArea
+    if($a -and $a.ScheduleOn) { SetStatusPanel $colorReady $textOnReady ($a.Name+'：'+(Get-ScheduleText $a)+' の間だけ監視します（それ以外の時間は鳴らしません）') }
+})
+$schedStart.Add_ValueChanged({ Save-ScheduleFromUI })
+$schedEnd.Add_ValueChanged({ Save-ScheduleFromUI })
+foreach($c in $dayChecks) { $c.Add_CheckedChanged({ Save-ScheduleFromUI }) }
+$delayBox.Add_ValueChanged({
+    if($script:suppressEvents) { return }
+    $a=Get-SelectedArea
+    if(-not $a) { return }
+    $a.NGDelaySec=[int]$delayBox.Value
+    Mark-SettingsDirty
+})
+$repeatBox.Add_ValueChanged({
+    if($script:suppressEvents) { return }
+    $a=Get-SelectedArea
+    if(-not $a) { return }
+    $a.RepeatMin=[int]$repeatBox.Value
+    Mark-SettingsDirty
+})
+
 $ackBtn.Add_Click({
     # NGを見て「確認しました」：音を止め、表示を確認済みにする（元に戻ったら自動で解除）
     $now=Get-Date
@@ -4474,6 +4661,7 @@ $timer.Add_Tick({
         $newNGs=New-Object System.Collections.ArrayList
         $notReady=New-Object System.Collections.ArrayList
         $offScreen=New-Object System.Collections.ArrayList
+        $outOfHours=New-Object System.Collections.ArrayList
         foreach($a in $script:areas) {
             if(-not (Test-AreaReady $a)) {
                 # 監視中に見本を消した・追加したばかり等。判定できないので知らせる（以前は「すべて正常」と表示していた）
@@ -4494,7 +4682,17 @@ $timer.Add_Tick({
                     $ratio=Get-AreaRatio $bmp $a -WithMap:(-not $script:miniMode)
                     $a.CaptureFailed=$false
                     if(-not $script:miniMode -and ($nowTime-$a.ThumbAt).TotalSeconds -ge 1) { Update-AreaThumb $a $bmp }
-                    if(Update-AreaJudgement $a $ratio $nowTime $nowText) { [void]$newNGs.Add($a) }
+                    if(Test-AreaInSchedule $a $nowTime) {
+                        $a.OutOfHours=$false
+                        if(Update-AreaJudgement $a $ratio $nowTime $nowText) { [void]$newNGs.Add($a) }
+                    } else {
+                        # 時間帯の外：値は表示するが判定しない。NGのまま時間帯が終わったら解除する
+                        if($a.WasNG) { Reset-AreaWithLog $a 'NG解除（時間帯の終わり）' }
+                        $a.OutOfHours=$true
+                        $a.LastRatio=$ratio
+                        $a.NGStreak=0; $a.OKStreak=0; $a.RawNGSince=$null
+                        [void]$outOfHours.Add($a.Name)
+                    }
                 } catch {
                     # 画面ロック中・リモートデスクトップ切断中などは画面を読み取れない。黙って止まらず知らせる。
                     $a.CaptureFailed=$true
@@ -4512,6 +4710,7 @@ $timer.Add_Tick({
             # 新しくNGになったエリアがあれば、そのエリアの音で鳴らす
             $newNG=$newNGs[0]
             [void](BuzzStart $newNG.BuzzerSeconds $newNG.BuzzerType $newNG.BuzzerVolume)
+            foreach($a in $newNGs) { $a.LastBuzzAt=$nowTime }
             Update-RunButtons
             if($script:notifyIcon -and $f.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) {
                 try {
@@ -4519,6 +4718,18 @@ $timer.Add_Tick({
                     $script:notifyIcon.BalloonTipText=($newNG.Name+' でNGを検知しました。')
                     $script:notifyIcon.ShowBalloonTip(4000)
                 } catch {}
+            }
+        }
+        if($newNGs.Count -eq 0) {
+            # 鳴らし直し：NGが続いていて、まだ「確認しました」が押されていないエリア
+            foreach($a in $ngAreas) {
+                if($a.Acked -or [int]$a.RepeatMin -le 0) { continue }
+                if($a.LastBuzzAt -and ($nowTime-$a.LastBuzzAt).TotalMinutes -lt [double]$a.RepeatMin) { continue }
+                if(-not $a.LastBuzzAt) { $a.LastBuzzAt=$nowTime; continue }
+                [void](BuzzStart $a.BuzzerSeconds $a.BuzzerType $a.BuzzerVolume)
+                $a.LastBuzzAt=$nowTime
+                Update-RunButtons
+                break
             }
         }
         $showAck=$false
@@ -4544,7 +4755,9 @@ $timer.Add_Tick({
         } elseif($script:logWriteBlocked) {
             SetStatusPanel $colorWarn $textOnWarn '監視中（すべて正常）｜ ⚠ ログのCSVが開かれていて書き込めません。Excelを閉じると自動で書き込みます。'
         } else {
-            SetStatusPanel $colorRunning $textOnRunning ('✔ すべて正常　｜　'+$script:areas.Count.ToString()+'箇所を監視中')
+            $msg='✔ すべて正常　｜　'+$script:areas.Count.ToString()+'箇所を監視中'
+            if($outOfHours.Count -gt 0) { $msg+='（時間帯の外：'+($outOfHours -join '、')+'）' }
+            SetStatusPanel $colorRunning $textOnRunning $msg
         }
         if($ackBtn.Visible -ne $showAck) { $ackBtn.Visible=$showAck }
         Update-TodaySummary

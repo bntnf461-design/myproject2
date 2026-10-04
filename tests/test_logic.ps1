@@ -12,7 +12,7 @@ if($PSVersionTable.PSEdition -eq 'Core') {
     Add-Type -ReferencedAssemblies System.Drawing.dll -TypeDefinition $cs
 }
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$null,[ref]$null)
-$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays','Update-AreaMasks','Get-AdaptRate','Reset-TodayIfNeeded','Add-TodayEvent','Read-TodayStatsFromLog','Format-Duration','Get-TodaySummaryText'
+$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays','Update-AreaMasks','Get-AdaptRate','Reset-TodayIfNeeded','Add-TodayEvent','Read-TodayStatsFromLog','Format-Duration','Get-TodaySummaryText','ConvertTo-Minutes','Test-AreaInSchedule','Get-ScheduleText'
 foreach($fd in $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)) { if($want -contains $fd.Name){ . ([scriptblock]::Create($fd.Extent.Text)) } }
 $tmp=Join-Path ([IO.Path]::GetTempPath()) ('ngt_'+[guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 $script:areas=New-Object System.Collections.ArrayList; $script:areaCounter=0; $script:monitorIntervalSec=0.2
@@ -148,6 +148,42 @@ $j0=New-MonitorArea 'J0' $rect ([System.Drawing.Color]::Black); $j0.DiffThreshol
 $c0=$script:today.Count
 [void](Update-AreaJudgement $j0 5 (Get-Date) 't')
 T 'new NG counted and not yet acknowledged' ($script:today.Count -eq $c0+1 -and $j0.WasNG -and -not $j0.Acked)
+
+# --- v82：決まった時間帯だけ監視する（20:00～翌6:00、月～金） ---
+$sc=New-MonitorArea '電源' $rect ([System.Drawing.Color]::Black); $sc.ScheduleOn=$true; $sc.ScheduleStart='20:00'; $sc.ScheduleEnd='06:00'; $sc.ScheduleDays=2+4+8+16+32
+function At($s){ [datetime]::ParseExact($s,'yyyy-MM-dd HH:mm',[System.Globalization.CultureInfo]::InvariantCulture) }
+# 2026-10-05 は月曜日
+T 'Mon 19:59 is outside' (-not (Test-AreaInSchedule $sc (At '2026-10-05 19:59')))
+T 'Mon 20:00 is inside' (Test-AreaInSchedule $sc (At '2026-10-05 20:00'))
+T 'Tue 05:59 (started Mon night) is inside' (Test-AreaInSchedule $sc (At '2026-10-06 05:59'))
+T 'Tue 06:00 is outside' (-not (Test-AreaInSchedule $sc (At '2026-10-06 06:00')))
+T 'Sat 01:00 (started Fri night) is inside' (Test-AreaInSchedule $sc (At '2026-10-10 01:00'))
+T 'Sat 21:00 is outside (Saturday not selected)' (-not (Test-AreaInSchedule $sc (At '2026-10-10 21:00')))
+T 'Mon 03:00 (started Sun night) is outside' (-not (Test-AreaInSchedule $sc (At '2026-10-05 03:00')))
+T "schedule text ($(Get-ScheduleText $sc))" ((Get-ScheduleText $sc) -eq '20:00～翌06:00（月火水木金）')
+$sc.ScheduleStart='08:00'; $sc.ScheduleEnd='17:00'; $sc.ScheduleDays=127
+T 'same-day window' ((Test-AreaInSchedule $sc (At '2026-10-05 12:00')) -and -not (Test-AreaInSchedule $sc (At '2026-10-05 17:00')))
+$sc.ScheduleOn=$false
+T 'no schedule: always inside' (Test-AreaInSchedule $sc (At '2026-10-05 03:00'))
+T 'bad time text rejected' ($null -eq (ConvertTo-Minutes '25:00') -and (ConvertTo-Minutes '7:05') -eq 425)
+# 保存・読み込み
+$script:areas.Clear()
+$sc.ScheduleOn=$true; $sc.ScheduleStart='20:00'; $sc.ScheduleEnd='06:00'; $sc.ScheduleDays=62; $sc.NGDelaySec=120; $sc.RepeatMin=10
+Set-AreaRect $sc $rect; [void]$script:areas.Add($sc)
+T 'save schedule' (Save-SettingsFile $script:settingsPath)
+$script:areas.Clear(); [void](Load-SettingsFile $script:settingsPath); $sc2=$script:areas[0]
+T 'schedule / delay / repeat restored' ($sc2.ScheduleOn -and $sc2.ScheduleStart -eq '20:00' -and $sc2.ScheduleEnd -eq '06:00' -and $sc2.ScheduleDays -eq 62 -and $sc2.NGDelaySec -eq 120 -and $sc2.RepeatMin -eq 10)
+
+# --- v82：NGの状態が○秒続いたら鳴らす（ドアの開けっぱなし） ---
+$dr=New-MonitorArea 'ドア' $rect ([System.Drawing.Color]::Black); $dr.DiffThreshold=1; $dr.ConfirmFrames=2; $dr.NGDelaySec=60
+$t0=At '2026-10-05 10:00'
+$r1=Update-AreaJudgement $dr 5 $t0 't'; $r2=Update-AreaJudgement $dr 5 $t0.AddSeconds(30) 't'
+T 'open 30 s: not yet NG' (-not $r1 -and -not $r2 -and -not $dr.WasNG)
+[void](Update-AreaJudgement $dr 0 $t0.AddSeconds(31) 't')
+$r3=Update-AreaJudgement $dr 5 $t0.AddSeconds(70) 't'
+T 'closed in between: the wait starts again' (-not $r3 -and -not $dr.WasNG)
+$r4=Update-AreaJudgement $dr 5 $t0.AddSeconds(131) 't'
+T 'open for 61 s: NG' ($r4 -and $dr.WasNG)
 
 # --- references from a different-sized area are dropped, not misused ---
 $raw=$json | ConvertFrom-Json; $raw.Areas[0].W=300
