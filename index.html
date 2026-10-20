@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nライン作業日報</title>
+<style>
+  :root {
+    --line: #333;
+    --sub: #888;
+    --auto: #eef3f8;
+    --hl: #fffbe0;
+    --bg: #fff;
+    --fg: #111;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 12px;
+    font-family: "Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif;
+    font-size: 12px; color: var(--fg); background: #f2f2f2;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 8px; margin: -12px -12px 12px; background: #2f4f6f; color: #fff;
+  }
+  .toolbar button, .toolbar label.btn {
+    font: inherit; padding: 5px 10px; border: 0; border-radius: 4px;
+    background: #fff; color: #2f4f6f; cursor: pointer;
+  }
+  .toolbar .status { margin-left: auto; font-size: 11px; opacity: .85; }
+  .sheet {
+    background: var(--bg); padding: 10px; overflow-x: auto;
+    box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  }
+  .inner { min-width: 1500px; }
+
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid var(--line); padding: 0; font-weight: normal; }
+  th { font-size: 10px; text-align: center; background: #fafafa; padding: 1px 2px; line-height: 1.2; }
+  input, textarea, select {
+    font: inherit; width: 100%; border: 0; background: transparent;
+    padding: 2px 3px; color: inherit; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { background: var(--hl); }
+  input[type=number] { text-align: right; -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input[type=checkbox] { width: auto; }
+  textarea { resize: vertical; }
+  .auto { background: var(--auto); }
+  .auto input { color: #234; font-weight: bold; }
+
+  /* ヘッダ */
+  .top { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px; }
+  .head { display: flex; align-items: stretch; width: 100%; }
+  .head .title { flex: 1; display: flex; align-items: flex-end; justify-content: center;
+                 font-size: 20px; font-weight: bold; padding-bottom: 6px; }
+  .head table td { height: 34px; }
+  .stamp td { width: 90px; height: 50px; text-align: center; }
+
+  /* メイン表 */
+  #main { width: 100%; table-layout: fixed; }
+  #main td { height: 24px; }
+  #main td.no { text-align: center; font-size: 10px; }
+  #main .total td { height: 28px; border-top: 3px double var(--line); }
+  #main .total td.lbl { text-align: center; font-weight: bold; font-size: 14px; letter-spacing: 1em; }
+  #main .dispose td { height: 34px; text-align: center; }
+  #main .dispose td.lbl { font-size: 11px; }
+  .bt { border-left: 2px solid var(--line); }
+
+  /* 下段 */
+  .lower { display: grid; grid-template-columns: 620px 270px 1fr; gap: 14px; margin-top: 16px; }
+  .cap { text-align: center; font-size: 12px; margin: 2px 0; }
+  .markbox { width: 100%; margin-bottom: 12px; }
+  .markbox td { vertical-align: middle; }
+  .markbox .side { width: 100px; }
+  .markbox .side div.l { font-size: 11px; border-bottom: 1px solid var(--line); text-align: center; }
+  .markbox .side input { height: 24px; border-bottom: 1px solid var(--line); }
+  .markbox .chk { text-align: center; font-size: 12px; line-height: 2; }
+  .markbox .chk label { display: block; }
+  .markbox .big { font-size: 16px; }
+  .photo { border: 1px solid var(--line); height: 214px; margin-bottom: 12px;
+           display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px; gap: 6px; }
+  .photo .ph { flex: 1; width: 100%; border: 1px solid #bbb; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; text-align: center; font-size: 14px; overflow: hidden; }
+  .photo img { max-width: 100%; max-height: 100%; }
+  .photo input[type=file] { font-size: 10px; }
+
+  .right > * + * { margin-top: 14px; }
+  .soban { display: flex; gap: 8px; }
+  .soban table td { height: 20px; }
+  .soban .zan { width: 26px; font-size: 10px; text-align: center; line-height: 1.1; }
+  .soban .zv { width: 50px; }
+  .flex { display: flex; gap: 14px; align-items: flex-start; }
+  .time td { height: 24px; }
+  .time th.r { width: 80px; }
+  .time th.c { width: 80px; }
+  .box td { padding: 0; }
+
+  .kado-wrap { overflow-x: auto; }
+  .kado { table-layout: fixed; }
+  .kado th { font-size: 9px; padding: 0; }
+  .kado td { width: 26px; height: 26px; text-align: center; }
+  .kado select { padding: 0; text-align: center; font-size: 11px; height: 24px; appearance: none; -webkit-appearance: none; cursor: pointer; }
+  .kado td.A { background: #d7e8fb; } .kado td.P { background: #fdecc8; }
+  .kado td.T { background: #f9d0d0; } .kado td.W { background: #e5e5e5; }
+  .kado td.E { background: #dcefd9; } .kado td.O { background: #eadcf5; }
+  .kado-sum { font-size: 11px; margin-top: 4px; }
+
+  .core td { height: 26px; }
+  .legend td { font-size: 11px; padding: 2px 6px; height: 26px; }
+
+  @media print {
+    @page { size: A3 landscape; margin: 8mm; }
+    body { background: #fff; padding: 0; font-size: 10px; }
+    .toolbar, .noprint, .photo input[type=file] { display: none !important; }
+    .sheet { box-shadow: none; padding: 0; overflow: visible; }
+    .inner { min-width: 0; }
+    .auto { background: none; }
+    input:focus { background: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <strong>Nライン切面孔明け作業日報</strong>
+  <button type="button" id="btnSave">保存</button>
+  <button type="button" id="btnNew">新規（クリア）</button>
+  <button type="button" id="btnExport">JSON書出し</button>
+  <label class="btn">JSON読込み<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
+  <button type="button" id="btnCsv">CSV書出し（明細）</button>
+  <button type="button" id="btnPrint">印刷</button>
+  <span class="status" id="status"></span>
+</div>
+
+<form id="nippo" class="sheet" autocomplete="off" onsubmit="return false">
+<div class="inner">
+
+  <div class="top">
+    <span>品質記録：№5-(7)-10</span>
+    <span>ビューテック株式会社　豊橋工場</span>
+  </div>
+
+  <div class="head">
+    <table>
+      <tr>
+        <th style="width:420px;font-size:13px;font-weight:bold">作業日</th>
+        <th style="width:60px">出</th>
+        <th style="width:60px">組</th>
+      </tr>
+      <tr>
+        <td><input type="date" name="workDate" style="text-align:center;font-size:14px"></td>
+        <td><input name="shift"></td>
+        <td><input name="team"></td>
+      </tr>
+    </table>
+    <div class="title">自動車用　Nライン切面孔明け作業日報</div>
+    <table class="stamp">
+      <tr><th>GL</th><th>リーダー</th></tr>
+      <tr><td><input name="stampGL" style="text-align:center"></td><td><input name="stampLeader" style="text-align:center"></td></tr>
+    </table>
+  </div>
+
+  <!-- 明細 -->
+  <table id="main">
+    <colgroup id="mainCols"></colgroup>
+    <thead>
+      <tr>
+        <th colspan="4">製　品</th>
+        <th rowspan="3">作業枚数</th>
+        <th rowspan="3">良品枚数</th>
+        <th rowspan="3">良品歩留</th>
+        <th rowspan="3">工程不良</th>
+        <th rowspan="3">素板不良</th>
+        <th colspan="13" class="bt">工程不良</th>
+        <th colspan="8" class="bt">素板不良</th>
+        <th rowspan="3" class="bt">パレット№</th>
+        <th rowspan="3">パレット<br>形態</th>
+        <th rowspan="3">ローカル<br>コード</th>
+      </tr>
+      <tr>
+        <th colspan="4" rowspan="1"></th>
+        <th rowspan="2" class="bt">割れ</th>
+        <th rowspan="2">キズ</th>
+        <th rowspan="2">切不良</th>
+        <th colspan="2">折不良</th>
+        <th colspan="2">面取不良</th>
+        <th colspan="4">孔明不良</th>
+        <th rowspan="2">マーク<br>外観</th>
+        <th rowspan="2">その他</th>
+        <th rowspan="2" class="bt">過不足</th>
+        <th rowspan="2">内破</th>
+        <th rowspan="2">泡</th>
+        <th rowspan="2">異物</th>
+        <th rowspan="2">キズ</th>
+        <th rowspan="2">汚れ</th>
+        <th rowspan="2">カレット</th>
+        <th rowspan="2">その他</th>
+      </tr>
+      <tr>
+        <th>PL</th><th>型式</th><th>切面ロットＮｏ，</th><th>素板ロットＮｏ</th>
+        <th>ハマ</th><th>ワレ</th><th>ハマ</th><th>ワレ</th>
+        <th>１軸ハマ</th><th>１軸ワレ</th><th>２軸ハマ</th><th>２軸ワレ</th>
+      </tr>
+    </thead>
+    <tbody id="mainBody"></tbody>
+    <tfoot id="mainFoot"></tfoot>
+  </table>
+
+  <!-- 下段 -->
+  <div class="lower">
+    <!-- 打刻マーク仕様 / ダブルチェック -->
+    <div id="markArea"></div>
+
+    <!-- マーク交換前・最終チェック -->
+    <div id="photoArea"></div>
+
+    <div class="right">
+      <div>
+        <div style="font-size:11px">使用素板</div>
+        <div class="soban" id="sobanArea"></div>
+      </div>
+
+      <div class="flex">
+        <table class="time">
+          <tr><th class="r"></th><th class="c">板乗せ</th><th class="c">検査</th><th class="c">ストック</th><th class="c">投入時間合計</th></tr>
+          <tr><th>作業者</th>
+            <td><input name="worker_itanose"></td><td><input name="worker_kensa"></td>
+            <td><input name="worker_stock"></td><td><input name="worker_total"></td></tr>
+          <tr><th>投入時間</th>
+            <td><input type="number" step="any" name="tonyu_itanose"></td><td><input type="number" step="any" name="tonyu_kensa"></td>
+            <td><input type="number" step="any" name="tonyu_stock"></td><td class="auto"><input name="tonyu_total" readonly tabindex="-1"></td></tr>
+          <tr><th>手直し時間</th>
+            <td><input type="number" step="any" name="tenaoshi_itanose"></td><td><input type="number" step="any" name="tenaoshi_kensa"></td>
+            <td><input type="number" step="any" name="tenaoshi_stock"></td><td class="auto"><input name="tenaoshi_total" readonly tabindex="-1"></td></tr>
+          <tr><th>除外（５Ｓ等）</th>
+            <td><input type="number" step="any" name="jogai_itanose"></td><td><input type="number" step="any" name="jogai_kensa"></td>
+            <td><input type="number" step="any" name="jogai_stock"></td><td class="auto"><input name="jogai_total" readonly tabindex="-1"></td></tr>
+        </table>
+        <table class="box" style="width:180px">
+          <tr><th style="font-size:12px;padding:6px">使用面取りホイール</th></tr>
+          <tr><td><textarea name="wheel" rows="3"></textarea></td></tr>
+        </table>
+        <table class="box" style="width:90px;margin-left:auto">
+          <tr><th style="font-size:12px;padding:6px">手直し枚数</th></tr>
+          <tr><td style="height:60px;vertical-align:bottom"><div style="display:flex;align-items:center">
+            <input type="number" name="tenaoshiCount"><span style="padding-right:3px">枚</span></div></td></tr>
+        </table>
+      </div>
+
+      <div>
+        <div style="font-weight:bold;font-size:13px">稼働状況
+          <span class="noprint" style="font-weight:normal;font-size:11px;margin-left:8px">
+            開始時刻 <select name="kadoStart" id="kadoStart" style="width:auto;border:1px solid #aaa"></select>
+            （空欄＝稼働、各マスは30分）
+          </span>
+        </div>
+        <div class="kado-wrap"><table class="kado" id="kado"></table></div>
+        <div class="kado-sum" id="kadoSum"></div>
+      </div>
+
+      <div class="flex">
+        <table class="core">
+          <tr><th colspan="2" style="padding:6px">コアドリル径（目視）</th></tr>
+          <tbody id="coreBody"></tbody>
+        </table>
+        <table class="legend">
+          <tr><th style="padding:6px">表記項目</th></tr>
+          <tr><td>Ａ・・・Ｊ／Ｃ</td></tr>
+          <tr><td>Ｐ・・・段取り</td></tr>
+          <tr><td>Ｔ・・・故障</td></tr>
+          <tr><td>Ｗ・・・手待ち</td></tr>
+          <tr><td>Ｅ・・・除外</td></tr>
+          <tr><td>Ｏ・・・その他</td></tr>
+        </table>
+        <div style="flex:1">
+          <table class="box" style="width:100%">
+            <tr><th style="font-size:12px;padding:6px">検視台　高さ調整実施</th></tr>
+            <tr><td style="height:50px;padding:4px 6px">
+              <label><input type="checkbox" name="kenshidai"> 実施</label>
+              <input name="kenshidaiNote" placeholder="メモ" style="border-bottom:1px solid #ccc">
+            </td></tr>
+          </table>
+          <table class="box" style="width:100%;margin-top:10px">
+            <tr><th style="text-align:left;padding:2px 4px">トピックス</th></tr>
+            <tr><td><textarea name="topics" rows="5"></textarea></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+
+<script>
+(function () {
+  "use strict";
+  var ROWS = 19;
+  var STORAGE_PREFIX = "nline-nippo:";
+
+  // 明細の列定義（Excel 2020.10 版の並び順）
+  var PROC = ["ware", "kizu", "kiri", "ori_hama", "ori_ware", "men_hama", "men_ware",
+              "ana1_hama", "ana1_ware", "ana2_hama", "ana2_ware", "mark", "proc_other"];
+  var SOBAN = ["kafusoku", "naiha", "awa", "ibutsu", "s_kizu", "yogore", "cullet", "soban_other"];
+  var COLS = [].concat(
+    [{ k: "pl", w: 26 }, { k: "model", w: 150 }, { k: "lotCut", w: 105 }, { k: "lotSoban", w: 105 },
+     { k: "qty", w: 52, num: 1 }, { k: "good", w: 52, num: 1 }, { k: "yield", w: 44, auto: 1 },
+     { k: "procNg", w: 40, auto: 1 }, { k: "sobanNg", w: 40, auto: 1 }],
+    PROC.map(function (k, i) { return { k: k, w: 32, num: 1, bt: i === 0 }; }),
+    SOBAN.map(function (k, i) { return { k: k, w: 32, num: 1, bt: i === 0 }; }),
+    [{ k: "pallet", w: 64, bt: 1 }, { k: "palletType", w: 36 }, { k: "localCode", w: 36 }]
+  );
+  var SUM_KEYS = ["qty", "good", "procNg", "sobanNg"].concat(PROC, SOBAN);
+
+  var form = document.getElementById("nippo");
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    for (var a in attrs || {}) e.setAttribute(a, attrs[a]);
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  function f(name) { return form.elements[name]; }
+  function num(name) { var v = parseFloat(f(name) && f(name).value); return isNaN(v) ? 0 : v; }
+  function fmt(n) { return Math.round(n * 100) / 100 + ""; }
+
+  // ---------- 明細表 ----------
+  var cg = document.getElementById("mainCols");
+  COLS.forEach(function (c) { cg.appendChild(el("col", { style: "width:" + c.w + "px" })); });
+
+  var body = document.getElementById("mainBody");
+  for (var r = 1; r <= ROWS; r++) {
+    var tr = el("tr");
+    COLS.forEach(function (c) {
+      var td = el("td");
+      if (c.bt) td.className = "bt";
+      if (c.k === "pl") { td.className = "no"; td.textContent = r; tr.appendChild(td); return; }
+      var inp = el("input", { name: "r" + r + "_" + c.k });
+      if (c.num) { inp.type = "number"; inp.min = "0"; inp.step = "any"; }
+      if (c.auto) { td.classList.add("auto"); inp.readOnly = true; inp.tabIndex = -1; }
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  }
+
+  var foot = document.getElementById("mainFoot");
+  var tot = el("tr", { "class": "total" });
+  tot.appendChild(el("td", { colspan: 4, "class": "lbl" }, "合計"));
+  COLS.slice(4).forEach(function (c) {
+    var td = el("td", { "class": "auto" + (c.bt ? " bt" : "") });
+    if (c.k === "yield") td.innerHTML = '<input name="t_yield" readonly tabindex="-1">';
+    else if (SUM_KEYS.indexOf(c.k) >= 0) td.innerHTML = '<input name="t_' + c.k + '" readonly tabindex="-1">';
+    else { td.className = c.bt ? "bt" : ""; td.innerHTML = '<input name="t_' + c.k + '">'; }
+    tot.appendChild(td);
+  });
+  foot.appendChild(tot);
+
+  // 不良品処置廃棄（レ点記入）
+  var disp = el("tr", { "class": "dispose" });
+  disp.appendChild(el("td", { colspan: 6, style: "border:0" }));
+  disp.appendChild(el("td", { colspan: 3, "class": "lbl" }, "不良品処置廃棄<br>（レ点記入）"));
+  PROC.concat(SOBAN).forEach(function (k, i) {
+    var td = el("td", { "class": (i === 0 || i === PROC.length) ? "bt" : "" });
+    td.innerHTML = '<input type="checkbox" name="dispose_' + k + '" title="処置廃棄">';
+    disp.appendChild(td);
+  });
+  disp.appendChild(el("td", { colspan: 3, style: "border:0" }));
+  foot.appendChild(disp);
+
+  // ---------- 打刻マーク仕様 / ダブルチェック ×2 ----------
+  var markArea = document.getElementById("markArea");
+  var photoArea = document.getElementById("photoArea");
+  [1, 2].forEach(function (n) {
+    var cap = el("div", { style: "display:flex" },
+      '<div class="cap" style="width:100px"></div><div class="cap" style="flex:1">打刻マーク仕様</div><div class="cap" style="flex:1">ダブルチェック</div>');
+    var t = el("table", { "class": "markbox" });
+    t.innerHTML =
+      '<tr><td class="side" rowspan="2">' +
+        '<div class="l" style="font-weight:bold">マーク仕様確認</div>' +
+        '<div class="l">年月度マーク</div><input name="m' + n + '_mark">' +
+        '<div class="l">確認者</div><input name="m' + n + '_checker">' +
+        '<div class="l">ダブルチェック<br>年月度マーク</div><input name="m' + n + '_mark2">' +
+        '<div class="l">確認者</div><input name="m' + n + '_checker2" style="border-bottom:0">' +
+      '</td>' +
+      '<td class="chk"><label><input type="checkbox" name="m' + n + '_spec"> 製品仕様書と照合確認</label>' +
+        '<label><input type="checkbox" name="m' + n + '_char"> 1文字づつ確認チェック</label></td>' +
+      '<td class="chk"><label><input type="checkbox" name="m' + n + '_dbl"> 製品打刻マーク、シール及び<br>製品規格書と照合確認</label></td></tr>' +
+      '<tr><td colspan="2" class="chk big" style="height:56px">' +
+        '<label><input type="checkbox" name="m' + n + '_seal"> 作業開始時　<b>2枚</b>　シール貼付け</label></td></tr>';
+    if (n === 1) markArea.appendChild(cap);
+    markArea.appendChild(t);
+
+    if (n === 1) photoArea.appendChild(el("div", { "class": "cap" }, "マーク交換前・最終チェック"));
+    var p = el("div", { "class": "photo" });
+    p.innerHTML = '<div class="ph" id="ph' + n + '">マーク交換前の打刻　シール<br>を貼付け<br><small>（写真を添付できます）</small></div>' +
+      '<input type="file" accept="image/*" capture="environment" data-photo="' + n + '">' +
+      '<input type="hidden" name="photo' + n + '">';
+    photoArea.appendChild(p);
+  });
+
+  // ---------- 使用素板 ----------
+  var sobanArea = document.getElementById("sobanArea");
+  [1, 2].forEach(function (n) {
+    var t = el("table");
+    t.innerHTML =
+      '<tr><td style="width:200px"><input name="sb' + n + '_name" placeholder="品名"></td>' +
+        '<td class="zan" rowspan="2">前<br>残</td><td class="zv" rowspan="2"><input name="sb' + n + '_mae"></td></tr>' +
+      '<tr><td><div style="display:flex;align-items:center"><input name="sb' + n + '_w">×<input name="sb' + n + '_h"></div></td></tr>' +
+      '<tr><td><div style="display:flex;align-items:center"><input name="sb' + n + '_w2">×<input name="sb' + n + '_h2"><input name="sb' + n + '_pl" style="width:50px">PL&nbsp;</div></td>' +
+        '<td class="zan">当<br>残</td><td class="zv"><input name="sb' + n + '_to"></td></tr>';
+    sobanArea.appendChild(t);
+  });
+
+  // ---------- 稼働状況 ----------
+  var kadoStart = document.getElementById("kadoStart");
+  for (var h = 0; h < 24; h++) kadoStart.appendChild(el("option", { value: h }, h + ":00"));
+  kadoStart.value = "8";
+  var SLOTS = 26; // 30分 × 26 = 13時間
+  var CODES = ["", "A", "P", "T", "W", "E", "O"];
+  var kado = document.getElementById("kado");
+  function buildKadoHeader() {
+    var start = parseInt(kadoStart.value, 10);
+    var head = kado.querySelector("tr.h");
+    if (!head) { head = el("tr", { "class": "h" }); kado.insertBefore(head, kado.firstChild); }
+    head.innerHTML = "";
+    for (var i = 0; i < SLOTS; i += 2) head.appendChild(el("th", { colspan: 2 }, ((start + i / 2) % 24) + ":00"));
+  }
+  var krow = el("tr");
+  for (var i = 0; i < SLOTS; i++) {
+    var td = el("td");
+    var s = el("select", { name: "kado_" + i });
+    CODES.forEach(function (c) { s.appendChild(el("option", { value: c }, c)); });
+    td.appendChild(s);
+    krow.appendChild(td);
+  }
+  kado.appendChild(krow);
+  buildKadoHeader();
+  kadoStart.addEventListener("change", buildKadoHeader);
+
+  // ---------- コアドリル径 ----------
+  var coreBody = document.getElementById("coreBody");
+  "①②③④⑤⑥⑦".split("").forEach(function (c, i) {
+    coreBody.appendChild(el("tr", null,
+      '<td style="width:30px;text-align:center">' + c + '</td><td style="width:90px"><input name="core' + (i + 1) + '"></td>'));
+  });
+
+  // ---------- 自動計算 ----------
+  function recalc() {
+    var totals = {};
+    SUM_KEYS.forEach(function (k) { totals[k] = 0; });
+    for (var r = 1; r <= ROWS; r++) {
+      var p = "r" + r + "_";
+      var proc = PROC.reduce(function (s, k) { return s + num(p + k); }, 0);
+      var sob = SOBAN.reduce(function (s, k) { return s + num(p + k); }, 0);
+      var hasProc = PROC.some(function (k) { return f(p + k).value !== ""; });
+      var hasSob = SOBAN.some(function (k) { return f(p + k).value !== ""; });
+      f(p + "procNg").value = hasProc ? fmt(proc) : "";
+      f(p + "sobanNg").value = hasSob ? fmt(sob) : "";
+      var q = num(p + "qty"), g = num(p + "good");
+      f(p + "yield").value = (q > 0 && f(p + "good").value !== "") ? fmt(g / q * 100) + "%" : "";
+      SUM_KEYS.forEach(function (k) { totals[k] += num(p + k); });
+    }
+    SUM_KEYS.forEach(function (k) { f("t_" + k).value = totals[k] ? fmt(totals[k]) : ""; });
+    f("t_yield").value = totals.qty > 0 ? fmt(totals.good / totals.qty * 100) + "%" : "%";
+
+    ["tonyu", "tenaoshi", "jogai"].forEach(function (row) {
+      var names = ["itanose", "kensa", "stock"].map(function (c) { return row + "_" + c; });
+      var any = names.some(function (n) { return f(n).value !== ""; });
+      f(row + "_total").value = any ? fmt(names.reduce(function (s, n) { return s + num(n); }, 0)) : "";
+    });
+
+    var cnt = {};
+    for (var i = 0; i < SLOTS; i++) {
+      var s = f("kado_" + i), v = s.value;
+      s.parentNode.className = v;
+      if (v) cnt[v] = (cnt[v] || 0) + 0.5;
+    }
+    var lbl = { A: "J/C", P: "段取り", T: "故障", W: "手待ち", E: "除外", O: "その他" };
+    document.getElementById("kadoSum").textContent = Object.keys(cnt).length
+      ? "集計: " + Object.keys(lbl).filter(function (k) { return cnt[k]; })
+          .map(function (k) { return k + "（" + lbl[k] + "）" + cnt[k] + "h"; }).join("　")
+      : "";
+  }
+
+  // ---------- 写真 ----------
+  function showPhoto(n) {
+    var data = f("photo" + n).value, ph = document.getElementById("ph" + n);
+    ph.innerHTML = data ? '<img alt="マーク交換前の打刻" src="' + data + '">'
+      : 'マーク交換前の打刻　シール<br>を貼付け<br><small>（写真を添付できます）</small>';
+  }
+  form.addEventListener("change", function (e) {
+    var n = e.target.getAttribute("data-photo");
+    if (!n || !e.target.files[0]) return;
+    var img = new Image(), reader = new FileReader();
+    reader.onload = function () { img.src = reader.result; };
+    img.onload = function () {
+      var max = 800, sc = Math.min(1, max / Math.max(img.width, img.height));
+      var cv = document.createElement("canvas");
+      cv.width = img.width * sc; cv.height = img.height * sc;
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      f("photo" + n).value = cv.toDataURL("image/jpeg", 0.7);
+      showPhoto(n); save();
+    };
+    reader.readAsDataURL(e.target.files[0]);
+  });
+
+  // ---------- 保存 / 読込み ----------
+  function collect() {
+    var d = {};
+    Array.prototype.forEach.call(form.elements, function (e) {
+      if (!e.name || e.readOnly || e.type === "file") return;
+      if (e.type === "checkbox") { if (e.checked) d[e.name] = true; }
+      else if (e.value !== "") d[e.name] = e.value;
+    });
+    d.kadoStart = kadoStart.value;
+    return d;
+  }
+  function apply(d) {
+    Array.prototype.forEach.call(form.elements, function (e) {
+      if (!e.name || e.readOnly || e.type === "file") return;
+      if (e.type === "checkbox") e.checked = !!d[e.name];
+      else e.value = d[e.name] != null ? d[e.name] : (e.name === "kadoStart" ? "8" : "");
+    });
+    buildKadoHeader(); showPhoto(1); showPhoto(2); recalc();
+  }
+  function key() { return STORAGE_PREFIX + (f("workDate").value || "未設定"); }
+  var statusEl = document.getElementById("status");
+  function save() {
+    try {
+      localStorage.setItem(key(), JSON.stringify(collect()));
+      localStorage.setItem(STORAGE_PREFIX + "last", f("workDate").value);
+      statusEl.textContent = "保存済み " + new Date().toLocaleTimeString();
+    } catch (err) { statusEl.textContent = "保存できませんでした（" + err.name + "）"; }
+  }
+  function load(date) {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(STORAGE_PREFIX + (date || "未設定")) || "null"); } catch (err) {}
+    apply(d || { workDate: date });
+  }
+
+  var timer;
+  form.addEventListener("input", function (e) {
+    recalc();
+    if (e.target.name === "workDate") return;
+    clearTimeout(timer); timer = setTimeout(save, 600);
+  });
+  // 作業日を変えたらその日の日報を開く
+  f("workDate").addEventListener("change", function () { load(f("workDate").value); statusEl.textContent = "作業日 " + (f("workDate").value || "未設定") + " を表示"; });
+
+  // Enter で下のセルへ（Excel と同じ操作感）
+  form.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || e.target.tagName === "TEXTAREA" || e.isComposing) return;
+    var m = /^r(\d+)_(.+)$/.exec(e.target.name || "");
+    e.preventDefault();
+    var next = m && f("r" + (+m[1] + (e.shiftKey ? -1 : 1)) + "_" + m[2]);
+    if (next) next.focus();
+  });
+
+  document.getElementById("btnSave").onclick = save;
+  document.getElementById("btnPrint").onclick = function () { window.print(); };
+  document.getElementById("btnNew").onclick = function () {
+    if (!confirm("表示中の入力内容をクリアします。よろしいですか？\n（保存済みのデータも空になります）")) return;
+    var date = f("workDate").value;
+    apply({ workDate: date }); save();
+  };
+  function download(name, text, type) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: type }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+  document.getElementById("btnExport").onclick = function () {
+    download("Nライン日報_" + (f("workDate").value || "未設定") + ".json", JSON.stringify(collect(), null, 2), "application/json");
+  };
+  document.getElementById("fileImport").onchange = function (e) {
+    var file = e.target.files[0]; if (!file) return;
+    file.text().then(function (t) { apply(JSON.parse(t)); save(); statusEl.textContent = "読込みました"; })
+      .catch(function () { alert("JSONファイルを読み込めませんでした"); });
+    e.target.value = "";
+  };
+  document.getElementById("btnCsv").onclick = function () {
+    var names = ["作業日", "PL", "型式", "切面ロットNo", "素板ロットNo", "作業枚数", "良品枚数", "良品歩留", "工程不良", "素板不良",
+      "割れ", "キズ", "切不良", "折ハマ", "折ワレ", "面取ハマ", "面取ワレ", "1軸ハマ", "1軸ワレ", "2軸ハマ", "2軸ワレ", "マーク外観", "工程その他",
+      "過不足", "内破", "泡", "異物", "素板キズ", "汚れ", "カレット", "素板その他", "パレットNo", "パレット形態", "ローカルコード"];
+    var lines = [names.join(",")];
+    for (var r = 1; r <= ROWS; r++) {
+      var vals = COLS.slice(1).map(function (c) { return f("r" + r + "_" + c.k).value; });
+      if (!vals.some(function (v) { return v !== ""; })) continue;
+      var row = [f("workDate").value, r].concat(vals);
+      lines.push(row.map(function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","));
+    }
+    download("Nライン日報明細_" + (f("workDate").value || "未設定") + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
+  };
+
+  // 起動時：最後に開いた日、なければ今日
+  var last = null;
+  try { last = localStorage.getItem(STORAGE_PREFIX + "last"); } catch (err) {}
+  var today = new Date(); today = new Date(today - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  load(last || today);
+  if (!f("workDate").value) f("workDate").value = last || today;
+})();
+</script>
+</body>
+</html>
