@@ -110,10 +110,28 @@
   .core td { height: 26px; }
   .legend td { font-size: 11px; padding: 2px 6px; height: 26px; }
 
+  /* 仮No. */
+  .noref { position: relative; }
+  .nobadge {
+    position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none;
+    font: bold 9px/1 sans-serif; color: #fff; background: #d33; padding: 1px 2px; border-radius: 0 0 3px 0;
+  }
+  .nobadge.at { top: auto; left: auto; border-radius: 0 0 3px 0; }
+  body:not(.show-no) .nobadge { display: none; }
+  #specPanel { margin-top: 16px; background: var(--bg); padding: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  #specPanel h2 { font-size: 15px; margin: 0 0 6px; }
+  #specPanel table { width: 100%; }
+  #specPanel td, #specPanel th { padding: 2px 4px; font-size: 11px; vertical-align: top; }
+  #specPanel th { font-size: 11px; }
+  #specPanel td.n { text-align: center; font-weight: bold; color: #d33; white-space: nowrap; }
+  #specPanel tr.grp td { background: #2f4f6f; color: #fff; font-weight: bold; }
+  #specPanel textarea { min-height: 22px; background: #fffef3; border: 1px solid #ddd; }
+  #specPanel tr.hit td { background: var(--hl); }
+
   @media print {
     @page { size: A3 landscape; margin: 8mm; }
     body { background: #fff; padding: 0; font-size: 10px; }
-    .toolbar, .noprint, .photo input[type=file] { display: none !important; }
+    .toolbar, .noprint, .nobadge, #specPanel, .photo input[type=file] { display: none !important; }
     .sheet { box-shadow: none; padding: 0; overflow: visible; }
     .inner { min-width: 0; }
     .auto { background: none; }
@@ -131,6 +149,8 @@
   <label class="btn">JSON読込み<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
   <button type="button" id="btnCsv">CSV書出し（明細）</button>
   <button type="button" id="btnPrint">印刷</button>
+  <label style="margin-left:8px"><input type="checkbox" id="chkNo" checked> 仮No.表示</label>
+  <button type="button" id="btnSpec">仮No.一覧へ</button>
   <span class="status" id="status"></span>
 </div>
 
@@ -279,7 +299,7 @@
             <tr><th style="font-size:12px;padding:6px">検視台　高さ調整実施</th></tr>
             <tr><td style="height:50px;padding:4px 6px">
               <label><input type="checkbox" name="kenshidai"> 実施</label>
-              <input name="kenshidaiNote" placeholder="メモ" style="border-bottom:1px solid #ccc">
+              <div><input name="kenshidaiNote" placeholder="メモ" style="border-bottom:1px solid #ccc"></div>
             </td></tr>
           </table>
           <table class="box" style="width:100%;margin-top:10px">
@@ -292,6 +312,20 @@
   </div>
 </div>
 </form>
+
+<section id="specPanel">
+  <h2>仮No.一覧（セルごとの動き）</h2>
+  <p style="margin:0 0 6px;font-size:11px">
+    「希望する動き」欄に各セルの仕様を書き込めます（このブラウザに自動保存）。
+    <button type="button" id="btnSpecCsv">一覧をCSV書出し</button>
+    　フォーム上の赤いバッジ番号と対応しています。No.をクリックするとそのセルへ移動します。
+  </p>
+  <table>
+    <thead><tr><th style="width:44px">No.</th><th style="width:220px">項目</th><th style="width:70px">入力形式</th>
+      <th style="width:300px">現在の動き</th><th>希望する動き（記入欄）</th></tr></thead>
+    <tbody id="specBody"></tbody>
+  </table>
+</section>
 
 <script>
 (function () {
@@ -591,6 +625,201 @@
       lines.push(row.map(function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","));
     }
     download("Nライン日報明細_" + (f("workDate").value || "未設定") + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
+  };
+
+  // ---------- 仮No.（セルごとの番号と動きの一覧） ----------
+  var LBL = {
+    model: "型式", lotCut: "切面ロットNo", lotSoban: "素板ロットNo", qty: "作業枚数", good: "良品枚数",
+    yield: "良品歩留", procNg: "工程不良", sobanNg: "素板不良",
+    ware: "工程不良：割れ", kizu: "工程不良：キズ", kiri: "工程不良：切不良",
+    ori_hama: "工程不良：折不良 ハマ", ori_ware: "工程不良：折不良 ワレ",
+    men_hama: "工程不良：面取不良 ハマ", men_ware: "工程不良：面取不良 ワレ",
+    ana1_hama: "工程不良：孔明不良 1軸ハマ", ana1_ware: "工程不良：孔明不良 1軸ワレ",
+    ana2_hama: "工程不良：孔明不良 2軸ハマ", ana2_ware: "工程不良：孔明不良 2軸ワレ",
+    mark: "工程不良：マーク外観", proc_other: "工程不良：その他",
+    kafusoku: "素板不良：過不足", naiha: "素板不良：内破", awa: "素板不良：泡", ibutsu: "素板不良：異物",
+    s_kizu: "素板不良：キズ", yogore: "素板不良：汚れ", cullet: "素板不良：カレット", soban_other: "素板不良：その他",
+    pallet: "パレット№", palletType: "パレット形態", localCode: "ローカルコード"
+  };
+  var SPEC = [];
+  function grp(title) { SPEC.push({ grp: title }); }
+  // target: フォーム要素名 または 要素そのもの
+  function spec(target, label, kind, now) { SPEC.push({ target: target, label: label, kind: kind, now: now }); }
+  function kindOf(name) {
+    var e = f(name);
+    if (!e) return "";
+    if (e.readOnly) return "自動計算";
+    if (e.type === "checkbox") return "チェック";
+    if (e.type === "number") return "数値";
+    if (e.type === "date") return "日付";
+    if (e.tagName === "SELECT") return "選択";
+    if (e.tagName === "TEXTAREA") return "文章";
+    return "文字";
+  }
+  var AUTO_NOW = {
+    yield: "良品枚数 ÷ 作業枚数 × 100（%）",
+    procNg: "その行の工程不良内訳（割れ〜その他）の合計",
+    sobanNg: "その行の素板不良内訳（過不足〜その他）の合計"
+  };
+
+  grp("ヘッダー");
+  spec("workDate", "作業日", "日付", "日付を選択。変更するとその日の保存データを表示（なければ空欄）");
+  spec("shift", "出", "文字", "自由入力");
+  spec("team", "組", "文字", "自由入力");
+  spec("stampGL", "GL（押印欄）", "文字", "自由入力（名前など）");
+  spec("stampLeader", "リーダー（押印欄）", "文字", "自由入力（名前など）");
+
+  grp("明細（PL 1〜19 の全行共通。バッジは1行目に表示）");
+  spec(body.rows[0].cells[0], "PL（行番号）", "固定", "1〜19 の固定表示");
+  COLS.slice(1).forEach(function (c) {
+    var n = "r1_" + c.k;
+    spec(n, LBL[c.k], kindOf(n), AUTO_NOW[c.k] || (c.num ? "数値のみ入力（0以上）。合計行に自動集計" : "自由入力") );
+  });
+
+  grp("合計行");
+  COLS.slice(4).forEach(function (c) {
+    var n = "t_" + c.k;
+    var now = c.k === "yield" ? "合計良品枚数 ÷ 合計作業枚数 × 100（%）"
+      : f(n).readOnly ? "1〜19行の縦合計" : "自由入力";
+    spec(n, "合計：" + LBL[c.k], kindOf(n), now);
+  });
+
+  grp("不良品処置廃棄（レ点記入）");
+  PROC.concat(SOBAN).forEach(function (k) {
+    spec("dispose_" + k, "処置廃棄：" + LBL[k], "チェック", "クリックでレ点ON/OFF");
+  });
+
+  [1, 2].forEach(function (n) {
+    grp("打刻マーク仕様／ダブルチェック（" + n + "段目）");
+    spec("m" + n + "_mark", "年月度マーク", "文字", "自由入力");
+    spec("m" + n + "_checker", "確認者", "文字", "自由入力");
+    spec("m" + n + "_mark2", "ダブルチェック 年月度マーク", "文字", "自由入力");
+    spec("m" + n + "_checker2", "ダブルチェック 確認者", "文字", "自由入力");
+    spec("m" + n + "_spec", "製品仕様書と照合確認", "チェック", "クリックでON/OFF");
+    spec("m" + n + "_char", "1文字づつ確認チェック", "チェック", "クリックでON/OFF");
+    spec("m" + n + "_dbl", "製品打刻マーク、シール及び製品規格書と照合確認", "チェック", "クリックでON/OFF");
+    spec("m" + n + "_seal", "作業開始時 2枚 シール貼付け", "チェック", "クリックでON/OFF");
+    spec(document.getElementById("ph" + n).parentNode, "マーク交換前・最終チェック（シール貼付け欄）", "写真",
+      "写真を選択／撮影して添付（縮小して保存）");
+  });
+
+  [1, 2].forEach(function (n) {
+    grp("使用素板（" + (n === 1 ? "左" : "右") + "）");
+    spec("sb" + n + "_name", "品名", "文字", "自由入力");
+    spec("sb" + n + "_w", "寸法1：縦", "文字", "自由入力");
+    spec("sb" + n + "_h", "寸法1：横", "文字", "自由入力");
+    spec("sb" + n + "_w2", "寸法2：縦", "文字", "自由入力");
+    spec("sb" + n + "_h2", "寸法2：横", "文字", "自由入力");
+    spec("sb" + n + "_pl", "PL数", "文字", "自由入力");
+    spec("sb" + n + "_mae", "前残", "文字", "自由入力");
+    spec("sb" + n + "_to", "当残", "文字", "自由入力");
+  });
+
+  grp("作業者・時間");
+  var TROWS = { worker: "作業者", tonyu: "投入時間", tenaoshi: "手直し時間", jogai: "除外（5S等）" };
+  var TCOLS = { itanose: "板乗せ", kensa: "検査", stock: "ストック", total: "投入時間合計" };
+  Object.keys(TROWS).forEach(function (r) {
+    Object.keys(TCOLS).forEach(function (c) {
+      var n = r + "_" + c;
+      var now = r === "worker" ? "自由入力（名前）"
+        : c === "total" ? "板乗せ＋検査＋ストック の合計" : "数値入力";
+      spec(n, TROWS[r] + "：" + TCOLS[c], kindOf(n), now);
+    });
+  });
+  spec("wheel", "使用面取りホイール", "文章", "自由入力（複数行）");
+  spec("tenaoshiCount", "手直し枚数", "数値", "数値入力（枚）");
+
+  grp("稼働状況");
+  spec("kadoStart", "開始時刻", "選択", "0:00〜23:00 から選択。時刻見出しが変わる（初期値 8:00）");
+  spec("kado_0", "稼働マス（30分×26マス共通。バッジは先頭マスに表示）", "選択",
+    "空欄/A/P/T/W/E/O から選択。コードごとに色分けし、時間を下に自動集計");
+
+  grp("コアドリル径・その他");
+  for (var ci = 1; ci <= 7; ci++) spec("core" + ci, "コアドリル径（目視）" + "①②③④⑤⑥⑦".charAt(ci - 1), "文字", "自由入力");
+  spec("kenshidai", "検視台 高さ調整実施", "チェック", "クリックでON/OFF");
+  spec("kenshidaiNote", "検視台 高さ調整 メモ", "文字", "自由入力");
+  spec("topics", "トピックス", "文章", "自由入力（複数行）");
+
+  // 番号付け・バッジ・一覧
+  var SPEC_KEY = "nline-nippo-spec";
+  var wishes = {};
+  try { wishes = JSON.parse(localStorage.getItem(SPEC_KEY) || "{}"); } catch (err) {}
+  var specBody = document.getElementById("specBody");
+  var no = 0;
+  SPEC.forEach(function (s) {
+    if (s.grp) { specBody.appendChild(el("tr", { "class": "grp" }, '<td colspan="5">' + s.grp + "</td>")); return; }
+    s.no = ++no;
+    var elx = typeof s.target === "string" ? f(s.target) : s.target;
+    var badge = el("span", { "class": "nobadge" }, s.no);
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(elx.tagName)) {
+      // 入力欄の直前に置き、top/left 未指定の絶対配置で入力欄の左上に重ねる
+      badge.classList.add("at");
+      if (getComputedStyle(elx.parentNode).display === "flex") {
+        // flex 内では絶対配置の基準がずれるので入力欄ごと包む
+        var wrap = el("span", { style: "position:relative;flex:1;display:block" });
+        elx.parentNode.insertBefore(wrap, elx);
+        wrap.appendChild(elx);
+        badge.style.top = "0"; badge.style.left = "0";
+        wrap.insertBefore(badge, elx);
+      } else {
+        elx.parentNode.insertBefore(badge, elx);
+      }
+      s.host = elx.closest("td, th, .photo") || elx.parentNode;
+    } else {
+      elx.classList.add("noref");
+      elx.appendChild(badge);
+      s.host = elx;
+    }
+    var host = s.host;
+    var tr = el("tr");
+    tr.appendChild(el("td", { "class": "n" }, '<a href="#" data-no="' + s.no + '">' + s.no + "</a>"));
+    tr.appendChild(el("td", null, s.label));
+    tr.appendChild(el("td", null, s.kind));
+    tr.appendChild(el("td", null, s.now));
+    var td = el("td"), ta = el("textarea", { rows: 1, "data-no": s.no });
+    ta.value = wishes[s.no] || "";
+    td.appendChild(ta); tr.appendChild(td);
+    specBody.appendChild(tr);
+    s.row = tr;
+  });
+  var byNo = {};
+  SPEC.forEach(function (s) { if (s.no) byNo[s.no] = s; });
+
+  specBody.addEventListener("input", function (e) {
+    var n = e.target.getAttribute("data-no"); if (!n) return;
+    wishes[n] = e.target.value;
+    try { localStorage.setItem(SPEC_KEY, JSON.stringify(wishes)); } catch (err) {}
+  });
+  specBody.addEventListener("click", function (e) {
+    var n = e.target.getAttribute && e.target.getAttribute("data-no");
+    if (!n || e.target.tagName !== "A") return;
+    e.preventDefault();
+    var h = byNo[n].host;
+    h.scrollIntoView({ block: "center", inline: "center" });
+    var inp = h.querySelector("input:not([type=hidden]), select, textarea");
+    if (inp) inp.focus();
+    h.style.outline = "3px solid #d33";
+    setTimeout(function () { h.style.outline = ""; }, 1500);
+  });
+  // フォームのセルにフォーカスしたら一覧の該当行をハイライト
+  form.addEventListener("focusin", function (e) {
+    SPEC.forEach(function (s) { if (s.row) s.row.classList.toggle("hit", s.host.contains(e.target)); });
+  });
+
+  var chkNo = document.getElementById("chkNo");
+  function applyNo() { document.body.classList.toggle("show-no", chkNo.checked); }
+  chkNo.addEventListener("change", applyNo); applyNo();
+  document.getElementById("btnSpec").onclick = function () {
+    document.getElementById("specPanel").scrollIntoView({ block: "start" });
+  };
+  document.getElementById("btnSpecCsv").onclick = function () {
+    var q = function (v) { v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = ["No.,区分,項目,入力形式,現在の動き,希望する動き"], g = "";
+    SPEC.forEach(function (s) {
+      if (s.grp) { g = s.grp; return; }
+      lines.push([s.no, g, s.label, s.kind, s.now, wishes[s.no] || ""].map(q).join(","));
+    });
+    download("Nライン日報_仮No一覧.csv", "﻿" + lines.join("\r\n"), "text/csv");
   };
 
   // 起動時：最後に開いた日、なければ今日
