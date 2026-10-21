@@ -82,7 +82,16 @@
   function matchQuery(m) {
     var q = qEl.value.trim().toLowerCase();
     if (!q) return true;
-    var t = [m.docNo, m.title, m.process, m.line, m.product, m.category, m.purpose].join(" ").toLowerCase();
+    // 手順・急所の文字も対象（「トルク」「保存ボタン」などでも探せる）
+    if (m._text === undefined) {
+      var parts = [m.docNo, m.title, m.process, m.line, m.product, m.category, m.purpose];
+      (m.steps || []).forEach(function (s) {
+        parts.push(s.title, s.detail);
+        (s.points || []).forEach(function (p) { parts.push(p.text, p.reason); });
+      });
+      m._text = parts.join(" ").toLowerCase();
+    }
+    var t = m._text;
     return q.split(/\s+/).every(function (w) { return t.indexOf(w) !== -1; });
   }
 
@@ -150,10 +159,33 @@
       byKey[g].push(m);
     });
 
-    listEl.innerHTML = groups.map(function (g) {
+    listEl.innerHTML = (filtered ? "" : recentHtml()) + groups.map(function (g) {
       return (g ? '<h2 class="group-head">' + esc(g) + '</h2>' : '') +
         '<ul class="manual-list">' + byKey[g].map(card).join("") + '</ul>';
     }).join("") || (items.length ? '<div class="notice">該当する要領書がありません。</div>' : "");
+  }
+
+  // 30 日以内に作られた・改訂された要領書に印を付ける（変更に気付けるように）
+  var today = new Date();
+  function badge(m) {
+    var d = Date.parse(m.updated || m.issued || "");
+    if (isNaN(d) || (today - d) / 86400000 > 30) return "";
+    var isNew = !m.updated || m.updated === m.issued;
+    return ' <span class="tag ' + (isNew ? "new" : "rev") + '">' + (isNew ? "新規" : "改訂") + '</span>';
+  }
+
+  // 最近見た要領書（絞り込み・検索をしていないときだけ表示）
+  function recentHtml() {
+    var files = [];
+    try { files = JSON.parse(localStorage.getItem("wi.recent") || "[]"); } catch (e) {}
+    var list = files.map(function (f) {
+      for (var i = 0; i < items.length; i++) if (items[i]._file === f) return items[i];
+      return null;
+    }).filter(Boolean);
+    if (!list.length) return "";
+    return '<div class="recent"><span class="recent-label">最近見た要領書</span>' + list.map(function (m) {
+      return '<a class="chip" href="manual.html?file=' + encodeURIComponent(m._file) + '">' + esc(m.title) + '</a>';
+    }).join("") + '</div>';
   }
 
   function card(m) {
@@ -161,7 +193,7 @@
     var videos = (m.steps || []).filter(function (s) { return s.video && s.video.src; }).length;
     var meta = levels.filter(function (k) { return m[k]; }).map(function (k) { return esc(m[k]); }).join(" ／ ");
     return '<li><a class="manual-card" href="manual.html?file=' + encodeURIComponent(m._file) + '">' +
-      '<div class="no">' + esc(m.docNo) + (m.revision ? "　改訂 " + esc(m.revision) : "") + '</div>' +
+      '<div class="no">' + esc(m.docNo) + (m.revision ? "　改訂 " + esc(m.revision) : "") + badge(m) + '</div>' +
       '<div class="title">' + esc(m.title) + '</div>' +
       '<div class="meta">' +
         (m.category && levels.indexOf("category") === -1 ? '<span class="tag">' + esc(m.category) + '</span> ' : '') +

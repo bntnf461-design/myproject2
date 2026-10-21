@@ -206,6 +206,17 @@ button, input, select, textarea {
 }
 .chip.on .n { background: var(--white); }
 .chip.more { border-style: dashed; font-weight: normal; }
+.recent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.recent-label { font-weight: bold; margin-right: 4px; }
+.recent .chip { text-decoration: none; display: inline-flex; align-items: center; font-weight: normal; }
+.tag.new { background: var(--quality); }
+.tag.rev { background: var(--focus); color: var(--navy-dark); }
 .result-bar {
   display: flex;
   align-items: center;
@@ -453,6 +464,21 @@ button, input, select, textarea {
   object-fit: contain;
   background: #000;
 }
+.player-still {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: var(--navy-dark);
+}
+.player-still[hidden] { display: none; }
+.player-still img { max-width: 100%; max-height: 100%; background: #fff; cursor: zoom-in; }
+.player-still .still-text { max-width: 900px; font-size: 1.6rem; line-height: 1.7; text-align: center; }
+.player-still .still-text p { font-size: 1.2rem; white-space: pre-wrap; }
+.steps-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.steps-head .btn { margin-left: auto; }
 .player-msg {
   position: absolute;
   left: 16px;
@@ -566,7 +592,7 @@ button, input, select, textarea {
 .lightbox {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 130;
   display: none;
   align-items: center;
   justify-content: center;

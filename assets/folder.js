@@ -114,6 +114,20 @@
     return "registerManual(" + JSON.stringify(d, null, 2) + ");\n";
   }
 
+  // 上書き・削除の前に、今のファイルを manuals/<folder> に日時付きで残す（間違えて保存しても戻せるように）
+  function backup(md, name, folder) {
+    var t = new Date();
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    var stamp = t.getFullYear() + p(t.getMonth() + 1) + p(t.getDate()) + "-" + p(t.getHours()) + p(t.getMinutes()) + p(t.getSeconds());
+    return md.getFileHandle(name).then(function (fh) {
+      return fh.getFile().then(function (f) { return f.text(); }).then(function (text) {
+        return md.getDirectoryHandle(folder, { create: true }).then(function (bd) {
+          return writeFile(bd, name.replace(/\.js$/, "") + "_" + stamp + ".js", text);
+        });
+      });
+    }, function () { /* まだ無いファイル（新規）なので何もしない */ });
+  }
+
   window.WIFolder = {
     supported: supported,
     getRoot: getRoot,
@@ -123,6 +137,7 @@
     catalogText: catalogText,
     updateCatalog: updateCatalog,
     parseManual: parseManual,
-    manualText: manualText
+    manualText: manualText,
+    backup: backup
   };
 })();

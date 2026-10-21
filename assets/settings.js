@@ -238,7 +238,9 @@
                 var d = WIFolder.parseManual(t);
                 if (!applyTo(d, ch)) return;
                 notice("要領書を更新中… " + esc(f));
-                return WIFolder.writeFile(md, f, WIFolder.manualText(d)).then(function () { updated++; });
+                return WIFolder.backup(md, f, "_backup").then(function () {
+                  return WIFolder.writeFile(md, f, WIFolder.manualText(d));
+                }).then(function () { updated++; });
               }).catch(function () { failed.push(f); });
             });
           }, Promise.resolve());

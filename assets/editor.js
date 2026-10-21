@@ -42,6 +42,11 @@
     };
   }
   function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function isoToday() {
+    var t = new Date();
+    return t.getFullYear() + "-" + pad(t.getMonth() + 1) + "-" + pad(t.getDate());
+  }
+
 
   // 古いデータや手書きのファイルでも編集できるよう、足りない項目を補う
   function normalize(d) {
@@ -221,6 +226,7 @@
         '<span class="ttl">手順 ' + (i + 1) + '</span>' +
         '<button type="button" class="btn on-navy small" data-act="step-up" data-i="' + i + '"' + (i === 0 ? " disabled" : "") + '>↑ 上へ</button>' +
         '<button type="button" class="btn on-navy small" data-act="step-down" data-i="' + i + '"' + (i === m.steps.length - 1 ? " disabled" : "") + '>↓ 下へ</button>' +
+        '<button type="button" class="btn on-navy small" data-act="step-ins" data-i="' + i + '">＋ 下に追加</button>' +
         '<button type="button" class="btn on-navy small" data-act="step-dup" data-i="' + i + '">複製</button>' +
         '<button type="button" class="btn on-navy small" data-act="step-del" data-i="' + i + '">削除</button>' +
       '</header><div class="body"><div class="form-grid">' +
@@ -263,7 +269,14 @@
         field("内容", b + ".content") + field("担当", b + ".by") +
         '<button type="button" class="btn small danger" data-act="rev-del" data-i="' + i + '" style="margin-top:22px">削除</button></div>';
     });
-    h += '<button type="button" class="btn small" data-act="rev-add">＋ 改訂を追加</button></section>';
+    h += '<button type="button" class="btn small" data-act="rev-add">＋ 改訂する（改訂番号を上げ、改訂日を今日に）</button></section>';
+
+    // 既存の要領書を開いているときだけ
+    if (fileName && WIFolder.supported) {
+      h += '<section class="section"><h2>この要領書の削除</h2>' +
+        '<p class="hint" style="margin-top:0">一覧から外し、ファイルは manuals/_trash フォルダに移します（動画・写真は残ります）。</p>' +
+        '<button type="button" class="btn small danger" data-act="delete-doc">この要領書を削除する</button></section>';
+    }
 
     formEl.innerHTML = h;
     window.scrollTo(0, y);
@@ -332,6 +345,7 @@
     switch (act) {
       case "step-up": swap(st, i, i - 1); break;
       case "step-down": swap(st, i, i + 1); break;
+      case "step-ins": insertStep(i + 1); return;
       case "step-dup": st.splice(i + 1, 0, JSON.parse(JSON.stringify(st[i]))); break;
       case "step-del":
         if (!confirm("手順 " + (i + 1) + " を削除しますか？")) return;
@@ -341,15 +355,24 @@
       case "point-add": st[i].points.push(blankPoint()); break;
       case "point-del": st[i].points.splice(j, 1); break;
       case "rev-add":
-        var last = m.revisions[m.revisions.length - 1];
-        var next = last && /^\d+$/.test(last.rev) ? String(Number(last.rev) + 1) : "";
-        m.revisions.push({ rev: next, date: m.updated || "", content: "", by: "" });
-        break;
+        // 改訂番号を 1 つ上げ、改訂日を今日にして、改訂履歴に行を追加
+        var cur = /^\d+$/.test(String(m.revision)) ? Number(m.revision) : 0;
+        m.revisions.forEach(function (r) { if (/^\d+$/.test(String(r.rev))) cur = Math.max(cur, Number(r.rev)); });
+        var today = isoToday();
+        m.revision = String(cur + 1);
+        m.updated = today;
+        m.revisions.push({ rev: m.revision, date: today, content: "", by: m.author || "" });
+        render();
+        saveDraft();
+        var inp = formEl.querySelector('[data-path="revisions.' + (m.revisions.length - 1) + '.content"]');
+        if (inp) { inp.focus(); inp.placeholder = "改訂の内容を入力（例：手順3の急所を追加）"; }
+        return;
       case "rev-del": m.revisions.splice(i, 1); break;
       case "pick-video": pick("video", path); return;
       case "pick-image": pick("image", path); return;
       case "seg": openSeg(path); return;
       case "annotate": annotate(i); return;
+      case "delete-doc": deleteDoc(); return;
       default: return;
     }
     render();
@@ -659,6 +682,31 @@
   var saveDirBtn = document.getElementById("saveDir");
   if (WIFolder.supported) saveDirBtn.hidden = false;
 
+  function deleteDoc() {
+    if (!confirm("「" + (m.title || fileName) + "」を削除しますか？\n一覧から外し、ファイルは manuals/_trash フォルダに移します。")) return;
+    var name = fileName, root;
+    WIFolder.getRoot().then(function (r) {
+      root = r;
+      return root.getDirectoryHandle("manuals");
+    }).then(function (md) {
+      return WIFolder.backup(md, name, "_trash").then(function () {
+        return WIFolder.updateCatalog(root, function (c) {
+          var i = c.files.indexOf(name);
+          if (i === -1) return false;
+          c.files.splice(i, 1);
+        });
+      }).then(function () {
+        return md.removeEntry(name).catch(function () {});
+      });
+    }).then(function () {
+      try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+      location.href = "index.html";
+    }).catch(function (e) {
+      if (e && e.name === "AbortError") return;
+      notice("削除できませんでした。" + esc(e && e.message ? e.message : e), true);
+    });
+  }
+
   // 選んだ動画・写真のうち、まだフォルダに無いものをコピー
   function copyMedia(root, d) {
     var srcs = [];
@@ -693,7 +741,9 @@
       root = r;
       return root.getDirectoryHandle("manuals");
     }).then(function (md) {
-      return WIFolder.writeFile(md, name, toFileText(d));
+      return WIFolder.backup(md, name, "_backup").then(function () {
+        return WIFolder.writeFile(md, name, toFileText(d));
+      });
     }).then(function () {
       // 新しい要領書なら一覧（目録）に追加
       return WIFolder.updateCatalog(root, function (c) {
@@ -731,20 +781,25 @@
     location.href = "manual.html?preview=1";
   });
 
-  document.getElementById("addStep").addEventListener("click", function () {
+  // 手順を at 番目に追加。1 本の動画を続けて使う場合が多いので、前の手順の動画の「終了」を新しい手順の「開始」にする
+  function insertStep(at) {
     var s = blankStep();
-    // 1 本の動画を続けて使う場合が多いので、前の手順の動画の「終了」を新しい手順の「開始」にする
-    var prev = m.steps[m.steps.length - 1];
+    var prev = m.steps[at - 1];
     if (prev && prev.video.src) {
       s.video.src = prev.video.src;
       s.video.start = prev.video.end || "";
     }
-    m.steps.push(s);
+    m.steps.splice(at, 0, s);
     render();
     saveDraft();
-    var el = document.getElementById("ed-step-" + (m.steps.length - 1));
-    if (el) el.scrollIntoView();
-  });
+    var el = document.getElementById("ed-step-" + at);
+    if (el) {
+      el.scrollIntoView();
+      var t = el.querySelector('[data-path$=".title"]');
+      if (t) t.focus();
+    }
+  }
+  document.getElementById("addStep").addEventListener("click", function () { insertStep(m.steps.length); });
 
   // ---------- Excel 取り込み ----------
   document.getElementById("importXl").addEventListener("click", function () {
@@ -765,6 +820,27 @@
         (res.images.length ? "<br>Excel の写真 " + res.images.length + " 枚は、保存すると images フォルダに書き出されます。" : ""));
       window.scrollTo(0, 0);
     });
+  });
+
+  // 似た作業の要領書を作るときに、今の内容をひな形にする
+  document.getElementById("copyDoc").addEventListener("click", function () {
+    if (!confirm("今の内容を元に、新しい要領書を作りますか？\n（文書番号は空になり、改訂履歴は「新規制定」から始まります。元の要領書は変わりません）")) return;
+    var today = isoToday();
+    m.docNo = "";
+    m.id = "";
+    m.title = m.title ? m.title + "（コピー）" : "";
+    m.revision = "1";
+    m.issued = today;
+    m.updated = today;
+    m.revisions = [{ rev: "1", date: today, content: "新規制定", by: m.author || "" }];
+    fileName = "";
+    history.replaceState(null, "", "editor.html");
+    render();
+    saveDraft();
+    notice("コピーを作りました。<b>文書番号と作業名を入力</b>してから保存してください（別の要領書として保存されます）。");
+    window.scrollTo(0, 0);
+    var t = formEl.querySelector('[data-path="docNo"]');
+    if (t) t.focus();
   });
 
   document.getElementById("newDoc").addEventListener("click", function () {

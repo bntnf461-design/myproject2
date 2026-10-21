@@ -37,7 +37,7 @@
 
   // ---------- 描画 ----------
   var manual = null;
-  var playlist = []; // 再生できる項目（手順の動画・急所の動画）を表示順に並べたもの
+  var playlist = []; // 表示順の項目（すべての手順 ＋ 急所の動画）。動画の無い手順は写真・説明を大きく表示
 
   function start(data, isPreview) {
     manual = data;
@@ -45,6 +45,12 @@
     document.getElementById("barTitle").textContent = data.title || "作業要領書";
     if (!isPreview && data._file) {
       document.getElementById("editLink").href = "editor.html?file=" + encodeURIComponent(data._file);
+      // 一覧の「最近見た要領書」用に記録（この PC のブラウザ内だけ）
+      try {
+        var recent = JSON.parse(localStorage.getItem("wi.recent") || "[]").filter(function (f) { return f !== data._file; });
+        recent.unshift(data._file);
+        localStorage.setItem("wi.recent", JSON.stringify(recent.slice(0, 6)));
+      } catch (e) {}
     }
     render();
   }
@@ -95,7 +101,8 @@
     if (prep) html += '<section class="section"><h2>作業前の準備</h2><div class="prep">' + prep + '</div></section>';
 
     // 作業手順
-    html += '<section class="section"><h2>作業手順 <span class="no-print hint">（行をタップすると動画を再生します）</span></h2>' +
+    html += '<section class="section"><h2 class="steps-head">作業手順 <span class="no-print hint">（行をタップすると動画を再生します）</span>' +
+      (steps.length ? '<button type="button" class="btn primary small no-print" id="stepMode">▶ 手順を 1 つずつ見る</button>' : '') + '</h2>' +
       '<table class="steps"><thead><tr>' +
         '<th class="col-no">No.</th><th>主なステップ（何を）</th><th>急所（どのように）／理由</th>' +
         (showTime ? '<th class="col-time">標準時間</th>' : '') +
@@ -104,10 +111,9 @@
 
     steps.forEach(function (s, si) {
       var stepPl = -1;
-      if (hasVideo(s.video)) {
-        stepPl = playlist.length;
-        playlist.push({ step: si, point: -1, video: s.video });
-      }
+      var stepIdx = playlist.length;
+      playlist.push({ step: si, point: -1, video: hasVideo(s.video) ? s.video : null });
+      if (hasVideo(s.video)) stepPl = stepIdx;
 
       var points = (s.points || []).map(function (p, pi) {
         var pv = "";
@@ -170,6 +176,7 @@
   docEl.addEventListener("click", function (ev) {
     var t = ev.target;
     if (t.closest("a")) return;
+    if (t.id === "stepMode") { openPlayer(0); return; }
     // 写真をタップしたら拡大（画面コピーの細かい文字も読めるように）
     if (t.classList.contains("step-image")) { ev.stopPropagation(); openLightbox(t.src); return; }
     var el = t.closest("[data-pl]");
@@ -201,7 +208,7 @@
   }
   lb.addEventListener("click", closeLightbox);
   document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape" && lb.classList.contains("open")) closeLightbox();
+    if (ev.key === "Escape" && lb.classList.contains("open")) { closeLightbox(); ev.stopImmediatePropagation(); }
   });
 
   // ---------- 動画プレーヤー ----------
@@ -218,6 +225,9 @@
   var pAuto = document.getElementById("pAuto");
   var pTime = document.getElementById("pTime");
   var pClose = document.getElementById("pClose");
+  var pStill = document.getElementById("pStill");
+  // 手順モードの写真もタップで拡大
+  pStill.addEventListener("click", function (ev) { if (ev.target.tagName === "IMG") openLightbox(ev.target.src); });
   var rateBtns = player.querySelectorAll("[data-rate]");
 
   var cur = -1;
@@ -254,8 +264,6 @@
     pPrev.disabled = idx === 0;
     pNext.disabled = idx === playlist.length - 1;
 
-    segStart = WI.parseTime(item.video.start) || 0;
-    segEnd = WI.parseTime(item.video.end);
     hideMsg();
 
     // 一覧の該当行を強調
@@ -266,6 +274,28 @@
 
     player.classList.add("open");
     document.body.style.overflow = "hidden";
+
+    // 動画の無い手順: 写真（無ければ説明）を大きく表示
+    if (!item.video) {
+      video.pause();
+      video.hidden = true;
+      pStill.hidden = false;
+      pStill.innerHTML = step.image
+        ? '<img src="' + esc(step.image) + '" alt="" title="タップで拡大">'
+        : '<div class="still-text"><b>' + esc(step.title) + '</b>' + (step.detail ? '<p>' + esc(step.detail) + '</p>' : '') + '</div>';
+      pTime.textContent = "";
+      pPlay.disabled = true;
+      document.getElementById("pRestart").disabled = true;
+      (pNext.disabled ? pClose : pNext).focus(); // → キー・Enter で次へ
+      return;
+    }
+    video.hidden = false;
+    pStill.hidden = true;
+    pStill.innerHTML = "";
+    pPlay.disabled = false;
+    document.getElementById("pRestart").disabled = false;
+    segStart = WI.parseTime(item.video.start) || 0;
+    segEnd = WI.parseTime(item.video.end);
 
     var src = item.video.src;
     if (src !== loadedSrc) {
@@ -402,15 +432,16 @@
 
   // キーボード操作（PC 用）
   document.addEventListener("keydown", function (ev) {
-    if (cur === -1) return;
+    if (cur === -1 || lb.classList.contains("open")) return; // 写真の拡大中は拡大表示の操作を優先
     if (ev.target === video && (ev.key === " " || ev.key.indexOf("Arrow") === 0)) return; // 標準操作に任せる
+    var still = !playlist[cur].video;
     switch (ev.key) {
       case "Escape": closePlayer(); break;
       case " ":
-      case "k": if (ev.target.tagName === "BUTTON" && ev.key === " ") return; togglePlay(); break;
+      case "k": if (still || (ev.target.tagName === "BUTTON" && ev.key === " ")) return; togglePlay(); break;
       case "ArrowRight": case "PageDown": if (cur < playlist.length - 1) openPlayer(cur + 1); break;
       case "ArrowLeft": case "PageUp": if (cur > 0) openPlayer(cur - 1); break;
-      case "Home": restart(); break;
+      case "Home": if (!still) restart(); break;
       case "r": case "R": pRepeat.click(); break;
       case "a": case "A": pAuto.click(); break;
       default: return;
