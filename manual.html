@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作業要領書</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="btn on-navy" href="index.html" id="backLink">◀ 一覧</a>
+  <h1 id="barTitle" class="hide-narrow">作業要領書</h1>
+  <div class="actions">
+    <button type="button" class="btn on-navy" id="textSize" aria-pressed="false">文字 大</button>
+    <a class="btn on-navy" id="editLink" href="editor.html">編集</a>
+    <button type="button" class="btn on-navy" onclick="window.print()">印刷</button>
+  </div>
+</header>
+
+<main class="page" id="doc">
+  <div class="notice">読み込み中…</div>
+</main>
+
+<!-- 動画プレーヤー（1 つだけ用意して使い回す＝メモリ・負荷を抑える） -->
+<div class="player" id="player" role="dialog" aria-modal="true" aria-labelledby="pName">
+  <div class="player-head">
+    <div class="label">
+      <div class="step-no" id="pNo"></div>
+      <div class="step-name" id="pName"></div>
+    </div>
+    <button type="button" class="btn on-navy" id="pClose" title="閉じる (Esc)">✕ 閉じる</button>
+  </div>
+  <div class="player-body">
+    <video id="pVideo" controls playsinline preload="none" disablepictureinpicture controlslist="nodownload noplaybackrate"></video>
+    <div class="player-msg" id="pMsg"></div>
+  </div>
+  <div class="player-points" id="pPoints"></div>
+  <div class="player-ctrl">
+    <button type="button" class="btn on-navy" id="pPrev" title="前の手順 (←)">◀ 前へ</button>
+    <button type="button" class="btn on-navy" id="pRestart" title="最初から (Home)">⟲ 最初から</button>
+    <button type="button" class="btn on-navy" id="pPlay" title="再生／一時停止 (Space)">▶ 再生</button>
+    <button type="button" class="btn on-navy" id="pNext" title="次の手順 (→)">次へ ▶</button>
+    <span class="spacer"></span>
+    <span class="seg-info" id="pTime"></span>
+    <div class="group" role="group" aria-label="再生速度">
+      <button type="button" class="btn on-navy small" data-rate="0.5">0.5倍</button>
+      <button type="button" class="btn on-navy small" data-rate="0.75">0.75倍</button>
+      <button type="button" class="btn on-navy small active" data-rate="1">標準</button>
+    </div>
+    <button type="button" class="btn on-navy small" id="pRepeat" aria-pressed="false" title="繰り返し (R)">↻ 繰り返し</button>
+  </div>
+</div>
+
+<script src="assets/common.js"></script>
+<script src="assets/viewer.js"></script>
+</body>
+</html>

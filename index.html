@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作業要領書 一覧</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 id="siteName">作業要領書 一覧</h1>
+  <div class="actions">
+    <button type="button" class="btn on-navy" id="textSize" aria-pressed="false">文字 大</button>
+    <a class="btn on-navy" href="editor.html">＋ 新規作成</a>
+  </div>
+</header>
+
+<main class="page">
+  <div class="search">
+    <input type="search" id="q" placeholder="文書番号・作業名・工程・品番で検索" aria-label="検索">
+  </div>
+  <div id="status" class="notice">読み込み中…</div>
+  <ul class="manual-list" id="list"></ul>
+</main>
+
+<script src="assets/common.js"></script>
+<script src="manuals/catalog.js"></script>
+<script>
+(function () {
+  "use strict";
+  var esc = WI.esc;
+  var listEl = document.getElementById("list");
+  var statusEl = document.getElementById("status");
+  var qEl = document.getElementById("q");
+  var items = [];
+
+  WI.initTextSize(document.getElementById("textSize"));
+
+  var cat = window.CATALOG || { files: [] };
+  if (cat.siteName) {
+    document.getElementById("siteName").textContent = cat.siteName;
+    document.title = cat.siteName;
+  }
+  if (!cat.files || !cat.files.length) {
+    statusEl.textContent = "要領書が登録されていません。manuals/catalog.js にファイル名を追加してください。";
+    return;
+  }
+
+  WI.loadManualFiles(cat.files, function (results) {
+    var errors = [];
+    results.forEach(function (r) {
+      if (r.data) items.push(r.data); else errors.push(r.error);
+    });
+    if (errors.length) {
+      statusEl.className = "notice error";
+      statusEl.innerHTML = errors.map(esc).join("<br>");
+    } else {
+      statusEl.style.display = "none";
+    }
+    render();
+  });
+
+  function text(m) {
+    return [m.docNo, m.title, m.process, m.line, m.product, m.category].join(" ").toLowerCase();
+  }
+
+  function render() {
+    var q = qEl.value.trim().toLowerCase();
+    var words = q ? q.split(/\s+/) : [];
+    var html = items.filter(function (m) {
+      var t = text(m);
+      return words.every(function (w) { return t.indexOf(w) !== -1; });
+    }).map(function (m) {
+      var steps = (m.steps || []).length;
+      var videos = (m.steps || []).filter(function (s) { return s.video && s.video.src; }).length;
+      return '<li><a class="manual-card" href="manual.html?file=' + encodeURIComponent(m._file) + '">' +
+        '<div class="no">' + esc(m.docNo) + (m.revision ? "　改訂 " + esc(m.revision) : "") + '</div>' +
+        '<div class="title">' + esc(m.title) + '</div>' +
+        '<div class="meta">' +
+          (m.category ? '<span class="tag">' + esc(m.category) + '</span> ' : '') +
+          esc([m.process, m.line].filter(Boolean).join(" / ")) + '<br>' +
+          '手順 ' + steps + ' 件・動画 ' + videos + ' 件' +
+          (m.updated ? '・更新 ' + esc(m.updated) : '') +
+        '</div></a></li>';
+    }).join("");
+    listEl.innerHTML = html || (items.length ? '<li class="notice">該当する要領書がありません。</li>' : "");
+  }
+
+  qEl.addEventListener("input", render);
+})();
+</script>
+</body>
+</html>
