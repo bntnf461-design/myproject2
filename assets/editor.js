@@ -54,6 +54,34 @@
     return d;
   }
 
+  // ---------- 一覧の絞り込み（カテゴリー）用の入力候補 ----------
+  // 登録済みの要領書で使っているライン名・製品名などを候補に出し、表記ゆれ（Aライン／A ライン など）を防ぐ
+  var CAT_HINT = "一覧の絞り込みに使います。候補から選ぶと表記がそろいます。複数ある場合は「、」で区切る";
+  var CAT_KEYS = ["line", "product", "process", "category"];
+  var dlBox = document.createElement("div");
+  document.body.appendChild(dlBox);
+  function loadSuggestions() {
+    var files = (window.CATALOG && window.CATALOG.files) || [];
+    if (!files.length) return;
+    WI.loadManualFiles(files, function (results) {
+      var vals = {};
+      CAT_KEYS.forEach(function (k) { vals[k] = []; });
+      results.forEach(function (r) {
+        if (!r.data) return;
+        CAT_KEYS.forEach(function (k) {
+          String(r.data[k] || "").split(/[、,，]/).forEach(function (v) {
+            v = v.trim();
+            if (v && vals[k].indexOf(v) === -1) vals[k].push(v);
+          });
+        });
+      });
+      dlBox.innerHTML = CAT_KEYS.map(function (k) {
+        return '<datalist id="dl-' + k + '">' + vals[k].sort(function (a, b) { return a.localeCompare(b, "ja", { numeric: true }); })
+          .map(function (v) { return '<option value="' + esc(v) + '">'; }).join("") + '</datalist>';
+      }).join("");
+    });
+  }
+
   // ---------- 起動 ----------
   var paramFile = WI.getParam("file");
   if (paramFile) {
@@ -63,6 +91,7 @@
       m = normalize(JSON.parse(JSON.stringify(data)));
       render();
       notice("「" + paramFile + "」を開きました。");
+      loadSuggestions(); // 読み込みは 1 つずつ行う必要があるので、開き終わってから
     });
   } else {
     var draft = loadDraft();
@@ -81,6 +110,7 @@
       m = blankManual();
       render();
     }
+    loadSuggestions();
   }
 
   function loadDraft() {
@@ -118,7 +148,7 @@
       input = '<textarea data-path="' + path + '" data-type="' + opt.type + '"' + (opt.ph ? ' placeholder="' + esc(opt.ph) + '"' : '') + '>' + esc(text) + '</textarea>';
     } else {
       input = '<input type="' + (opt.type || "text") + '" data-path="' + path + '" value="' + esc(v) + '"' +
-        (opt.ph ? ' placeholder="' + esc(opt.ph) + '"' : '') + '>';
+        (opt.ph ? ' placeholder="' + esc(opt.ph) + '"' : '') + (opt.list ? ' list="dl-' + opt.list + '" autocomplete="off"' : '') + '>';
     }
     return '<label class="field' + (opt.wide ? " wide" : "") + '"><span>' + label + '</span>' + input +
       (opt.hint ? '<span class="hint">' + opt.hint + '</span>' : '') + '</label>';
@@ -158,10 +188,10 @@
       field("作業名（タイトル）＊", "title", { wide: true, ph: "例：ボルト締付け作業" }) +
       field("文書番号", "docNo", { ph: "例：WI-A-001" }) +
       field("改訂番号", "revision") +
-      field("区分", "category", { ph: "例：組立／検査／点検" }) +
-      field("工程", "process") +
-      field("ライン・場所", "line") +
-      field("品番・品名", "product") +
+      field("ライン", "line", { list: "line", ph: "例：Aライン", hint: CAT_HINT }) +
+      field("製品（品番・品名）", "product", { list: "product", ph: "例：BR-1024 ブラケット", hint: CAT_HINT }) +
+      field("工程", "process", { list: "process", ph: "例：第2組立工程", hint: CAT_HINT }) +
+      field("作業区分", "category", { list: "category", ph: "例：組立／検査／点検" }) +
       field("制定日", "issued", { type: "date" }) +
       field("改訂日", "updated", { type: "date" }) +
       field("作成", "author") +

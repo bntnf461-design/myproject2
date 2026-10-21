@@ -163,6 +163,66 @@ button, input, select, textarea {
   vertical-align: middle;
 }
 
+/* ---------- カテゴリーの絞り込み ---------- */
+.filters {
+  border: 2px solid var(--navy);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+.filters:empty { display: none; }
+.filter-row {
+  display: grid;
+  grid-template-columns: 6em 1fr;
+  border-top: 1px solid var(--line);
+}
+.filter-row:first-child { border-top: 0; }
+.filter-label {
+  padding: 10px 12px;
+  background: var(--navy);
+  color: var(--white);
+  font-weight: bold;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
+.chip {
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 2px solid var(--navy);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--navy);
+  font-weight: bold;
+  cursor: pointer;
+}
+.chip:hover { background: var(--navy-pale); }
+.chip.on { background: var(--navy); color: var(--white); }
+.chip .n {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--navy-light);
+  color: var(--navy);
+  font-size: 0.8rem;
+}
+.chip.on .n { background: var(--white); }
+.chip.more { border-style: dashed; font-weight: normal; }
+.result-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+.result-bar .sep { color: var(--muted); }
+.group-head {
+  margin: 16px 0 8px;
+  padding: 6px 12px;
+  font-size: 1rem;
+  background: var(--navy-light);
+  border-left: 8px solid var(--navy);
+}
+
 /* ---------- 文書ヘッダ（帳票風） ---------- */
 .doc-head {
   display: grid;
@@ -525,6 +585,8 @@ button, input, select, textarea {
 
 /* ---------- スマホ・タブレット縦（表をカード表示に） ---------- */
 @media (max-width: 760px) {
+  .filter-row { grid-template-columns: 1fr; }
+  .filter-label { padding: 4px 12px; }
   .topbar { flex-wrap: wrap; }
   .topbar h1 { flex-basis: 100%; order: -1; }
   .topbar h1.hide-narrow { display: none; }
