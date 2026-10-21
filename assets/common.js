@@ -110,6 +110,36 @@
 
   var KIND_LABEL = { safety: "安全", quality: "品質", ease: "やりやすさ" };
 
+  // ---------- カテゴリー（一覧の絞り込み） ----------
+  var CAT_KEYS = ["line", "product", "process", "category"];
+  var CAT_DEFAULT_LABEL = { line: "ライン", product: "製品", process: "工程", category: "作業区分" };
+
+  // catalog.js の設定（無い項目は初期値）
+  function catConfig(cat) {
+    cat = cat || {};
+    var levels = (cat.levels && cat.levels.length ? cat.levels : ["line", "product", "process"])
+      .filter(function (k) { return CAT_KEYS.indexOf(k) !== -1; });
+    var labels = {};
+    CAT_KEYS.forEach(function (k) { labels[k] = (cat.labels && cat.labels[k]) || CAT_DEFAULT_LABEL[k]; });
+    var categories = {};
+    CAT_KEYS.forEach(function (k) { categories[k] = ((cat.categories && cat.categories[k]) || []).slice(); });
+    return { levels: levels, labels: labels, categories: categories };
+  }
+
+  // 「Aライン、Bライン」→ ["Aライン", "Bライン"]
+  function splitCat(v) {
+    return String(v || "").split(/[、,，]/).map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+
+  // 設定画面で決めた並び順を優先し、それ以外は名前順
+  function catSorter(order) {
+    return function (a, b) {
+      var i = order.indexOf(a), j = order.indexOf(b);
+      if (i !== -1 || j !== -1) return (i === -1 ? 1e9 : i) - (j === -1 ? 1e9 : j);
+      return a.localeCompare(b, "ja", { numeric: true });
+    };
+  }
+
   window.WI = {
     loadManualFile: loadManualFile,
     loadManualFiles: loadManualFiles,
@@ -118,6 +148,10 @@
     formatTime: formatTime,
     getParam: getParam,
     initTextSize: initTextSize,
-    KIND_LABEL: KIND_LABEL
+    KIND_LABEL: KIND_LABEL,
+    CAT_KEYS: CAT_KEYS,
+    catConfig: catConfig,
+    splitCat: splitCat,
+    catSorter: catSorter
   };
 })();

@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>撮影ガイド（スマホの設定）</title>
+<title>撮影ガイド（スマホ・PC）</title>
 <link rel="stylesheet" href="assets/style.css">
 <style>
   .guide h3 { margin: 12px 0 4px; font-size: 1.05rem; }
+  .guide [id] { scroll-margin-top: 80px; }
   .guide ol { margin: 4px 0 8px; padding-left: 1.6em; }
   .guide li { margin: 4px 0; }
   .guide .path { display: inline-block; padding: 0 6px; border: 1px solid var(--navy); border-radius: 4px; background: var(--navy-pale); font-weight: bold; }
@@ -23,14 +24,19 @@
 <body>
 <header class="topbar">
   <a class="btn on-navy" href="index.html">◀ 一覧</a>
-  <h1>撮影ガイド（スマホの設定）</h1>
+  <h1>撮影ガイド（スマホ・PC）</h1>
   <div class="actions">
     <button type="button" class="btn on-navy" onclick="window.print()">印刷</button>
   </div>
 </header>
 
 <main class="page guide">
-  <div class="notice" style="margin-bottom:16px">
+  <nav class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    <a class="btn" href="#phone">スマホで撮る</a>
+    <a class="btn" href="#pc">PC 作業を画面録画する</a>
+  </nav>
+
+  <div class="notice" id="phone" style="margin-bottom:16px">
     スマホの初期設定は「きれいさ優先」のため、そのまま撮ると<b>他の PC で再生できない・カクつく・色が白っぽい</b>ことがあります。<br>
     撮影する前に、<b>一度だけ</b>下の設定にしてください（設定は残るので、毎回変える必要はありません）。
   </div>
@@ -109,6 +115,55 @@
       <li>スマホスタンドなどで<b>固定</b>し、<b>手元が画面いっぱい</b>に映るようにする</li>
       <li>明るい場所で撮る。手元が暗いと急所が見えにくくなります</li>
       <li>作業を<b>最初から最後まで 1 本で通して撮って OK</b>。エディタの「区間を設定」で手順ごとに分けられます</li>
+    </ul>
+  </section>
+
+  <section class="section" id="pc" style="margin-top:28px">
+    <h2>PC 作業を画面録画する（Windows）</h2>
+    <p style="margin-top:0">PC の作業は、カメラで撮らずに<b>画面そのものを録画</b>します。Windows に最初から入っている機能で、追加のソフトやインターネットは不要です。</p>
+  </section>
+
+  <div class="phones">
+    <section class="phone">
+      <h2>おすすめ：Snipping Tool（Windows 11）</h2>
+      <ol>
+        <li><span class="path">Win</span> ＋ <span class="path">Shift</span> ＋ <span class="path">R</span> を押す<br>
+          <span class="hint">（効かない場合：スタート → 「Snipping Tool」を開き、🎥「録画」に切り替えて「＋ 新規」）</span></li>
+        <li>録画したい<b>範囲をドラッグで囲む</b></li>
+        <li>「<span class="on">スタート</span>」→ 作業する</li>
+        <li>終わったら「■ 停止」</li>
+        <li>MP4 で保存される（「ビデオ」フォルダの「画面録画」、または 💾 保存ボタン）</li>
+      </ol>
+      <p class="hint">範囲を選べるので、必要な部分だけを大きく録画できます。</p>
+    </section>
+
+    <section class="phone">
+      <h2>Windows 10 の場合など</h2>
+      <h3>Xbox Game Bar</h3>
+      <ol>
+        <li>録画したいアプリ（ブラウザ・Excel・業務ソフトなど）を前面に出す</li>
+        <li><span class="path">Win</span> ＋ <span class="path">Alt</span> ＋ <span class="path">R</span> で録画開始、もう一度押して停止</li>
+        <li>「ビデオ」フォルダの「キャプチャ」に MP4 で保存される</li>
+      </ol>
+      <p class="hint">1 つのアプリの画面だけを録画します（デスクトップやエクスプローラーは録画できません）。会社の PC では使えないよう設定されていることがあります。</p>
+      <h3>PowerPoint（Office がある場合）</h3>
+      <ol>
+        <li><span class="path">挿入</span> → <span class="path">画面録画</span> → 範囲を選んで「録画」</li>
+        <li><span class="path">Win</span> ＋ <span class="path">Shift</span> ＋ <span class="path">Q</span> で停止</li>
+        <li>スライドに入った動画を右クリック →「<b>メディアに名前を付けて保存</b>」で MP4 に</li>
+      </ol>
+    </section>
+  </div>
+
+  <section class="section" style="margin-top:20px">
+    <h2>PC 作業を分かりやすく録画するコツ</h2>
+    <ul>
+      <li><b>必要な部分だけ</b>を録画する。画面全体だと、低スペック PC や小さい画面で文字が読めません</li>
+      <li>4K モニターや高解像度のノート PC は、範囲を絞るか、画面の解像度を 1920×1080 にしてから録画する（エディタで「⚠ 画質が高すぎます」と出る場合）</li>
+      <li>文字が小さい場合は、拡大してから録画（ブラウザ・Excel は <span class="path">Ctrl</span> ＋ マウスホイール）</li>
+      <li>マウスは<b>ゆっくり</b>動かし、クリックの前に一呼吸おく。1 つの手順が終わったら 1〜2 秒止める（エディタで区間を分けやすくなります）</li>
+      <li><b>個人情報・社外秘に注意</b>：本番の顧客データではなくテスト用のデータで録画する。メールやチャットは閉じ、通知を止める（Windows の「応答不可」／「集中モード」）</li>
+      <li>動画より<b>静止画の方が分かりやすい手順</b>（設定画面の入力例など）は、<span class="path">Win</span> ＋ <span class="path">Shift</span> ＋ <span class="path">S</span> で画面をコピーし、エディタの手順の欄で <span class="path">Ctrl</span> ＋ <span class="path">V</span> で貼り付けられます</li>
     </ul>
   </section>
 

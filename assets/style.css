@@ -223,6 +223,29 @@ button, input, select, textarea {
   border-left: 8px solid var(--navy);
 }
 
+/* ---------- 設定画面 ---------- */
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
+}
+.set-row:first-of-type { border-top: 0; }
+.set-row input[type="text"] {
+  flex: 1;
+  min-width: 10em;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--navy-mid);
+  border-radius: 4px;
+}
+.set-row .hint { width: 11em; }
+.set-check { display: flex; align-items: center; gap: 4px; font-weight: bold; min-width: 5em; cursor: pointer; }
+.set-check input { width: 22px; height: 22px; }
+.set-add { border-top: 2px solid var(--navy-light); margin-top: 4px; }
+
 /* ---------- 文書ヘッダ（帳票風） ---------- */
 .doc-head {
   display: grid;
@@ -531,6 +554,8 @@ button, input, select, textarea {
   background: var(--white);
   border-top: 2px solid var(--navy);
 }
+
+.thumb { display: block; max-width: 220px; max-height: 120px; margin-top: 6px; border: 1px solid var(--line); }
 
 /* 動画・写真のチェック結果 */
 .mcheck {

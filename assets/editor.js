@@ -57,15 +57,16 @@
   // ---------- 一覧の絞り込み（カテゴリー）用の入力候補 ----------
   // 登録済みの要領書で使っているライン名・製品名などを候補に出し、表記ゆれ（Aライン／A ライン など）を防ぐ
   var CAT_HINT = "一覧の絞り込みに使います。候補から選ぶと表記がそろいます。複数ある場合は「、」で区切る";
-  var CAT_KEYS = ["line", "product", "process", "category"];
+  var CAT_KEYS = WI.CAT_KEYS;
+  var catConf = WI.catConfig(window.CATALOG);
   var dlBox = document.createElement("div");
   document.body.appendChild(dlBox);
   function loadSuggestions() {
     var files = (window.CATALOG && window.CATALOG.files) || [];
-    if (!files.length) return;
     WI.loadManualFiles(files, function (results) {
+      // 設定画面で登録したカテゴリー → 要領書で使われている名前 の順
       var vals = {};
-      CAT_KEYS.forEach(function (k) { vals[k] = []; });
+      CAT_KEYS.forEach(function (k) { vals[k] = catConf.categories[k].slice(); });
       results.forEach(function (r) {
         if (!r.data) return;
         CAT_KEYS.forEach(function (k) {
@@ -76,7 +77,7 @@
         });
       });
       dlBox.innerHTML = CAT_KEYS.map(function (k) {
-        return '<datalist id="dl-' + k + '">' + vals[k].sort(function (a, b) { return a.localeCompare(b, "ja", { numeric: true }); })
+        return '<datalist id="dl-' + k + '">' + vals[k].sort(WI.catSorter(catConf.categories[k]))
           .map(function (v) { return '<option value="' + esc(v) + '">'; }).join("") + '</datalist>';
       }).join("");
     });
@@ -188,10 +189,10 @@
       field("作業名（タイトル）＊", "title", { wide: true, ph: "例：ボルト締付け作業" }) +
       field("文書番号", "docNo", { ph: "例：WI-A-001" }) +
       field("改訂番号", "revision") +
-      field("ライン", "line", { list: "line", ph: "例：Aライン", hint: CAT_HINT }) +
-      field("製品（品番・品名）", "product", { list: "product", ph: "例：BR-1024 ブラケット", hint: CAT_HINT }) +
-      field("工程", "process", { list: "process", ph: "例：第2組立工程", hint: CAT_HINT }) +
-      field("作業区分", "category", { list: "category", ph: "例：組立／検査／点検" }) +
+      field(esc(catConf.labels.line), "line", { list: "line", ph: "例：Aライン", hint: CAT_HINT }) +
+      field(esc(catConf.labels.product), "product", { list: "product", ph: "例：BR-1024 ブラケット", hint: CAT_HINT }) +
+      field(esc(catConf.labels.process), "process", { list: "process", ph: "例：第2組立工程", hint: CAT_HINT }) +
+      field(esc(catConf.labels.category), "category", { list: "category", ph: "例：組立／検査／点検" }) +
       field("制定日", "issued", { type: "date" }) +
       field("改訂日", "updated", { type: "date" }) +
       field("作成", "author") +
@@ -222,7 +223,10 @@
         field("標準時間（秒）", b + ".time", { type: "number" }) +
         '<div class="field"><span>写真・図（任意）</span><div style="display:flex;gap:4px">' +
           '<input type="text" data-path="' + b + '.image" value="' + esc(s.image) + '" placeholder="images/xxx.jpg" style="flex:1;min-width:0">' +
-          '<button type="button" class="btn small" data-act="pick-image" data-path="' + b + '.image">選ぶ</button></div>' + checkBox(s.image) + '</div>' +
+          '<button type="button" class="btn small" data-act="pick-image" data-path="' + b + '.image">選ぶ</button></div>' +
+          (s.image ? '<img class="thumb" src="' + esc(objectUrls[s.image] || s.image) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
+          '<span class="hint">画面のコピー（Win＋Shift＋S）をこの手順で Ctrl＋V でも貼り付けられます</span>' +
+          checkBox(s.image) + '</div>' +
         '<div class="field wide"><span>この手順の動画</span>' + videoFields(b + ".video") + '</div>' +
       '</div>' +
       '<div class="sub-list"><b>急所（どのように）と理由</b>';
@@ -368,27 +372,76 @@
   picker.addEventListener("change", function () {
     var f = picker.files && picker.files[0];
     if (!f || !pickTarget) return;
-    if (pickKind === "video") {
-      var src = "videos/" + f.name;
-      if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
-      objectUrls[src] = URL.createObjectURL(f);
-      pickedFiles[src] = f;
-      setInput(pickTarget + ".src", src);
-      // この PC で再生できるか・重すぎないかを確認して、結果を動画欄の下に出す
-      mediaChecks[src] = { level: "checking" };
+    if (pickKind === "video") setVideo(pickTarget, f); else setImage(pickTarget, f);
+  });
+
+  // base: "steps.0.video" など
+  function setVideo(base, f) {
+    var src = "videos/" + f.name;
+    if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
+    objectUrls[src] = URL.createObjectURL(f);
+    pickedFiles[src] = f;
+    setInput(base + ".src", src);
+    // この PC で再生できるか・重すぎないかを確認して、結果を動画欄の下に出す
+    mediaChecks[src] = { level: "checking" };
+    render();
+    VideoCheck.checkVideo(f).then(function (c) {
+      if (pickedFiles[src] !== f) return; // 確認中に別のファイルを選び直した
+      mediaChecks[src] = c;
       render();
-      VideoCheck.checkVideo(f).then(function (c) {
-        if (pickedFiles[src] !== f) return; // 確認中に別のファイルを選び直した
-        mediaChecks[src] = c;
-        render();
-      });
-    } else {
-      setInput(pickTarget, "images/" + f.name);
-      pickedFiles["images/" + f.name] = f;
-      var ic = VideoCheck.checkImage(f);
-      if (ic) mediaChecks["images/" + f.name] = ic; else delete mediaChecks["images/" + f.name];
-      render();
+    });
+  }
+
+
+  // path: "steps.0.image"。name を指定しない場合は元のファイル名
+  function setImage(path, f, name) {
+    var src = "images/" + (name || f.name);
+    if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
+    objectUrls[src] = URL.createObjectURL(f);
+    pickedFiles[src] = f;
+    setInput(path, src);
+    var ic = VideoCheck.checkImage(f);
+    if (ic) mediaChecks[src] = ic; else delete mediaChecks[src];
+    render();
+  }
+
+  // 手順のカードに動画・写真ファイルをドラッグ＆ドロップ
+  formEl.addEventListener("dragover", function (ev) {
+    if (ev.target.closest && ev.target.closest(".edit-card")) ev.preventDefault();
+  });
+  formEl.addEventListener("drop", function (ev) {
+    var card = ev.target.closest && ev.target.closest(".edit-card");
+    var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (!card || !f) return;
+    ev.preventDefault();
+    var i = card.id.replace("ed-step-", "");
+    if (/^video\/|\.(mp4|m4v|mov|webm)$/i.test(f.type + " " + f.name)) setVideo("steps." + i + ".video", f);
+    else if (/^image\//.test(f.type) || /\.(heic|heif)$/i.test(f.name)) setImage("steps." + i + ".image", f);
+  });
+
+  // 画面のコピー（Win＋Shift＋S など）を Ctrl＋V で、いま入力している手順の写真にする
+  var lastStep = -1;
+  formEl.addEventListener("focusin", function (ev) {
+    var card = ev.target.closest(".edit-card");
+    if (card) lastStep = parseInt(card.id.replace("ed-step-", ""), 10);
+  });
+  document.addEventListener("paste", function (ev) {
+    var items = (ev.clipboardData && ev.clipboardData.items) || [];
+    var f = null;
+    for (var k = 0; k < items.length; k++) {
+      if (items[k].kind === "file" && /^image\//.test(items[k].type)) { f = items[k].getAsFile(); break; }
     }
+    if (!f) return; // 文字の貼り付けは通常どおり
+    ev.preventDefault();
+    if (lastStep < 0 || !m.steps[lastStep]) {
+      notice("貼り付ける手順の欄を一度クリックしてから、Ctrl＋V を押してください。", true);
+      window.scrollTo(0, 0);
+      return;
+    }
+    var t = new Date();
+    var base = (m.docNo || "img").replace(/[^\w\-]+/g, "_");
+    var name = base + "_" + (lastStep + 1) + "_" + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds()) + ".png";
+    setImage("steps." + lastStep + ".image", f, name);
   });
 
   // ---------- 区間設定 ----------
@@ -478,9 +531,7 @@
     return d;
   }
 
-  function toFileText(d) {
-    return "registerManual(" + JSON.stringify(d, null, 2) + ");\n";
-  }
+  function toFileText(d) { return WIFolder.manualText(d); }
 
   // 文書番号からファイル名を作る。無い場合は日時を付けて、他の要領書を上書きしないようにする
   function suggestName() {
@@ -551,80 +602,8 @@
 
   // ---------- フォルダに直接保存（Chrome / Edge。ネット接続不要） ----------
   // テンプレートのフォルダを選ぶと、要領書ファイルの保存・目録への追加・動画/写真のコピーを一度に行う
-  var rootDir = null;
   var saveDirBtn = document.getElementById("saveDir");
-  if (window.showDirectoryPicker) saveDirBtn.hidden = false;
-
-  // 選んだフォルダをこの PC のブラウザに記憶しておく
-  function idb(mode, fn) {
-    return new Promise(function (resolve) {
-      try {
-        var rq = indexedDB.open("wi-editor", 1);
-        rq.onupgradeneeded = function () { rq.result.createObjectStore("kv"); };
-        rq.onsuccess = function () {
-          var tx = rq.result.transaction("kv", mode);
-          var r = fn(tx.objectStore("kv"));
-          tx.oncomplete = function () { resolve(r && r.result); };
-          tx.onerror = function () { resolve(null); };
-        };
-        rq.onerror = function () { resolve(null); };
-      } catch (e) { resolve(null); }
-    });
-  }
-  var rememberedDir = idb("readonly", function (st) { return st.get("rootDir"); });
-
-  function getRootDir() {
-    return (rootDir ? Promise.resolve(rootDir) : rememberedDir).then(function (d) {
-      rootDir = d || null;
-      return getRootDir2();
-    });
-  }
-
-  function getRootDir2() {
-    var ok = rootDir && rootDir.requestPermission
-      ? rootDir.requestPermission({ mode: "readwrite" }).then(function (p) { return p === "granted"; }, function () { return false; })
-      : Promise.resolve(false);
-    return ok.then(function (granted) {
-      if (granted) return rootDir;
-      return window.showDirectoryPicker({ id: "wi-root", mode: "readwrite" }).then(function (dir) {
-        // 正しいフォルダ（index.html と manuals があるフォルダ）か確認
-        return dir.getDirectoryHandle("manuals").then(function (md) {
-          return md.getFileHandle("catalog.js");
-        }).then(function () {
-          rootDir = dir;
-          idb("readwrite", function (st) { return st.put(dir, "rootDir"); });
-          return dir;
-        }, function () {
-          throw new Error("選んだフォルダに manuals/catalog.js がありません。index.html があるフォルダを選んでください。");
-        });
-      });
-    });
-  }
-
-  function writeFile(dir, name, data) {
-    return dir.getFileHandle(name, { create: true }).then(function (fh) {
-      return fh.createWritable();
-    }).then(function (w) {
-      return w.write(data).then(function () { return w.close(); });
-    });
-  }
-
-  function readText(dir, name) {
-    return dir.getFileHandle(name).then(function (fh) { return fh.getFile(); }).then(function (f) { return f.text(); });
-  }
-
-  // catalog.js の files に名前が無ければ追加（siteName など他の部分はそのまま残す）
-  function addToCatalog(text, name) {
-    var re = /(files\s*:\s*\[)([\s\S]*?)(\])/;
-    var mt = re.exec(text);
-    if (!mt) throw new Error("manuals/catalog.js の形式が読み取れません。files に手で追加してください。");
-    var names = [];
-    mt[2].replace(/["']([^"']+)["']/g, function (_, n) { names.push(n); return ""; });
-    if (names.indexOf(name) !== -1) return null;
-    names.push(name);
-    var list = "\n" + names.map(function (n) { return '    "' + n + '"'; }).join(",\n") + "\n  ";
-    return text.slice(0, mt.index) + mt[1] + list + mt[3] + text.slice(mt.index + mt[0].length);
-  }
+  if (WIFolder.supported) saveDirBtn.hidden = false;
 
   // 選んだ動画・写真のうち、まだフォルダに無いものをコピー
   function copyMedia(root, d) {
@@ -641,7 +620,7 @@
         return root.getDirectoryHandle(parts[0], { create: true }).then(function (dir) {
           return dir.getFileHandle(parts[1]).then(function () { /* 既にある */ }, function () {
             notice("動画・写真をコピー中… " + esc(src));
-            return writeFile(dir, parts[1], pickedFiles[src]).then(function () { copied.push(src); });
+            return WIFolder.writeFile(dir, parts[1], pickedFiles[src]).then(function () { copied.push(src); });
           });
         });
       });
@@ -654,19 +633,19 @@
     var d = cleaned();
     var root, added = false, copied = [];
     saveDirBtn.disabled = true;
-    getRootDir().then(function (r) {
+    WIFolder.getRoot().then(function (r) {
       root = r;
       return root.getDirectoryHandle("manuals");
     }).then(function (md) {
-      return writeFile(md, name, toFileText(d)).then(function () {
-        return readText(md, "catalog.js");
-      }).then(function (cat) {
-        var next = addToCatalog(cat, name);
-        if (next === null) return;
-        added = true;
-        return writeFile(md, "catalog.js", next);
-      });
+      return WIFolder.writeFile(md, name, toFileText(d));
     }).then(function () {
+      // 新しい要領書なら一覧（目録）に追加
+      return WIFolder.updateCatalog(root, function (c) {
+        if (c.files.indexOf(name) !== -1) return false;
+        c.files.push(name);
+      });
+    }).then(function (a) {
+      added = a;
       return copyMedia(root, d);
     }).then(function (c) {
       copied = c;

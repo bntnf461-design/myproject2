@@ -15,7 +15,6 @@
   var NONE = "__none__"; // 「未設定」を表す値
   var MAX_CHIPS = 12;  // これより多い場合は「すべて表示」で開く
 
-  var LABEL = { line: "ライン", product: "製品", process: "工程", category: "作業区分" };
   var items = [];
   var sel = {};       // 選んでいるカテゴリー { line: "Aライン", ... }
   var expanded = {};  // 「すべて表示」を開いている行
@@ -23,8 +22,9 @@
   WI.initTextSize(document.getElementById("textSize"));
 
   var cat = window.CATALOG || { files: [] };
-  var levels = (cat.levels && cat.levels.length ? cat.levels : ["line", "product", "process"])
-    .filter(function (k) { return LABEL[k]; });
+  var conf = WI.catConfig(cat);
+  var levels = conf.levels;
+  var LABEL = conf.labels;
 
   if (cat.siteName) {
     document.getElementById("siteName").textContent = cat.siteName;
@@ -61,7 +61,7 @@
     items.sort(function (a, b) {
       for (var i = 0; i < levels.length; i++) {
         var x = valuesOf(a, levels[i])[0], y = valuesOf(b, levels[i])[0];
-        if (x !== y) return x === NONE ? 1 : y === NONE ? -1 : x.localeCompare(y, "ja", { numeric: true });
+        if (x !== y) return cmp(levels[i])(x, y);
       }
       return String(a.docNo || "").localeCompare(String(b.docNo || ""), "ja", { numeric: true });
     });
@@ -70,8 +70,13 @@
 
   // 1 つの要領書が複数のラインで使われる場合は「Aライン、Bライン」のように区切って書ける
   function valuesOf(m, key) {
-    var v = String(m[key] || "").split(/[、,，]/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var v = WI.splitCat(m[key]);
     return v.length ? v : [NONE];
+  }
+  // 「未設定」は最後、それ以外は設定画面の並び順 → 名前順
+  function cmp(key) {
+    var s = WI.catSorter(conf.categories[key]);
+    return function (a, b) { return a === NONE ? (b === NONE ? 0 : 1) : b === NONE ? -1 : s(a, b); };
   }
 
   function matchQuery(m) {
@@ -109,9 +114,7 @@
       // 選んでいる値が他の条件で 0 件になっても、外せるように表示は残す
       if (sel[k] !== undefined && !counts[sel[k]]) { counts[sel[k]] = 0; order.push(sel[k]); }
       if (!order.length) return;
-      order.sort(function (a, b) {
-        return a === NONE ? 1 : b === NONE ? -1 : a.localeCompare(b, "ja", { numeric: true });
-      });
+      order.sort(cmp(k));
       var many = order.length > MAX_CHIPS && !expanded[k];
       var shown = many ? order.slice(0, MAX_CHIPS) : order;
       if (many && sel[k] !== undefined && shown.indexOf(sel[k]) === -1) shown.push(sel[k]);
