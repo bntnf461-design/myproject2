@@ -472,6 +472,41 @@ button, input, select, textarea {
   border-top: 2px solid var(--navy);
 }
 
+/* ---------- Excel 取り込み ---------- */
+.sheet-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  flex-direction: column;
+  background: var(--white);
+}
+.sheet-dialog.open { display: flex; }
+.sheet-dialog .player-head { color: var(--white); }
+.sheet-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.xl-pick { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; margin-bottom: 12px; }
+.xl-pick .field { min-width: 220px; }
+.xl-result { display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 12px; align-items: start; }
+.xl-result td, .xl-result th { font-size: 0.9rem; }
+.xl-grid {
+  overflow: auto;
+  max-height: 360px;
+  border: 2px solid var(--navy);
+}
+.xl-grid table { border-collapse: collapse; font-size: 0.8rem; }
+.xl-grid th, .xl-grid td {
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  white-space: nowrap;
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.xl-grid th { background: var(--navy-pale); color: var(--muted); font-weight: normal; }
+.xl-grid .used { background: var(--navy-pale); }
+.xl-grid tr.hdr td { background: var(--navy); color: var(--white); }
+.xl-grid tr.start td { border-top: 3px solid var(--navy); }
+
 /* ---------- スマホ・タブレット縦（表をカード表示に） ---------- */
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; }
@@ -516,6 +551,7 @@ button, input, select, textarea {
   .play-btn .icon { display: inline; margin-right: 6px; }
 
   .sub-row { grid-template-columns: 1fr; }
+  .xl-result { grid-template-columns: 1fr; }
   .video-fields { grid-template-columns: 1fr 1fr; }
 }
 

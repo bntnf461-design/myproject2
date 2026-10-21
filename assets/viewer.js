@@ -128,7 +128,7 @@
         '<td data-label="主なステップ">' +
           '<div class="step-title">' + esc(s.title) + '</div>' +
           (s.detail ? '<div class="step-detail">' + esc(s.detail) + '</div>' : '') +
-          (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="">' : '') +
+          (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
         '<td data-label="急所／理由">' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
         (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +

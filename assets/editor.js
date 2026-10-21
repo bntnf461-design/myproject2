@@ -477,6 +477,18 @@
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    // Excel から取り込んだ写真も一緒にダウンロード（images フォルダに入れてもらう）
+    var imgs = Object.keys(pickedFiles).filter(function (k) { return /^images\//.test(k) && JSON.stringify(m).indexOf('"' + k + '"') !== -1; });
+    imgs.forEach(function (k, i) {
+      setTimeout(function () {
+        var x = document.createElement("a");
+        x.href = URL.createObjectURL(pickedFiles[k]);
+        x.download = k.split("/").pop();
+        document.body.appendChild(x);
+        x.click();
+        setTimeout(function () { URL.revokeObjectURL(x.href); x.remove(); }, 1000);
+      }, 300 * (i + 1));
+    });
     markSaved(name);
     notice("<b>「" + esc(name) + "」を書き出しました。</b><br>" +
       "① ダウンロードしたファイルを <b>manuals</b> フォルダに入れる（同じ名前があれば上書き）<br>" +
@@ -645,6 +657,27 @@
     saveDraft();
     var el = document.getElementById("ed-step-" + (m.steps.length - 1));
     if (el) el.scrollIntoView();
+  });
+
+  // ---------- Excel 取り込み ----------
+  document.getElementById("importXl").addEventListener("click", function () {
+    WIImport.open(function (res) {
+      if (dirty && !confirm("入力中の内容を、取り込んだ内容に置き換えますか？")) return;
+      m = normalize(res.data);
+      fileName = "";
+      // Excel に貼ってあった写真は、フォルダ保存のときに images フォルダへ書き出す
+      res.images.forEach(function (im) {
+        pickedFiles[im.src] = new File([im.bytes], im.src.split("/").pop(), { type: im.type });
+      });
+      history.replaceState(null, "", "editor.html");
+      render();
+      saveDraft();
+      var noVideo = m.steps.filter(function (s) { return !s.video.src; }).length;
+      notice("<b>Excel から取り込みました（手順 " + m.steps.length + " 件）。</b><br>" +
+        "内容を確認し、" + (noVideo ? "動画を「選ぶ」→「区間を設定」で付けてから、" : "") + "保存してください。" +
+        (res.images.length ? "<br>Excel の写真 " + res.images.length + " 枚は、保存すると images フォルダに書き出されます。" : ""));
+      window.scrollTo(0, 0);
+    });
   });
 
   document.getElementById("newDoc").addEventListener("click", function () {

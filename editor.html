@@ -14,6 +14,7 @@
     <label class="btn on-navy" title="保存済みの要領書ファイル（.js）を開く">
       ファイルを開く<input type="file" id="openFile" accept=".js,.json" hidden>
     </label>
+    <button type="button" class="btn on-navy" id="importXl" title="Excel で作った要領書を読み込む">Excel 取り込み</button>
     <button type="button" class="btn on-navy" id="newDoc">新規</button>
   </div>
 </header>
@@ -51,7 +52,49 @@
   </div>
 </div>
 
+<!-- Excel 取り込み -->
+<div class="sheet-dialog" id="xl" role="dialog" aria-modal="true" aria-labelledby="xlTitle">
+  <div class="player-head">
+    <div class="label"><div class="step-name" id="xlTitle">Excel から取り込み</div>
+      <div class="step-no">Excel で作った要領書（.xlsx）を読み込んで、この形式に変換します</div></div>
+    <button type="button" class="btn on-navy" id="xlClose">✕ 閉じる</button>
+  </div>
+  <div class="sheet-scroll">
+    <div class="page">
+      <div class="xl-pick">
+        <label class="btn primary">Excel ファイルを選ぶ<input type="file" id="xlFile" accept=".xlsx,.xlsm" hidden></label>
+        <label class="field"><span>シート</span><select id="xlSheet" disabled></select></label>
+      </div>
+      <div class="notice" id="xlMsg" hidden style="margin-bottom:12px"></div>
+      <div id="xlBody" hidden>
+        <section class="section"><h2>① 列の対応（自動判定。違っていれば選び直す）</h2>
+          <div class="form-grid">
+            <label class="field"><span>見出しの行</span><input type="number" id="xlHeader" min="1"></label>
+          </div>
+          <div class="form-grid" id="xlMap" style="margin-top:8px"></div>
+        </section>
+        <section class="section"><h2>② 読み取り結果</h2>
+          <div class="xl-result">
+            <div id="xlInfo"></div>
+            <div id="xlSteps"></div>
+          </div>
+        </section>
+        <section class="section"><h2>Excel の中身 <span class="hint">（濃い行＝見出し、太線＝手順の始まり、色付きの列＝使っている列）</span></h2>
+          <div class="xl-grid" id="xlGrid"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <div class="player-ctrl">
+    <span class="hint" style="color:#fff">取り込んだ後、エディタで動画の区間を設定して保存します。</span>
+    <span class="spacer"></span>
+    <button type="button" class="btn primary" id="xlApply" disabled style="border-color:#fff">この内容で取り込む</button>
+  </div>
+</div>
+
 <script src="assets/common.js"></script>
+<script src="assets/xlsx-reader.js"></script>
+<script src="assets/importer.js"></script>
 <script src="assets/editor.js"></script>
 </body>
 </html>
