@@ -194,6 +194,7 @@
   var pPrev = document.getElementById("pPrev");
   var pNext = document.getElementById("pNext");
   var pRepeat = document.getElementById("pRepeat");
+  var pAuto = document.getElementById("pAuto");
   var pTime = document.getElementById("pTime");
   var pClose = document.getElementById("pClose");
   var rateBtns = player.querySelectorAll("[data-rate]");
@@ -201,11 +202,13 @@
   var cur = -1;
   var segStart = 0, segEnd = null;
   var repeat = false;
+  var autoNext = false; // 区間が終わったら次の手順へ進む（通し再生・教育用）
   var rate = 1;
   var loadedSrc = "";
   var lastFocus = null;
 
   try { repeat = localStorage.getItem("wi.repeat") === "1"; } catch (e) {}
+  try { autoNext = localStorage.getItem("wi.autoNext") === "1"; } catch (e) {}
   try { rate = parseFloat(localStorage.getItem("wi.rate")) || 1; } catch (e) {}
   updateRepeat();
   updateRate();
@@ -305,6 +308,21 @@
   function updateRepeat() {
     pRepeat.classList.toggle("active", repeat);
     pRepeat.setAttribute("aria-pressed", repeat ? "true" : "false");
+    pAuto.classList.toggle("active", autoNext);
+    pAuto.setAttribute("aria-pressed", autoNext ? "true" : "false");
+  }
+
+  // 区間（または動画）の終わりに来たときの動き
+  function segmentDone() {
+    if (repeat) { video.currentTime = segStart; play(); return; }
+    if (autoNext) {
+      // 急所だけの動画は飛ばして、次の「手順」の動画へ
+      for (var j = cur + 1; j < playlist.length; j++) {
+        if (playlist[j].point === -1) { openPlayer(j); return; }
+      }
+      showMsg("最後の手順まで再生しました。");
+    }
+    if (!video.paused) video.pause();
   }
   function updateRate() {
     for (var i = 0; i < rateBtns.length; i++) {
@@ -321,18 +339,13 @@
   // 区間の終わりで止める／繰り返す（timeupdate は 1 秒に数回なので負荷は小さい）
   video.addEventListener("timeupdate", function () {
     var t = video.currentTime;
-    if (segEnd != null && t >= segEnd) {
-      if (repeat) { video.currentTime = segStart; play(); }
-      else if (!video.paused) { video.pause(); }
-    }
+    if (segEnd != null && t >= segEnd && !video.paused) segmentDone();
     var s = WI.formatTime(Math.max(0, t - segStart));
     var len = segEnd != null ? segEnd - segStart : (isFinite(video.duration) ? video.duration - segStart : null);
     pTime.textContent = s + (len != null ? " / " + WI.formatTime(len) : "");
   });
 
-  video.addEventListener("ended", function () {
-    if (repeat) { video.currentTime = segStart; play(); }
-  });
+  video.addEventListener("ended", segmentDone);
   video.addEventListener("play", function () { pPlay.textContent = "❚❚ 停止"; hideMsg(); });
   video.addEventListener("pause", function () { pPlay.textContent = "▶ 再生"; });
 
@@ -350,6 +363,11 @@
   pRepeat.addEventListener("click", function () {
     repeat = !repeat;
     try { localStorage.setItem("wi.repeat", repeat ? "1" : "0"); } catch (e) {}
+    updateRepeat();
+  });
+  pAuto.addEventListener("click", function () {
+    autoNext = !autoNext;
+    try { localStorage.setItem("wi.autoNext", autoNext ? "1" : "0"); } catch (e) {}
     updateRepeat();
   });
   for (var i = 0; i < rateBtns.length; i++) {
@@ -372,6 +390,7 @@
       case "ArrowLeft": case "PageUp": if (cur > 0) openPlayer(cur - 1); break;
       case "Home": restart(); break;
       case "r": case "R": pRepeat.click(); break;
+      case "a": case "A": pAuto.click(); break;
       default: return;
     }
     ev.preventDefault();

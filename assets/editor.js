@@ -12,6 +12,7 @@
 
   var m = null;          // 編集中のデータ
   var fileName = "";     // 書き出し時のファイル名（既存ファイルを開いた場合はその名前）
+  var dirty = false;     // ファイル（フォルダ）にまだ保存していない変更があるか
   var objectUrls = {};   // この画面で選んだ動画ファイル → 確認用の一時 URL
   var pickedFiles = {};  // この画面で選んだ動画・画像（"videos/a.mp4" → File）。フォルダ保存時にコピーする
 
@@ -67,8 +68,14 @@
     if (draft) {
       m = normalize(draft.data);
       fileName = draft.file || "";
+      dirty = draft.dirty !== false;
       render();
-      if (WI.getParam("resume") !== "1") notice("前回の編集途中の内容を復元しました。最初から作る場合は「新規」を押してください。");
+      draftState.textContent = dirty ? "● 未保存の変更あり（入力内容はこの PC に一時保存済み）" : "保存済み";
+      if (WI.getParam("resume") !== "1") {
+        notice(dirty
+          ? "前回の編集途中の内容を復元しました。最初から作る場合は「新規」を押してください。"
+          : "前回編集した「" + esc(fileName) + "」を開いています。新しく作る場合は「新規」を押してください。");
+      }
     } else {
       m = blankManual();
       render();
@@ -84,11 +91,12 @@
 
   var saveTimer = null;
   function saveDraft() {
+    dirty = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName }));
-        draftState.textContent = "自動保存 " + new Date().toLocaleTimeString().slice(0, 5);
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty }));
+        draftState.textContent = dirty ? "● 未保存の変更あり（入力内容はこの PC に一時保存済み）" : "保存済み";
       } catch (e) {
         draftState.textContent = "自動保存できません";
       }
@@ -379,7 +387,16 @@
     updateSegInfo();
   });
   document.getElementById("segSetEnd").addEventListener("click", function () {
-    setInput(segBase + ".end", WI.formatTime(segVideo.currentTime));
+    var t = WI.formatTime(segVideo.currentTime);
+    setInput(segBase + ".end", t);
+    // 次の手順が同じ動画（または動画未設定）で開始が空なら、続きから始まるように入れておく
+    var mt = /^steps\.(\d+)\.video$/.exec(segBase);
+    var next = mt && m.steps[+mt[1] + 1];
+    if (next) {
+      var src = getPath(segBase + ".src");
+      if (!next.video.src) setInput("steps." + (+mt[1] + 1) + ".video.src", src);
+      if (next.video.src === src && next.video.start === "") setInput("steps." + (+mt[1] + 1) + ".video.start", t);
+    }
     updateSegInfo();
   });
   document.getElementById("segPlay").addEventListener("click", function () {
@@ -389,6 +406,11 @@
   });
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && seg.classList.contains("open")) closeSeg();
+    if ((ev.ctrlKey || ev.metaKey) && (ev.key === "s" || ev.key === "S")) {
+      ev.preventDefault();
+      var b = document.getElementById("saveDir");
+      (b.hidden ? document.getElementById("save") : b).click();
+    }
   });
 
   // ---------- 書き出し ----------
@@ -399,6 +421,8 @@
     d.steps.forEach(function (s) {
       s.points = s.points.filter(function (p) { return p.text || p.reason; });
     });
+    // 何も入力していない手順は保存しない
+    d.steps = d.steps.filter(function (s) { return s.title || s.detail || s.points.length || s.video.src || s.image; });
     return d;
   }
 
@@ -406,14 +430,45 @@
     return "registerManual(" + JSON.stringify(d, null, 2) + ");\n";
   }
 
+  // 文書番号からファイル名を作る。無い場合は日時を付けて、他の要領書を上書きしないようにする
   function suggestName() {
     if (fileName) return fileName;
-    var base = (m.docNo || m.title || "manual").replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "");
-    return (base || "manual") + ".js";
+    var base = (m.docNo || "").replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!base) {
+      var t = new Date();
+      base = "manual-" + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + "-" + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds());
+    }
+    return base + ".js";
+  }
+
+  // 保存前の確認。問題があればメッセージを出して false
+  function check() {
+    if (!m.title) { notice("作業名（タイトル）を入力してください。", true); window.scrollTo(0, 0); return false; }
+    var bad = [];
+    function seg(v, label) {
+      if (!v || !v.src) return;
+      var a = WI.parseTime(v.start), b = WI.parseTime(v.end);
+      var blank = function (x) { return x == null || x === ""; };
+      if ((!blank(v.start) && a == null) || (!blank(v.end) && b == null)) bad.push(label + "：時間の書き方が正しくありません（例 1:23）");
+      else if (b != null && b <= (a || 0)) bad.push(label + "：終了が開始より前になっています");
+    }
+    m.steps.forEach(function (s, i) {
+      seg(s.video, "手順 " + (i + 1) + " の動画");
+      s.points.forEach(function (p, j) { seg(p.video, "手順 " + (i + 1) + " の急所 " + (j + 1) + " の動画"); });
+    });
+    if (bad.length) { notice(bad.map(esc).join("<br>"), true); window.scrollTo(0, 0); return false; }
+    return true;
+  }
+
+  function markSaved(name) {
+    fileName = name;
+    dirty = false;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: false })); } catch (e) {}
+    draftState.textContent = "保存済み";
   }
 
   document.getElementById("save").addEventListener("click", function () {
-    if (!m.title) { notice("作業名（タイトル）を入力してください。", true); window.scrollTo(0, 0); return; }
+    if (!check()) return;
     var name = suggestName();
     var blob = new Blob([toFileText(cleaned())], { type: "text/javascript;charset=utf-8" });
     var a = document.createElement("a");
@@ -422,8 +477,7 @@
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    fileName = name;
-    saveDraft();
+    markSaved(name);
     notice("<b>「" + esc(name) + "」を書き出しました。</b><br>" +
       "① ダウンロードしたファイルを <b>manuals</b> フォルダに入れる（同じ名前があれば上書き）<br>" +
       "② 新しい要領書の場合は <b>manuals/catalog.js</b> の files に <code>\"" + esc(name) + "\"</code> を追加<br>" +
@@ -437,9 +491,34 @@
   var saveDirBtn = document.getElementById("saveDir");
   if (window.showDirectoryPicker) saveDirBtn.hidden = false;
 
+  // 選んだフォルダをこの PC のブラウザに記憶しておく
+  function idb(mode, fn) {
+    return new Promise(function (resolve) {
+      try {
+        var rq = indexedDB.open("wi-editor", 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore("kv"); };
+        rq.onsuccess = function () {
+          var tx = rq.result.transaction("kv", mode);
+          var r = fn(tx.objectStore("kv"));
+          tx.oncomplete = function () { resolve(r && r.result); };
+          tx.onerror = function () { resolve(null); };
+        };
+        rq.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  }
+  var rememberedDir = idb("readonly", function (st) { return st.get("rootDir"); });
+
   function getRootDir() {
-    var ok = rootDir
-      ? rootDir.requestPermission({ mode: "readwrite" }).then(function (p) { return p === "granted"; })
+    return (rootDir ? Promise.resolve(rootDir) : rememberedDir).then(function (d) {
+      rootDir = d || null;
+      return getRootDir2();
+    });
+  }
+
+  function getRootDir2() {
+    var ok = rootDir && rootDir.requestPermission
+      ? rootDir.requestPermission({ mode: "readwrite" }).then(function (p) { return p === "granted"; }, function () { return false; })
       : Promise.resolve(false);
     return ok.then(function (granted) {
       if (granted) return rootDir;
@@ -449,6 +528,7 @@
           return md.getFileHandle("catalog.js");
         }).then(function () {
           rootDir = dir;
+          idb("readwrite", function (st) { return st.put(dir, "rootDir"); });
           return dir;
         }, function () {
           throw new Error("選んだフォルダに manuals/catalog.js がありません。index.html があるフォルダを選んでください。");
@@ -505,7 +585,7 @@
   }
 
   saveDirBtn.addEventListener("click", function () {
-    if (!m.title) { notice("作業名（タイトル）を入力してください。", true); window.scrollTo(0, 0); return; }
+    if (!check()) return;
     var name = suggestName();
     var d = cleaned();
     var root, added = false, copied = [];
@@ -526,8 +606,7 @@
       return copyMedia(root, d);
     }).then(function (c) {
       copied = c;
-      fileName = name;
-      saveDraft();
+      markSaved(name);
       notice("<b>保存しました：manuals/" + esc(name) + "</b>" +
         (added ? "<br>一覧（目録）に追加しました。" : "") +
         (copied.length ? "<br>コピーした動画・写真：" + copied.map(esc).join("、") : "") +
@@ -545,7 +624,7 @@
   document.getElementById("preview").addEventListener("click", function () {
     try {
       localStorage.setItem("wi.preview", JSON.stringify(cleaned()));
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty }));
     } catch (e) {
       notice("プレビューを作成できませんでした（ブラウザの保存領域が使えません）。", true);
       return;
@@ -554,7 +633,14 @@
   });
 
   document.getElementById("addStep").addEventListener("click", function () {
-    m.steps.push(blankStep());
+    var s = blankStep();
+    // 1 本の動画を続けて使う場合が多いので、前の手順の動画の「終了」を新しい手順の「開始」にする
+    var prev = m.steps[m.steps.length - 1];
+    if (prev && prev.video.src) {
+      s.video.src = prev.video.src;
+      s.video.start = prev.video.end || "";
+    }
+    m.steps.push(s);
     render();
     saveDraft();
     var el = document.getElementById("ed-step-" + (m.steps.length - 1));
@@ -582,9 +668,8 @@
       var json = /^\s*registerManual\s*\(/.test(text) ? text.slice(a + 1, b) : text;
       try {
         m = normalize(JSON.parse(json));
-        fileName = f.name;
         render();
-        saveDraft();
+        markSaved(f.name);
         notice("「" + esc(f.name) + "」を開きました。");
       } catch (e) {
         notice("このファイルは読み込めません（形式が違います）。", true);
