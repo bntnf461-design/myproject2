@@ -13,6 +13,7 @@
   var m = null;          // 編集中のデータ
   var fileName = "";     // 書き出し時のファイル名（既存ファイルを開いた場合はその名前）
   var objectUrls = {};   // この画面で選んだ動画ファイル → 確認用の一時 URL
+  var pickedFiles = {};  // この画面で選んだ動画・画像（"videos/a.mp4" → File）。フォルダ保存時にコピーする
 
   // ---------- 初期データ ----------
   function blankStep() {
@@ -319,12 +320,14 @@
       var src = "videos/" + f.name;
       if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
       objectUrls[src] = URL.createObjectURL(f);
+      pickedFiles[src] = f;
       setInput(pickTarget + ".src", src);
       if (!/\.mp4$|\.m4v$/i.test(f.name)) {
         notice("MP4（H.264）形式をおすすめします。他の形式は PC によって再生できない場合があります。");
       }
     } else {
       setInput(pickTarget, "images/" + f.name);
+      pickedFiles["images/" + f.name] = f;
     }
   });
 
@@ -426,6 +429,117 @@
       "② 新しい要領書の場合は <b>manuals/catalog.js</b> の files に <code>\"" + esc(name) + "\"</code> を追加<br>" +
       "③ 使った動画は <b>videos</b> フォルダ、写真は <b>images</b> フォルダに入れる");
     window.scrollTo(0, 0);
+  });
+
+  // ---------- フォルダに直接保存（Chrome / Edge。ネット接続不要） ----------
+  // テンプレートのフォルダを選ぶと、要領書ファイルの保存・目録への追加・動画/写真のコピーを一度に行う
+  var rootDir = null;
+  var saveDirBtn = document.getElementById("saveDir");
+  if (window.showDirectoryPicker) saveDirBtn.hidden = false;
+
+  function getRootDir() {
+    var ok = rootDir
+      ? rootDir.requestPermission({ mode: "readwrite" }).then(function (p) { return p === "granted"; })
+      : Promise.resolve(false);
+    return ok.then(function (granted) {
+      if (granted) return rootDir;
+      return window.showDirectoryPicker({ id: "wi-root", mode: "readwrite" }).then(function (dir) {
+        // 正しいフォルダ（index.html と manuals があるフォルダ）か確認
+        return dir.getDirectoryHandle("manuals").then(function (md) {
+          return md.getFileHandle("catalog.js");
+        }).then(function () {
+          rootDir = dir;
+          return dir;
+        }, function () {
+          throw new Error("選んだフォルダに manuals/catalog.js がありません。index.html があるフォルダを選んでください。");
+        });
+      });
+    });
+  }
+
+  function writeFile(dir, name, data) {
+    return dir.getFileHandle(name, { create: true }).then(function (fh) {
+      return fh.createWritable();
+    }).then(function (w) {
+      return w.write(data).then(function () { return w.close(); });
+    });
+  }
+
+  function readText(dir, name) {
+    return dir.getFileHandle(name).then(function (fh) { return fh.getFile(); }).then(function (f) { return f.text(); });
+  }
+
+  // catalog.js の files に名前が無ければ追加（siteName など他の部分はそのまま残す）
+  function addToCatalog(text, name) {
+    var re = /(files\s*:\s*\[)([\s\S]*?)(\])/;
+    var mt = re.exec(text);
+    if (!mt) throw new Error("manuals/catalog.js の形式が読み取れません。files に手で追加してください。");
+    var names = [];
+    mt[2].replace(/["']([^"']+)["']/g, function (_, n) { names.push(n); return ""; });
+    if (names.indexOf(name) !== -1) return null;
+    names.push(name);
+    var list = "\n" + names.map(function (n) { return '    "' + n + '"'; }).join(",\n") + "\n  ";
+    return text.slice(0, mt.index) + mt[1] + list + mt[3] + text.slice(mt.index + mt[0].length);
+  }
+
+  // 選んだ動画・写真のうち、まだフォルダに無いものをコピー
+  function copyMedia(root, d) {
+    var srcs = [];
+    d.steps.forEach(function (s) {
+      srcs.push(s.image, s.video && s.video.src);
+      s.points.forEach(function (p) { srcs.push(p.video && p.video.src); });
+    });
+    var todo = srcs.filter(function (x, i) { return x && pickedFiles[x] && srcs.indexOf(x) === i; });
+    var copied = [];
+    return todo.reduce(function (pr, src) {
+      return pr.then(function () {
+        var parts = src.split("/");
+        return root.getDirectoryHandle(parts[0], { create: true }).then(function (dir) {
+          return dir.getFileHandle(parts[1]).then(function () { /* 既にある */ }, function () {
+            notice("動画・写真をコピー中… " + esc(src));
+            return writeFile(dir, parts[1], pickedFiles[src]).then(function () { copied.push(src); });
+          });
+        });
+      });
+    }, Promise.resolve()).then(function () { return copied; });
+  }
+
+  saveDirBtn.addEventListener("click", function () {
+    if (!m.title) { notice("作業名（タイトル）を入力してください。", true); window.scrollTo(0, 0); return; }
+    var name = suggestName();
+    var d = cleaned();
+    var root, added = false, copied = [];
+    saveDirBtn.disabled = true;
+    getRootDir().then(function (r) {
+      root = r;
+      return root.getDirectoryHandle("manuals");
+    }).then(function (md) {
+      return writeFile(md, name, toFileText(d)).then(function () {
+        return readText(md, "catalog.js");
+      }).then(function (cat) {
+        var next = addToCatalog(cat, name);
+        if (next === null) return;
+        added = true;
+        return writeFile(md, "catalog.js", next);
+      });
+    }).then(function () {
+      return copyMedia(root, d);
+    }).then(function (c) {
+      copied = c;
+      fileName = name;
+      saveDraft();
+      notice("<b>保存しました：manuals/" + esc(name) + "</b>" +
+        (added ? "<br>一覧（目録）に追加しました。" : "") +
+        (copied.length ? "<br>コピーした動画・写真：" + copied.map(esc).join("、") : "") +
+        '<br><a href="index.html">一覧で確認する</a>');
+      window.scrollTo(0, 0);
+    }).catch(function (e) {
+      if (e && e.name === "AbortError") return; // フォルダ選択をキャンセル
+      notice("保存できませんでした。" + esc(e && e.message ? e.message : e), true);
+      window.scrollTo(0, 0);
+    }).then(function () {
+      saveDirBtn.disabled = false;
+    });
   });
 
   document.getElementById("preview").addEventListener("click", function () {

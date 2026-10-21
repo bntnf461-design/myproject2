@@ -27,6 +27,7 @@
 html.large-text { --base-size: 20px; }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
