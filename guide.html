@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>撮影ガイド（スマホの設定）</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .guide h3 { margin: 12px 0 4px; font-size: 1.05rem; }
+  .guide ol { margin: 4px 0 8px; padding-left: 1.6em; }
+  .guide li { margin: 4px 0; }
+  .guide .path { display: inline-block; padding: 0 6px; border: 1px solid var(--navy); border-radius: 4px; background: var(--navy-pale); font-weight: bold; }
+  .guide .on, .guide .path { white-space: nowrap; }
+  .guide .on { color: var(--white); background: var(--navy); border-radius: 4px; padding: 0 6px; font-weight: bold; }
+  .phones { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+  .phone { border: 2px solid var(--navy); border-radius: var(--radius); padding: 0 16px 12px; }
+  .phone > h2 { margin: 0 -16px 8px; padding: 8px 16px; background: var(--navy); color: var(--white); font-size: 1.15rem; }
+  .rec { width: 100%; border-collapse: collapse; }
+  .rec th, .rec td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  .rec th { background: var(--navy-light); width: 8em; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="btn on-navy" href="index.html">◀ 一覧</a>
+  <h1>撮影ガイド（スマホの設定）</h1>
+  <div class="actions">
+    <button type="button" class="btn on-navy" onclick="window.print()">印刷</button>
+  </div>
+</header>
+
+<main class="page guide">
+  <div class="notice" style="margin-bottom:16px">
+    スマホの初期設定は「きれいさ優先」のため、そのまま撮ると<b>他の PC で再生できない・カクつく・色が白っぽい</b>ことがあります。<br>
+    撮影する前に、<b>一度だけ</b>下の設定にしてください（設定は残るので、毎回変える必要はありません）。
+  </div>
+
+  <section class="section">
+    <h2>おすすめの設定</h2>
+    <table class="rec"><tbody>
+      <tr><th>形式</th><td><b>H.264</b>（「互換性優先」「高効率 オフ」など）</td></tr>
+      <tr><th>解像度</th><td><b>1080p（FHD・1920×1080）</b>　※低スペック PC が多い場合は 720p でも十分です</td></tr>
+      <tr><th>コマ数</th><td><b>30 fps</b></td></tr>
+      <tr><th>HDR</th><td><b>オフ</b></td></tr>
+    </tbody></table>
+  </section>
+
+  <div class="phones">
+    <section class="phone">
+      <h2>iPhone</h2>
+
+      <h3>① 形式を H.264 にする</h3>
+      <ol>
+        <li><span class="path">設定</span> アプリ → <span class="path">カメラ</span> → <span class="path">フォーマット</span></li>
+        <li>「<span class="on">互換性優先</span>」を選ぶ</li>
+      </ol>
+      <p class="hint">写真も JPEG で保存されるようになり、要領書の写真にそのまま使えます（HEIC 形式の写真は表示できません）。</p>
+
+      <h3>② 解像度とコマ数</h3>
+      <ol>
+        <li><span class="path">設定</span> → <span class="path">カメラ</span> → <span class="path">ビデオ撮影</span></li>
+        <li>「<span class="on">1080p HD/30 fps</span>」を選ぶ</li>
+      </ol>
+
+      <h3>③ HDR をオフ</h3>
+      <ol>
+        <li>同じ <span class="path">ビデオ撮影</span> の画面で</li>
+        <li>「<b>HDRビデオ</b>」を <span class="on">オフ</span></li>
+      </ol>
+      <p class="hint">項目の名前や場所は iOS のバージョンによって少し違うことがあります。</p>
+    </section>
+
+    <section class="phone">
+      <h2>Android</h2>
+      <p class="hint" style="margin-top:0">機種やメーカーによって項目の名前・場所が違います。<b>カメラアプリの設定（⚙ 歯車）</b>の「動画」「ビデオ」の欄で、次の項目を探してください。多くの機種は最初から H.264 なので、②③だけで済むこともあります。</p>
+
+      <h3>① 形式を H.264 にする</h3>
+      <ol>
+        <li>「<b>高効率動画</b>」「<b>HEVC</b>」「<b>H.265</b>」と書かれた項目を <span class="on">オフ</span></li>
+        <li>「動画コーデック」などで選ぶ機種は「<span class="on">H.264</span>」を選ぶ</li>
+      </ol>
+
+      <h3>② 解像度とコマ数</h3>
+      <ol>
+        <li>「動画サイズ」「解像度」で「<span class="on">FHD</span>」または「<span class="on">1080p</span>」を選ぶ</li>
+        <li>コマ数（fps）は「<span class="on">30</span>」を選ぶ</li>
+      </ol>
+      <p class="hint">機種によっては、撮影画面の上部にある「FHD」「4K」「30」「60」などの表示をタップして切り替えます。</p>
+
+      <h3>③ HDR をオフ</h3>
+      <ol>
+        <li>「<b>HDR10+ 動画</b>」「<b>HDR 動画</b>」「<b>10 ビット HDR</b>」などの項目を <span class="on">オフ</span></li>
+      </ol>
+
+      <h3>機種別の例</h3>
+      <ul>
+        <li><b>Galaxy</b>：カメラの設定 → 「詳細な動画オプション」の中に「高効率動画」「HDR10+ 動画」があります。解像度は撮影画面上部の「FHD」の表示で選びます。</li>
+        <li><b>Pixel</b>：動画モードで設定を開き、解像度「1080p」・「30 FPS」を選びます。「10 ビット HDR」がある場合はオフにします。</li>
+        <li><b>その他（AQUOS・Xperia・arrows など）</b>：カメラの設定の「動画」「ビデオ」の欄で、上の ①〜③ と同じ名前の項目を探してください。</li>
+      </ul>
+      <p class="hint">表示名はバージョンによって変わることがあります。</p>
+    </section>
+  </div>
+
+  <section class="section" style="margin-top:20px">
+    <h2>上手に撮るコツ</h2>
+    <ul>
+      <li><b>横向き</b>で撮る（PC の画面いっぱいに映ります）</li>
+      <li>スマホスタンドなどで<b>固定</b>し、<b>手元が画面いっぱい</b>に映るようにする</li>
+      <li>明るい場所で撮る。手元が暗いと急所が見えにくくなります</li>
+      <li>作業を<b>最初から最後まで 1 本で通して撮って OK</b>。エディタの「区間を設定」で手順ごとに分けられます</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>すでに撮った動画が使えないとき</h2>
+    <p>エディタで動画を選ぶと、この PC で再生できるか自動で確認します。「✕ 使えません」「⚠ 注意」と出た場合は、上の設定にして撮り直すのが一番簡単です。撮り直せない場合は、動画変換ソフトで「MP4（H.264）・1080p」に変換してください。</p>
+  </section>
+</main>
+</body>
+</html>

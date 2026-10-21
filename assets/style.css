@@ -472,6 +472,22 @@ button, input, select, textarea {
   border-top: 2px solid var(--navy);
 }
 
+/* 動画・写真のチェック結果 */
+.mcheck {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 2px solid var(--navy);
+  border-radius: var(--radius);
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+.mcheck ul { margin: 4px 0 6px; padding-left: 1.3em; font-weight: normal; }
+.mcheck.ok { border-color: var(--line); color: var(--navy-mid); }
+.mcheck.warn { border-color: var(--focus); background: #fffbea; }
+.mcheck.error { border-color: var(--safety); color: var(--safety); background: #fff5f5; }
+.mcheck.error li { color: var(--text); }
+
 /* ---------- Excel 取り込み ---------- */
 .sheet-dialog {
   position: fixed;

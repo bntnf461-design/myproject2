@@ -14,6 +14,7 @@
   var fileName = "";     // 書き出し時のファイル名（既存ファイルを開いた場合はその名前）
   var dirty = false;     // ファイル（フォルダ）にまだ保存していない変更があるか
   var objectUrls = {};   // この画面で選んだ動画ファイル → 確認用の一時 URL
+  var mediaChecks = {};  // 選んだ動画・写真のチェック結果（"videos/a.mp4" → {level, summary, items}）
   var pickedFiles = {};  // この画面で選んだ動画・画像（"videos/a.mp4" → File）。フォルダ保存時にコピーする
 
   // ---------- 初期データ ----------
@@ -131,7 +132,20 @@
       '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
         '<button type="button" class="btn small" data-act="pick-video" data-path="' + base + '">選ぶ</button>' +
         '<button type="button" class="btn small" data-act="seg" data-path="' + base + '">区間を設定</button>' +
-      '</div></div>';
+      '</div></div>' + checkBox(getPath(base + ".src"));
+  }
+
+  // 動画・写真のチェック結果の表示
+  function checkBox(src) {
+    var c = src && mediaChecks[src];
+    if (!c) return "";
+    if (c.level === "checking") return '<div class="mcheck">確認中… ' + esc(src.split("/").pop()) + '</div>';
+    return '<div class="mcheck ' + c.level + '">' +
+      (c.level === "ok" ? "✓ 問題ありません" : c.level === "warn" ? "⚠ 注意" : "✕ 使えません") +
+      '<span class="hint">（' + esc(c.summary) + '）</span>' +
+      (c.items.length ? '<ul>' + c.items.map(function (x) { return "<li>" + x + "</li>"; }).join("") + '</ul>' : '') +
+      (c.level !== "ok" ? '<a class="btn small" href="guide.html" target="_blank">スマホの撮影設定を見る</a>' : '') +
+    '</div>';
   }
 
   function render() {
@@ -178,7 +192,7 @@
         field("標準時間（秒）", b + ".time", { type: "number" }) +
         '<div class="field"><span>写真・図（任意）</span><div style="display:flex;gap:4px">' +
           '<input type="text" data-path="' + b + '.image" value="' + esc(s.image) + '" placeholder="images/xxx.jpg" style="flex:1;min-width:0">' +
-          '<button type="button" class="btn small" data-act="pick-image" data-path="' + b + '.image">選ぶ</button></div></div>' +
+          '<button type="button" class="btn small" data-act="pick-image" data-path="' + b + '.image">選ぶ</button></div>' + checkBox(s.image) + '</div>' +
         '<div class="field wide"><span>この手順の動画</span>' + videoFields(b + ".video") + '</div>' +
       '</div>' +
       '<div class="sub-list"><b>急所（どのように）と理由</b>';
@@ -318,7 +332,7 @@
     pickKind = kind;
     pickTarget = path;
     picker.value = "";
-    picker.accept = kind === "video" ? "video/mp4,video/webm,.mp4,.webm,.m4v" : "image/*";
+    picker.accept = kind === "video" ? "video/*,.mp4,.m4v,.mov,.webm" : "image/*,.heic,.heif";
     picker.click();
   }
   picker.addEventListener("change", function () {
@@ -330,12 +344,20 @@
       objectUrls[src] = URL.createObjectURL(f);
       pickedFiles[src] = f;
       setInput(pickTarget + ".src", src);
-      if (!/\.mp4$|\.m4v$/i.test(f.name)) {
-        notice("MP4（H.264）形式をおすすめします。他の形式は PC によって再生できない場合があります。");
-      }
+      // この PC で再生できるか・重すぎないかを確認して、結果を動画欄の下に出す
+      mediaChecks[src] = { level: "checking" };
+      render();
+      VideoCheck.checkVideo(f).then(function (c) {
+        if (pickedFiles[src] !== f) return; // 確認中に別のファイルを選び直した
+        mediaChecks[src] = c;
+        render();
+      });
     } else {
       setInput(pickTarget, "images/" + f.name);
       pickedFiles["images/" + f.name] = f;
+      var ic = VideoCheck.checkImage(f);
+      if (ic) mediaChecks["images/" + f.name] = ic; else delete mediaChecks["images/" + f.name];
+      render();
     }
   });
 

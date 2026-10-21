@@ -352,7 +352,8 @@
   video.addEventListener("error", function () {
     if (!video.getAttribute("src")) return; // 閉じた時の解放によるもの
     showMsg("動画を再生できません。<br><small>ファイル：" + esc(loadedSrc) +
-      "<br>videos フォルダにファイルがあるか、形式が MP4（H.264）か確認してください。</small>");
+      "<br>videos フォルダにファイルがあるか、形式が MP4（H.264）か確認してください。</small>" +
+      '<br><a class="btn on-navy small" href="guide.html" target="_blank" style="margin-top:8px">スマホで撮った動画の場合（撮影ガイド）</a>');
   });
 
   pClose.addEventListener("click", closePlayer);
