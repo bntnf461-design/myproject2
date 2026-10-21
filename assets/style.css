@@ -557,6 +557,28 @@ button, input, select, textarea {
 
 .thumb { display: block; max-width: 220px; max-height: 120px; margin-top: 6px; border: 1px solid var(--line); }
 
+/* 写真への書き込み */
+.an-body { padding: 8px; background: #3a3f4a; }
+.an-body canvas { display: block; max-width: 100%; max-height: 100%; touch-action: none; background: #fff; }
+.an-tools { border-top: 0; border-bottom: 1px solid var(--navy-mid); }
+
+/* 写真の拡大表示 */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(11, 26, 54, 0.92);
+  cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 100%; max-height: 100%; background: #fff; }
+.lightbox .close { position: absolute; top: 12px; right: 12px; }
+.step-image { cursor: zoom-in; }
+
 /* 動画・写真のチェック結果 */
 .mcheck {
   grid-column: 1 / -1;

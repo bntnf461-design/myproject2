@@ -128,7 +128,7 @@
         '<td data-label="主なステップ">' +
           '<div class="step-title">' + esc(s.title) + '</div>' +
           (s.detail ? '<div class="step-detail">' + esc(s.detail) + '</div>' : '') +
-          (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
+          (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="写真（タップで拡大）" title="タップで拡大" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
         '<td data-label="急所／理由">' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
         (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +
@@ -170,6 +170,8 @@
   docEl.addEventListener("click", function (ev) {
     var t = ev.target;
     if (t.closest("a")) return;
+    // 写真をタップしたら拡大（画面コピーの細かい文字も読めるように）
+    if (t.classList.contains("step-image")) { ev.stopPropagation(); openLightbox(t.src); return; }
     var el = t.closest("[data-pl]");
     if (!el) return;
     // 急所の動画を優先。行のどこかをタップした場合は手順の動画
@@ -181,6 +183,25 @@
       ev.preventDefault();
       openPlayer(parseInt(ev.target.getAttribute("data-pl"), 10));
     }
+  });
+
+  // ---------- 写真の拡大表示 ----------
+  var lb = document.createElement("div");
+  lb.className = "lightbox";
+  lb.setAttribute("role", "dialog");
+  lb.innerHTML = '<img alt=""><button type="button" class="btn on-navy close">✕ 閉じる</button>';
+  document.body.appendChild(lb);
+  function openLightbox(src) {
+    lb.querySelector("img").src = src;
+    lb.classList.add("open");
+  }
+  function closeLightbox() {
+    lb.classList.remove("open");
+    lb.querySelector("img").removeAttribute("src");
+  }
+  lb.addEventListener("click", closeLightbox);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && lb.classList.contains("open")) closeLightbox();
   });
 
   // ---------- 動画プレーヤー ----------

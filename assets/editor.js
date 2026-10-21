@@ -16,6 +16,12 @@
   var objectUrls = {};   // この画面で選んだ動画ファイル → 確認用の一時 URL
   var mediaChecks = {};  // 選んだ動画・写真のチェック結果（"videos/a.mp4" → {level, summary, items}）
   var pickedFiles = {};  // この画面で選んだ動画・画像（"videos/a.mp4" → File）。フォルダ保存時にコピーする
+  var freshFiles = {};   // まだフォルダに書き出していない（または中身が変わった）もの
+
+  function addPicked(src, f) {
+    pickedFiles[src] = f;
+    freshFiles[src] = true;
+  }
 
   // ---------- 初期データ ----------
   function blankStep() {
@@ -224,7 +230,8 @@
         '<div class="field"><span>写真・図（任意）</span><div style="display:flex;gap:4px">' +
           '<input type="text" data-path="' + b + '.image" value="' + esc(s.image) + '" placeholder="images/xxx.jpg" style="flex:1;min-width:0">' +
           '<button type="button" class="btn small" data-act="pick-image" data-path="' + b + '.image">選ぶ</button></div>' +
-          (s.image ? '<img class="thumb" src="' + esc(objectUrls[s.image] || s.image) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
+          (s.image ? '<img class="thumb" src="' + esc(objectUrls[s.image] || s.image) + '" alt="" onerror="this.style.display=\'none\'">' +
+            '<button type="button" class="btn small primary" data-act="annotate" data-i="' + i + '" style="align-self:flex-start;margin-top:4px">✎ 書き込み（丸・矢印・番号）</button>' : '') +
           '<span class="hint">画面のコピー（Win＋Shift＋S）をこの手順で Ctrl＋V でも貼り付けられます</span>' +
           checkBox(s.image) + '</div>' +
         '<div class="field wide"><span>この手順の動画</span>' + videoFields(b + ".video") + '</div>' +
@@ -342,6 +349,7 @@
       case "pick-video": pick("video", path); return;
       case "pick-image": pick("image", path); return;
       case "seg": openSeg(path); return;
+      case "annotate": annotate(i); return;
       default: return;
     }
     render();
@@ -380,7 +388,7 @@
     var src = "videos/" + f.name;
     if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
     objectUrls[src] = URL.createObjectURL(f);
-    pickedFiles[src] = f;
+    addPicked(src, f);
     setInput(base + ".src", src);
     // この PC で再生できるか・重すぎないかを確認して、結果を動画欄の下に出す
     mediaChecks[src] = { level: "checking" };
@@ -398,11 +406,57 @@
     var src = "images/" + (name || f.name);
     if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
     objectUrls[src] = URL.createObjectURL(f);
-    pickedFiles[src] = f;
+    addPicked(src, f);
     setInput(path, src);
     var ic = VideoCheck.checkImage(f);
     if (ic) mediaChecks[src] = ic; else delete mediaChecks[src];
     render();
+  }
+
+  // ---------- 写真への書き込み ----------
+  // 元の写真は残し、書き込んだものを「元の名前_mark.png」として保存。書き込みの内容も残すので後から直せる
+  function annotate(i) {
+    var s = m.steps[i];
+    var base = (s.marks && s.marks.base) || s.image;
+    if (!base) return;
+    imageUrl(base).then(function (url) {
+      WIAnnotate.open({
+        url: url,
+        shapes: s.marks && s.marks.base === base ? s.marks.shapes : [],
+        onDone: function (blob, shapes) {
+          var name = base.split("/").pop().replace(/\.[^.]+$/, "") + "_mark.png";
+          var src = "images/" + name;
+          if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
+          objectUrls[src] = URL.createObjectURL(blob);
+          addPicked(src, new File([blob], name, { type: "image/png" }));
+          s.marks = { base: base, shapes: shapes };
+          if (!shapes.length) { delete s.marks; setInput("steps." + i + ".image", base); }
+          else setInput("steps." + i + ".image", src);
+          render();
+        }
+      });
+    }, function (e) {
+      notice(esc(e.message), true);
+      window.scrollTo(0, 0);
+    });
+  }
+
+  // 書き込み用に写真を読む。保存済みの写真は、ファイルを直接開いた画面では書き込めない（ブラウザの制限）ため、フォルダから読み込む
+  function imageUrl(src) {
+    if (objectUrls[src]) return Promise.resolve(objectUrls[src]);
+    if (location.protocol !== "file:") return Promise.resolve(src);
+    if (!WIFolder.supported) return Promise.reject(new Error("写真を「選ぶ」から選び直してから、書き込んでください。"));
+    return WIFolder.getRoot().then(function (root) {
+      var parts = src.split("/");
+      return root.getDirectoryHandle(parts[0]).then(function (d) { return d.getFileHandle(parts[1]); });
+    }).then(function (fh) { return fh.getFile(); }).then(function (f) {
+      pickedFiles[src] = f; // 読み込んだだけなので書き出しはしない
+      objectUrls[src] = URL.createObjectURL(f);
+      return objectUrls[src];
+    }, function (e) {
+      if (e && e.name === "AbortError") throw new Error("フォルダが選ばれませんでした。");
+      throw new Error("写真「" + src + "」がフォルダに見つかりません。「選ぶ」から選び直してください。");
+    });
   }
 
   // 手順のカードに動画・写真ファイルをドラッグ＆ドロップ
@@ -609,18 +663,20 @@
   function copyMedia(root, d) {
     var srcs = [];
     d.steps.forEach(function (s) {
-      srcs.push(s.image, s.video && s.video.src);
+      srcs.push(s.image, s.marks && s.marks.base, s.video && s.video.src);
       s.points.forEach(function (p) { srcs.push(p.video && p.video.src); });
     });
-    var todo = srcs.filter(function (x, i) { return x && pickedFiles[x] && srcs.indexOf(x) === i; });
+    // この画面で選んだ・書き込んだもので、まだ書き出していないものだけ（同じ名前のファイルは上書き）
+    var todo = srcs.filter(function (x, i) { return x && freshFiles[x] && pickedFiles[x] && srcs.indexOf(x) === i; });
     var copied = [];
     return todo.reduce(function (pr, src) {
       return pr.then(function () {
         var parts = src.split("/");
         return root.getDirectoryHandle(parts[0], { create: true }).then(function (dir) {
-          return dir.getFileHandle(parts[1]).then(function () { /* 既にある */ }, function () {
-            notice("動画・写真をコピー中… " + esc(src));
-            return WIFolder.writeFile(dir, parts[1], pickedFiles[src]).then(function () { copied.push(src); });
+          notice("動画・写真をコピー中… " + esc(src));
+          return WIFolder.writeFile(dir, parts[1], pickedFiles[src]).then(function () {
+            copied.push(src);
+            delete freshFiles[src];
           });
         });
       });
@@ -698,7 +754,7 @@
       fileName = "";
       // Excel に貼ってあった写真は、フォルダ保存のときに images フォルダへ書き出す
       res.images.forEach(function (im) {
-        pickedFiles[im.src] = new File([im.bytes], im.src.split("/").pop(), { type: im.type });
+        addPicked(im.src, new File([im.bytes], im.src.split("/").pop(), { type: im.type }));
       });
       history.replaceState(null, "", "editor.html");
       render();
