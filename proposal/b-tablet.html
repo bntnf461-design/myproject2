@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案B 現場タブレット型（手順を見る画面）</title>
+<style>
+  :root {
+    --navy: #13284f; --navy-2: #1c3766; --deep: #0b1a36; --muted: #8fa0c2;
+    --white: #fff; --red: #d23b3b; --amber: #e39a1b;
+    --font: "Yu Gothic UI", "Meiryo UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: var(--font); background: var(--deep); color: var(--white); display: flex; flex-direction: column; }
+
+  .top { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--navy); }
+  .back { height: 52px; padding: 0 18px; border-radius: 12px; border: 2px solid rgba(255,255,255,.5); background: transparent; color: var(--white); font-weight: 700; font-size: 16px; font-family: inherit; }
+  .ttl { flex: 1; min-width: 0; }
+  .ttl small { color: var(--muted); font-size: 13px; }
+  .ttl b { display: block; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .count { font-size: 28px; font-weight: 800; }
+  .count small { font-size: 16px; color: var(--muted); }
+
+  /* 進み具合 */
+  .prog { display: flex; gap: 6px; padding: 10px 20px; background: var(--navy); border-top: 1px solid var(--navy-2); }
+  .prog i { flex: 1; height: 8px; border-radius: 4px; background: var(--navy-2); }
+  .prog i.done { background: #7f95c0; }
+  .prog i.now { background: var(--white); }
+
+  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; padding: 18px 20px; }
+  .video { position: relative; border-radius: 16px; background: #000 linear-gradient(135deg, #1a2b4f, #0b1426); display: grid; place-items: center; min-height: 260px; }
+  .play { width: 112px; height: 112px; border-radius: 50%; background: rgba(255,255,255,.95); display: grid; place-items: center; }
+  .play::after { content: ""; border-left: 40px solid var(--navy); border-top: 24px solid transparent; border-bottom: 24px solid transparent; margin-left: 10px; }
+  .video .seg { position: absolute; left: 16px; bottom: 14px; font-size: 14px; color: #c8d3e8; }
+  .video .speed { position: absolute; right: 14px; bottom: 10px; display: flex; gap: 6px; }
+  .video .speed span { padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.4); font-size: 14px; }
+  .video .speed span.on { background: var(--white); color: var(--navy); font-weight: 700; }
+
+  .info { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .step { background: var(--navy); border-radius: 16px; padding: 18px 20px; }
+  .step .lbl { font-size: 13px; color: var(--muted); font-weight: 700; letter-spacing: .1em; }
+  .step .txt { font-size: 26px; font-weight: 800; line-height: 1.45; margin-top: 4px; }
+  .marks { display: flex; gap: 8px; margin-top: 10px; }
+  .mk { padding: 4px 12px; border-radius: 8px; font-weight: 800; font-size: 15px; }
+  .mk.s { background: var(--red); }
+  .mk.q { background: var(--amber); color: #1c1200; }
+  .pt { background: var(--white); color: var(--navy); border-radius: 16px; padding: 16px 20px; border-left: 10px solid var(--amber); }
+  .pt .lbl { font-size: 13px; color: #66748f; font-weight: 700; letter-spacing: .1em; }
+  .pt .txt { font-size: 21px; font-weight: 700; line-height: 1.5; margin-top: 2px; }
+
+  .bottom { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 14px; padding: 14px 20px 18px; background: var(--navy); }
+  .big { height: 76px; border-radius: 14px; font-size: 24px; font-weight: 800; font-family: inherit; border: 2px solid rgba(255,255,255,.6); background: transparent; color: var(--white); }
+  .big.pri { background: var(--white); color: var(--navy); border-color: var(--white); }
+
+  @media (max-width: 760px) {
+    .top { padding: 10px 12px; gap: 10px; }
+    .back { height: 44px; padding: 0 12px; font-size: 14px; }
+    .ttl b { font-size: 16px; }
+    .count { font-size: 22px; }
+    .prog { padding: 8px 12px; }
+    .body { grid-template-columns: 1fr; padding: 12px; gap: 12px; overflow-y: auto; }
+    .video { min-height: 210px; }
+    .play { width: 84px; height: 84px; }
+    .play::after { border-left-width: 30px; border-top-width: 18px; border-bottom-width: 18px; }
+    .step .txt { font-size: 21px; }
+    .pt .txt { font-size: 18px; }
+    .bottom { padding: 10px 12px 14px; gap: 8px; }
+    .big { height: 62px; font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+  <div class="top">
+    <button class="back">◀ 一覧</button>
+    <div class="ttl"><small>Aライン ＞ 第2組立工程</small><b>ボルト締付け作業（ブラケット組付け）</b></div>
+    <div class="count">4<small> / 5</small></div>
+  </div>
+  <div class="prog"><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i></div>
+
+  <div class="body">
+    <div class="video">
+      <div class="play"></div>
+      <div class="seg">0:18 〜 0:24</div>
+      <div class="speed"><span>0.5倍</span><span>ゆっくり</span><span class="on">標準</span></div>
+    </div>
+    <div class="info">
+      <div class="step">
+        <div class="lbl">要素作業手順</div>
+        <div class="txt">ナットランナーで対角の順番に本締めし、ランプが緑になることを確認する</div>
+        <div class="marks"><span class="mk s">✚ 安全</span><span class="mk q">◆ 品質</span></div>
+      </div>
+      <div class="pt">
+        <div class="lbl">急所ポイント</div>
+        <div class="txt">赤ランプが点いたらラインを止めて班長に連絡</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <button class="big">◀ 前へ</button>
+    <button class="big pri">▶ 動画を再生</button>
+    <button class="big">次へ ▶</button>
+  </div>
+</body>
+</html>

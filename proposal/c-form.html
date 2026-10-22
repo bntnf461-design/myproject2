@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案C 帳票型（社内フォーマットそのままの見た目）</title>
+<style>
+  :root {
+    --navy: #13284f; --navy-3: #2b4478; --muted: #66748f; --rule: #13284f; --thin: #b9c4d8;
+    --tint: #eef2f8; --paper: #fff; --desk: #e6ebf3; --red: #c62828; --amber: #b86e00;
+    --font: "Yu Gothic UI", "Meiryo UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); color: var(--navy); background: var(--desk); }
+  .bar { position: sticky; top: 0; display: flex; align-items: center; gap: 10px; padding: 10px 20px; background: var(--navy); color: #fff; z-index: 2; }
+  .bar .crumb { flex: 1; font-size: 14px; color: #c8d3e8; }
+  .bar .crumb b { color: #fff; }
+  .tb { height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff; font: 700 14px var(--font); }
+  .tb.pri { background: #fff; color: var(--navy); }
+
+  .paper { max-width: 1100px; margin: 20px auto; background: var(--paper); border: 1px solid var(--thin); box-shadow: 0 1px 3px rgba(19,40,79,.12); padding: 26px 30px 30px; }
+
+  /* 帳票のヘッダ（Excel と同じ並び） */
+  .hd { display: grid; grid-template-columns: 1.3fr 1.5fr 1fr; border: 2px solid var(--rule); }
+  .cell { border-right: 1px solid var(--thin); border-bottom: 1px solid var(--thin); padding: 6px 10px; }
+  .cell .k { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .1em; }
+  .cell .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .titlecell { grid-row: span 2; display: grid; place-items: center; font-size: 26px; font-weight: 800; letter-spacing: .5em; padding-left: .5em; border-right: 1px solid var(--thin); }
+  .stamps { grid-row: span 2; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .stamps div { border-left: 1px solid var(--thin); text-align: center; font-size: 12px; font-weight: 700; }
+  .stamps div:first-child { border-left: 0; }
+  .stamps span { display: block; background: var(--tint); padding: 4px 0; border-bottom: 1px solid var(--thin); }
+  .stamps i { display: block; height: 52px; }
+  .grp { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 2.2fr .6fr; border-top: 2px solid var(--rule); }
+  .grp .cell:last-child { border-right: 0; }
+
+  /* 手順の表 */
+  table { width: 100%; border-collapse: collapse; margin-top: 18px; border: 2px solid var(--rule); }
+  th { background: var(--navy); color: #fff; font-size: 14px; letter-spacing: .2em; padding: 9px 8px; border-left: 1px solid var(--navy-3); }
+  td { border-top: 1px solid var(--thin); border-left: 1px solid var(--thin); padding: 12px 10px; font-size: 15px; vertical-align: top; }
+  td.no { text-align: center; font-weight: 800; font-size: 18px; width: 56px; }
+  td.mk { width: 76px; text-align: center; }
+  td.v { width: 64px; text-align: center; }
+  tr:hover td { background: #f7f9fc; cursor: pointer; }
+  .m { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; color: #fff; font-weight: 800; font-size: 14px; margin: 1px; }
+  .m.s { background: var(--red); }
+  .m.q { background: var(--amber); }
+  .pbtn { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 15px; }
+  .pbtn.off { background: #fff; border: 2px solid var(--thin); color: var(--thin); }
+  .legend { display: flex; gap: 18px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .rev { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; border: 2px solid var(--rule); font-size: 13px; }
+  .rev div { padding: 6px 10px; border-left: 1px solid var(--thin); }
+
+  @media (max-width: 760px) {
+    .bar { padding: 8px 12px; flex-wrap: wrap; }
+    .paper { margin: 0; padding: 14px 12px; border: 0; box-shadow: none; }
+    .hd { grid-template-columns: 1fr 1fr; }
+    .titlecell { grid-column: 1 / -1; grid-row: auto; font-size: 20px; padding: 10px; }
+    .stamps { grid-column: 1 / -1; grid-row: auto; }
+    .grp { grid-template-columns: 1fr; }
+    table, tbody, tr, td { display: block; width: 100% !important; }
+    thead { display: none; }
+    table { border: 0; }
+    tr { border: 2px solid var(--rule); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    td { border-left: 0; }
+    td.no { text-align: left; background: var(--navy); color: #fff; font-size: 15px; padding: 6px 10px; }
+    td.mk, td.v { text-align: left; }
+    .rev { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button class="tb">◀ 一覧</button>
+    <div class="crumb">本社工場 ＞ 製造二課 ＞ <b>ボルト締付け作業</b></div>
+    <button class="tb">文字 大</button><button class="tb">編集</button><button class="tb pri">▶ 手順を順に見る</button>
+  </div>
+
+  <div class="paper">
+    <div class="hd">
+      <div class="titlecell">作業要領書</div>
+      <div class="cell"><div class="k">管理番号</div><div class="v">WI-A-001</div></div>
+      <div class="stamps">
+        <div><span>承認</span><i></i></div><div><span>点検</span><i></i></div><div><span>確認</span><i></i></div><div><span>作成</span><i></i></div>
+      </div>
+      <div class="cell"><div class="k">関連標準</div><div class="v">　</div></div>
+      <div class="grp">
+        <div class="cell"><div class="k">工程名</div><div class="v">第2組立工程</div></div>
+        <div class="cell"><div class="k">作業名称（部品名）</div><div class="v">ボルト締付け作業（BR-1024 ブラケット）</div></div>
+        <div class="cell"><div class="k">ページ</div><div class="v">1/1</div></div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>NO.</th><th>要素作業手順</th><th>✚ ◆</th><th>急所ポイント</th><th>動画</th></tr></thead>
+      <tbody>
+        <tr><td class="no">1</td><td>部品を確認する</td><td class="mk"><span class="m q">◆</span></td><td>品番を指差し呼称で確認する</td><td class="v"><span class="pbtn">▶</span></td></tr>
+        <tr><td class="no">2</td><td>ブラケットを治具にセットする</td><td class="mk"><span class="m s">✚</span></td><td>指を治具の隙間に入れない</td><td class="v"><span class="pbtn">▶</span></td></tr>
+        <tr><td class="no">3</td><td>ボルトを仮締めする</td><td class="mk"></td><td>対角の順番（①→③→②→④）で入れる</td><td class="v"><span class="pbtn off">▶</span></td></tr>
+        <tr><td class="no">4</td><td>ナットランナーで本締めする</td><td class="mk"><span class="m s">✚</span><span class="m q">◆</span></td><td>赤ランプが点いたらラインを止めて班長に連絡</td><td class="v"><span class="pbtn">▶</span></td></tr>
+        <tr><td class="no">5</td><td>マーキングして次工程へ送る</td><td class="mk"></td><td>ボルト頭からワークにかけて線を引く</td><td class="v"><span class="pbtn">▶</span></td></tr>
+      </tbody>
+    </table>
+    <div class="legend"><span><span class="m s">✚</span> 安全ポイント</span><span><span class="m q">◆</span> 品質ポイント</span><span>行のどこをタップしても動画を再生</span></div>
+
+    <div class="rev"><div><b>改訂履歴</b>　0：2025/04/01 新規制定</div><div>　</div></div>
+  </div>
+</body>
+</html>
