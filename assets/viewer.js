@@ -96,7 +96,7 @@
       '<section class="form-head">' +
         '<div class="fh-title">作業要領書</div>' +
         '<div class="fh-mid">' + mid + '</div>' +
-        '<div class="fh-stamps">' + stamp("承認", m.approver) + stamp("確認", m.checker) + stamp("作成", m.author) + '</div>' +
+        '<div class="fh-stamps">' + stamp("承認", m.approver) + stamp("点検", m.inspector) + stamp("確認", m.checker) + stamp("作成", m.author) + '</div>' +
         '<div class="fh-sub">' + sub.join("") + '</div>' +
         (m.purpose ? '<div class="fh-sub">' + cell("目的", m.purpose, "full") + '</div>' : '') +
       '</section>';

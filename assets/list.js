@@ -253,12 +253,12 @@
 
   // 表示している要領書の台帳（Excel で開ける CSV。文字化けしないよう BOM 付き UTF-8）
   function exportCsv(list) {
-    var head = ["管理番号", "作業名", LABEL.line, LABEL.product, LABEL.process, LABEL.category, "改訂", "制定日", "改訂日", "手順数", "動画あり", "見直し時期", "作成", "確認", "承認", "ファイル"];
+    var head = ["管理番号", "作業名", LABEL.line, LABEL.product, LABEL.process, LABEL.category, "改訂", "制定日", "改訂日", "手順数", "動画あり", "見直し時期", "作成", "確認", "点検", "承認", "ファイル"];
     var q = function (v) { v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var rows = list.map(function (m) {
       var v = WI.videoStats(m);
       return [m.docNo, m.title, m.line, m.product, m.process, m.category, m.revision, m.issued, m.updated, v.all, v.done,
-        WI.needsReview(m) ? "要" : "", m.author, m.checker, m.approver, m._file].map(q).join(",");
+        WI.needsReview(m) ? "要" : "", m.author, m.checker, m.inspector, m.approver, m._file].map(q).join(",");
     });
     var csv = "\ufeff" + [head.map(q).join(",")].concat(rows).join("\r\n");
     var t = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };

@@ -706,7 +706,7 @@ body.viewer { background: #e6ebf3; }
 }
 .form-head {
   display: grid;
-  grid-template-columns: 1.1fr 1.5fr minmax(16em, 1.1fr);
+  grid-template-columns: 1.1fr 1.5fr minmax(20em, 1.3fr);
   border: 2px solid var(--navy);
   margin-bottom: 18px;
 }
@@ -720,7 +720,7 @@ body.viewer { background: #e6ebf3; }
 .cell { padding: 6px 10px; min-width: 0; }
 .cell .k { font-size: 0.72rem; font-weight: bold; letter-spacing: 0.08em; color: var(--muted); }
 .cell .v { font-size: 1.05rem; font-weight: bold; margin-top: 1px; word-break: break-all; }
-.fh-stamps { display: grid; grid-template-columns: repeat(3, 1fr); }
+.fh-stamps { display: grid; grid-template-columns: repeat(4, 1fr); }
 .fh-stamps > div { border-left: 1px solid var(--line); text-align: center; }
 .fh-stamps > div:first-child { border-left: 0; }
 .fh-stamps .label { padding: 4px 0; background: var(--navy-pale); border-bottom: 1px solid var(--line); font-size: 0.8rem; font-weight: bold; }

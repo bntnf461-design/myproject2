@@ -11,6 +11,7 @@ registerManual({
   "updated": "2026-09-01",
   "author": "高橋",
   "checker": "",
+  "inspector": "",
   "approver": "",
   "purpose": "検査装置が正常であることを始業前に確認し、検査ミスを防ぐ。",
   "cautions": [

@@ -33,6 +33,7 @@
     { key: "issued", label: "制定日", re: /^(制定日|作成日|発行日|作成年月日|制定年月日)$/ },
     { key: "revision", label: "改訂", re: /^(改訂|改定|改訂番号|改訂no|版|版数|rev\.?)$/i },
     { key: "approver", label: "承認", re: /^(承認|承認者)$/, below: true },
+    { key: "inspector", label: "点検", re: /^(点検|点検者)$/, below: true },
     { key: "checker", label: "確認", re: /^(確認|確認者|検印|審査|照査)$/, below: true },
     { key: "author", label: "作成", re: /^(作成|作成者|担当|担当者)$/, below: true },
     { key: "purpose", label: "目的", re: /^目的$/ },
@@ -43,7 +44,7 @@
     { key: "cautions", label: "安全上の注意", re: /安全(上の)?注意|注意事項|安全事項/, list: true },
     { key: "videoFile", label: "動画ファイル", re: /^(動画|動画ファイル|動画名|映像)$/ },
     // 値としては使わないが、項目名なので値と間違えないようにするもの
-    { key: "_", re: /^(点検|点検者|品証|製造|関連標準|ページ|頁|会社名|部署|部署名|図解no\.?|図no\.?|図解|写真)$/ }
+    { key: "_", re: /^(品証|製造|関連標準|ページ|頁|会社名|部署|部署名|図解no\.?|図no\.?|図解|写真)$/ }
   ];
 
   var STOP_RE = /^(改訂履歴|改訂記録|改定履歴|変更履歴|改訂来歴|改訂欄)$/;
@@ -222,7 +223,7 @@
       id: "", docNo: half(info.docNo), title: info.title || fileTitle || sheet.name,
       category: half(info.category), process: half(info.process), line: half(info.line), product: half(info.product),
       revision: info.revision || "", issued: toISODate(info.issued), updated: toISODate(info.updated || info.issued),
-      author: info.author || "", checker: info.checker || "", approver: info.approver || "", purpose: info.purpose || "",
+      author: info.author || "", inspector: info.inspector || "", checker: info.checker || "", approver: info.approver || "", purpose: info.purpose || "",
       cautions: splitList(info.cautions), ppe: splitList(info.ppe), tools: splitPairs(info.tools), materials: splitPairs(info.materials),
       steps: [], revisions: []
     };
@@ -571,7 +572,7 @@
     var infoRows = [
       ["作業名", d.title], ["文書番号", d.docNo], ["改訂", d.revision], ["工程", d.process], ["ライン", d.line],
       ["品番・品名", d.product], ["制定日", d.issued], ["改訂日", d.updated],
-      ["作成／確認／承認", [d.author, d.checker, d.approver].map(function (x) { return x || "－"; }).join("／")],
+      ["作成／確認／点検／承認", [d.author, d.checker, d.inspector, d.approver].map(function (x) { return x || "－"; }).join("／")],
       ["保護具", d.ppe.join("、")], ["設備・治工具", d.tools.map(function (t) { return t.name + (t.qty ? " " + t.qty : ""); }).join("、")],
       ["安全上の注意", d.cautions.join("、")], ["改訂履歴", d.revisions.length ? d.revisions.length + " 件" : ""]
     ];

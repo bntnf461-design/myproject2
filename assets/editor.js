@@ -35,7 +35,7 @@
     var d = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate());
     return {
       id: "", docNo: "", title: "", category: "", process: "", line: "", product: "",
-      revision: "1", issued: d, updated: d, author: "", checker: "", approver: "", purpose: "",
+      revision: "1", issued: d, updated: d, author: "", checker: "", inspector: "", approver: "", purpose: "",
       cautions: [], ppe: [], tools: [], materials: [],
       terms: {},
       steps: [blankStep()],
@@ -212,6 +212,7 @@
       field("改訂日", "updated", { type: "date" }) +
       field("作成", "author") +
       field("確認", "checker") +
+      field("点検", "inspector") +
       field("承認", "approver") +
       field("目的", "purpose", { type: "textarea", wide: true }) +
     '</div></section>';

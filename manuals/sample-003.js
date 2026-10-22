@@ -11,6 +11,7 @@ registerManual({
   "updated": "2026-08-01",
   "author": "伊藤",
   "checker": "",
+  "inspector": "",
   "approver": "",
   "purpose": "製品をキズなく箱詰めし、数量違いを防ぐ。",
   "cautions": [

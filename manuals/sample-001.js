@@ -11,6 +11,7 @@ registerManual({
   "updated": "2026-10-01",
   "author": "山田",
   "checker": "佐藤",
+  "inspector": "",
   "approver": "鈴木",
   "purpose": "ブラケットを規定トルクで確実に締め付け、緩み・脱落を防止する。",
   "cautions": [
