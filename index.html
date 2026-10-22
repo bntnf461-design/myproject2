@@ -3,36 +3,97 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>作業要領書 一覧</title>
+<title>作業要領書 メニュー</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <header class="topbar">
-  <h1 id="siteName">作業要領書 一覧</h1>
+  <h1 id="siteName">作業要領書</h1>
   <div class="actions">
     <button type="button" class="btn on-navy" id="textSize" aria-pressed="false">文字 大</button>
-    <a class="btn on-navy" href="guide.html">撮影ガイド</a>
-    <a class="btn on-navy" href="settings.html">設定</a>
-    <a class="btn on-navy" href="bulk.html" title="Excel の要領書をまとめて取り込む">Excel 取り込み</a>
-    <a class="btn on-navy" href="editor.html">＋ 新規作成</a>
   </div>
 </header>
 
-<main class="page">
-  <div class="search">
-    <input type="search" id="q" placeholder="文書番号・作業名・品番などで検索" aria-label="検索">
-  </div>
+<main class="page menu">
 
-  <!-- カテゴリーで絞り込み（ライン → 製品 → 工程 など。順番は manuals/catalog.js の levels で変更可） -->
-  <section class="filters" id="filters" aria-label="絞り込み"></section>
+  <!-- 作業者向け -->
+  <section class="section">
+    <h2>作業をする方</h2>
+    <a class="menu-card main" href="list.html">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 10c6-3 12-3 18 1v29c-6-4-12-4-18-1z M42 10c-6-3-12-3-18 1v29c6-4 12-4 18-1z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M20 20l8 5-8 5z" fill="currentColor"/></svg>
+      <span class="txt">
+        <span class="ttl">要領書を見る</span>
+        <span class="desc">ライン・製品・工程を選んで要領書を開きます。手順をタップすると動画が再生されます。</span>
+      </span>
+      <span class="go">開く ▶</span>
+    </a>
+    <div class="recent" id="recent"></div>
+  </section>
 
-  <div class="result-bar" id="resultBar"></div>
-  <div id="status" class="notice">読み込み中…</div>
-  <div id="list"></div>
+  <!-- 作成・管理する方 -->
+  <section class="section">
+    <h2>要領書を作る・管理する方</h2>
+    <div class="menu-grid">
+      <a class="menu-card" href="bulk.html">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="6" width="26" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="3"/><path d="M14 16h14M14 23h14M14 30h8" stroke="currentColor" stroke-width="3"/><path d="M38 22v18M31 33l7 7 7-7" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>
+        <span class="txt"><span class="ttl">Excel から取り込む</span>
+          <span class="desc">今ある Excel の要領書を、まとめて取り込みます（社内フォーマット対応）。</span></span>
+      </a>
+      <a class="menu-card" href="editor.html">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 38l4-12 20-20 8 8-20 20z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M10 38l12-4" stroke="currentColor" stroke-width="3"/><path d="M30 10l8 8" stroke="currentColor" stroke-width="3"/></svg>
+        <span class="txt"><span class="ttl">要領書を作る</span>
+          <span class="desc">新しい要領書を作ります。動画を付けるときは「要領書を見る」から開いて「編集」を押します。</span></span>
+      </a>
+      <a class="menu-card" href="guide.html">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="5" y="14" width="28" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><path d="M33 21l10-6v18l-10-6z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>
+        <span class="txt"><span class="ttl">動画の撮り方</span>
+          <span class="desc">スマホの設定（iPhone・Android）と、PC の画面録画のしかた。</span></span>
+      </a>
+      <a class="menu-card" href="settings.html">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M24 4v7M24 37v7M4 24h7M37 24h7M10 10l5 5M33 33l5 5M10 38l5-5M33 15l5-5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        <span class="txt"><span class="ttl">設定</span>
+          <span class="desc">工場名、ライン・製品・工程などのカテゴリー、見出しの名前を変えます。</span></span>
+      </a>
+    </div>
+    <div class="menu-status" id="status"></div>
+  </section>
+
+  <!-- はじめての方へ -->
+  <section class="section">
+    <h2>はじめての方へ（使い始めるまでの流れ）</h2>
+    <ol class="flow">
+      <li>
+        <span class="no">1</span>
+        <span class="txt"><b>Excel の要領書を取り込む</b><br>
+          <small>「Excel から取り込む」でファイルを選び、「フォルダに保存」。保存先をきかれたら、案内に出るフォルダを選びます。</small></span>
+        <a class="btn small" href="bulk.html">取り込む</a>
+      </li>
+      <li>
+        <span class="no">2</span>
+        <span class="txt"><b>作業の動画を撮る</b><br>
+          <small>スマホは撮る前に設定を確認（1080p・互換性優先）。PC の作業は画面録画。1 本で通して撮って大丈夫です。</small></span>
+        <a class="btn small" href="guide.html">撮り方</a>
+      </li>
+      <li>
+        <span class="no">3</span>
+        <span class="txt"><b>要領書に動画を付ける</b><br>
+          <small>動画ファイルを <b>videos</b> フォルダに入れ、要領書を開いて「編集」→ 手順ごとに「選ぶ」「区間を設定」→「フォルダに保存」。</small></span>
+        <a class="btn small" href="list.html">要領書を開く</a>
+      </li>
+      <li>
+        <span class="no">4</span>
+        <span class="txt"><b>作業者が見る</b><br>
+          <small>「要領書を見る」から開き、手順をタップ。「▶ 手順を 1 つずつ見る」で順番に確認できます。</small></span>
+        <a class="btn small" href="list.html">見る</a>
+      </li>
+    </ol>
+  </section>
+
+  <p class="hint center">インターネットにつながなくても使えます（この PC・共有フォルダの中だけで動きます）。Chrome または Edge で開いてください。</p>
 </main>
 
 <script src="assets/common.js"></script>
 <script src="manuals/catalog.js"></script>
-<script src="assets/list.js"></script>
+<script src="assets/menu.js"></script>
 </body>
 </html>

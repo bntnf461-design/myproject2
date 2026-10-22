@@ -176,6 +176,8 @@
     return s;
   }
 
+  function half(v) { return String(v || "").normalize("NFKC").trim(); }
+
   function splitList(v) {
     return String(v || "").split(/\n|、|，|,|・/).map(function (x) { return x.trim(); }).filter(Boolean);
   }
@@ -216,8 +218,9 @@
     var C = mapping.cols;
     var info = readInfo(sheet, mapping.headerRow);
     var d = {
-      id: "", docNo: info.docNo || "", title: info.title || fileTitle || sheet.name,
-      category: info.category || "", process: info.process || "", line: info.line || "", product: info.product || "",
+      // 番号・ライン名などは全角／半角をそろえる（「Ｎライン」と「Nライン」が一覧で別々にならないように）
+      id: "", docNo: half(info.docNo), title: info.title || fileTitle || sheet.name,
+      category: half(info.category), process: half(info.process), line: half(info.line), product: half(info.product),
       revision: info.revision || "", issued: toISODate(info.issued), updated: toISODate(info.updated || info.issued),
       author: info.author || "", checker: info.checker || "", approver: info.approver || "", purpose: info.purpose || "",
       cautions: splitList(info.cautions), ppe: splitList(info.ppe), tools: splitPairs(info.tools), materials: splitPairs(info.materials),

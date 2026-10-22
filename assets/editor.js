@@ -744,7 +744,7 @@
       });
     }).then(function () {
       try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
-      location.href = "index.html";
+      location.href = "list.html";
     }).catch(function (e) {
       if (e && e.name === "AbortError") return;
       notice("削除できませんでした。" + esc(WIFolder.errorMessage(e)), true);
@@ -812,7 +812,7 @@
       notice("<b>保存しました：manuals/" + esc(name) + "</b>" +
         (added ? "<br>一覧（目録）に追加しました。" : "") +
         (copied.length ? "<br>コピーした動画・写真：" + copied.map(esc).join("、") : "") +
-        '<br><a href="index.html">一覧で確認する</a>');
+        '<br><a href="list.html">一覧で確認する</a>');
       window.scrollTo(0, 0);
     }).catch(function (e) {
       if (e && e.name === "AbortError") return; // フォルダ選択をキャンセル

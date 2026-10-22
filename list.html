@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作業要領書 一覧</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="btn on-navy" href="index.html" title="最初の画面（メニュー）に戻る">≡ メニュー</a>
+  <h1 id="siteName">作業要領書 一覧</h1>
+  <div class="actions">
+    <button type="button" class="btn on-navy" id="textSize" aria-pressed="false">文字 大</button>
+  </div>
+</header>
+
+<main class="page">
+  <div class="search">
+    <input type="search" id="q" placeholder="文書番号・作業名・品番などで検索" aria-label="検索">
+  </div>
+
+  <!-- カテゴリーで絞り込み（ライン → 製品 → 工程 など。順番は設定画面で変更可） -->
+  <section class="filters" id="filters" aria-label="絞り込み"></section>
+
+  <div class="result-bar" id="resultBar"></div>
+  <div id="status" class="notice">読み込み中…</div>
+  <div id="list"></div>
+</main>
+
+<script src="assets/common.js"></script>
+<script src="manuals/catalog.js"></script>
+<script src="assets/list.js"></script>
+</body>
+</html>

@@ -274,7 +274,7 @@
     }).then(function () {
       notice("<b>" + saved + " 件を保存しました。</b>" + (added.length ? "（新しく一覧に追加：" + added.length + " 件）" : "") +
         (failed.length ? '<br><span style="color:var(--safety)">保存できなかったもの：<br>' + failed.map(esc).join("<br>") + '</span>' : "") +
-        '<br>動画は、一覧から要領書を開いて「編集」で付けてください。　<a href="index.html">一覧で確認する</a>', !!failed.length);
+        '<br>動画は、一覧から要領書を開いて「編集」で付けてください。　<a href="list.html">一覧で確認する</a>', !!failed.length);
     }).catch(function (e) {
       if (e && e.name === "AbortError") { notice(""); return; }
       notice("<b>保存できませんでした。</b>" + esc(WIFolder.errorMessage(e)), true);

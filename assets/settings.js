@@ -266,7 +266,7 @@
       dirty = false;
       var msg = "<b>保存しました。</b>" + (updated ? "要領書 " + updated + " 件のカテゴリーを書き換えました。" : "") +
         (failed.length ? '<br><span style="color:var(--safety)">書き換えられなかった要領書：' + failed.map(esc).join("、") + '</span>' : "") +
-        '<br><a href="index.html">一覧で確認する</a>';
+        '<br><a href="list.html">一覧で確認する</a>';
       // 保存した内容で画面を読み直す（メッセージは読み直した後に表示）
       try { sessionStorage.setItem("wi.settingsMsg", msg); } catch (e) {}
       location.reload();

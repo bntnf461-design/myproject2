@@ -109,10 +109,14 @@
 
     // 作業手順
     var hasReason = steps.some(function (s) { return (s.points || []).some(function (p) { return p.reason; }); });
+    // ✚ 安全・◆ 品質 の印は、社内フォーマットと同じく「手順」と「急所」の間の列に出す
+    var hasKinds = steps.some(function (s) { return (s.kinds || []).length; });
     html += '<section class="section"><h2 class="steps-head">作業手順 <span class="no-print hint">（手順や急所をタップすると、動画の再生・大きく表示ができます）</span>' +
       (steps.length ? '<button type="button" class="btn primary small no-print" id="stepMode">▶ 手順を 1 つずつ見る</button>' : '') + '</h2>' +
       '<table class="steps"><thead><tr>' +
-        '<th class="col-no">No.</th><th>' + esc(T.step) + '</th><th>' + esc(T.point) + (hasReason ? '／' + esc(T.reason) : '') + '</th>' +
+        '<th class="col-no">No.</th><th>' + esc(T.step) + '</th>' +
+        (hasKinds ? '<th class="col-kinds" title="✚ 安全ポイント ／ ◆ 品質ポイント">✚ ◆</th>' : '') +
+        '<th>' + esc(T.point) + (hasReason ? '／' + esc(T.reason) : '') + '</th>' +
         (showTime ? '<th class="col-time">標準時間</th>' : '') +
         '<th class="col-video">動画</th>' +
       '</tr></thead><tbody>';
@@ -140,11 +144,11 @@
       html += '<tr class="step-row' + (stepPl >= 0 ? ' has-video' : ' still') + '" id="step-' + si + '" data-pl="' + stepIdx + '">' +
         '<td class="col-no">' + (si + 1) + '</td>' +
         '<td data-label="' + esc(T.step) + '">' +
-          ((s.kinds || []).length ? '<div class="step-kinds">' + s.kinds.map(WI.kindBadge).join("") + '</div>' : '') +
           '<div class="step-title">' + esc(s.title) + '</div>' +
           (s.detail ? '<div class="step-detail">' + esc(s.detail) + '</div>' : '') +
           (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="写真（タップで拡大）" title="タップで拡大" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
+        (hasKinds ? '<td class="col-kinds' + ((s.kinds || []).length ? '' : ' empty') + '" data-label="安全・品質ポイント">' + (s.kinds || []).map(WI.kindBadge).join("") + '</td>' : '') +
         '<td data-label="' + esc(T.point) + '"' + (points ? '' : ' class="empty"') + '>' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
         (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +
         '<td class="col-video">' +

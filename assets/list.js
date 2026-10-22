@@ -27,7 +27,7 @@
   var LABEL = conf.labels;
 
   if (cat.siteName) {
-    document.getElementById("siteName").textContent = cat.siteName;
+    document.getElementById("siteName").textContent = cat.siteName + "　一覧";
     document.title = cat.siteName;
   }
 
