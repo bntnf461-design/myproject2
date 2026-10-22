@@ -26,10 +26,8 @@
   var levels = conf.levels;
   var LABEL = conf.labels;
 
-  if (cat.siteName) {
-    document.getElementById("siteName").textContent = cat.siteName + "　一覧";
-    document.title = cat.siteName;
-  }
+  document.getElementById("siteName").innerHTML = WI.orgHtml(cat) + '<span class="org-sep">＞</span><span class="org-part">一覧</span>';
+  document.title = WI.orgName(cat) + " 一覧";
 
   // 前回の絞り込みを復元（要領書を見て戻ってきたときに、同じ一覧に戻れるように）
   try {

@@ -9,10 +9,8 @@
 
   WI.initTextSize(document.getElementById("textSize"));
 
-  if (cat.siteName) {
-    document.getElementById("siteName").textContent = cat.siteName;
-    document.title = cat.siteName + " メニュー";
-  }
+  document.getElementById("siteName").innerHTML = WI.orgHtml(cat);
+  document.title = WI.orgName(cat) + " 作業要領書";
 
   var recentFiles = [];
   try { recentFiles = JSON.parse(localStorage.getItem("wi.recent") || "[]"); } catch (e) {}

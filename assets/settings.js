@@ -15,7 +15,10 @@
 
   var cat = window.CATALOG || { files: [] };
   var conf = WI.catConfig(cat);
-  var siteName = cat.siteName || "";
+  // 工場・課・工程などの名前（何段でも可）
+  var org = (cat.org && cat.org.length ? cat.org.slice() : (cat.siteName ? [cat.siteName] : []));
+  while (org.length < 3) org.push("");
+  var ORG_PH = ["例：○○工場", "例：○○課", "例：○○工程", "例：○○係"];
   var terms = JSON.parse(JSON.stringify(cat.terms || {})); // 見出しの名前（全体の初期値）
   var levelRows = [];   // [{ key, use, label }]（上から順に絞り込み）
   var rows = {};        // key → [{ orig, name, count }]
@@ -59,9 +62,18 @@
       h += '<div class="notice error" style="margin-bottom:16px">このブラウザではフォルダに直接保存できません。Chrome か Edge で開いてください。</div>';
     }
 
-    h += '<section class="section"><h2>工場名・部署名</h2><div class="form-grid">' +
-      '<label class="field wide"><span>一覧の上部に表示する名前</span><input type="text" data-site value="' + esc(siteName) + '" placeholder="例：○○工場 作業要領書"></label>' +
-      '</div></section>';
+    var shown = org.filter(function (x) { return x.trim(); });
+    h += '<section class="section" id="org"><h2>工場・課・工程の名前</h2>' +
+      '<p class="hint" style="margin-top:0">画面の上に「' + (shown.length ? shown.map(esc).join(" ＞ ") : "○○工場 ＞ ○○課 ＞ ○○工程") + '」のように表示されます。使わない欄は空欄のままで大丈夫です。</p>' +
+      org.map(function (v, i) {
+        return '<div class="set-row">' +
+          '<span class="set-check" style="min-width:4em">' + (i + 1) + ' 段目</span>' +
+          '<input type="text" data-org="' + i + '" value="' + esc(v) + '" placeholder="' + (ORG_PH[i] || "例：○○") + '" aria-label="' + (i + 1) + ' 段目の名前">' +
+          (org.length > 1 ? '<button type="button" class="btn small danger" data-act="org-del" data-i="' + i + '">削除</button>' : '') +
+        '</div>';
+      }).join("") +
+      '<button type="button" class="btn small" data-act="org-add" style="margin-top:6px">＋ 段を追加（例：○○係）</button>' +
+    '</section>';
 
     h += '<section class="section"><h2>要領書の見出しの名前（社内フォーマットに合わせる）</h2>' +
       '<p class="hint" style="margin-top:0">要領書の画面・エディタに表示する見出しの名前です（例：主なステップ → 要素作業手順、急所 → 急所ポイント、文書番号 → 管理番号）。空欄なら標準の名前です。<br>' +
@@ -114,6 +126,12 @@
     var saved = null;
     try { saved = sessionStorage.getItem("wi.settingsMsg"); sessionStorage.removeItem("wi.settingsMsg"); } catch (e) {}
     if (saved) { notice(saved); stateEl.textContent = "保存済み"; }
+    // メニューの「名前を変える」から来たときは、その欄を表示
+    if (!render.done && location.hash) {
+      var target = document.querySelector(location.hash);
+      if (target) { target.scrollIntoView(); var inp = target.querySelector("input"); if (inp) inp.focus(); }
+    }
+    render.done = true;
   }
 
   function notice(html, isError) {
@@ -129,7 +147,7 @@
 
   formEl.addEventListener("input", function (ev) {
     var t = ev.target;
-    if (t.hasAttribute("data-site")) siteName = t.value;
+    if (t.hasAttribute("data-org")) org[+t.getAttribute("data-org")] = t.value;
     else if (t.hasAttribute("data-term")) terms[t.getAttribute("data-term")] = t.value;
     else if (t.hasAttribute("data-label")) levelRows[+t.getAttribute("data-label")].label = t.value;
     else if (t.hasAttribute("data-use")) levelRows[+t.getAttribute("data-use")].use = t.checked;
@@ -169,6 +187,8 @@
     else if (act === "up") swap(rows[k], i, i - 1);
     else if (act === "down") swap(rows[k], i, i + 1);
     else if (act === "add") { add(k); return; }
+    else if (act === "org-add") org.push("");
+    else if (act === "org-del") org.splice(i, 1);
     else if (act === "del") {
       var r = rows[k][i];
       if (r.count && !confirm("「" + r.orig + "」は要領書 " + r.count + " 件で使われています。\n削除すると、それらの要領書のこの欄は空（未設定）になります。削除しますか？")) return;
@@ -210,7 +230,8 @@
 
   function newCatalog(base) {
     var c = {
-      siteName: siteName.trim(),
+      org: org.map(function (x) { return x.trim(); }).filter(Boolean),
+      siteName: org.map(function (x) { return x.trim(); }).filter(Boolean).join(" "),
       levels: levelRows.filter(function (r) { return r.use; }).map(function (r) { return r.key; }),
       labels: {},
       terms: {},

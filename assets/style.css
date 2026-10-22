@@ -163,6 +163,10 @@ button, input, select, textarea {
   vertical-align: middle;
 }
 
+/* 工場 ＞ 課 ＞ 工程 の表示 */
+.org-part { white-space: nowrap; }
+.org-sep { margin: 0 0.4em; opacity: 0.6; font-weight: normal; }
+
 /* ---------- メニュー（最初の画面） ---------- */
 .menu { max-width: 1000px; }
 .menu-card {

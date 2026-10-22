@@ -161,6 +161,22 @@
     return KIND_LABEL[k] ? '<span class="kind ' + k + '">' + KIND_MARK[k] + " " + KIND_LABEL[k] + '</span>' : "";
   }
 
+  // ---------- 工場・課・工程などの名前（設定画面で自由に変えられる） ----------
+  // catalog.js の org: ["○○工場", "○○課", "○○工程"]。無ければ siteName
+  function orgParts(cat) {
+    cat = cat || {};
+    var parts = (cat.org || []).map(function (x) { return String(x || "").trim(); }).filter(Boolean);
+    if (!parts.length && cat.siteName) parts = [cat.siteName];
+    return parts;
+  }
+  function orgName(cat) { return orgParts(cat).join(" ") || "作業要領書"; }
+  // 画面上部の表示（○○工場 ＞ ○○課 ＞ ○○工程）
+  function orgHtml(cat) {
+    var p = orgParts(cat);
+    if (!p.length) return "作業要領書";
+    return p.map(function (x) { return '<span class="org-part">' + esc(x) + '</span>'; }).join('<span class="org-sep">＞</span>');
+  }
+
   window.WI = {
     loadManualFile: loadManualFile,
     loadManualFiles: loadManualFiles,
@@ -177,6 +193,9 @@
     DEFAULT_TERMS: DEFAULT_TERMS,
     TERM_KEYS: TERM_KEYS,
     terms: terms,
-    kindBadge: kindBadge
+    kindBadge: kindBadge,
+    orgParts: orgParts,
+    orgName: orgName,
+    orgHtml: orgHtml
   };
 })();

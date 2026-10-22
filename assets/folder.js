@@ -232,7 +232,8 @@
     return "/* =========================================================\n" +
       "   要領書の目録・設定\n" +
       "   ※ 設定画面（settings.html）から編集できます。手で編集してもかまいません\n" +
-      "   - siteName   : 画面上部に表示する工場名・部署名\n" +
+      "   - siteName   : 画面上部に表示する名前（org をつなげたもの）\n" +
+      "   - org        : 工場・課・工程などの名前（上から順に「○○工場 ＞ ○○課 ＞ ○○工程」と表示）\n" +
       "   - levels     : 一覧で絞り込む項目と順番（line / product / process / category）\n" +
       "   - labels     : 項目の表示名\n" +
       "   - categories : カテゴリーの名前と並び順（エディタの候補にも出ます）\n" +
@@ -242,6 +243,7 @@
       "window.CATALOG = {\n" +
       "  folderId: " + j(c.folderId || "") + ",\n" +
       "  siteName: " + j(c.siteName || "") + ",\n" +
+      "  org: " + j(c.org || []) + ",\n" +
       "  levels: " + j(c.levels || []) + ",\n" +
       "  labels: " + j(c.labels || {}) + ",\n" +
       "  terms: " + j(c.terms || {}) + ",\n" +
