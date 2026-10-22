@@ -598,7 +598,25 @@
     var date = f("workDate").value;
     apply({ workDate: date }); save();
   };
+  // 保存先フォルダを選べるブラウザ（Chrome / Edge）では「名前を付けて保存」ダイアログを出す。
+  // それ以外のブラウザや file:// で使えない場合は通常のダウンロード（ダウンロードフォルダ）に保存。
   function download(name, text, type) {
+    if (window.showSaveFilePicker) {
+      var ext = name.slice(name.lastIndexOf("."));
+      var accept = {}; accept[type] = [ext];
+      window.showSaveFilePicker({ suggestedName: name, types: [{ description: ext === ".csv" ? "CSV（Excelで開けます）" : "JSON", accept: accept }] })
+        .then(function (h) { return h.createWritable(); })
+        .then(function (w) { return w.write(new Blob([text], { type: type })).then(function () { return w.close(); }); })
+        .then(function () { statusEl.textContent = name + " を保存しました"; })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return; // キャンセル
+          downloadFallback(name, text, type);
+        });
+      return;
+    }
+    downloadFallback(name, text, type);
+  }
+  function downloadFallback(name, text, type) {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type: type }));
     a.download = name; document.body.appendChild(a); a.click(); a.remove();
