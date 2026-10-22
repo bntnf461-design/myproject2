@@ -26,30 +26,115 @@
   }
   var remembered = supported ? idb("readonly", function (st) { return st.get("rootDir"); }) : Promise.resolve(null);
 
-  // フォルダを取得（記憶していれば許可の確認だけ、無ければ選んでもらう）
+  var matchesPage = false; // 選んだフォルダが、いま開いている画面のフォルダと同じか
+
+  // フォルダを取得
+  // - 記憶しているフォルダが、いま開いている画面と同じフォルダなら、許可の確認だけ
+  // - 違う（新しい版を別の場所に展開した・フォルダを移動した など）場合は、選び直してもらう
   function getRoot() {
     return (rootDir ? Promise.resolve(rootDir) : remembered).then(function (d) {
-      rootDir = d || null;
-      var ok = rootDir && rootDir.requestPermission
-        ? rootDir.requestPermission({ mode: "readwrite" }).then(function (p) { return p === "granted"; }, function () { return false; })
-        : Promise.resolve(false);
-      return ok;
-    }).then(function (granted) {
-      if (granted) return rootDir;
-      return window.showDirectoryPicker({ id: "wi-root", mode: "readwrite" }).then(function (dir) {
-        // 正しいフォルダ（index.html と manuals があるフォルダ）か確認
-        return dir.getDirectoryHandle("manuals").then(function (md) {
-          return md.getFileHandle("catalog.js");
-        }).then(function () {
-          rootDir = dir;
-          idb("readwrite", function (st) { return st.put(dir, "rootDir"); });
-          return dir;
-        }, function () {
-          throw new Error("選んだフォルダに manuals/catalog.js がありません。index.html があるフォルダを選んでください。");
+      if (!d) return pick();
+      return permit(d).then(function (ok) {
+        if (!ok) return pick();
+        return samePage(d).then(function (same) {
+          if (same === true) { matchesPage = true; return use(d); }
+          return pick();
         });
       });
     });
   }
+
+  // 保存先を選び直す（「変更」ボタン用）
+  function forget() {
+    rootDir = null;
+    remembered = Promise.resolve(null);
+    return idb("readwrite", function (st) { return st.delete("rootDir"); });
+  }
+
+  function permit(d) {
+    if (!d.requestPermission) return Promise.resolve(false);
+    return d.requestPermission({ mode: "readwrite" }).then(function (p) { return p === "granted"; }, function () { return false; });
+  }
+
+  function use(d) {
+    rootDir = d;
+    remembered = Promise.resolve(d);
+    idb("readwrite", function (st) { return st.put(d, "rootDir"); });
+    return d;
+  }
+
+  function readCatalogOf(dir) {
+    return dir.getDirectoryHandle("manuals").then(function (md) { return readText(md, "catalog.js"); }).then(parseCatalog);
+  }
+
+  // 画面を開いたときに読み込んだ catalog.js と、フォルダの catalog.js が同じものか
+  // （保存すると folderId という目印を書き込むので、それで見分ける）
+  function samePage(dir) {
+    var page = window.CATALOG;
+    if (!page) return Promise.resolve(true);
+    return readCatalogOf(dir).then(function (c) {
+      if (page.folderId || c.folderId) return page.folderId === c.folderId;
+      return JSON.stringify([page.siteName || "", page.files]) === JSON.stringify([c.siteName || "", c.files]);
+    }, function () { return false; });
+  }
+
+  // フォルダを選んでもらう
+  function pick() {
+    return window.showDirectoryPicker({ id: "wi-root", mode: "readwrite" }).then(findTemplateDir).then(function (dir) {
+      return samePage(dir).then(function (same) {
+        matchesPage = same;
+        if (!same && !confirm("選んだフォルダ「" + dir.name + "」は、いま開いている画面とは別のフォルダのようです。\n" +
+          "このフォルダに保存すると、いま開いている一覧には表示されません。\n\nこのフォルダに保存しますか？\n" +
+          "（いま開いている画面のフォルダに保存する場合は［キャンセル］を押して、index.html があるフォルダを選び直してください）")) {
+          var e = new Error("cancel");
+          e.name = "AbortError";
+          throw e;
+        }
+        return use(dir);
+      });
+    });
+  }
+
+  // index.html と manuals があるフォルダを探す
+  // ZIP を展開すると「sagyo-youryousho の中に sagyo-youryousho」ができるので、1 つ下のフォルダも探す
+  function findTemplateDir(dir) {
+    var isTemplate = function (d) {
+      return d.getDirectoryHandle("manuals").then(function (md) { return md.getFileHandle("catalog.js"); }).then(function () { return true; }, function () { return false; });
+    };
+    return isTemplate(dir).then(function (ok) {
+      if (ok) return dir;
+      return dir.getFileHandle("catalog.js").then(function () {
+        throw new Error("「" + dir.name + "」フォルダではなく、その 1 つ上の（index.html がある）フォルダを選んでください。");
+      }, function () {
+        var subs = [];
+        var it = dir.values();
+        var next = function () {
+          return it.next().then(function (r) {
+            if (r.done) return null;
+            if (r.value.kind !== "directory") return next();
+            return isTemplate(r.value).then(function (ok2) { if (ok2) subs.push(r.value); return next(); });
+          });
+        };
+        return next().then(function () {
+          if (subs.length === 1) return subs[0];
+          throw new Error("選んだフォルダ「" + dir.name + "」に、要領書のデータ（manuals フォルダ）が見つかりません。index.html があるフォルダを選んでください。");
+        });
+      });
+    });
+  }
+
+  // 保存できなかったときの説明（ブラウザの英語のメッセージを分かりやすく）
+  function errorMessage(e) {
+    var n = e && e.name;
+    if (n === "NotAllowedError") return "フォルダへの書き込みが許可されませんでした。もう一度保存し、表示される確認で「ファイルを編集」（許可）を選んでください。";
+    if (n === "NotFoundError") { forget(); return "保存先のフォルダが見つかりません（移動・名前の変更・削除された可能性があります）。もう一度保存して、フォルダを選び直してください。"; }
+    if (n === "SecurityError") return "このフォルダには保存できません（Windows のシステムのフォルダなど）。テンプレートを「ドキュメント」などの中に置いてから選んでください。";
+    if (n === "NoModificationAllowedError" || n === "InvalidModificationError" || n === "InvalidStateError") return "ファイルに書き込めませんでした。読み取り専用のフォルダか、ほかのソフトでファイルを開いていないか確認してください。";
+    if (n === "QuotaExceededError") return "ディスクの空きが足りません。";
+    return (e && e.message) ? e.message : String(e);
+  }
+
+  function currentName() { return rootDir ? rootDir.name : ""; }
 
   function writeFile(dir, name, data) {
     return dir.getFileHandle(name, { create: true }).then(function (fh) {
@@ -83,9 +168,10 @@
       "   - labels     : 項目の表示名\n" +
       "   - categories : カテゴリーの名前と並び順（エディタの候補にも出ます）\n" +
       "   - terms      : 要領書の見出しの名前（社内フォーマットに合わせる。空なら標準の名前）\n" +
-      "   - files      : manuals フォルダに置いた要領書ファイル名\n" +
+      "   - files      : manuals フォルダに置いた要領書ファイル名\n" +      "   - folderId   : このフォルダの目印（自動で付きます。変更しないでください）\n" +
       "   ========================================================= */\n" +
       "window.CATALOG = {\n" +
+      "  folderId: " + j(c.folderId || "") + ",\n" +
       "  siteName: " + j(c.siteName || "") + ",\n" +
       "  levels: " + j(c.levels || []) + ",\n" +
       "  labels: " + j(c.labels || {}) + ",\n" +
@@ -100,7 +186,11 @@
     return root.getDirectoryHandle("manuals").then(function (md) {
       return readText(md, "catalog.js").then(function (text) {
         var c = parseCatalog(text);
-        if (change(c) === false) return false;
+        var changed = change(c) !== false;
+        // 目印が無ければ付ける（次から「いま開いている画面と同じフォルダか」を確実に見分けるため）
+        if (!c.folderId) { c.folderId = "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); changed = true; }
+        if (matchesPage && window.CATALOG) window.CATALOG.folderId = c.folderId;
+        if (!changed) return false;
         return writeFile(md, "catalog.js", catalogText(c)).then(function () { return true; });
       });
     });
@@ -133,6 +223,9 @@
   window.WIFolder = {
     supported: supported,
     getRoot: getRoot,
+    forget: forget,
+    currentName: currentName,
+    errorMessage: errorMessage,
     writeFile: writeFile,
     readText: readText,
     parseCatalog: parseCatalog,

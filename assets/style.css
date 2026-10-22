@@ -576,6 +576,8 @@ button, input, select, textarea {
   align-items: end;
 }
 
+.save-dest { display: inline-flex; align-items: center; gap: 6px; }
+.save-dest[hidden] { display: none; }
 .toolbar-bottom {
   position: sticky;
   bottom: 0;

@@ -272,7 +272,7 @@
       location.reload();
     }).catch(function (e) {
       if (e && e.name === "AbortError") return;
-      notice("保存できませんでした。" + esc(e && e.message ? e.message : e), true);
+      notice("<b>保存できませんでした。</b>" + esc(WIFolder.errorMessage(e)), true);
     }).then(function () { btn.disabled = false; });
   });
 

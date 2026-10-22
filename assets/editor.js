@@ -707,7 +707,24 @@
   // ---------- フォルダに直接保存（Chrome / Edge。ネット接続不要） ----------
   // テンプレートのフォルダを選ぶと、要領書ファイルの保存・目録への追加・動画/写真のコピーを一度に行う
   var saveDirBtn = document.getElementById("saveDir");
-  if (WIFolder.supported) saveDirBtn.hidden = false;
+  var destEl = document.getElementById("saveDest");
+  if (WIFolder.supported) {
+    saveDirBtn.hidden = false;
+    destEl.hidden = false;
+  }
+  // 保存先のフォルダ名を表示（どこに保存されるか分かるように）
+  function showDest() {
+    var n = WIFolder.currentName();
+    destEl.querySelector("span").textContent = n ? "保存先：" + n : "保存先：（保存するときに選びます）";
+  }
+  showDest();
+  destEl.querySelector("button").addEventListener("click", function () {
+    WIFolder.forget().then(function () {
+      showDest();
+      notice("保存先を選び直します。「フォルダに保存」を押して、index.html があるフォルダを選んでください。");
+      window.scrollTo(0, 0);
+    });
+  });
 
   function deleteDoc() {
     if (!confirm("「" + (m.title || fileName) + "」を削除しますか？\n一覧から外し、ファイルは manuals/_trash フォルダに移します。")) return;
@@ -730,7 +747,7 @@
       location.href = "index.html";
     }).catch(function (e) {
       if (e && e.name === "AbortError") return;
-      notice("削除できませんでした。" + esc(e && e.message ? e.message : e), true);
+      notice("削除できませんでした。" + esc(WIFolder.errorMessage(e)), true);
     });
   }
 
@@ -784,13 +801,14 @@
       return WIFolder.updateCatalog(root, function (c) {
         if (c.files.indexOf(name) !== -1) return false;
         c.files.push(name);
+        added = true;
       });
-    }).then(function (a) {
-      added = a;
+    }).then(function () {
       return copyMedia(root, d);
     }).then(function (c) {
       copied = c;
       markSaved(name);
+      showDest();
       notice("<b>保存しました：manuals/" + esc(name) + "</b>" +
         (added ? "<br>一覧（目録）に追加しました。" : "") +
         (copied.length ? "<br>コピーした動画・写真：" + copied.map(esc).join("、") : "") +
@@ -798,7 +816,8 @@
       window.scrollTo(0, 0);
     }).catch(function (e) {
       if (e && e.name === "AbortError") return; // フォルダ選択をキャンセル
-      notice("保存できませんでした。" + esc(e && e.message ? e.message : e), true);
+      notice("<b>保存できませんでした。</b>" + esc(WIFolder.errorMessage(e)) +
+        "<br><small>うまくいかない場合は「ファイルに書き出す」で保存し、manuals フォルダに入れてください。</small>", true);
       window.scrollTo(0, 0);
     }).then(function () {
       saveDirBtn.disabled = false;
