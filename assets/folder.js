@@ -82,12 +82,14 @@
       "   - levels     : 一覧で絞り込む項目と順番（line / product / process / category）\n" +
       "   - labels     : 項目の表示名\n" +
       "   - categories : カテゴリーの名前と並び順（エディタの候補にも出ます）\n" +
+      "   - terms      : 要領書の見出しの名前（社内フォーマットに合わせる。空なら標準の名前）\n" +
       "   - files      : manuals フォルダに置いた要領書ファイル名\n" +
       "   ========================================================= */\n" +
       "window.CATALOG = {\n" +
       "  siteName: " + j(c.siteName || "") + ",\n" +
       "  levels: " + j(c.levels || []) + ",\n" +
       "  labels: " + j(c.labels || {}) + ",\n" +
+      "  terms: " + j(c.terms || {}) + ",\n" +
       "  categories: {\n" + cats.join(",\n") + (cats.length ? "\n" : "") + "  },\n" +
       "  files: [\n" + (c.files || []).map(function (f) { return "    " + j(f); }).join(",\n") + "\n  ]\n" +
       "};\n";

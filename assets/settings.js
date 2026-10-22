@@ -16,6 +16,7 @@
   var cat = window.CATALOG || { files: [] };
   var conf = WI.catConfig(cat);
   var siteName = cat.siteName || "";
+  var terms = JSON.parse(JSON.stringify(cat.terms || {})); // 見出しの名前（全体の初期値）
   var levelRows = [];   // [{ key, use, label }]（上から順に絞り込み）
   var rows = {};        // key → [{ orig, name, count }]
   var deleted = {};     // key → [元の名前]
@@ -61,6 +62,13 @@
     h += '<section class="section"><h2>工場名・部署名</h2><div class="form-grid">' +
       '<label class="field wide"><span>一覧の上部に表示する名前</span><input type="text" data-site value="' + esc(siteName) + '" placeholder="例：○○工場 作業要領書"></label>' +
       '</div></section>';
+
+    h += '<section class="section"><h2>要領書の見出しの名前（社内フォーマットに合わせる）</h2>' +
+      '<p class="hint" style="margin-top:0">要領書の画面・エディタに表示する見出しの名前です（例：主なステップ → 要素作業手順、急所 → 急所ポイント、文書番号 → 管理番号）。空欄なら標準の名前です。<br>' +
+      'Excel から取り込んだ要領書は、その Excel の見出しの名前が自動で使われます。</p><div class="form-grid">' +
+      WI.TERM_KEYS.map(function (k) {
+        return '<label class="field"><span>' + esc(WI.DEFAULT_TERMS[k]) + '</span><input type="text" data-term="' + k + '" value="' + esc(terms[k] || "") + '" placeholder="' + esc(WI.DEFAULT_TERMS[k]) + '"></label>';
+      }).join("") + '</div></section>';
 
     h += '<section class="section"><h2>一覧で絞り込む項目</h2>' +
       '<p class="hint" style="margin-top:0">チェックした項目が、上から順に一覧の絞り込みに表示されます。表示名は自由に変えられます（例：ライン → 職場、工程 → 業務）。</p>' +
@@ -122,6 +130,7 @@
   formEl.addEventListener("input", function (ev) {
     var t = ev.target;
     if (t.hasAttribute("data-site")) siteName = t.value;
+    else if (t.hasAttribute("data-term")) terms[t.getAttribute("data-term")] = t.value;
     else if (t.hasAttribute("data-label")) levelRows[+t.getAttribute("data-label")].label = t.value;
     else if (t.hasAttribute("data-use")) levelRows[+t.getAttribute("data-use")].use = t.checked;
     else if (t.hasAttribute("data-name")) rows[t.getAttribute("data-name")][+t.getAttribute("data-i")].name = t.value;
@@ -204,10 +213,12 @@
       siteName: siteName.trim(),
       levels: levelRows.filter(function (r) { return r.use; }).map(function (r) { return r.key; }),
       labels: {},
+      terms: {},
       categories: {},
       files: base.files
     };
     levelRows.forEach(function (r) { c.labels[r.key] = r.label.trim() || DEFAULT_LABEL[r.key]; });
+    Object.keys(terms).forEach(function (k) { if (terms[k] && terms[k].trim()) c.terms[k] = terms[k].trim(); });
     KEYS.forEach(function (k) {
       var names = [];
       rows[k].forEach(function (r) { var v = r.name.trim(); if (v && names.indexOf(v) === -1) names.push(v); });

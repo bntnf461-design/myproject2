@@ -18,7 +18,7 @@
     { key: "time", label: "標準時間", re: /時間|秒|工数|^st$/i },
     { key: "kind", label: "区分（安全・品質）", re: /^(区分|分類|種別|種類)$/ },
     { key: "detail", label: "詳しい説明", re: /詳細|説明|補足/ },
-    { key: "step", label: "主なステップ", re: /^(主なステップ|主な手順|作業(内容|手順|ステップ|項目|の順序|要素|名)?|手順(内容)?|ステップ|何を.*)$/ }
+    { key: "step", label: "主なステップ", re: /^(主なステップ|主な手順|(要素)?作業(内容|手順|ステップ|項目|の順序|順序|要素|名)?|要素作業(手順)?|手順(内容)?|ステップ|何を.*)$/ }
   ];
   var COL_ORDER = ["no", "step", "detail", "point", "reason", "kind", "time", "video"];
 
@@ -41,7 +41,9 @@
     { key: "tools", label: "設備・治工具", re: /^(使用)?(治工具|工具|設備・?治工具|治具|道具|使用設備)/, list: true },
     { key: "materials", label: "部品・材料", re: /^(使用)?(部品|材料|部材)$/, list: true },
     { key: "cautions", label: "安全上の注意", re: /安全(上の)?注意|注意事項|安全事項/, list: true },
-    { key: "videoFile", label: "動画ファイル", re: /^(動画|動画ファイル|動画名|映像)$/ }
+    { key: "videoFile", label: "動画ファイル", re: /^(動画|動画ファイル|動画名|映像)$/ },
+    // 値としては使わないが、項目名なので値と間違えないようにするもの
+    { key: "_", re: /^(点検|点検者|品証|製造|関連標準|ページ|頁|会社名|部署|部署名|図解no\.?|図no\.?|図解|写真)$/ }
   ];
 
   var STOP_RE = /^(改訂履歴|改訂記録|改定履歴|変更履歴|改訂来歴|改訂欄)$/;
@@ -49,7 +51,7 @@
 
   // 比較用に整える（空白・末尾のコロン・「（何を）」のような括弧書きを除く）
   function norm(s) {
-    return String(s || "").replace(/[\s　]+/g, "").replace(/[（(][^）)]*[）)]/g, "").replace(/[:：]$/, "").toLowerCase();
+    return String(s || "").normalize("NFKC").replace(/\s+/g, "").replace(/\([^)]*\)/g, "").replace(/:$/, "").toLowerCase();
   }
   // 見出し・項目名らしい短い文字か（値と区別するため）
   function isLabel(text) {
@@ -131,8 +133,13 @@
         for (var i = 0; i < INFO.length; i++) {
           var f = INFO[i];
           if (info[f.key] !== undefined || !f.re.test(n)) continue;
-          var v = inline || (f.below ? (valueBelow(r, c) || valueRight(r, c)) : (valueRight(r, c) || valueBelow(r, c)));
+          // 承認・確認・作成の欄は、項目名の下だけを見る（右隣は別の項目名のため）
+          var v = inline || (f.below ? valueBelow(r, c) : (valueRight(r, c) || valueBelow(r, c)));
+          if (f.key === "_") break;
           if (v) info[f.key] = v;
+          // 社内フォーマットの項目名（例：管理番号・工程名・作業名称（部品名））を、表示にもそのまま使う
+          if (!info._labels) info._labels = {};
+          info._labels[f.key] = label.replace(/[\s　]+/g, "");
           break;
         }
       }
@@ -223,36 +230,57 @@
 
     var cell = function (r, k) { return C[k] >= 0 ? (rows[r][C[k]] || "") : ""; };
     var starts = [];      // 各手順の開始行
+    var lastRows = [];    // 各手順の最後の行（写真・印の割り当てに使う）
     var cur = null;
     var lastNo = "";
     var stopAt = rows.length;
+    var first = mapping.headerRow + mapping.headerRows;
 
-    for (var r = mapping.headerRow + mapping.headerRows; r < rows.length; r++) {
+    // 改訂履歴の表（「改訂履歴」の見出し、または「改訂内容」などの列がある行）で手順を終わる
+    function isStop(row) {
       var firstText = "";
-      for (var c = 0; c < rows[r].length; c++) if (rows[r][c]) { firstText = rows[r][c]; break; }
-      if (STOP_RE.test(norm(firstText))) { stopAt = r; break; }
+      for (var c = 0; c < row.length; c++) if (row[c]) { firstText = row[c]; break; }
+      if (STOP_RE.test(norm(firstText))) return true;
+      return row.some(function (t) { return /^(改訂|改定|変更)(内容|履歴|記録|事項|来歴)$/.test(norm(t)); });
+    }
+    var numOf = function (v) { var n = String(v || "").normalize("NFKC").trim(); return /^\d+\.?$/.test(n) ? n.replace(".", "") : ""; };
+    for (var r0 = first; r0 < rows.length; r0++) if (isStop(rows[r0])) { stopAt = r0; break; }
+    // No. 欄に番号が付いている形式なら、番号が変わったところで次の手順にする
+    // （番号の無い行は前の手順の続き：長い文が 2 行に分かれている場合など）
+    var numbered = C.no >= 0 && rows.slice(first, stopAt).filter(function (row) { return numOf(row[C.no]); }).length >= 2;
 
+    for (var r = first; r < stopAt; r++) {
       var no = cell(r, "no"), step = cell(r, "step"), detail = cell(r, "detail");
       var point = cell(r, "point"), reason = cell(r, "reason"), kind = cell(r, "kind");
       var time = cell(r, "time"), vtext = cell(r, "video");
-      if (!no && !step && !detail && !point && !reason && !vtext) continue;
+      // 番号だけの行（図の番号など）や空の行は飛ばす
+      if (!step && !detail && !point && !reason && !vtext) continue;
       // 途中に見出しが繰り返されている行（2 ページ目など）は飛ばす
       if (matchHeader(rows[r]).score >= 3) continue;
 
-      var isNew = !cur || !!step || (no && no !== lastNo);
+      var isNew = numbered
+        ? !cur || (numOf(no) !== "" && numOf(no) !== lastNo)
+        : !cur || !!step || (no && no !== lastNo);
+      if (cur && !isNew && step) {
+        // 手順の文の続き。「。」などで終わっていなければ、改行せずにつなげる
+        cur.title += /[。．.！!？?)）]$/.test(cur.title) || /^[※＊*・]/.test(step) ? "\n" + step : step;
+      }
       if (isNew) {
         // 手順名が無く詳しい説明だけある場合は、説明の 1 行目を手順名にする
         var title = step;
         var det = detail;
         if (!title && det) { var lines = det.split("\n"); title = lines.shift(); det = lines.join("\n"); }
         if (!title && !no && !point) continue;
-        cur = { title: title, detail: det, points: [], time: "", image: "", video: { src: "", start: "", end: "" } };
+        cur = { title: title, detail: det, points: [], kinds: [], time: "", image: "", video: { src: "", start: "", end: "" } };
         d.steps.push(cur);
         starts.push(r);
-        lastNo = no;
+        lastRows.push(r);
+        lastNo = numbered ? numOf(no) : no;
       } else if (detail) {
         cur.detail = cur.detail ? cur.detail + "\n" + detail : detail;
       }
+
+      lastRows[lastRows.length - 1] = r;
 
       // 急所と理由（セル内の改行で複数ある場合は、同じ順番で対応させる）
       var ps = point ? point.split("\n").map(stripBullet).filter(Boolean) : [];
@@ -291,17 +319,46 @@
     }
 
     // 改訂履歴（手順の下にある場合）
-    if (stopAt < rows.length) d.revisions = readRevisions(rows, stopAt + 1);
+    if (stopAt < rows.length) d.revisions = readRevisions(rows, stopAt);
+
+    // 手順が書かれている行（＋1 行）の範囲 → 何番目の手順か。図や写真の欄に貼られたものは対象外
+    function stepAt(row) {
+      // その行より上で、いちばん近くから始まる手順
+      for (var i = starts.length - 1; i >= 0; i--) {
+        if (row >= starts[i]) return row <= lastRows[i] + 1 ? i : -1;
+      }
+      return -1;
+    }
+
+    // ✚（安全）◆（品質）などの印: 見本（凡例）の図形から意味を読み取り、手順の行にある印を区分にする
+    var legend = readLegend(sheet.shapes || []);
+    (sheet.shapes || []).forEach(function (sh) {
+      var k = legend[sh.prst];
+      if (!k || sh.text || sh.row < first) return;
+      var i = stepAt(sh.row);
+      if (i >= 0 && d.steps[i].kinds.indexOf(k) === -1) d.steps[i].kinds.push(k);
+    });
+    d.steps.forEach(function (s) {
+      s.kinds.sort(function (a, b) { return KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b); });
+    });
+
+    // 社内フォーマットの見出し・項目名をそのまま表示に使う（要素作業手順・急所ポイント・管理番号 など）
+    var hdr = rows[mapping.headerRow] || [];
+    var hdr2 = mapping.headerRows === 2 ? rows[mapping.headerRow + 1] || [] : [];
+    var clean = function (t) { return String(t || "").replace(/[\s　]+/g, ""); };
+    var terms = {};
+    ["step", "point", "reason"].forEach(function (k) {
+      if (C[k] >= 0) { var t = clean(hdr2[C[k]] || hdr[C[k]]); if (t && t.length <= 20) terms[k] = t; }
+    });
+    var L = info._labels || {};
+    ["docNo", "title", "process", "line", "product"].forEach(function (k) { if (L[k]) terms[k] = L[k]; });
+    if (Object.keys(terms).length) d.terms = terms;
 
     // 画像: 各手順の行の範囲に貼られている最初の画像を、その手順の写真にする
     var base = (d.docNo || sheet.name || "excel").replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "") || ("excel" + Date.now());
     var extra = 0;
     sheet.images.slice().sort(function (a, b) { return a.row - b.row || a.col - b.col; }).forEach(function (im) {
-      var idx = -1;
-      for (var i = 0; i < starts.length; i++) {
-        var endRow = i + 1 < starts.length ? starts[i + 1] : stopAt;
-        if (im.row >= starts[i] && im.row < endRow) { idx = i; break; }
-      }
+      var idx = stepAt(im.row);
       if (idx < 0) return;
       var s = d.steps[idx];
       if (s.image) { extra++; return; }
@@ -319,28 +376,60 @@
     return { data: d, images: images, info: info, starts: starts, extraImages: extra };
   }
 
+  var KIND_ORDER = ["safety", "quality", "ease"];
+  var DEFAULT_LEGEND = { plus: "safety", flowChartDecision: "quality", diamond: "quality" };
+
+  // 「✚ 安全ポイント」「◆ 品質ポイント」のような凡例から、図形の形 → 区分 の対応を作る
+  function readLegend(shapes) {
+    var map = {};
+    Object.keys(DEFAULT_LEGEND).forEach(function (k) { map[k] = DEFAULT_LEGEND[k]; });
+    shapes.forEach(function (label) {
+      var k = kindOf(label.text.replace(/ポイント|マーク|記号/g, ""));
+      if (!k) return;
+      // 文字の左にある、文字の無い図形が見本
+      var best = null;
+      shapes.forEach(function (sh) {
+        if (sh.text || !sh.prst || Math.abs(sh.row - label.row) > 1 || sh.col > label.col || label.col - sh.col > 3) return;
+        var dist = Math.abs(sh.row - label.row) * 10 + (label.col - sh.col);
+        if (!best || dist < best.dist) best = { prst: sh.prst, dist: dist };
+      });
+      if (best) map[best.prst] = k;
+    });
+    return map;
+  }
+
   function readRevisions(rows, from) {
-    var hdr = -1, map = {};
+    var revRe = /^(改訂|改定|版|rev|no|改訂no|改訂番号)\.?$/i;
+    var hdr = -1, maps = [];
     for (var r = from; r < Math.min(rows.length, from + 4); r++) {
-      var m = {};
+      // 左右に同じ表が並んでいる形式にも対応（「NO.」が出てきたら次の表）
+      var list = [], m = {};
       rows[r].forEach(function (t, c) {
         var n = norm(t);
         if (!n) return;
-        if (m.rev === undefined && /^(改訂|改定|版|rev|no|改訂no|改訂番号)\.?$/i.test(n)) m.rev = c;
+        if (revRe.test(n)) {
+          if (m.rev !== undefined) { list.push(m); m = {}; }
+          m.rev = c;
+        }
         else if (m.date === undefined && /日/.test(n)) m.date = c;
         else if (m.content === undefined && /内容|理由|事項|概要/.test(n)) m.content = c;
         else if (m.by === undefined && /者|担当|作成|承認/.test(n)) m.by = c;
       });
-      if (Object.keys(m).length >= 2) { hdr = r; map = m; break; }
+      list.push(m);
+      list = list.filter(function (x) { return Object.keys(x).length >= 2; });
+      if (list.length) { hdr = r; maps = list; break; }
     }
     if (hdr < 0) return [];
     var out = [];
-    for (var r2 = hdr + 1; r2 < rows.length; r2++) {
-      var g = function (k) { return map[k] !== undefined ? rows[r2][map[k]] || "" : ""; };
-      var rec = { rev: g("rev"), date: toISODate(g("date")), content: g("content"), by: g("by") };
-      if (!rec.rev && !rec.date && !rec.content) { if (out.length) break; else continue; }
-      out.push(rec);
-    }
+    maps.forEach(function (map) {
+      for (var r2 = hdr + 1; r2 < rows.length; r2++) {
+        var g = function (k) { return map[k] !== undefined ? rows[r2][map[k]] || "" : ""; };
+        var rec = { rev: g("rev"), date: toISODate(g("date")), content: g("content"), by: g("by") };
+        // 日付も内容も無い行（番号だけの空欄）は取り込まない
+        if (!rec.date && !rec.content) continue;
+        out.push(rec);
+      }
+    });
     return out;
   }
 

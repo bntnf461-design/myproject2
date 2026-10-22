@@ -140,6 +140,27 @@
     };
   }
 
+  // ---------- 見出し・項目名（社内フォーマットに合わせて変えられる） ----------
+  // 要領書ごとの指定 → 設定画面の指定（catalog.js の terms）→ 初期値 の順に使う
+  var DEFAULT_TERMS = {
+    docNo: "文書番号", title: "作業名", process: "工程", line: "ライン", product: "品番・品名",
+    step: "主なステップ（何を）", point: "急所（どのように）", reason: "理由"
+  };
+  var TERM_KEYS = Object.keys(DEFAULT_TERMS);
+  function terms(manual, cat) {
+    var t = {};
+    TERM_KEYS.forEach(function (k) {
+      t[k] = (manual && manual.terms && manual.terms[k]) || (cat && cat.terms && cat.terms[k]) || DEFAULT_TERMS[k];
+    });
+    return t;
+  }
+
+  // 手順の印（✚ 安全・◆ 品質 など）
+  var KIND_MARK = { safety: "✚", quality: "◆", ease: "★" };
+  function kindBadge(k) {
+    return KIND_LABEL[k] ? '<span class="kind ' + k + '">' + KIND_MARK[k] + " " + KIND_LABEL[k] + '</span>' : "";
+  }
+
   window.WI = {
     loadManualFile: loadManualFile,
     loadManualFiles: loadManualFiles,
@@ -152,6 +173,10 @@
     CAT_KEYS: CAT_KEYS,
     catConfig: catConfig,
     splitCat: splitCat,
-    catSorter: catSorter
+    catSorter: catSorter,
+    DEFAULT_TERMS: DEFAULT_TERMS,
+    TERM_KEYS: TERM_KEYS,
+    terms: terms,
+    kindBadge: kindBadge
   };
 })();

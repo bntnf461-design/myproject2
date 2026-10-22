@@ -25,7 +25,7 @@
 
   // ---------- 初期データ ----------
   function blankStep() {
-    return { title: "", detail: "", points: [blankPoint()], time: "", image: "", video: { src: "", start: "", end: "" } };
+    return { title: "", detail: "", points: [blankPoint()], kinds: [], time: "", image: "", video: { src: "", start: "", end: "" } };
   }
   function blankPoint() {
     return { text: "", reason: "", kind: "", video: { src: "", start: "", end: "" } };
@@ -37,6 +37,7 @@
       id: "", docNo: "", title: "", category: "", process: "", line: "", product: "",
       revision: "1", issued: d, updated: d, author: "", checker: "", approver: "", purpose: "",
       cautions: [], ppe: [], tools: [], materials: [],
+      terms: {},
       steps: [blankStep()],
       revisions: [{ rev: "1", date: d, content: "新規制定", by: "" }]
     };
@@ -53,8 +54,10 @@
     var b = blankManual();
     Object.keys(b).forEach(function (k) { if (d[k] === undefined || d[k] === null) d[k] = b[k]; });
     delete d._file;
+    if (!d.terms) d.terms = {};
     d.steps.forEach(function (s) {
       if (!s.points) s.points = [];
+      if (!s.kinds) s.kinds = [];
       if (!s.video) s.video = { src: "", start: "", end: "" };
       ["title", "detail", "time", "image"].forEach(function (k) { if (s[k] == null) s[k] = ""; });
       s.points.forEach(function (p) {
@@ -193,12 +196,13 @@
   function render() {
     var y = window.scrollY;
     var h = "";
+    var T = WI.terms(m, window.CATALOG);
 
     h += '<div id="msgArea"></div>';
 
     h += '<section class="section"><h2>文書情報</h2><div class="form-grid">' +
-      field("作業名（タイトル）＊", "title", { wide: true, ph: "例：ボルト締付け作業" }) +
-      field("文書番号", "docNo", { ph: "例：WI-A-001" }) +
+      field(esc(T.title) + "＊", "title", { wide: true, ph: "例：ボルト締付け作業" }) +
+      field(esc(T.docNo), "docNo", { ph: "例：WI-A-001" }) +
       field("改訂番号", "revision") +
       field(esc(catConf.labels.line), "line", { list: "line", ph: "例：Aライン", hint: CAT_HINT }) +
       field(esc(catConf.labels.product), "product", { list: "product", ph: "例：BR-1024 ブラケット", hint: CAT_HINT }) +
@@ -230,7 +234,12 @@
         '<button type="button" class="btn on-navy small" data-act="step-dup" data-i="' + i + '">複製</button>' +
         '<button type="button" class="btn on-navy small" data-act="step-del" data-i="' + i + '">削除</button>' +
       '</header><div class="body"><div class="form-grid">' +
-        field("主なステップ（何をするか）", b + ".title", { wide: true, ph: "例：ボルトを仮締めする" }) +
+        field(esc(T.step), b + ".title", { wide: true, ph: "例：ボルトを仮締めする" }) +
+        '<div class="field wide"><span>印</span><div style="display:flex;gap:16px;flex-wrap:wrap">' +
+          ["safety", "quality", "ease"].map(function (k) {
+            return '<label class="set-check"><input type="checkbox" data-kinds="' + i + '" value="' + k + '"' +
+              ((s.kinds || []).indexOf(k) !== -1 ? " checked" : "") + '> ' + WI.kindBadge(k) + '</label>';
+          }).join("") + '</div></div>' +
         field("詳しい説明", b + ".detail", { type: "textarea", wide: true }) +
         field("標準時間（秒）", b + ".time", { type: "number" }) +
         '<div class="field"><span>写真・図（任意）</span><div style="display:flex;gap:4px">' +
@@ -242,15 +251,15 @@
           checkBox(s.image) + '</div>' +
         '<div class="field wide"><span>この手順の動画</span>' + videoFields(b + ".video") + '</div>' +
       '</div>' +
-      '<div class="sub-list"><b>急所（どのように）と理由</b>';
+      '<div class="sub-list"><b>' + esc(T.point) + '</b>';
       s.points.forEach(function (p, j) {
         var pb = b + ".points." + j;
         h += '<div class="sub-row">' +
           '<label class="field"><span>種類</span><select data-path="' + pb + '.kind">' +
             opt("", "（なし）", p.kind) + opt("safety", "安全", p.kind) + opt("quality", "品質", p.kind) + opt("ease", "やりやすさ", p.kind) +
           '</select></label>' +
-          field("急所", pb + ".text", { ph: "例：対角の順番で締める" }) +
-          field("理由", pb + ".reason", { ph: "例：片締めを防ぐため" }) +
+          field(esc(T.point.replace(/[（(].*$/, "")), pb + ".text", { ph: "例：対角の順番で締める" }) +
+          field(esc(T.reason), pb + ".reason", { ph: "例：片締めを防ぐため" }) +
           '<button type="button" class="btn small danger" data-act="point-del" data-i="' + i + '" data-j="' + j + '" style="margin-top:22px">削除</button>' +
           '<details class="field wide" style="grid-column:1/-1"' + (p.video.src ? " open" : "") + '><summary class="hint">この急所だけの動画（任意）</summary>' +
             videoFields(pb + ".video", "動画ファイル") + '</details>' +
@@ -260,6 +269,13 @@
       h += '</div></div>';
     });
     h += '</section>';
+
+    var D = WI.terms(null, window.CATALOG);
+    h += '<details class="section"' + (Object.keys(m.terms || {}).some(function (k) { return m.terms[k]; }) ? " open" : "") + '><summary class="hint" style="cursor:pointer">' +
+      '見出しの名前（社内フォーマットに合わせる。空欄なら「' + esc(D.step) + '」などの標準の名前）</summary><div class="form-grid" style="margin-top:8px">' +
+      WI.TERM_KEYS.map(function (k) {
+        return field(esc(WI.DEFAULT_TERMS[k]) + " の表示名", "terms." + k, { ph: D[k] });
+      }).join("") + '</div></details>';
 
     h += '<section class="section"><h2>改訂履歴</h2>';
     m.revisions.forEach(function (r, i) {
@@ -313,6 +329,13 @@
 
   formEl.addEventListener("input", function (ev) {
     var el = ev.target;
+    if (el.hasAttribute("data-kinds")) {
+      var si = +el.getAttribute("data-kinds");
+      m.steps[si].kinds = Array.prototype.filter.call(formEl.querySelectorAll('[data-kinds="' + si + '"]'), function (x) { return x.checked; })
+        .map(function (x) { return x.value; });
+      saveDraft();
+      return;
+    }
     var path = el.getAttribute("data-path");
     if (!path || el.tagName === "BUTTON") return;
     var type = el.getAttribute("data-type");
@@ -603,6 +626,8 @@
     d.steps.forEach(function (s) {
       s.points = s.points.filter(function (p) { return p.text || p.reason; });
     });
+    Object.keys(d.terms || {}).forEach(function (k) { if (!d.terms[k]) delete d.terms[k]; });
+    if (d.terms && !Object.keys(d.terms).length) delete d.terms;
     // 何も入力していない手順は保存しない
     d.steps = d.steps.filter(function (s) { return s.title || s.detail || s.points.length || s.video.src || s.image; });
     return d;
@@ -613,7 +638,9 @@
   // 文書番号からファイル名を作る。無い場合は日時を付けて、他の要領書を上書きしないようにする
   function suggestName() {
     if (fileName) return fileName;
-    var base = (m.docNo || "").replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "");
+    var base = (m.docNo || "").normalize("NFKC").replace(/[^\w\-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "");
+    // 数字の無い番号（社内フォーマットの「GK-」のような書きかけ）では、他の要領書と同じ名前になるので使わない
+    if (!/\d/.test(base)) base = "";
     if (!base) {
       var t = new Date();
       base = "manual-" + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + "-" + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds());
@@ -731,6 +758,11 @@
     }, Promise.resolve()).then(function () { return copied; });
   }
 
+  function uniqueName(md, name, n) {
+    var cand = n ? name.replace(/\.js$/, "") + "_" + n + ".js" : name;
+    return md.getFileHandle(cand).then(function () { return uniqueName(md, name, (n || 1) + 1); }, function () { return cand; });
+  }
+
   saveDirBtn.addEventListener("click", function () {
     if (!check()) return;
     var name = suggestName();
@@ -740,6 +772,9 @@
     WIFolder.getRoot().then(function (r) {
       root = r;
       return root.getDirectoryHandle("manuals");
+    }).then(function (md) {
+      // 新しい要領書なのに同じ名前のファイルがある場合は、上書きせずに「_2」などを付ける
+      return (fileName ? Promise.resolve(name) : uniqueName(md, name)).then(function (n) { name = n; return md; });
     }).then(function (md) {
       return WIFolder.backup(md, name, "_backup").then(function () {
         return WIFolder.writeFile(md, name, toFileText(d));
@@ -809,7 +844,9 @@
       fileName = "";
       // Excel に貼ってあった写真は、フォルダ保存のときに images フォルダへ書き出す
       res.images.forEach(function (im) {
-        addPicked(im.src, new File([im.bytes], im.src.split("/").pop(), { type: im.type }));
+        var f = new File([im.bytes], im.src.split("/").pop(), { type: im.type });
+        addPicked(im.src, f);
+        objectUrls[im.src] = URL.createObjectURL(f); // エディタの縮小表示用
       });
       history.replaceState(null, "", "editor.html");
       render();

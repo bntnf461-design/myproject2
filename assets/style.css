@@ -365,8 +365,12 @@ button, input, select, textarea {
 .steps .col-time { width: 5em; text-align: center; white-space: nowrap; }
 .steps .col-video { width: 7.5em; text-align: center; }
 
-.step-row.has-video { cursor: pointer; }
-.step-row.has-video:hover td { background: var(--navy-pale); }
+.step-row { cursor: pointer; }
+.step-row:hover td { background: var(--navy-pale); }
+.step-kinds { margin-bottom: 4px; }
+.play-btn.still { background: var(--white); color: var(--navy); }
+.play-btn.still:hover { background: var(--navy-pale); }
+.doc-head.no-stamp { grid-template-columns: 1fr; }
 .step-row.current td { background: var(--navy-light); }
 
 .step-title { font-weight: bold; font-size: 1.05rem; }
@@ -387,7 +391,9 @@ button, input, select, textarea {
 }
 .points li:last-child { border-bottom: 0; }
 .points li::before {
-  content: "◆";
+  content: "●";
+  font-size: 0.7em;
+  top: 0.55em;
   position: absolute;
   left: 0;
   color: var(--navy);
@@ -406,7 +412,7 @@ button, input, select, textarea {
   vertical-align: 1px;
 }
 .kind.safety { background: var(--safety); }
-.kind.quality { background: var(--quality); }
+.kind.quality { background: #b86e00; } /* 社内フォーマットの ◆（オレンジ）に合わせる */
 .kind.ease { background: var(--navy-mid); }
 
 .play-btn {
@@ -698,6 +704,7 @@ button, input, select, textarea {
     color: var(--muted);
   }
   .steps .col-time, .steps .col-video { width: 100%; text-align: left; }
+  .steps td.empty { display: none; }
   .play-btn { width: 100%; }
   .play-btn .icon { display: inline; margin-right: 6px; }
 

@@ -186,7 +186,8 @@
           if (t === "s") text = shared[parseInt(v, 10)] || "";
           else if (t === "inlineStr") text = Array.prototype.map.call(tags(c, "t"), function (x) { return x.textContent; }).join("");
           else if (t === "b") text = v === "1" ? "TRUE" : "FALSE";
-          else if (t === "str" || t === "e") text = v;
+          else if (t === "str") text = v;
+          else if (t === "e") text = ""; // #VALUE! などのエラー（セル内の画像など）は空として扱う
           else if (v !== "" && dateStyles[parseInt(c.getAttribute("s") || "0", 10)]) text = serialToDate(parseFloat(v));
           else if (v !== "") text = String(Math.round(parseFloat(v) * 1e6) / 1e6);
           else text = "";
@@ -223,6 +224,7 @@
         var drawingEl = first(doc, "drawing");
         var drawingRel = drawingEl && rels[attrNS(drawingEl, "id")];
         var imagesP = Promise.resolve([]);
+        var shapes = []; // 図形（✚ や ◆ などの印・テキストボックス）{ row, col, prst, text }
         if (drawingRel) {
           var dPath = resolve(sh.path, drawingRel.target);
           imagesP = Promise.all([getXml(dPath), getRels(dPath)]).then(function (dr) {
@@ -235,6 +237,17 @@
             );
             var list = [];
             anchors.forEach(function (an) {
+              var fromEl = first(an, "from");
+              var aRow = fromEl ? parseInt((first(fromEl, "row") || {}).textContent || "0", 10) : 0;
+              var aCol = fromEl ? parseInt((first(fromEl, "col") || {}).textContent || "0", 10) : 0;
+              Array.prototype.forEach.call(tags(an, "sp"), function (sp) {
+                var g = first(sp, "prstGeom");
+                shapes.push({
+                  row: aRow, col: aCol,
+                  prst: g ? g.getAttribute("prst") : "",
+                  text: Array.prototype.map.call(tags(sp, "t"), function (x) { return x.textContent; }).join("").trim()
+                });
+              });
               var blip = first(an, "blip");
               var from = first(an, "from");
               if (!blip || !from) return;
@@ -261,7 +274,7 @@
         }
 
         return imagesP.then(function (images) {
-          return { name: sh.name, rows: rows, cols: maxC, merges: merges, links: links, images: images };
+          return { name: sh.name, rows: rows, cols: maxC, merges: merges, links: links, images: images, shapes: shapes };
         });
       });
     }

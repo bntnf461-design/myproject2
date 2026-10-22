@@ -77,19 +77,26 @@
 
     var html = "";
 
-    // 文書ヘッダ（帳票風）
-    html += '<section class="doc-head">' +
+    var T = WI.terms(m, window.CATALOG);
+
+    // 文書ヘッダ（帳票風）。空の項目は出さない
+    var info = [
+      [T.docNo, m.docNo], ["改訂", m.revision], [T.process, m.process], [T.line, m.line],
+      [T.product, m.product], [WI.catConfig(window.CATALOG).labels.category, m.category],
+      ["制定日", m.issued], ["改訂日", m.updated]
+    ].filter(function (x) { return x[1]; });
+    var infoRows = "";
+    for (var ii = 0; ii < info.length; ii += 2) {
+      var a = info[ii], b = info[ii + 1];
+      infoRows += '<tr><th>' + esc(a[0]) + '</th><td' + (b ? '' : ' colspan="3"') + '>' + esc(a[1]) + '</td>' +
+        (b ? '<th>' + esc(b[0]) + '</th><td>' + esc(b[1]) + '</td>' : '') + '</tr>';
+    }
+    if (m.purpose) infoRows += '<tr><th>目的</th><td colspan="3">' + esc(m.purpose) + '</td></tr>';
+    var hasStamp = m.approver || m.checker || m.author;
+    html += '<section class="doc-head' + (hasStamp ? '' : ' no-stamp') + '">' +
       '<div class="doc-title"><span class="kind">作業要領書</span><span class="name">' + esc(m.title) + '</span></div>' +
-      '<table class="info-table"><tbody>' +
-        row2("文書番号", m.docNo, "改訂", m.revision) +
-        row2("工程", m.process, "ライン", m.line) +
-        row2("品番・品名", m.product, "区分", m.category) +
-        row2("制定日", m.issued, "改訂日", m.updated) +
-        (m.purpose ? '<tr><th>目的</th><td colspan="3">' + esc(m.purpose) + '</td></tr>' : '') +
-      '</tbody></table>' +
-      '<div class="stamps">' +
-        stamp("承認", m.approver) + stamp("確認", m.checker) + stamp("作成", m.author) +
-      '</div>' +
+      (infoRows ? '<table class="info-table"><tbody>' + infoRows + '</tbody></table>' : '') +
+      (hasStamp ? '<div class="stamps">' + stamp("承認", m.approver) + stamp("確認", m.checker) + stamp("作成", m.author) + '</div>' : '') +
     '</section>';
 
     // 準備（保護具・道具・注意）
@@ -101,10 +108,11 @@
     if (prep) html += '<section class="section"><h2>作業前の準備</h2><div class="prep">' + prep + '</div></section>';
 
     // 作業手順
-    html += '<section class="section"><h2 class="steps-head">作業手順 <span class="no-print hint">（行をタップすると動画を再生します）</span>' +
+    var hasReason = steps.some(function (s) { return (s.points || []).some(function (p) { return p.reason; }); });
+    html += '<section class="section"><h2 class="steps-head">作業手順 <span class="no-print hint">（手順や急所をタップすると、動画の再生・大きく表示ができます）</span>' +
       (steps.length ? '<button type="button" class="btn primary small no-print" id="stepMode">▶ 手順を 1 つずつ見る</button>' : '') + '</h2>' +
       '<table class="steps"><thead><tr>' +
-        '<th class="col-no">No.</th><th>主なステップ（何を）</th><th>急所（どのように）／理由</th>' +
+        '<th class="col-no">No.</th><th>' + esc(T.step) + '</th><th>' + esc(T.point) + (hasReason ? '／' + esc(T.reason) : '') + '</th>' +
         (showTime ? '<th class="col-time">標準時間</th>' : '') +
         '<th class="col-video">動画</th>' +
       '</tr></thead><tbody>';
@@ -124,25 +132,26 @@
         return '<li' + pv + '>' +
           (p.kind && WI.KIND_LABEL[p.kind] ? '<span class="kind ' + esc(p.kind) + '">' + WI.KIND_LABEL[p.kind] + '</span>' : '') +
           esc(p.text) + (hasVideo(p.video) ? ' ▶' : '') +
-          (p.reason ? '<span class="reason">理由：' + esc(p.reason) + '</span>' : '') +
+          (p.reason ? '<span class="reason">' + esc(T.reason) + '：' + esc(p.reason) + '</span>' : '') +
         '</li>';
       }).join("");
 
-      html += '<tr class="step-row' + (stepPl >= 0 ? ' has-video' : '') + '" id="step-' + si + '"' +
-        (stepPl >= 0 ? ' data-pl="' + stepPl + '"' : '') + '>' +
+      // 行のどこをタップしても開く（動画があれば再生、無ければ手順を大きく表示）
+      html += '<tr class="step-row' + (stepPl >= 0 ? ' has-video' : ' still') + '" id="step-' + si + '" data-pl="' + stepIdx + '">' +
         '<td class="col-no">' + (si + 1) + '</td>' +
-        '<td data-label="主なステップ">' +
+        '<td data-label="' + esc(T.step) + '">' +
+          ((s.kinds || []).length ? '<div class="step-kinds">' + s.kinds.map(WI.kindBadge).join("") + '</div>' : '') +
           '<div class="step-title">' + esc(s.title) + '</div>' +
           (s.detail ? '<div class="step-detail">' + esc(s.detail) + '</div>' : '') +
           (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="写真（タップで拡大）" title="タップで拡大" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
-        '<td data-label="急所／理由">' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
+        '<td data-label="' + esc(T.point) + '"' + (points ? '' : ' class="empty"') + '>' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
         (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +
         '<td class="col-video">' +
           (stepPl >= 0
             ? '<button type="button" class="play-btn" data-pl="' + stepPl + '"><span class="icon">▶</span>動画' +
               (s.video.end != null && s.video.end !== "" ? '<br><small>' + segLabel(s.video) + '</small>' : '') + '</button>'
-            : '<span class="no-video">動画なし</span>') +
+            : '<button type="button" class="play-btn still" data-pl="' + stepIdx + '"><span class="icon">⤢</span>大きく<br><small>動画なし</small></button>') +
         '</td>' +
       '</tr>';
     });
@@ -252,13 +261,15 @@
     var step = manual.steps[item.step];
     var point = item.point >= 0 ? step.points[item.point] : null;
 
-    pNo.textContent = "手順 " + (item.step + 1) + " / " + manual.steps.length + (point ? "　急所" : "");
+    var T = WI.terms(manual, window.CATALOG);
+    pNo.innerHTML = "手順 " + (item.step + 1) + " / " + manual.steps.length + (point ? "　" + esc(T.point) : "") +
+      " " + (step.kinds || []).map(WI.kindBadge).join("");
     pName.textContent = point ? point.text : step.title;
 
     var pts = point ? [point] : (step.points || []);
     pPoints.innerHTML = pts.length ? '<ul class="points">' + pts.map(function (p) {
       return '<li>' + (p.kind && WI.KIND_LABEL[p.kind] ? '<span class="kind ' + esc(p.kind) + '">' + WI.KIND_LABEL[p.kind] + '</span>' : '') +
-        esc(p.text) + (p.reason ? '<span class="reason">理由：' + esc(p.reason) + '</span>' : '') + '</li>';
+        esc(p.text) + (p.reason ? '<span class="reason">' + esc(T.reason) + '：' + esc(p.reason) + '</span>' : '') + '</li>';
     }).join("") + '</ul>' : "";
 
     pPrev.disabled = idx === 0;
