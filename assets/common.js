@@ -150,7 +150,10 @@
   function terms(manual, cat) {
     var t = {};
     TERM_KEYS.forEach(function (k) {
-      t[k] = (manual && manual.terms && manual.terms[k]) || (cat && cat.terms && cat.terms[k]) || DEFAULT_TERMS[k];
+      // 設定画面で絞り込みの項目名（ライン → 職場 など）を変えていれば、それも使う
+      var lab = cat && cat.labels && cat.labels[k];
+      if (lab === CAT_DEFAULT_LABEL[k]) lab = "";
+      t[k] = (manual && manual.terms && manual.terms[k]) || (cat && cat.terms && cat.terms[k]) || lab || DEFAULT_TERMS[k];
     });
     return t;
   }

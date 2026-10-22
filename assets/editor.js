@@ -280,7 +280,7 @@
     h += '<section class="section"><h2>改訂履歴</h2>';
     m.revisions.forEach(function (r, i) {
       var b = "revisions." + i;
-      h += '<div class="sub-row" style="grid-template-columns:5em 10em 1fr 8em auto">' +
+      h += '<div class="sub-row rev-row">' +
         field("改訂", b + ".rev") + field("日付", b + ".date", { type: "date" }) +
         field("内容", b + ".content") + field("担当", b + ".by") +
         '<button type="button" class="btn small danger" data-act="rev-del" data-i="' + i + '" style="margin-top:22px">削除</button></div>';

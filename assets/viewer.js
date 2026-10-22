@@ -10,6 +10,10 @@
 
   WI.initTextSize(document.getElementById("textSize"));
 
+  // 読み込みより前に用意しておく（プレビューはすぐに表示するため）
+  var manual = null;
+  var playlist = []; // 表示順の項目（すべての手順 ＋ 急所の動画）。動画の無い手順は写真・説明を大きく表示
+
   // ---------- データ読み込み ----------
   var file = WI.getParam("file");
   if (WI.getParam("preview") === "1") {
@@ -36,13 +40,11 @@
   }
 
   // ---------- 描画 ----------
-  var manual = null;
-  var playlist = []; // 表示順の項目（すべての手順 ＋ 急所の動画）。動画の無い手順は写真・説明を大きく表示
 
   function start(data, isPreview) {
     manual = data;
     document.title = (data.docNo ? data.docNo + " " : "") + (data.title || "作業要領書");
-    document.getElementById("barTitle").textContent = data.title || "作業要領書";
+    document.getElementById("barTitle").innerHTML = WI.orgHtml(window.CATALOG) + '<span class="org-sep">＞</span><b>' + esc(data.title || "作業要領書") + '</b>';
     if (!isPreview && data._file) {
       document.getElementById("editLink").href = "editor.html?file=" + encodeURIComponent(data._file);
       // 一覧の「最近見た要領書」用に記録（この PC のブラウザ内だけ）
@@ -79,25 +81,25 @@
 
     var T = WI.terms(m, window.CATALOG);
 
-    // 文書ヘッダ（帳票風）。空の項目は出さない
-    var info = [
-      [T.docNo, m.docNo], ["改訂", m.revision], [T.process, m.process], [T.line, m.line],
-      [T.product, m.product], [WI.catConfig(window.CATALOG).labels.category, m.category],
-      ["制定日", m.issued], ["改訂日", m.updated]
-    ].filter(function (x) { return x[1]; });
-    var infoRows = "";
-    for (var ii = 0; ii < info.length; ii += 2) {
-      var a = info[ii], b = info[ii + 1];
-      infoRows += '<tr><th>' + esc(a[0]) + '</th><td' + (b ? '' : ' colspan="3"') + '>' + esc(a[1]) + '</td>' +
-        (b ? '<th>' + esc(b[0]) + '</th><td>' + esc(b[1]) + '</td>' : '') + '</tr>';
-    }
-    if (m.purpose) infoRows += '<tr><th>目的</th><td colspan="3">' + esc(m.purpose) + '</td></tr>';
-    var hasStamp = m.approver || m.checker || m.author;
-    html += '<section class="doc-head' + (hasStamp ? '' : ' no-stamp') + '">' +
-      '<div class="doc-title"><span class="kind">作業要領書</span><span class="name">' + esc(m.title) + '</span></div>' +
-      (infoRows ? '<table class="info-table"><tbody>' + infoRows + '</tbody></table>' : '') +
-      (hasStamp ? '<div class="stamps">' + stamp("承認", m.approver) + stamp("確認", m.checker) + stamp("作成", m.author) + '</div>' : '') +
-    '</section>';
+    // ---------- 帳票のヘッダ（社内フォーマットと同じ形） ----------
+    var cell = function (k, v, cls) {
+      return '<div class="cell' + (cls ? " " + cls : "") + '"><div class="k">' + esc(k) + '</div><div class="v">' + (v ? esc(v) : "&nbsp;") + '</div></div>';
+    };
+    var catLabel = WI.catConfig(window.CATALOG).labels.category;
+    var mid = cell(T.docNo, m.docNo) +
+      (m.revision || m.updated ? cell("改訂", [m.revision ? "第 " + m.revision + " 版" : "", m.updated].filter(Boolean).join("　")) : cell("制定日", m.issued));
+    var sub = [cell(T.process, m.process, "wide"), cell(T.title, m.title, "wide2")];
+    if (m.line) sub.push(cell(T.line, m.line));
+    if (m.product) sub.push(cell(T.product, m.product));
+    if (m.category) sub.push(cell(catLabel, m.category));
+    html += '<div class="paper">' +
+      '<section class="form-head">' +
+        '<div class="fh-title">作業要領書</div>' +
+        '<div class="fh-mid">' + mid + '</div>' +
+        '<div class="fh-stamps">' + stamp("承認", m.approver) + stamp("確認", m.checker) + stamp("作成", m.author) + '</div>' +
+        '<div class="fh-sub">' + sub.join("") + '</div>' +
+        (m.purpose ? '<div class="fh-sub">' + cell("目的", m.purpose, "full") + '</div>' : '') +
+      '</section>';
 
     // 準備（保護具・道具・注意）
     var prep = "";
@@ -105,16 +107,15 @@
     if ((m.ppe || []).length) prep += '<div class="box"><h3>保護具</h3>' + list(m.ppe) + '</div>';
     if ((m.tools || []).length) prep += '<div class="box"><h3>使用する設備・治工具</h3>' + list(m.tools) + '</div>';
     if ((m.materials || []).length) prep += '<div class="box"><h3>使用部品・材料</h3>' + list(m.materials) + '</div>';
-    if (prep) html += '<section class="section"><h2>作業前の準備</h2><div class="prep">' + prep + '</div></section>';
+    if (prep) html += '<section class="form-sec"><h2>作業前の準備</h2><div class="prep">' + prep + '</div></section>';
 
-    // 作業手順
+    // ---------- 作業手順の表 ----------
     var hasReason = steps.some(function (s) { return (s.points || []).some(function (p) { return p.reason; }); });
     // ✚ 安全・◆ 品質 の印は、社内フォーマットと同じく「手順」と「急所」の間の列に出す
     var hasKinds = steps.some(function (s) { return (s.kinds || []).length; });
-    html += '<section class="section"><h2 class="steps-head">作業手順 <span class="no-print hint">（手順や急所をタップすると、動画の再生・大きく表示ができます）</span>' +
-      (steps.length ? '<button type="button" class="btn primary small no-print" id="stepMode">▶ 手順を 1 つずつ見る</button>' : '') + '</h2>' +
+    html += '<section class="form-sec">' +
       '<table class="steps"><thead><tr>' +
-        '<th class="col-no">No.</th><th>' + esc(T.step) + '</th>' +
+        '<th class="col-no">NO.</th><th>' + esc(T.step) + '</th>' +
         (hasKinds ? '<th class="col-kinds" title="✚ 安全ポイント ／ ◆ 品質ポイント">✚ ◆</th>' : '') +
         '<th>' + esc(T.point) + (hasReason ? '／' + esc(T.reason) : '') + '</th>' +
         (showTime ? '<th class="col-time">標準時間</th>' : '') +
@@ -143,39 +144,41 @@
       // 行のどこをタップしても開く（動画があれば再生、無ければ手順を大きく表示）
       html += '<tr class="step-row' + (stepPl >= 0 ? ' has-video' : ' still') + '" id="step-' + si + '" data-pl="' + stepIdx + '">' +
         '<td class="col-no">' + (si + 1) + '</td>' +
-        '<td data-label="' + esc(T.step) + '">' +
+        '<td class="col-step" data-label="' + esc(T.step) + '">' +
           '<div class="step-title">' + esc(s.title) + '</div>' +
           (s.detail ? '<div class="step-detail">' + esc(s.detail) + '</div>' : '') +
           (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="写真（タップで拡大）" title="タップで拡大" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
         (hasKinds ? '<td class="col-kinds' + ((s.kinds || []).length ? '' : ' empty') + '" data-label="安全・品質ポイント">' + (s.kinds || []).map(WI.kindBadge).join("") + '</td>' : '') +
-        '<td data-label="' + esc(T.point) + '"' + (points ? '' : ' class="empty"') + '>' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
+        '<td class="col-point' + (points ? '' : ' empty') + '" data-label="' + esc(T.point) + '">' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
         (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +
         '<td class="col-video">' +
           (stepPl >= 0
-            ? '<button type="button" class="play-btn" data-pl="' + stepPl + '"><span class="icon">▶</span>動画' +
-              (s.video.end != null && s.video.end !== "" ? '<br><small>' + segLabel(s.video) + '</small>' : '') + '</button>'
-            : '<button type="button" class="play-btn still" data-pl="' + stepIdx + '"><span class="icon">⤢</span>大きく<br><small>動画なし</small></button>') +
+            ? '<button type="button" class="round-btn" data-pl="' + stepPl + '" title="動画を再生"><span>▶</span></button>' +
+              (s.video.end != null && s.video.end !== "" ? '<small class="seg">' + segLabel(s.video) + '</small>' : '')
+            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">動画なし</small>') +
         '</td>' +
       '</tr>';
     });
-    html += '</tbody></table></section>';
+    html += '</tbody></table>' +
+      '<div class="legend no-print">' +
+        (hasKinds ? WI.kindBadge("safety") + ' 安全ポイント　' + WI.kindBadge("quality") + ' 品質ポイント　' : '') +
+        '<span>手順の行のどこをタップしても、動画の再生（動画が無い手順は大きく表示）ができます</span></div>' +
+    '</section>';
 
     // 改訂履歴
     if ((m.revisions || []).length) {
-      html += '<section class="section"><h2>改訂履歴</h2><table class="rev-table"><thead><tr>' +
+      html += '<section class="form-sec"><h2>改訂履歴</h2><table class="rev-table"><thead><tr>' +
         '<th>改訂</th><th>日付</th><th>内容</th><th>担当</th></tr></thead><tbody>' +
         m.revisions.map(function (r) {
           return '<tr><td>' + esc(r.rev) + '</td><td>' + esc(r.date) + '</td><td>' + esc(r.content) + '</td><td>' + esc(r.by) + '</td></tr>';
         }).join("") + '</tbody></table></section>';
     }
+    html += '</div>';
 
     docEl.innerHTML = html;
   }
 
-  function row2(a, av, b, bv) {
-    return '<tr><th>' + a + '</th><td>' + esc(av) + '</td><th>' + b + '</th><td>' + esc(bv) + '</td></tr>';
-  }
   function stamp(label, who) {
     return '<div><div class="label">' + label + '</div><div class="who">' + esc(who) + '</div></div>';
   }
@@ -189,7 +192,7 @@
   docEl.addEventListener("click", function (ev) {
     var t = ev.target;
     if (t.closest("a")) return;
-    if (t.id === "stepMode") { openPlayer(0); return; }
+
     // 写真をタップしたら拡大（画面コピーの細かい文字も読めるように）
     if (t.classList.contains("step-image")) { ev.stopPropagation(); openLightbox(t.src); return; }
     var el = t.closest("[data-pl]");
@@ -204,6 +207,8 @@
       openPlayer(parseInt(ev.target.getAttribute("data-pl"), 10));
     }
   });
+
+  document.getElementById("stepMode").addEventListener("click", function () { if (playlist.length) openPlayer(0); });
 
   // ---------- 写真の拡大表示 ----------
   var lb = document.createElement("div");
@@ -239,6 +244,10 @@
   var pTime = document.getElementById("pTime");
   var pClose = document.getElementById("pClose");
   var pStill = document.getElementById("pStill");
+  var pCount = document.getElementById("pCount");
+  var pProg = document.getElementById("pProg");
+  var pBody = document.getElementById("pBody");
+  var pMarks = document.getElementById("pMarks");
   // 手順モードの写真もタップで拡大
   pStill.addEventListener("click", function (ev) { if (ev.target.tagName === "IMG") openLightbox(ev.target.src); });
   var rateBtns = player.querySelectorAll("[data-rate]");
@@ -266,15 +275,25 @@
     var point = item.point >= 0 ? step.points[item.point] : null;
 
     var T = WI.terms(manual, window.CATALOG);
-    pNo.innerHTML = "手順 " + (item.step + 1) + " / " + manual.steps.length + (point ? "　" + esc(T.point) : "") +
-      " " + (step.kinds || []).map(WI.kindBadge).join("");
+    var n = manual.steps.length;
+    // 上：作業名・何番目か・進み具合
+    document.getElementById("pCrumb").textContent = [manual.line, manual.process].filter(Boolean).join(" ＞ ");
+    document.getElementById("pTitle").textContent = manual.title || "";
+    pCount.innerHTML = (item.step + 1) + '<small> / ' + n + '</small>';
+    var bars = "";
+    for (var k = 0; k < n; k++) bars += '<i class="' + (k < item.step ? "done" : k === item.step ? "now" : "") + '"></i>';
+    pProg.innerHTML = bars;
+    // 右：手順の文・印・急所
+    pNo.textContent = point ? T.point.replace(/[（(].*$/, "") + "（手順 " + (item.step + 1) + "）" : T.step.replace(/[（(].*$/, "");
     pName.textContent = point ? point.text : step.title;
-
-    var pts = point ? [point] : (step.points || []);
-    pPoints.innerHTML = pts.length ? '<ul class="points">' + pts.map(function (p) {
-      return '<li>' + (p.kind && WI.KIND_LABEL[p.kind] ? '<span class="kind ' + esc(p.kind) + '">' + WI.KIND_LABEL[p.kind] + '</span>' : '') +
-        esc(p.text) + (p.reason ? '<span class="reason">' + esc(T.reason) + '：' + esc(p.reason) + '</span>' : '') + '</li>';
-    }).join("") + '</ul>' : "";
+    pMarks.innerHTML = (step.kinds || []).map(WI.kindBadge).join("");
+    var pts = point ? [] : (step.points || []);
+    pPoints.innerHTML = pts.map(function (p) {
+      return '<div class="tp-point' + (p.kind ? " " + esc(p.kind) : "") + '"><div class="lbl">' + esc(T.point.replace(/[（(].*$/, "")) + '</div>' +
+        '<div class="txt">' + (p.kind && WI.KIND_LABEL[p.kind] ? WI.kindBadge(p.kind) + ' ' : '') + esc(p.text) + '</div>' +
+        (p.reason ? '<div class="why">' + esc(T.reason) + '：' + esc(p.reason) + '</div>' : '') + '</div>';
+    }).join("");
+    if (step.detail && !point) pPoints.innerHTML = '<div class="tp-detail">' + esc(step.detail) + '</div>' + pPoints.innerHTML;
 
     pPrev.disabled = idx === 0;
     pNext.disabled = idx === playlist.length - 1;
@@ -290,16 +309,17 @@
     player.classList.add("open");
     document.body.style.overflow = "hidden";
 
-    // 動画の無い手順: 写真（無ければ説明）を大きく表示
+    // 動画の無い手順: 写真があれば大きく表示。写真も無ければ、手順の文を画面いっぱいに
     if (!item.video) {
       video.pause();
       video.hidden = true;
-      pStill.hidden = false;
-      pStill.innerHTML = step.image
-        ? '<img src="' + esc(step.image) + '" alt="" title="タップで拡大">'
-        : '<div class="still-text"><b>' + esc(step.title) + '</b>' + (step.detail ? '<p>' + esc(step.detail) + '</p>' : '') + '</div>';
+      pStill.hidden = !step.image;
+      pStill.innerHTML = step.image ? '<img src="' + esc(step.image) + '" alt="" title="タップで拡大">' : '';
+      pBody.classList.toggle("no-media", !step.image);
+      pBody.classList.add("still"); // 再生の操作ボタンは出さない
       pTime.textContent = "";
       pPlay.disabled = true;
+      pPlay.textContent = "動画なし";
       document.getElementById("pRestart").disabled = true;
       (pNext.disabled ? pClose : pNext).focus(); // → キー・Enter で次へ
       return;
@@ -307,7 +327,10 @@
     video.hidden = false;
     pStill.hidden = true;
     pStill.innerHTML = "";
+    pBody.classList.remove("no-media");
+    pBody.classList.remove("still");
     pPlay.disabled = false;
+    pPlay.textContent = video.paused ? "▶ 動画を再生" : "❚❚ 一時停止";
     document.getElementById("pRestart").disabled = false;
     segStart = WI.parseTime(item.video.start) || 0;
     segEnd = WI.parseTime(item.video.end);
@@ -412,8 +435,8 @@
   });
 
   video.addEventListener("ended", segmentDone);
-  video.addEventListener("play", function () { pPlay.textContent = "❚❚ 停止"; hideMsg(); });
-  video.addEventListener("pause", function () { pPlay.textContent = "▶ 再生"; });
+  video.addEventListener("play", function () { pPlay.textContent = "❚❚ 一時停止"; hideMsg(); });
+  video.addEventListener("pause", function () { if (!pPlay.disabled) pPlay.textContent = "▶ 動画を再生"; });
 
   video.addEventListener("error", function () {
     if (!video.getAttribute("src")) return; // 閉じた時の解放によるもの
