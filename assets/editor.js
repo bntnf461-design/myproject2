@@ -115,7 +115,7 @@
       fileName = draft.file || "";
       dirty = draft.dirty !== false;
       render();
-      draftState.textContent = dirty ? "● 未保存の変更あり（入力内容はこの PC に一時保存済み）" : "保存済み";
+      draftState.textContent = dirty ? "● 未保存" : "保存済み";
       if (WI.getParam("resume") !== "1") {
         notice(dirty
           ? "前回の編集途中の内容を復元しました。最初から作る場合は「新規」を押してください。"
@@ -142,7 +142,7 @@
     saveTimer = setTimeout(function () {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty }));
-        draftState.textContent = dirty ? "● 未保存の変更あり（入力内容はこの PC に一時保存済み）" : "保存済み";
+        draftState.textContent = dirty ? "● 未保存" : "保存済み";
       } catch (e) {
         draftState.textContent = "自動保存できません";
       }

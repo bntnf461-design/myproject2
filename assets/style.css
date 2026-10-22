@@ -234,6 +234,46 @@ button, input, select, textarea {
   border-left: 8px solid var(--navy);
 }
 
+/* ---------- 保存先フォルダの案内 ---------- */
+.folder-guide {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(11, 26, 54, 0.6);
+}
+.folder-guide-box {
+  width: 100%;
+  max-width: 640px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px;
+  border: 3px solid var(--navy);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+.folder-guide-box h2 { margin: 0 0 8px; font-size: 1.3rem; }
+.folder-guide-box ol { padding-left: 1.4em; }
+.folder-guide-box li { margin: 6px 0; }
+.folder-guide-box .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.folder-guide .crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--navy);
+  color: var(--white);
+  font-size: 1.15rem;
+  font-weight: bold;
+}
+.folder-guide .crumbs span { padding: 2px 10px; border: 2px solid var(--white); border-radius: 4px; }
+.folder-guide .crumbs i { font-style: normal; opacity: 0.8; }
+
 /* ---------- 設定画面 ---------- */
 .set-row {
   display: flex;

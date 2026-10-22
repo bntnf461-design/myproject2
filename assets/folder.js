@@ -79,8 +79,77 @@
   }
 
   // フォルダを選んでもらう
+  // いま開いているページがあるフォルダ（例：デスクトップ ＞ sagyo-youryousho-2 ＞ sagyo-youryousho）
+  var KNOWN = {
+    desktop: ["デスクトップ", "desktop"], "デスクトップ": ["デスクトップ", "desktop"],
+    documents: ["ドキュメント", "documents"], "ドキュメント": ["ドキュメント", "documents"],
+    downloads: ["ダウンロード", "downloads"], "ダウンロード": ["ダウンロード", "downloads"]
+  };
+  function pageFolder() {
+    if (location.protocol !== "file:") return null;
+    var path = decodeURIComponent(location.pathname);
+    var unc = /^\/\//.test(path) || location.host; // 共有フォルダ（\\サーバー\共有）
+    var parts = path.split("/").filter(Boolean);
+    if (location.host) parts.unshift(location.host);
+    parts.pop(); // editor.html など
+    var startIn, crumbs = parts.slice();
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var k = parts[i].toLowerCase();
+      if (KNOWN[k]) {
+        startIn = KNOWN[k][1];
+        crumbs = [KNOWN[k][0]].concat(parts.slice(i + 1));
+        break;
+      }
+      if (/^onedrive/.test(k)) { crumbs = parts.slice(i); break; }
+    }
+    return { full: (unc ? "\\\\" : "") + parts.join("\\"), crumbs: crumbs, startIn: startIn };
+  }
+
+  // フォルダを選ぶ前に、どのフォルダを選べばよいかを画面に出す
+  // （ボタンを押したときにフォルダ選択の画面を開く。ブラウザの決まりで、ボタン操作から開く必要がある）
+  function guide() {
+    return new Promise(function (resolve, reject) {
+      var pf = pageFolder();
+      var box = document.createElement("div");
+      box.className = "folder-guide";
+      box.setAttribute("role", "dialog");
+      box.innerHTML =
+        '<div class="folder-guide-box">' +
+          '<h2>保存先のフォルダを選びます</h2>' +
+          '<p>次に開く画面で、<b>この画面のファイル（index.html・editor.html など）があるフォルダ</b>を選んでください。</p>' +
+          (pf ? '<div class="crumbs">' + pf.crumbs.map(function (c) { return '<span>' + WI.esc(c) + '</span>'; }).join('<i>＞</i>') + '</div>' +
+            '<p class="hint">場所：' + WI.esc(pf.full) + '</p>' : '') +
+          '<ol>' +
+            '<li>上のフォルダを順に開く（' + (pf && pf.crumbs.length ? '最後の「<b>' + WI.esc(pf.crumbs[pf.crumbs.length - 1]) + '</b>」を開いた状態' : 'index.html が見える状態') + '）</li>' +
+            '<li>「<b>フォルダーの選択</b>」を押す</li>' +
+            '<li>「ファイルの編集を許可しますか」と出たら「<b>ファイルを編集</b>」（許可）を押す</li>' +
+          '</ol>' +
+          '<p class="hint">一度選ぶと覚えるので、次からはこの手順はいりません。</p>' +
+          '<div class="actions"><button type="button" class="btn" data-g="cancel">やめる</button>' +
+          '<button type="button" class="btn primary" data-g="ok">フォルダを選ぶ</button></div>' +
+        '</div>';
+      document.body.appendChild(box);
+      box.querySelector('[data-g="ok"]').focus();
+      box.addEventListener("click", function (ev) {
+        var g = ev.target.getAttribute && ev.target.getAttribute("data-g");
+        if (!g) return;
+        box.remove();
+        if (g === "ok") {
+          // ボタンを押した操作の中でフォルダ選択を開く
+          var opt = { id: "wi-root", mode: "readwrite" };
+          if (pf && pf.startIn) opt.startIn = pf.startIn;
+          resolve(window.showDirectoryPicker(opt));
+        } else {
+          var e = new Error("cancel");
+          e.name = "AbortError";
+          reject(e);
+        }
+      });
+    });
+  }
+
   function pick() {
-    return window.showDirectoryPicker({ id: "wi-root", mode: "readwrite" }).then(findTemplateDir).then(function (dir) {
+    return guide().then(findTemplateDir).then(function (dir) {
       return samePage(dir).then(function (same) {
         matchesPage = same;
         if (!same && !confirm("選んだフォルダ「" + dir.name + "」は、いま開いている画面とは別のフォルダのようです。\n" +
