@@ -1096,6 +1096,12 @@ body.viewer { background: #e6ebf3; }
   .hero .go { width: 100%; text-align: center; }
   .hide-sp { display: none; }
   .has-shell .topbar .actions .btn { min-height: 40px; padding: 4px 10px; font-size: 0.85rem; }
+  .page-title { flex-basis: 100%; }
+  .page-title h1 { white-space: normal; }
+  .viewer .topbar { gap: 6px 8px; padding: 8px 10px; }
+  .viewer .topbar .actions { flex-wrap: nowrap; gap: 6px; flex: 1; justify-content: flex-end; }
+  .viewer .topbar .btn { min-height: 40px; padding: 4px 10px; font-size: 0.85rem; }
+  .viewer .topbar .actions .print-btn { display: none; } /* スマホからは印刷しない */
   .menu-card.main { flex-wrap: wrap; }
   .menu-card.main .go { width: 100%; text-align: center; }
   .flow li { flex-wrap: wrap; }
