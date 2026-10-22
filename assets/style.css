@@ -234,6 +234,28 @@ button, input, select, textarea {
   border-left: 8px solid var(--navy);
 }
 
+/* ---------- Excel まとめて取り込み ---------- */
+.drop-zone {
+  padding: 16px;
+  border: 3px dashed var(--navy-mid);
+  border-radius: var(--radius);
+  background: var(--navy-pale);
+}
+.drop-zone.over { border-color: var(--navy); background: var(--navy-light); }
+.drop-zone .xl-pick { margin-bottom: 0; }
+.bulk-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; }
+.bulk-opts .set-check { font-weight: normal; }
+.bulk-table-wrap { overflow-x: auto; }
+.bulk-table td { vertical-align: top; }
+.bulk-table td:first-child { width: 2.5em; text-align: center; }
+.bulk-table input[type="checkbox"] { width: 22px; height: 22px; }
+.bulk-table tr.on td { background: var(--navy-pale); }
+.bulk-table tr.detail td { background: var(--white); font-size: 0.9rem; }
+.st { display: inline-block; padding: 0 8px; border-radius: 999px; font-weight: bold; font-size: 0.85rem; color: var(--white); }
+.st.ok { background: var(--navy); }
+.st.warn { background: var(--focus); color: var(--navy-dark); }
+.st.err { background: var(--safety); }
+
 /* ---------- 保存先フォルダの案内 ---------- */
 .folder-guide {
   position: fixed;

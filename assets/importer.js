@@ -355,7 +355,9 @@
     if (Object.keys(terms).length) d.terms = terms;
 
     // 画像: 各手順の行の範囲に貼られている最初の画像を、その手順の写真にする
-    var base = (d.docNo || sheet.name || "excel").replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "") || ("excel" + Date.now());
+    // 写真のファイル名。番号の無い管理番号（「GK-」など）だと他の要領書と同じ名前になるので、日時を使う
+    var base = String(d.docNo || "").normalize("NFKC").replace(/[^\w\-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "");
+    if (!/\d/.test(base)) base = "xl" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     var extra = 0;
     sheet.images.slice().sort(function (a, b) { return a.row - b.row || a.col - b.col; }).forEach(function (im) {
       var idx = stepAt(im.row);

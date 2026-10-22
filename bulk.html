@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Excel まとめて取り込み</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="btn on-navy" href="index.html">◀ 一覧</a>
+  <h1>Excel まとめて取り込み</h1>
+</header>
+
+<main class="page">
+  <div id="msgArea"></div>
+
+  <section class="section">
+    <h2>① 取り込む Excel を選ぶ</h2>
+    <div class="drop-zone" id="drop">
+      <div class="xl-pick">
+        <label class="btn primary">Excel ファイルを選ぶ（複数可）<input type="file" id="pickFiles" accept=".xlsx,.xlsm" multiple hidden></label>
+        <label class="btn">フォルダごと選ぶ<input type="file" id="pickFolder" webkitdirectory multiple hidden></label>
+      </div>
+      <p class="hint" style="margin:8px 0 0">ここに Excel ファイルやフォルダをドラッグ＆ドロップしても選べます。1 つのファイルにシートが複数ある場合は、シートごとに 1 つの要領書になります。<br>
+        「フォルダごと選ぶ」で「ファイルをアップロードしますか」と出たら「アップロード」を押してください（インターネットには送られません。この PC の中だけで読み取ります）。</p>
+    </div>
+  </section>
+
+  <section class="section" id="resultSec" hidden>
+    <h2>② 読み取り結果を確認する</h2>
+    <div class="bulk-opts">
+      <span id="summary"></span>
+      <span style="flex:1"></span>
+      <label class="set-check"><input type="checkbox" id="overwrite"> 登録済みの要領書も上書きする<span class="hint">（前の内容はバックアップ。動画の設定は引き継ぎ）</span></label>
+      <button type="button" class="btn small" id="checkAll">すべて選ぶ</button>
+      <button type="button" class="btn small" id="checkNone">すべて外す</button>
+    </div>
+    <div class="bulk-table-wrap">
+      <table class="rev-table bulk-table">
+        <thead><tr><th></th><th>ファイル／シート</th><th>管理番号</th><th>作業名</th><th>工程・ライン</th><th>手順</th><th>状態</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="hint">手順を読み取れなかったものや内容が違うものは、エディタの「Excel 取り込み」で 1 つずつ列を指定して取り込めます。</p>
+  </section>
+</main>
+
+<div class="toolbar-bottom">
+  <span class="hint" id="selCount"></span>
+  <span style="flex:1"></span>
+  <span class="save-dest" id="saveDest" hidden><span class="hint"></span></span>
+  <button type="button" class="btn primary" id="saveAll" disabled>選んだ要領書をフォルダに保存</button>
+</div>
+
+<script src="assets/common.js"></script>
+<script src="manuals/catalog.js"></script>
+<script src="assets/xlsx-reader.js"></script>
+<script src="assets/importer.js"></script>
+<script src="assets/folder.js"></script>
+<script src="assets/bulk.js"></script>
+</body>
+</html>
