@@ -635,6 +635,15 @@
 
   function toFileText(d) { return WIFolder.manualText(d); }
 
+  // 動画がまだ付いていない手順（保存はできるが、知らせておく）
+  function missingVideoNote(d) {
+    var no = [];
+    d.steps.forEach(function (s, i) { if (!(s.video && s.video.src)) no.push(i + 1); });
+    if (!no.length) return "";
+    return '<br><span class="warn-text">動画がまだの手順：' + (no.length === d.steps.length ? "すべて" : no.join("、")) + '</span>' +
+      '<small>（手順の「選ぶ」から動画を付けられます。動画が無い手順は、作業者の画面では文字が大きく表示されます）</small>';
+  }
+
   // 文書番号からファイル名を作る。無い場合は日時を付けて、他の要領書を上書きしないようにする
   function suggestName() {
     if (fileName) return fileName;
@@ -809,7 +818,7 @@
       copied = c;
       markSaved(name);
       showDest();
-      notice("<b>保存しました：manuals/" + esc(name) + "</b>" +
+      notice("<b>保存しました：manuals/" + esc(name) + "</b>" + missingVideoNote(d) +
         (added ? "<br>一覧（目録）に追加しました。" : "") +
         (copied.length ? "<br>コピーした動画・写真：" + copied.map(esc).join("、") : "") +
         '<br><a href="list.html">一覧で確認する</a>');

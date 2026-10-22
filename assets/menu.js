@@ -42,6 +42,7 @@
     var stepsAll = 0, stepsDone = 0;
     list.forEach(function (m) { var v = videoCount(m); stepsAll += v.all; stepsDone += v.done; });
     var thisMonth = list.filter(function (m) { return String(m.updated || "").slice(0, 7) === ym; });
+    var review = list.filter(WI.needsReview);
     var lines = {}, procs = {};
     list.forEach(function (m) {
       WI.splitCat(m.line).forEach(function (x) { lines[x] = 1; });
@@ -50,9 +51,10 @@
     var pct = stepsAll ? Math.round(stepsDone / stepsAll * 100) : 0;
     document.getElementById("kpis").innerHTML =
       kpi("登録されている要領書", list.length, "件", (Object.keys(lines).length ? "ライン " + Object.keys(lines).length + " ／ " : "") + "工程 " + Object.keys(procs).length) +
-      kpi("動画がまだ付いていない", noVideo.length, "件", "手順の動画 " + stepsDone + " / " + stepsAll + "（" + pct + "%）", noVideo.length ? "warn" : "", pct) +
+      kpi("動画がまだ付いていない", noVideo.length, "件", "手順の動画 " + stepsDone + " / " + stepsAll + "（" + pct + "%）", noVideo.length ? "warn" : "", pct, "noVideo") +
       kpi("今月の改訂・新規", thisMonth.length, "件", thisMonth.length ? "最新：" + esc(latest(thisMonth).title) : "") +
-      (errors ? kpi("読み込めない要領書", errors, "件", "ファイルを確認してください", "err") : kpi("今日", (today.getMonth() + 1) + "/" + today.getDate(), "", ["日", "月", "火", "水", "木", "金", "土"][today.getDay()] + "曜日"));
+      (errors ? kpi("読み込めない要領書", errors, "件", "ファイルを確認してください", "err")
+        : kpi("見直し時期（1 年以上 改訂なし）", review.length, "件", review.length ? "押すと一覧で確認できます" : "すべて 1 年以内に見直し済み", review.length ? "err" : "", undefined, "review"));
 
     // 最近更新された要領書
     var rows = list.slice().sort(function (a, b) { return String(b.updated || b.issued || "").localeCompare(String(a.updated || a.issued || "")); }).slice(0, 6);
@@ -78,11 +80,20 @@
 
   function latest(arr) { return arr.slice().sort(function (a, b) { return String(b.updated).localeCompare(String(a.updated)); })[0]; }
 
-  function kpi(label, value, unit, sub, cls, bar) {
-    return '<div class="kpi ' + (cls || "") + '"><div class="l">' + label + '</div><div class="v">' + value + (unit ? '<small>' + unit + '</small>' : '') + '</div>' +
+  // flag を付けると、押したときにその条件で絞り込んだ一覧を開く
+  function kpi(label, value, unit, sub, cls, bar, flag) {
+    var tag = flag ? 'a href="list.html" data-flag="' + flag + '"' : 'div';
+    return '<' + tag + ' class="kpi ' + (cls || "") + (flag ? " link" : "") + '"><div class="l">' + label + '</div><div class="v">' + value + (unit ? '<small>' + unit + '</small>' : '') + '</div>' +
       (bar !== undefined ? '<div class="mini-bar wide"><i style="width:' + bar + '%"></i></div>' : '') +
-      (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
+      (sub ? '<div class="s">' + sub + '</div>' : '') + '</' + (flag ? 'a' : 'div') + '>';
   }
+  document.getElementById("kpis").addEventListener("click", function (ev) {
+    var a = ev.target.closest("[data-flag]");
+    if (!a) return;
+    var f = {};
+    f[a.getAttribute("data-flag")] = true;
+    try { localStorage.setItem("wi.filter", JSON.stringify({ sel: {}, q: "", flags: f })); } catch (e) {}
+  });
 
   function mark(key, done, note) {
     var li = document.querySelector('#check [data-c="' + key + '"]');

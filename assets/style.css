@@ -407,6 +407,14 @@ body.has-shell { background: var(--bg); }
 .recent .chip { text-decoration: none; display: inline-flex; align-items: center; font-weight: normal; }
 .tag.new { background: var(--quality); }
 .tag.rev { background: var(--focus); color: var(--navy-dark); }
+.quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.chip.toggle { font-weight: normal; }
+.chip.toggle.on { font-weight: bold; }
+.tag.review { background: var(--safety); }
+a.kpi.link { color: inherit; text-decoration: none; }
+a.kpi.link:hover { border-color: var(--navy); }
+.print-only { display: none; }
+.warn-text { color: var(--amber); }
 .result-bar {
   display: flex;
   align-items: center;
@@ -1172,7 +1180,8 @@ body.viewer { background: #e6ebf3; }
   .play-btn { border: 1px solid var(--navy); background: #fff; color: var(--navy); min-height: 0; }
   body.viewer { background: #fff; }
   .paper { margin: 0; padding: 0; border: 0; box-shadow: none; max-width: none; }
-  .round-btn { width: 28px; height: 28px; font-size: 0.7rem; border-width: 1px; }
+  .round-btn, .steps .seg { display: none !important; }
+  .print-only { display: inline; font-size: 0.85em; }
   .form-head, .fh-sub, .steps th, .fh-stamps .label { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .side, .tabs { display: none !important; }
   .shell { display: block; }

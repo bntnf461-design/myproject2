@@ -8,11 +8,15 @@
 
   var registry = {};
   var lastRegistered = null;
+  var seq = 0;
 
-  // 要領書データファイルから呼ばれる
+  // 要領書データファイルから呼ばれる。どの読み込みのデータかは、実行中の <script> で判断する
+  // （同時にいくつ読み込んでもデータが混ざらない）
   window.registerManual = function (data) {
     if (!data) return;
     lastRegistered = data;
+    var sc = document.currentScript;
+    if (sc && sc._wiResolve) sc._wiData = data;
     if (data.id) registry[data.id] = data;
   };
 
@@ -22,32 +26,38 @@
       callback(null, "ファイル名が不正です: " + file);
       return;
     }
-    lastRegistered = null;
     var s = document.createElement("script");
-    s.src = "manuals/" + file + "?v=" + Date.now(); // 更新がすぐ反映されるよう毎回読み直す
+    s._wiResolve = true;
+    s.src = "manuals/" + file + "?v=" + Date.now() + "-" + (seq++); // 更新がすぐ反映されるよう毎回読み直す
     s.onload = function () {
-      var d = lastRegistered;
+      var d = s._wiData || null;
+      s.remove(); // 読み終わった <script> は残さない（メモリを節約）
       if (d) d._file = file;
       callback(d, d ? null : "データが登録されていません: " + file);
     };
     s.onerror = function () {
+      s.remove();
       callback(null, "ファイルを読み込めません: manuals/" + file);
     };
     document.head.appendChild(s);
   }
 
-  // 複数ファイルを順番に読み込む（同時読み込みで lastRegistered が混ざらないよう直列）
+  // 複数ファイルを読み込む（8 件ずつ同時に読み、結果は files と同じ順番で返す）
   function loadManualFiles(files, done) {
-    var results = [];
-    var i = 0;
-    (function next() {
-      if (i >= files.length) { done(results); return; }
-      var f = files[i++];
-      loadManualFile(f, function (data, err) {
-        results.push({ file: f, data: data, error: err });
-        next();
+    var results = new Array(files.length);
+    var next = 0, finished = 0, PARALLEL = 8;
+    if (!files.length) { done([]); return; }
+    function start() {
+      if (next >= files.length) return;
+      var i = next++;
+      loadManualFile(files[i], function (data, err) {
+        results[i] = { file: files[i], data: data, error: err };
+        finished++;
+        if (finished === files.length) done(results);
+        else start();
       });
-    })();
+    }
+    for (var k = 0; k < Math.min(PARALLEL, files.length); k++) start();
   }
 
   function esc(s) {
@@ -131,12 +141,19 @@
     return String(v || "").split(/[、,，]/).map(function (x) { return x.trim(); }).filter(Boolean);
   }
 
+  // 名前順の比べ方（日本語・数字の大小を考慮）。毎回作ると遅いので 1 つを使い回す
+  var collator = (window.Intl && Intl.Collator) ? new Intl.Collator("ja", { numeric: true }) : null;
+  function compareText(a, b) {
+    a = String(a == null ? "" : a); b = String(b == null ? "" : b);
+    return collator ? collator.compare(a, b) : (a < b ? -1 : a > b ? 1 : 0);
+  }
+
   // 設定画面で決めた並び順を優先し、それ以外は名前順
   function catSorter(order) {
     return function (a, b) {
       var i = order.indexOf(a), j = order.indexOf(b);
       if (i !== -1 || j !== -1) return (i === -1 ? 1e9 : i) - (j === -1 ? 1e9 : j);
-      return a.localeCompare(b, "ja", { numeric: true });
+      return compareText(a, b);
     };
   }
 
@@ -180,6 +197,18 @@
     return p.map(function (x) { return '<span class="org-part">' + esc(x) + '</span>'; }).join('<span class="org-sep">＞</span>');
   }
 
+  // 手順のうち動画が付いている数
+  function videoStats(m) {
+    var steps = (m && m.steps) || [];
+    return { done: steps.filter(function (s) { return s.video && s.video.src; }).length, all: steps.length };
+  }
+  // 見直しの時期（最後の改訂・制定から 1 年以上たっている）
+  var REVIEW_DAYS = 365;
+  function needsReview(m) {
+    var d = Date.parse((m && (m.updated || m.issued)) || "");
+    return !isNaN(d) && (Date.now() - d) / 86400000 > REVIEW_DAYS;
+  }
+
   window.WI = {
     loadManualFile: loadManualFile,
     loadManualFiles: loadManualFiles,
@@ -193,6 +222,9 @@
     catConfig: catConfig,
     splitCat: splitCat,
     catSorter: catSorter,
+    compareText: compareText,
+    videoStats: videoStats,
+    needsReview: needsReview,
     DEFAULT_TERMS: DEFAULT_TERMS,
     TERM_KEYS: TERM_KEYS,
     terms: terms,

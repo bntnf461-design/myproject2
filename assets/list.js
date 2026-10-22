@@ -18,6 +18,7 @@
   var items = [];
   var sel = {};       // 選んでいるカテゴリー { line: "Aライン", ... }
   var expanded = {};  // 「すべて表示」を開いている行
+  var flags = {};     // すぐ絞り込み（noVideo: 動画がまだ／review: 見直し時期）
 
   WI.initTextSize(document.getElementById("textSize"));
 
@@ -33,11 +34,12 @@
   try {
     var saved = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
     sel = saved.sel || {};
+    flags = saved.flags || {};
     qEl.value = saved.q || "";
   } catch (e) {}
 
   function saveState() {
-    try { localStorage.setItem(STATE_KEY, JSON.stringify({ sel: sel, q: qEl.value })); } catch (e) {}
+    try { localStorage.setItem(STATE_KEY, JSON.stringify({ sel: sel, q: qEl.value, flags: flags })); } catch (e) {}
   }
 
   if (!cat.files || !cat.files.length) {
@@ -61,7 +63,7 @@
         var x = valuesOf(a, levels[i])[0], y = valuesOf(b, levels[i])[0];
         if (x !== y) return cmp(levels[i])(x, y);
       }
-      return String(a.docNo || "").localeCompare(String(b.docNo || ""), "ja", { numeric: true });
+      return WI.compareText(a.docNo, b.docNo);
     });
     render();
   });
@@ -104,7 +106,8 @@
   function label(v) { return v === NONE ? "（未設定）" : v; }
 
   function render() {
-    var base = items.filter(matchQuery);
+    var byQuery = items.filter(matchQuery);
+    var base = byQuery.filter(matchFlags);
 
     // ---- 絞り込みの行 ----
     var html = "";
@@ -137,12 +140,26 @@
     });
     filtersEl.innerHTML = html;
 
+    // ---- すぐ絞り込み（動画がまだ・見直し時期） ----
+    var inSel = byQuery.filter(function (m) { return matchSel(m, null); });
+    var nNo = inSel.filter(noVideo).length, nRev = inSel.filter(WI.needsReview).length;
+    document.getElementById("quick").innerHTML =
+      '<button type="button" class="chip toggle' + (flags.noVideo ? " on" : "") + '" data-flag="noVideo" aria-pressed="' + !!flags.noVideo + '">' +
+        (flags.noVideo ? "✓ " : "") + '動画がまだの手順がある<span class="n">' + nNo + '</span></button>' +
+      '<button type="button" class="chip toggle' + (flags.review ? " on" : "") + '" data-flag="review" aria-pressed="' + !!flags.review + '">' +
+        (flags.review ? "✓ " : "") + '見直し時期（1 年以上 改訂なし）<span class="n">' + nRev + '</span></button>' +
+      '<span style="flex:1"></span>' +
+      '<button type="button" class="btn small" id="exportCsv" title="表示している要領書の一覧を、Excel で開けるファイルにします">⇩ 台帳を Excel で書き出す</button>';
+
     // ---- 結果 ----
     var list = base.filter(function (m) { return matchSel(m, null); });
     var path = levels.filter(function (k) { return sel[k] !== undefined; }).map(function (k) {
       return '<b>' + esc(label(sel[k])) + '</b>';
     });
+    if (flags.noVideo) path.push("<b>動画がまだ</b>");
+    if (flags.review) path.push("<b>見直し時期</b>");
     var filtered = path.length || qEl.value.trim();
+    shown = list;
     barEl.innerHTML = (path.length ? path.join(' <span class="sep">＞</span> ') + '　' : '') +
       '<span>' + list.length + ' 件</span>' +
       (filtered ? ' <button type="button" class="btn small" id="clearFilter">絞り込みを解除</button>' : '');
@@ -166,6 +183,7 @@
   // 30 日以内に作られた・改訂された要領書に印を付ける（変更に気付けるように）
   var today = new Date();
   function badge(m) {
+    if (WI.needsReview(m)) return ' <span class="tag review" title="最後の改訂から 1 年以上たっています">見直し時期</span>';
     var d = Date.parse(m.updated || m.issued || "");
     if (isNaN(d) || (today - d) / 86400000 > 30) return "";
     var isNew = !m.updated || m.updated === m.issued;
@@ -196,7 +214,7 @@
       '<div class="meta">' +
         (m.category && levels.indexOf("category") === -1 ? '<span class="tag">' + esc(m.category) + '</span> ' : '') +
         meta + '<br>' +
-        '手順 ' + steps + ' 件・動画 ' + videos + ' 件' +
+        '手順 ' + steps + ' 件・動画 ' + (videos < steps ? '<b class="warn-text">' + videos + ' / ' + steps + '</b>' : videos + ' / ' + steps) +
         (m.updated ? '・更新 ' + esc(m.updated) : '') +
       '</div></a></li>';
   }
@@ -216,9 +234,46 @@
     render();
   });
 
+  function noVideo(m) { var v = WI.videoStats(m); return v.all > v.done; }
+  function matchFlags(m) {
+    return (!flags.noVideo || noVideo(m)) && (!flags.review || WI.needsReview(m));
+  }
+
+  var shown = [];
+  document.getElementById("quick").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button");
+    if (!b) return;
+    if (b.id === "exportCsv") { exportCsv(shown); return; }
+    var f = b.getAttribute("data-flag");
+    if (!f) return;
+    flags[f] = !flags[f];
+    saveState();
+    render();
+  });
+
+  // 表示している要領書の台帳（Excel で開ける CSV。文字化けしないよう BOM 付き UTF-8）
+  function exportCsv(list) {
+    var head = ["管理番号", "作業名", LABEL.line, LABEL.product, LABEL.process, LABEL.category, "改訂", "制定日", "改訂日", "手順数", "動画あり", "見直し時期", "作成", "確認", "承認", "ファイル"];
+    var q = function (v) { v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var rows = list.map(function (m) {
+      var v = WI.videoStats(m);
+      return [m.docNo, m.title, m.line, m.product, m.process, m.category, m.revision, m.issued, m.updated, v.all, v.done,
+        WI.needsReview(m) ? "要" : "", m.author, m.checker, m.approver, m._file].map(q).join(",");
+    });
+    var csv = "\ufeff" + [head.map(q).join(",")].concat(rows).join("\r\n");
+    var t = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = "作業要領書_台帳_" + t.getFullYear() + p(t.getMonth() + 1) + p(t.getDate()) + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
   barEl.addEventListener("click", function (ev) {
     if (ev.target.id !== "clearFilter") return;
     sel = {};
+    flags = {};
     qEl.value = "";
     saveState();
     render();

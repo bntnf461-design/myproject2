@@ -154,9 +154,9 @@
         (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +
         '<td class="col-video">' +
           (stepPl >= 0
-            ? '<button type="button" class="round-btn" data-pl="' + stepPl + '" title="動画を再生"><span>▶</span></button>' +
+            ? '<button type="button" class="round-btn" data-pl="' + stepPl + '" title="動画を再生"><span>▶</span></button><span class="print-only">動画あり</span>' +
               (s.video.end != null && s.video.end !== "" ? '<small class="seg">' + segLabel(s.video) + '</small>' : '')
-            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">動画なし</small>') +
+            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">動画なし</small><span class="print-only">－</span>') +
         '</td>' +
       '</tr>';
     });
