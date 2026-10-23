@@ -170,16 +170,51 @@
       return { sheets: sheets, load: function (i) { return loadSheet(sheets[i]); } };
     });
 
+    // 「セルに配置」した画像（Excel 365）。セルの vm 番号（1 から）→ 画像のパス
+    var cellImageMap = null;
+    function cellImagePaths() {
+      if (cellImageMap) return cellImageMap;
+      var base = "xl/richData/richValueRel.xml";
+      cellImageMap = Promise.all([
+        getXml("xl/metadata.xml"), getXml("xl/richData/rdrichvalue.xml"),
+        getXml("xl/richData/rdrichvaluestructure.xml"), getXml(base), getRels(base)
+      ]).then(function (res) {
+        var meta = res[0], rv = res[1], st = res[2], rel = res[3], rels = res[4];
+        if (!meta || !rv || !rel) return [];
+        var fut = Array.prototype.map.call(tags(meta, "rvb"), function (b) { return parseInt(b.getAttribute("i"), 10); });
+        var keyPos = Array.prototype.map.call(st ? tags(st, "s") : [], function (s) {
+          var ks = Array.prototype.map.call(tags(s, "k"), function (k) { return k.getAttribute("n"); });
+          return ks.indexOf("_rvRel:LocalImageIdentifier");
+        });
+        var values = Array.prototype.map.call(tags(rv, "rv"), function (r) {
+          var pos = keyPos[parseInt(r.getAttribute("s") || "0", 10)];
+          var v = pos >= 0 ? tags(r, "v")[pos] : null;
+          return v ? parseInt(v.textContent, 10) : -1;
+        });
+        var relIds = Array.prototype.map.call(tags(rel, "rel"), function (x) { return attrNS(x, "id"); });
+        var vm = first(meta, "valueMetadata");
+        return Array.prototype.map.call(vm ? vm.children : [], function (bk) {
+          var rc = first(bk, "rc");
+          var i = rc ? fut[parseInt(rc.getAttribute("v"), 10)] : -1;
+          var r = rels[relIds[values[i]]];
+          return r ? resolve(base, r.target) : "";
+        });
+      }).catch(function () { return []; });
+      return cellImageMap;
+    }
+
     function loadSheet(sh) {
       return Promise.all([getXml(sh.path), getRels(sh.path)]).then(function (res) {
         var doc = res[0], rels = res[1];
         var rows = [];
         var maxC = 0;
+        var vmCells = []; // セルに配置した画像 { row, col, vm }
 
         Array.prototype.forEach.call(tags(doc, "c"), function (c) {
           var ref = cellRef(c.getAttribute("r") || "");
           if (!ref) return;
           var t = c.getAttribute("t");
+          if (c.getAttribute("vm")) vmCells.push({ row: ref.r, col: ref.c, vm: parseInt(c.getAttribute("vm"), 10) });
           var vEl = first(c, "v");
           var v = vEl ? vEl.textContent : "";
           var text;
@@ -240,12 +275,20 @@
               var fromEl = first(an, "from");
               var aRow = fromEl ? parseInt((first(fromEl, "row") || {}).textContent || "0", 10) : 0;
               var aCol = fromEl ? parseInt((first(fromEl, "col") || {}).textContent || "0", 10) : 0;
+              // 右下の位置（無ければ左上と同じ）。判子など、どのセルの上に置いてあるかの判断に使う
+              var toEl = first(an, "to");
+              var tRow = toEl ? parseInt((first(toEl, "row") || {}).textContent || "0", 10) : aRow;
+              var tCol = toEl ? parseInt((first(toEl, "col") || {}).textContent || "0", 10) : aCol;
+              var g = anchors.indexOf(an);
               Array.prototype.forEach.call(tags(an, "sp"), function (sp) {
                 var g = first(sp, "prstGeom");
                 shapes.push({
-                  row: aRow, col: aCol,
+                  row: aRow, col: aCol, toRow: tRow, toCol: tCol, group: g,
                   prst: g ? g.getAttribute("prst") : "",
-                  text: Array.prototype.map.call(tags(sp, "t"), function (x) { return x.textContent; }).join("").trim()
+                  // 段落ごとに改行を入れる（判子の「部署／日付／名前」などを分けて読めるように）
+                  text: Array.prototype.map.call(tags(sp, "p"), function (pa) {
+                    return Array.prototype.map.call(tags(pa, "t"), function (x) { return x.textContent; }).join("");
+                  }).join("\n").trim()
                 });
               });
               var blip = first(an, "blip");
@@ -254,11 +297,7 @@
               var rel = drels[attrNS(blip, "embed")];
               if (!rel) return;
               var path = resolve(dPath, rel.target);
-              list.push({
-                row: parseInt((first(from, "row") || {}).textContent || "0", 10),
-                col: parseInt((first(from, "col") || {}).textContent || "0", 10),
-                path: path
-              });
+              list.push({ row: aRow, col: aCol, toRow: tRow, toCol: tCol, path: path });
             });
             return Promise.all(list.map(function (im) {
               return get(im.path).then(function (bytes) {
@@ -273,8 +312,19 @@
           });
         }
 
-        return imagesP.then(function (images) {
-          return { name: sh.name, rows: rows, cols: maxC, merges: merges, links: links, images: images, shapes: shapes };
+        var cellImagesP = !vmCells.length ? Promise.resolve([]) : cellImagePaths().then(function (paths) {
+          return Promise.all(vmCells.map(function (vc) {
+            var path = paths[vc.vm - 1];
+            if (!path) return null;
+            return get(path).then(function (bytes) {
+              var ext = (path.split(".").pop() || "png").toLowerCase();
+              return bytes && /^(png|jpe?g|gif|bmp|webp)$/.test(ext) ? { row: vc.row, col: vc.col, toRow: vc.row, toCol: vc.col, path: path, bytes: bytes, ext: ext } : null;
+            });
+          })).then(function (arr) { return arr.filter(Boolean); });
+        });
+
+        return Promise.all([imagesP, cellImagesP]).then(function (res) {
+          return { name: sh.name, rows: rows, cols: maxC, merges: merges, links: links, images: res[0], shapes: shapes, cellImages: res[1] };
         });
       });
     }

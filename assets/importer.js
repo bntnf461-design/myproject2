@@ -138,6 +138,7 @@
           var v = inline || (f.below ? valueBelow(r, c) : (valueRight(r, c) || valueBelow(r, c)));
           if (f.key === "_") break;
           if (v) info[f.key] = v;
+          if (f.below) (info._pos || (info._pos = {}))[f.key] = { r: r, c: c };
           // 社内フォーマットの項目名（例：管理番号・工程名・作業名称（部品名））を、表示にもそのまま使う
           if (!info._labels) info._labels = {};
           info._labels[f.key] = label.replace(/[\s　]+/g, "");
@@ -373,6 +374,8 @@
       images.push({ src: s.image, bytes: im.bytes, type: ext === "jpg" ? "image/jpeg" : "image/" + ext });
     });
 
+    readStamps(sheet, info, d, base, images);
+
     // 区間の「開始」が空で、前の手順と同じ動画なら、前の「終了」から始める
     d.steps.forEach(function (s, i) {
       var p = d.steps[i - 1];
@@ -380,6 +383,60 @@
     });
 
     return { data: d, images: images, info: info, starts: starts, extraImages: extra };
+  }
+
+  // ---------- 判子（承認・点検・確認・作成の欄に押した印） ----------
+  // 項目名の下の欄に置いてある画像は、判子の画像として取り込む。
+  // 図形（〇と文字）で作った判子は、その文字を名前にする
+  var STAMP_KEYS = ["approver", "inspector", "checker", "author"];
+  function photoCount(res) { return res.images.filter(function (im) { return !im.stamp; }).length; }
+  function readStamps(sheet, info, d, base, images) {
+    var pos = info._pos || {};
+    function mergeAt(r, c) {
+      for (var i = 0; i < sheet.merges.length; i++) {
+        var m = sheet.merges[i];
+        if (r >= m.r1 && r <= m.r2 && c >= m.c1 && c <= m.c2) return m;
+      }
+      return { r1: r, c1: c, r2: r, c2: c };
+    }
+    // 画像・図形の中心が欄の中にあるか
+    function inside(o, a) {
+      var cr = (o.row + o.toRow + 1) / 2, cc = (o.col + o.toCol + 1) / 2;
+      return cr >= a.r1 && cr <= a.r2 + 1 && cc >= a.c1 && cc <= a.c2 + 1;
+    }
+    var pics = (sheet.images || []).concat(sheet.cellImages || []);
+    var used = [];
+    STAMP_KEYS.forEach(function (key) {
+      var p = pos[key];
+      if (!p) return;
+      var lab = mergeAt(p.r, p.c);
+      var box = mergeAt(lab.r2 + 1, lab.c1);
+      var area = { r1: lab.r2 + 1, r2: box.r2, c1: lab.c1, c2: Math.max(lab.c2, box.c2) };
+      var im = pics.filter(function (x) { return used.indexOf(x) === -1 && inside(x, area); })[0];
+      if (im) {
+        used.push(im);
+        var ext = im.ext === "jpeg" ? "jpg" : im.ext;
+        var src = "images/" + base + "_stamp_" + key + "." + ext;
+        (d.stamps || (d.stamps = {}))[key] = src;
+        images.push({ src: src, bytes: im.bytes, type: ext === "jpg" ? "image/jpeg" : "image/" + ext, stamp: key });
+      }
+      if (!d[key]) {
+        // 図形の判子：同じまとまり（グループ）の文字を読む。
+        // 日付の行は除き、1 文字ずつの行（縦書きの「長／坂」）はつなげ、それ以外は最後の行（日付印の名前）を使う
+        var text = {};
+        (sheet.shapes || []).forEach(function (sp) {
+          if (sp.text && inside(sp, area)) text[sp.group] = (text[sp.group] ? text[sp.group] + "\n" : "") + sp.text;
+        });
+        var name = Object.keys(text).map(function (g) {
+          var lines = text[g].split("\n").map(function (x) { return x.replace(/[\s　]+/g, ""); }).filter(function (x) {
+            return x && !/^(R|H|令和|平成|'|’)?\d{1,4}[.\/\-年]\d{1,2}([.\/\-月]\d{1,2}日?)?$/.test(x);
+          });
+          if (lines.every(function (x) { return x.length === 1; })) return lines.join("");
+          return lines[lines.length - 1];
+        }).filter(Boolean)[0];
+        if (name && name.length <= 10) d[key] = name;
+      }
+    });
   }
 
   var KIND_ORDER = ["safety", "quality", "ease"];
@@ -556,7 +613,8 @@
       msg("手順を読み取れませんでした。見出しの行と列の選び方を確認してください。", true);
     } else {
       msg("自動で読み取りました。<b>手順 " + d.steps.length + " 件</b>" +
-        (result.images.length ? "・写真 " + result.images.length + " 枚" : "") +
+        (photoCount(result) ? "・写真 " + photoCount(result) + " 枚" : "") +
+        (d.stamps ? "・判子 " + Object.keys(d.stamps).length + " 個" : "") +
         "。内容が違う場合は、見出しの行や列を選び直してください。" +
         (result.extraImages ? "<br><small>1 つの手順に写真が複数ある場合は、最初の 1 枚だけを取り込みます（" + result.extraImages + " 枚は取り込みません）。</small>" : ""));
     }
@@ -572,7 +630,9 @@
     var infoRows = [
       ["作業名", d.title], ["文書番号", d.docNo], ["改訂", d.revision], ["工程", d.process], ["ライン", d.line],
       ["品番・品名", d.product], ["制定日", d.issued], ["改訂日", d.updated],
-      ["作成／確認／点検／承認", [d.author, d.checker, d.inspector, d.approver].map(function (x) { return x || "－"; }).join("／")],
+      ["作成／確認／点検／承認", ["author", "checker", "inspector", "approver"].map(function (k) {
+        return (d[k] || "－") + (d.stamps && d.stamps[k] ? "（判子）" : "");
+      }).join("／")],
       ["保護具", d.ppe.join("、")], ["設備・治工具", d.tools.map(function (t) { return t.name + (t.qty ? " " + t.qty : ""); }).join("、")],
       ["安全上の注意", d.cautions.join("、")], ["改訂履歴", d.revisions.length ? d.revisions.length + " 件" : ""]
     ];
@@ -615,5 +675,5 @@
     els.xlApply.disabled = !d.steps.length;
   }
 
-  window.WIImport = { open: open, detect: detect, build: build };
+  window.WIImport = { open: open, detect: detect, build: build, photoCount: photoCount };
 })();

@@ -169,6 +169,18 @@
       (opt.hint ? '<span class="hint">' + opt.hint + '</span>' : '') + '</label>';
   }
 
+  // 承認・点検・確認・作成：名前と、判子の画像（Excel から取り込んだもの・選んだもの）
+  function stampField(label, key) {
+    var img = m.stamps && m.stamps[key];
+    return '<div class="field stamp-field"><label class="field"><span>' + label + '</span>' +
+      '<input type="text" data-path="' + key + '" value="' + esc(m[key]) + '"></label>' +
+      '<div class="stamp-img">' + (img
+        ? '<img src="' + esc(objectUrls[img] || img) + '" alt="' + label + 'の判子" onerror="this.style.visibility=\'hidden\'">' +
+          '<button type="button" class="btn small" data-act="stamp-del" data-path="' + key + '">判子を外す</button>'
+        : '<button type="button" class="btn small" data-act="pick-image" data-path="stamps.' + key + '" title="判子の画像（png・jpg）を選ぶ。無ければ名前を文字で表示します">判子の画像</button>') +
+      '</div></div>';
+  }
+
   function videoFields(base, label) {
     return '<div class="video-fields">' +
       field(label || "動画ファイル", base + ".src", { ph: "videos/xxx.mp4" }) +
@@ -210,10 +222,10 @@
       field(esc(catConf.labels.category), "category", { list: "category", ph: "例：組立／検査／点検" }) +
       field("制定日", "issued", { type: "date" }) +
       field("改訂日", "updated", { type: "date" }) +
-      field("作成", "author") +
-      field("確認", "checker") +
-      field("点検", "inspector") +
-      field("承認", "approver") +
+      stampField("作成", "author") +
+      stampField("確認", "checker") +
+      stampField("点検", "inspector") +
+      stampField("承認", "approver") +
       field("目的", "purpose", { type: "textarea", wide: true }) +
     '</div></section>';
 
@@ -318,7 +330,7 @@
   function setPath(path, v) {
     var o = m;
     var ks = path.split(".");
-    for (var i = 0; i < ks.length - 1; i++) o = o[ks[i]];
+    for (var i = 0; i < ks.length - 1; i++) o = o[ks[i]] || (o[ks[i]] = {});
     o[ks[ks.length - 1]] = v;
   }
   function setInput(path, v) {
@@ -392,6 +404,10 @@
         if (inp) { inp.focus(); inp.placeholder = "改訂の内容を入力（例：手順3の急所を追加）"; }
         return;
       case "rev-del": m.revisions.splice(i, 1); break;
+      case "stamp-del":
+        delete m.stamps[path];
+        if (!Object.keys(m.stamps).length) delete m.stamps;
+        break;
       case "pick-video": pick("video", path); return;
       case "pick-image": pick("image", path); return;
       case "seg": openSeg(path); return;
@@ -768,6 +784,7 @@
       srcs.push(s.image, s.marks && s.marks.base, s.video && s.video.src);
       s.points.forEach(function (p) { srcs.push(p.video && p.video.src); });
     });
+    Object.keys(d.stamps || {}).forEach(function (k) { srcs.push(d.stamps[k]); });
     // この画面で選んだ・書き込んだもので、まだ書き出していないものだけ（同じ名前のファイルは上書き）
     var todo = srcs.filter(function (x, i) { return x && freshFiles[x] && pickedFiles[x] && srcs.indexOf(x) === i; });
     var copied = [];
@@ -883,7 +900,9 @@
       var noVideo = m.steps.filter(function (s) { return !s.video.src; }).length;
       notice("<b>Excel から取り込みました（手順 " + m.steps.length + " 件）。</b><br>" +
         "内容を確認し、" + (noVideo ? "動画を「選ぶ」→「区間を設定」で付けてから、" : "") + "保存してください。" +
-        (res.images.length ? "<br>Excel の写真 " + res.images.length + " 枚は、保存すると images フォルダに書き出されます。" : ""));
+        (res.images.length ? "<br>Excel の" + (WIImport.photoCount(res) ? "写真 " + WIImport.photoCount(res) + " 枚" : "") +
+          (res.data.stamps ? (WIImport.photoCount(res) ? "・" : "") + "判子 " + Object.keys(res.data.stamps).length + " 個" : "") +
+          "は、保存すると images フォルダに書き出されます。" : ""));
       window.scrollTo(0, 0);
     });
   });

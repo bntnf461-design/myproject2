@@ -300,9 +300,14 @@
           // 手順の行にあった写真を images フォルダへ（名前は要領書のファイル名から）
           var stem = name.replace(/\.js$/, "");
           var imgs = (it.images || []).map(function (im) {
+            var ext = im.src.split(".").pop();
+            if (im.stamp) {
+              d.stamps[im.stamp] = "images/" + stem + "_stamp_" + im.stamp + "." + ext;
+              return { src: d.stamps[im.stamp], bytes: im.bytes, type: im.type };
+            }
             var idx = -1;
             d.steps.forEach(function (s, k) { if (s.image === im.src) idx = k; });
-            var src = "images/" + stem + "_" + (idx + 1) + "." + im.src.split(".").pop();
+            var src = "images/" + stem + "_" + (idx + 1) + "." + ext;
             if (idx >= 0) d.steps[idx].image = src;
             return { src: src, bytes: im.bytes, type: im.type };
           });

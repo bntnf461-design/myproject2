@@ -725,6 +725,10 @@ body.viewer { background: #e6ebf3; }
 .fh-stamps > div:first-child { border-left: 0; }
 .fh-stamps .label { padding: 4px 0; background: var(--navy-pale); border-bottom: 1px solid var(--line); font-size: 0.8rem; font-weight: bold; }
 .fh-stamps .who { min-height: 3.6em; display: grid; place-items: center; font-size: 0.9rem; padding: 4px; }
+.fh-stamps .who img { display: block; width: auto; height: auto; max-width: 100%; max-height: 3.2em; object-fit: contain; }
+.stamp-field { display: grid; gap: 4px; align-content: start; }
+.stamp-img { display: flex; align-items: center; gap: 8px; min-height: 2em; }
+.stamp-img img { height: 2.6em; width: auto; max-width: 5em; object-fit: contain; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
 .fh-sub { grid-column: 1 / -1; display: flex; flex-wrap: wrap; border-top: 2px solid var(--navy); }
 .fh-sub .cell { flex: 1 1 10em; border-left: 1px solid var(--line); }
 .fh-sub .cell:first-child { border-left: 0; }

@@ -96,7 +96,7 @@
       '<section class="form-head">' +
         '<div class="fh-title">作業要領書</div>' +
         '<div class="fh-mid">' + mid + '</div>' +
-        '<div class="fh-stamps">' + stamp("承認", m.approver) + stamp("点検", m.inspector) + stamp("確認", m.checker) + stamp("作成", m.author) + '</div>' +
+        '<div class="fh-stamps">' + stamp("承認", m, "approver") + stamp("点検", m, "inspector") + stamp("確認", m, "checker") + stamp("作成", m, "author") + '</div>' +
         '<div class="fh-sub">' + sub.join("") + '</div>' +
         (m.purpose ? '<div class="fh-sub">' + cell("目的", m.purpose, "full") + '</div>' : '') +
       '</section>';
@@ -179,8 +179,11 @@
     docEl.innerHTML = html;
   }
 
-  function stamp(label, who) {
-    return '<div><div class="label">' + label + '</div><div class="who">' + esc(who) + '</div></div>';
+  // 判子の画像があれば画像、無ければ名前を文字で
+  function stamp(label, m, key) {
+    var img = m.stamps && m.stamps[key];
+    var who = img ? '<img src="' + esc(img) + '" alt="' + esc(m[key] || label) + '" title="' + esc(m[key] || "") + '">' : esc(m[key]);
+    return '<div><div class="label">' + label + '</div><div class="who">' + who + '</div></div>';
   }
   function segLabel(v) {
     var s = WI.parseTime(v.start) || 0;
