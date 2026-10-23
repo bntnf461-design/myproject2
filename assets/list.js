@@ -43,7 +43,8 @@
   }
 
   if (!cat.files || !cat.files.length) {
-    statusEl.textContent = "要領書が登録されていません。エディタで作成して「フォルダに保存」してください。";
+    statusEl.innerHTML = "要領書が登録されていません。Excel の要領書は、フォルダに置いただけでは出ません。" +
+      '<a href="bulk.html">Excel まとめて取り込み</a>で取り込んで保存してください。';
     return;
   }
 
@@ -79,17 +80,21 @@
     return function (a, b) { return a === NONE ? (b === NONE ? 0 : 1) : b === NONE ? -1 : s(a, b); };
   }
 
+  // 全角・半角、大文字・小文字の違いを無視して探す（「ＧＫ」でも「gk」でも見つかる）
+  function fold(s) { return String(s || "").normalize("NFKC").toLowerCase(); }
+
   function matchQuery(m) {
-    var q = qEl.value.trim().toLowerCase();
+    var q = fold(qEl.value.trim());
     if (!q) return true;
     // 手順・急所の文字も対象（「トルク」「保存ボタン」などでも探せる）
     if (m._text === undefined) {
-      var parts = [m.docNo, m.title, m.process, m.line, m.product, m.category, m.purpose];
+      var parts = [m.docNo, m.title, m.process, m.line, m.product, m.category, m.purpose, m._file,
+        m.author, m.checker, m.inspector, m.approver];
       (m.steps || []).forEach(function (s) {
         parts.push(s.title, s.detail);
         (s.points || []).forEach(function (p) { parts.push(p.text, p.reason); });
       });
-      m._text = parts.join(" ").toLowerCase();
+      m._text = fold(parts.join(" "));
     }
     var t = m._text;
     return q.split(/\s+/).every(function (w) { return t.indexOf(w) !== -1; });
@@ -177,7 +182,8 @@
     listEl.innerHTML = (filtered ? "" : recentHtml()) + groups.map(function (g) {
       return (g ? '<h2 class="group-head">' + esc(g) + '</h2>' : '') +
         '<ul class="manual-list">' + byKey[g].map(card).join("") + '</ul>';
-    }).join("") || (items.length ? '<div class="notice">該当する要領書がありません。</div>' : "");
+    }).join("") || (items.length ? '<div class="notice">該当する要領書がありません。<br>' +
+      '<small>Excel の要領書は、フォルダに置いただけでは一覧に出ません。<a href="bulk.html">Excel まとめて取り込み</a>で取り込んで保存すると、一覧に出て探せるようになります。</small></div>' : "");
   }
 
   // 30 日以内に作られた・改訂された要領書に印を付ける（変更に気付けるように）

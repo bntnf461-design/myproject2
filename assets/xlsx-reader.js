@@ -16,7 +16,7 @@
     for (var i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) {
       if (u32(b, i) === 0x06054b50) { eocd = i; break; }
     }
-    if (eocd < 0) throw new Error("Excel（.xlsx）ファイルではありません。");
+    if (eocd < 0) throw new Error("このファイルは読めません。古い形式（.xls）の場合は、Excel で開いて「名前を付けて保存」→「Excel ブック（.xlsx）」で保存し直してから取り込んでください。");
     var count = u16(b, eocd + 10);
     var p = u32(b, eocd + 16);
     var entries = {};

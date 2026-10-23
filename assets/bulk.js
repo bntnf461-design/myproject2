@@ -53,8 +53,9 @@
     });
     var xl = files.filter(function (f) { return /\.(xlsx|xlsm)$/i.test(f.name); });
     var old = files.filter(function (f) { return /\.xls$/i.test(f.name); });
+    var oldNames = old.slice(0, 5).map(function (f) { return esc(f.name); }).join("、") + (old.length > 5 ? " ほか" : "");
     if (!xl.length) {
-      notice(old.length ? "古い形式（.xls）のファイルは読めません。Excel で「名前を付けて保存」→「Excel ブック (.xlsx)」で保存し直してください。" : "Excel ファイル（.xlsx）が見つかりません。", true);
+      notice(old.length ? "古い形式（.xls）のファイルは読めません（" + oldNames + "）。Excel で開いて「名前を付けて保存」→「Excel ブック (.xlsx)」で保存し直してください。" : "Excel ファイル（.xlsx）が見つかりません。", true);
       done();
       return;
     }
@@ -65,7 +66,7 @@
       if (i >= xl.length) {
         busy = false;
         done();
-        notice(old.length ? "古い形式（.xls）の " + old.length + " ファイルは読めませんでした（.xlsx で保存し直してください）。" : "", !!old.length);
+        notice(old.length ? "古い形式（.xls）の " + old.length + " ファイルは読めませんでした（" + oldNames + "）。Excel で「Excel ブック (.xlsx)」として保存し直してください。" : "", !!old.length);
         render();
         return;
       }
