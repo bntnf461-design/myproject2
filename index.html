@@ -16,6 +16,10 @@
     --orange: #f29b00;
     --green: #1a9e3a;
     --gray: #9aa3ad;
+    /* 状況の色（設定画面で変更可） */
+    --st-good: #1a9e3a;
+    --st-warn: #f29b00;
+    --st-bad: #d40000;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -108,9 +112,9 @@
     background: var(--gray);
     vertical-align: middle;
   }
-  .dot.good { background: var(--green); }
-  .dot.warn { background: var(--orange); }
-  .dot.bad { background: var(--red); }
+  .dot.good { background: var(--st-good); }
+  .dot.warn { background: var(--st-warn); }
+  .dot.bad { background: var(--st-bad); }
   .dot.blink { animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0.25; } }
 
@@ -278,6 +282,14 @@
     <div class="row-flex"><button id="sAddBreak">＋ 休憩を追加</button>
       <span class="note">休憩中は目標が増えず、終了時間の計算でも休憩分を除外します。</span></div>
 
+    <h3>状況の色</h3>
+    <div class="row-flex">
+      <label><input type="color" id="sColGood"> 100%以上</label>
+      <label><input type="color" id="sColWarn"> 90〜99.9%</label>
+      <label><input type="color" id="sColBad"> 90%未満</label>
+      <button id="sColReset">初期の色に戻す</button>
+    </div>
+
     <h3>操作キー</h3>
     <div class="row-flex">
       <span>取消（−1）キー：</span><button class="keybtn" data-key="minusKey"></button>
@@ -304,6 +316,7 @@
   const STORE_KEY = 'andon-v1';
   const DAY = 86400000;
   const PALETTE = ['#d9e88a', '#d9e88a', '#c9a6f2', '#c9a6f2', '#9fd8f0', '#f5c28a', '#f2a6c4', '#b5e3b0'];
+  const DEFAULT_STATUS_COLORS = { good: '#1a9e3a', warn: '#f29b00', bad: '#d40000' };
   const DEFAULT_KEYS = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'];
 
   // ---------- 状態 ----------
@@ -321,6 +334,7 @@
       minusKey: 'NumpadSubtract',
       startKey: null,
       sound: true,
+      statusColors: { ...DEFAULT_STATUS_COLORS },
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
     };
   }
@@ -491,8 +505,17 @@
     // 行数に合わせて文字サイズを調整
     const rows = st.lines.length + 1;
     document.documentElement.style.setProperty('--cell-font', `${Math.min(9, 62 / rows)}vh`);
+    applyStatusColors();
     renderKeyLegend();
     render();
+  }
+
+  function applyStatusColors() {
+    const c = { ...DEFAULT_STATUS_COLORS, ...st.statusColors };
+    const root = document.documentElement.style;
+    root.setProperty('--st-good', c.good);
+    root.setProperty('--st-warn', c.warn);
+    root.setProperty('--st-bad', c.bad);
   }
 
   function setCells(tr, c, actVal, endText, endSub) {
@@ -692,6 +715,8 @@
     draft = JSON.parse(JSON.stringify(st));
     $('sLineCount').value = draft.lines.length;
     $('sSound').checked = draft.sound;
+    draft.statusColors = { ...DEFAULT_STATUS_COLORS, ...draft.statusColors };
+    renderStatusColors();
     renderSettings();
     dlg.showModal();
   }
@@ -770,6 +795,14 @@
   };
   $('sAddBreak').onclick = () => { draft.breaks.push({ s: '', e: '' }); renderSettings(); };
   $('sClearStartKey').onclick = () => { draft.startKey = null; refreshKeyButtons(); };
+  const statusColorInputs = { good: 'sColGood', warn: 'sColWarn', bad: 'sColBad' };
+  function renderStatusColors() {
+    for (const [k, id] of Object.entries(statusColorInputs)) $(id).value = draft.statusColors[k];
+  }
+  for (const [k, id] of Object.entries(statusColorInputs)) {
+    $(id).oninput = e => (draft.statusColors[k] = e.target.value);
+  }
+  $('sColReset').onclick = () => { draft.statusColors = { ...DEFAULT_STATUS_COLORS }; renderStatusColors(); };
   $('sSound').onchange = e => (draft.sound = e.target.checked);
   $('sCancel').onclick = () => { learning = null; dlg.close(); };
   $('sSave').onclick = () => {
