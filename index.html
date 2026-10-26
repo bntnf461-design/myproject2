@@ -157,6 +157,59 @@
   @keyframes flash { 0% { background: #fff36b; } 100% { } }
   td.flash-minus { animation: flashm .5s ease-out; }
   @keyframes flashm { 0% { background: #ff9c9c; } 100% { } }
+
+  /* ---- 本日の計画ページ ---- */
+  #planView { display: none; }
+  body.planmode main, body.planmode footer { display: none; }
+  body.planmode #planView { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; padding: 1vh 1.2vw 2vh; gap: 1.2vh; }
+  body.planmode #btnPlanView { background: var(--head); outline: 2px solid #fff; }
+  .pv-top { display: flex; align-items: center; gap: 1vw; flex-wrap: wrap; }
+  .pv-top h2 { margin: 0; font-size: clamp(18px, 2vw, 36px); color: #0a3f78; }
+  .pv-top button { font: inherit; font-size: clamp(12px, 1vw, 18px); padding: 4px 12px; border-radius: 6px; border: 1px solid #889; background: #fff; cursor: pointer; }
+  .pv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.8vw; }
+  .pv-card { background: #fff; border-radius: 8px; padding: 0.8vh 1vw; border-left: 6px solid var(--head); box-shadow: 0 1px 3px #0002; }
+  .pv-card .k { font-size: clamp(11px, 0.9vw, 16px); color: #556; }
+  .pv-card .v { font-size: clamp(18px, 2.2vw, 40px); font-weight: bold; font-variant-numeric: tabular-nums; }
+  .pv-card .v small { font-size: 0.5em; font-weight: normal; color: #556; margin-left: 0.3em; }
+  .pv-card.late { border-left-color: var(--st-bad); }
+  .pv-card.late .v { color: var(--st-bad); }
+  .gantt { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px #0002; padding: 0.6vh 0.8vw 1vh; }
+  .g-row { display: grid; grid-template-columns: 7em 1fr; align-items: stretch; min-height: clamp(48px, 8vh, 110px); border-top: 1px solid #dde3ea; }
+  .g-row.g-axis { min-height: 2.2em; border-top: none; }
+  .g-name { display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: clamp(16px, 2vw, 36px); border-radius: 6px; margin: 4px 6px 4px 0; }
+  .g-track { position: relative; }
+  .g-tick { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #c9d2dc; }
+  .g-tick span { position: absolute; top: 0; left: 3px; font-size: clamp(10px, 0.85vw, 15px); color: #445; white-space: nowrap; }
+  .g-break { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, #e9edf2, #e9edf2 6px, #f6f8fa 6px, #f6f8fa 12px); }
+  .g-now { position: absolute; top: 0; bottom: 0; border-left: 3px solid var(--st-bad); z-index: 3; }
+  .g-now span { position: absolute; top: 0; left: 4px; background: var(--st-bad); color: #fff; font-size: 11px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+  .g-blk { position: absolute; top: 8%; height: 66%; border-radius: 6px; border: 2px solid #0006; overflow: hidden; z-index: 2;
+    padding: 0 6px; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; min-width: 3px; }
+  .g-blk .t1 { font-weight: bold; font-size: clamp(11px, 1.05vw, 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+  .g-blk .t2 { font-size: clamp(10px, 0.8vw, 14px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; color: #223; }
+  .g-blk .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #0b5cad33; }
+  .g-blk.done { filter: grayscale(0.85); opacity: 0.65; }
+  .g-blk.cur { border: 3px solid var(--head); box-shadow: 0 0 0 2px #fff, 0 0 8px #0b5cad88; }
+  .g-plan { position: absolute; bottom: 6%; height: 12%; background: #0a3f78; opacity: 0.35; border-radius: 2px; z-index: 1; }
+  .g-legend { display: flex; gap: 1.5vw; flex-wrap: wrap; font-size: clamp(11px, 0.9vw, 16px); color: #334; margin-top: 0.6vh; }
+  .g-legend i { display: inline-block; width: 1.6em; height: 0.9em; vertical-align: middle; margin-right: 0.3em; border-radius: 3px; border: 1px solid #0005; }
+  .pv-table { width: 100%; height: auto; table-layout: auto; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px #0002; font-size: clamp(12px, 1vw, 18px); }
+  .pv-table thead th { background: var(--head); color: #fff; padding: 6px; font-weight: bold; font-size: inherit; line-height: 1.3; height: auto; white-space: nowrap; }
+  .pv-table tr.first td { border-top: 3px solid #7a8899 !important; }
+  .pv-table td { border: 1px solid #d5dce4 !important; padding: 4px 8px; text-align: center; font-size: inherit !important; font-weight: normal !important; white-space: nowrap; }
+  .pv-table td.l { font-weight: bold !important; }
+  .pv-table td.it { text-align: left; }
+  .pv-table tr.done td { color: #778; }
+  .pv-table tr.cur td { background: #fff7c8; font-weight: bold !important; }
+  .pv-table .late { color: var(--st-bad); font-weight: bold; }
+  .pv-empty { background: #fff; border-radius: 8px; padding: 3vh; text-align: center; color: #556; font-size: clamp(14px, 1.4vw, 24px); }
+  @media print {
+    body { overflow: visible; height: auto; background: #fff; }
+    header, main, footer, #banner, #minusMode, #focusWarn, .pv-top button { display: none !important; }
+    #planView { display: flex !important; flex-direction: column; gap: 10px; }
+    .gantt, .pv-table, .pv-card { box-shadow: none; border: 1px solid #ccc; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
   tr.total td { border-top: 4px solid #333; }
 
   /* ---- 下部 ---- */
@@ -267,6 +320,7 @@
   <span class="info" id="info"></span>
   <span class="spacer"></span>
   <button id="btnStart">▶ 作業開始</button>
+  <button id="btnPlanView">📋 本日</button>
   <button id="btnCal">📅 計画</button>
   <button id="btnSettings">⚙ 設定</button>
   <button id="btnHelp">？ 使い方</button>
@@ -306,6 +360,21 @@
   </div>
   <div class="keys" id="keyLegend"></div>
 </footer>
+
+<section id="planView">
+  <div class="pv-top">
+    <h2 id="pvTitle"></h2>
+    <button id="pvPrev">◀ 前の日</button>
+    <button id="pvToday">本日</button>
+    <button id="pvNext">次の日 ▶</button>
+    <span class="spacer"></span>
+    <button id="pvPrint">🖨 印刷</button>
+    <button id="pvBack">✕ アンドン表示に戻る</button>
+  </div>
+  <div class="pv-cards" id="pvCards"></div>
+  <div id="pvGantt"></div>
+  <div id="pvTable"></div>
+</section>
 
 <div id="banner"></div>
 <div id="minusMode">− 取消モード：ラインのキーを押す</div>
@@ -392,6 +461,11 @@
       <span class="note">押すと先頭ラインの計画数量の入力になります。数字＋Enter で次のラインへ、最後のラインで Enter（またはこのキー）を押すと終了します。</span>
     </div>
     <div class="row-flex">
+      <span>表示切替キー：</span><button class="keybtn" data-key="viewKey"></button>
+      <button data-clear="viewKey">なし</button>
+      <span class="note">アンドン表示と「本日の計画」表示を切り替えます。</span>
+    </div>
+    <div class="row-flex">
       <label><input type="checkbox" id="sSound"> カウント時に音を鳴らす</label>
     </div>
   </div>
@@ -451,6 +525,16 @@
       <tr><th>合計</th><td>全ライン・全品目の計画数量・現時点目標・実績の合計。</td></tr>
     </table>
 
+    <h3>1-2. 本日の計画（📋 本日）</h3>
+    <ul>
+      <li>「📋 本日」ボタン（またはテンキー <kbd>＋</kbd>）で、今日の計画を1画面で確認できます。もう一度押すとアンドン表示に戻ります。</li>
+      <li><b>タイムライン</b>：ラインごとに、品目を作る順番・開始〜終了時刻を帯で表示します。斜線は休憩、赤い縦線は現在時刻です。</li>
+      <li>稼働中は、完了した品目は灰色、作業中の品目は青い枠（青い部分が進み具合）で表示し、遅れた分だけ後ろの品目もずれます。帯の下の細い線は当初の計画です。</li>
+      <li><b>一覧表</b>：品目ごとの数量・1個あたりの時間・所要時間・開始／終了時刻・遅れを表示します。</li>
+      <li>「◀ 前の日／次の日 ▶」で、カレンダーに入力した他の日の計画も確認できます。「🖨 印刷」で紙に印刷できます。</li>
+      <li>事務所からは <b>http://現場PCの名前:8080/#plan</b> を開くと、最初からこの画面で表示されます。</li>
+    </ul>
+
     <h3>2. 準備（最初に1回）</h3>
     <ol>
       <li>「⚙ 設定」でライン数（4ライン・5ラインなど）を選びます。</li>
@@ -482,6 +566,7 @@
       <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー（最後に数えた品目から取り消します。端数で増えた分は端数だけ戻ります）</td></tr>
       <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>.</kbd> で小数点、<kbd>−</kbd> で1文字消す）</td></tr>
       <tr><th>リセット</th><td><kbd>／</kbd> を3秒以内に2回</td></tr>
+      <tr><th>本日の計画を表示</th><td><kbd>＋</kbd>（もう一度押すとアンドン表示に戻る）</td></tr>
     </table>
     <p class="note">複数のラインで同時に押しても、それぞれ数えます。テンキーを複数台つなぐ場合は、ラインごとに別のキーを割り当ててください（どの機器から押したかはブラウザで区別できません）。</p>
 
@@ -552,6 +637,7 @@
       startKey: 'NumpadEnter',
       resetKey: 'NumpadDivide',
       planKey: 'NumpadMultiply',
+      viewKey: 'NumpadAdd',
       keyVer: 2,
       autoStart: false,
       startTime: '08:00',
@@ -1114,6 +1200,7 @@
     if (st.minusKey) parts.push(`${k(st.minusKey)}→ライン 取消`);
     if (st.startKey) parts.push(`${k(st.startKey)}開始/停止`);
     if (st.planKey) parts.push(`${k(st.planKey)}計画入力`);
+    if (st.viewKey) parts.push(`${k(st.viewKey)}本日の計画`);
     if (st.resetKey) parts.push(`${k(st.resetKey)}×2 リセット`);
     $('keyLegend').innerHTML = '<span>テンキー：</span>' + parts.map(p => `<span>${p}</span>`).join('');
   }
@@ -1411,7 +1498,8 @@
       }
       return;
     }
-    if (st.planKey && code === st.planKey) {
+    if (st.viewKey && code === st.viewKey) { e.preventDefault(); togglePlanView(); return; }
+    if (st.planKey && code === st.planKey && !planMode) {
       e.preventDefault();
       const first = rowsEl.querySelector('input.plan');
       if (first) { first.focus(); first.select(); }
@@ -1568,7 +1656,7 @@
     // 同じキーが他で使われていたら外す
     draft.lines.forEach(l => { if (l.key === code) l.key = null; });
     if (draft.minusKey === code) draft.minusKey = null;
-    for (const k of ['startKey', 'resetKey', 'planKey']) if (draft[k] === code) draft[k] = null;
+    for (const k of ['startKey', 'resetKey', 'planKey', 'viewKey']) if (draft[k] === code) draft[k] = null;
     if (learning.line !== undefined) draft.lines[learning.line].key = code;
     else draft[learning.key] = code;
     learning = null;
@@ -2343,6 +2431,155 @@
     w.print();
   };
 
+  // ---------- 本日の計画ページ ----------
+  // ラインごとに品目を作る順番に並べ、開始・終了の時刻をタイムラインと表で表示する。
+  // 稼働中は、完了した品目は実際の時刻、作業中・これからの品目は今の進み具合からの見込み時刻で表示する（遅れは後ろへずれる）。
+  let planMode = false, planDate = null, planTick = 0;
+  function togglePlanView(on = !planMode) {
+    planMode = on;
+    document.body.classList.toggle('planmode', on);
+    if (on) { planDate = dateKey(Date.now()); renderPlanView(); }
+    try { history.replaceState(null, '', on ? '#plan' : location.pathname + location.search); } catch (e) { /* noop */ }
+    if (!on) fitLayout();
+  }
+  // 1ラインの品目ごとの予定。live：今日（実績・稼働を反映）
+  function planSchedule(l, entries, dayStart, now, live) {
+    const on = live && started();
+    const base = on ? st.segments[0].s : (st.startTime ? dayStart + parseHM(st.startTime) : null);
+    const out = [];
+    let prev = base, planPrev = base, cum = 0, curFound = false;
+    for (const e of entries) {
+      if (!(e.qty > 0)) continue;
+      const ct = ctOf(e, l), ms = e.qty * ct * 1000;
+      cum += ms;
+      const planEnd = base === null ? null : on ? planReachTime(cum, now) : addWork(base, cum);
+      const r = { e, ct, ms, planStart: planPrev, planEnd, start: prev };
+      planPrev = planEnd;
+      if (live && isDone(e)) { r.state = 'done'; r.end = e.doneAt ?? prev; }
+      else if (!curFound && on) { curFound = true; r.state = 'cur'; r.end = addWork(now, (e.qty - e.act) * ct * 1000); }
+      else { r.state = 'next'; r.end = prev === null ? null : addWork(prev, ms); }
+      if (!curFound && !on && r.state === 'next') curFound = true;
+      prev = r.end;
+      out.push(r);
+    }
+    return out;
+  }
+  const fmtMin = ms => { const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}時間${m % 60 ? pad(m % 60) + '分' : ''}` : `${m}分`; };
+  function renderPlanView() {
+    if (!planMode) return;
+    const now = Date.now();
+    const today = dateKey(now);
+    const live = planDate === today;
+    const d = keyToDate(planDate);
+    const dayStart = d.getTime();
+    // 表示している日を基準に時刻を書く（翌日にかかる分は「翌」）
+    const fmtD = ms => {
+      const n = Math.round((midnight(ms) - dayStart) / DAY);
+      return (n === 1 ? '翌' : n > 1 || n < 0 ? `${new Date(ms).getMonth() + 1}/${new Date(ms).getDate()} ` : '') + fmtHM(ms);
+    };
+    $('pvTitle').textContent = `${live ? '本日の計画' : '計画'}　${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`;
+    const cal = live ? null : calendarDay(st.calendar, planDate);
+    const rows = st.lines.map((l, i) => {
+      const entries = live ? l.queue : cal[i].map(p => ({ item: p.item, qty: p.qty, act: 0, doneAt: null }));
+      return { l, i, items: planSchedule(l, entries, dayStart, now, live) };
+    });
+    const all = rows.flatMap(r => r.items);
+
+    // 要約
+    const totalQty = round2(all.reduce((a, r) => a + r.e.qty, 0));
+    const totalAct = round2(all.reduce((a, r) => a + (live ? r.e.act : 0), 0));
+    const ends = all.map(r => r.end).filter(Boolean), planEnds = all.map(r => r.planEnd).filter(Boolean);
+    const maxEnd = ends.length ? Math.max(...ends) : null, maxPlan = planEnds.length ? Math.max(...planEnds) : null;
+    const allDone = live && all.length && all.every(r => r.state === 'done');
+    const late = live && started() && maxEnd && maxPlan && maxEnd - maxPlan > 60000;
+    const card = (k, v, cls = '') => `<div class="pv-card ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+    $('pvCards').innerHTML = [
+      card('計画数量（合計）', `${fmtNum(totalQty)}<small>${all.length}品目 / ${rows.filter(r => r.items.length).length}ライン</small>`),
+      live && started() ? card('実績（合計）', `${fmtNum(totalAct)}<small>${totalQty ? (totalAct / totalQty * 100).toFixed(1) : 0}%</small>`) : '',
+      card('作業開始', live && started() ? fmtHM(st.segments[0].s) : (st.startTime || '-')),
+      card('計画の終了', maxPlan ? fmtD(maxPlan) : '-'),
+      live && started() ? card(allDone ? '完了' : '今の見込み終了', allDone ? '完了' : maxEnd ? fmtD(maxEnd) : '-', late ? 'late' : '') : '',
+      card('休憩', st.breaks.length ? st.breaks.map(b => `${b.s}〜${b.e}`).join('<br>').replace(/^/, '<small style="margin:0;font-size:0.45em;line-height:1.3;display:block">') + '</small>' : '-'),
+    ].join('');
+
+    // タイムライン
+    const times = [...all.map(r => r.start), ...ends, ...planEnds].filter(Boolean);
+    if (!all.length) {
+      $('pvGantt').innerHTML = `<div class="pv-empty">この日の計画はありません。「📅 計画」で品目と数量を入力してください。</div>`;
+      $('pvTable').innerHTML = '';
+      return;
+    }
+    if (!times.length) {
+      $('pvGantt').innerHTML = `<div class="pv-empty">作業開始時刻が設定されていないため、時刻を計算できません（「⚙ 設定 → 作業開始時刻」）。</div>`;
+    } else {
+      const HOUR = 3600000;
+      const t0 = Math.floor(Math.min(...times) / HOUR) * HOUR;
+      let t1 = Math.ceil(Math.max(...times) / HOUR) * HOUR;
+      if (t1 - t0 < 2 * HOUR) t1 = t0 + 2 * HOUR;
+      const x = t => ((t - t0) / (t1 - t0) * 100).toFixed(3) + '%';
+      const w = (a, b) => (Math.max(0, b - a) / (t1 - t0) * 100).toFixed(3) + '%';
+      const step = t1 - t0 > 14 * HOUR ? 2 * HOUR : HOUR;
+      let ticks = '';
+      for (let t = t0; t <= t1; t += step) ticks += `<div class="g-tick" style="left:${x(t)}"><span>${t === t1 ? '' : fmtD(t)}</span></div>`;
+      const breaks = breakIntervals(t0, t1).map(([a, b]) => `<div class="g-break" style="left:${x(a)};width:${w(a, b)}" title="休憩"></div>`).join('');
+      const showNow = live && now >= t0 && now <= t1;
+      const nowLine = showNow ? `<div class="g-now" style="left:${x(now)}"></div>` : '';
+      let html = `<div class="g-row g-axis"><div></div><div class="g-track">${ticks}` +
+        (showNow ? `<div class="g-now" style="left:${x(now)}"><span>現在 ${fmtD(now)}</span></div>` : '') + `</div></div>`;
+      for (const r of rows) {
+        let blocks = '';
+        for (const it of r.items) {
+          if (it.start === null || it.end === null) continue;
+          const name = itemName(it.e.item) || '品目なし';
+          const prog = it.state === 'cur' ? `<div class="fill" style="width:${Math.min(100, it.e.act / it.e.qty * 100).toFixed(1)}%"></div>` : '';
+          const qtyText = it.state === 'cur' || it.state === 'done' ? `${fmtNum(it.e.act)}/${fmtNum(it.e.qty)}` : fmtNum(it.e.qty);
+          const tip = `${name}　${qtyText}個\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1個 ${fmtNum(it.ct)}秒・所要 ${fmtMin(it.ms)}`;
+          blocks += `<div class="g-blk ${it.state}" style="left:${x(it.start)};width:${w(it.start, it.end)};background:${r.l.color}" title="${esc(tip)}">${prog}` +
+            `<div class="t1">${it.state === 'done' ? '✓ ' : ''}${esc(name)} ${qtyText}</div><div class="t2">${fmtD(it.start)}〜${fmtD(it.end)}</div></div>`;
+          if (live && started() && it.planStart !== null && it.planEnd !== null) {
+            blocks += `<div class="g-plan" style="left:${x(it.planStart)};width:${w(it.planStart, it.planEnd)}" title="当初の計画 ${fmtD(it.planStart)}〜${fmtD(it.planEnd)}"></div>`;
+          }
+        }
+        html += `<div class="g-row"><div class="g-name" style="background:${r.l.color}">${esc(r.l.name)}</div>` +
+          `<div class="g-track">${ticks.replace(/<span>.*?<\/span>/g, '')}${breaks}${nowLine}${blocks}</div></div>`;
+      }
+      html += `<div class="g-legend"><span><i style="background:#ddd"></i>予定</span><span><i style="background:#ddd;border:3px solid var(--head)"></i>作業中（青い部分が進み具合）</span>` +
+        `<span><i style="background:#bbb;opacity:.6"></i>完了</span>` + (live && started() ? `<span><i style="background:#0a3f78;opacity:.35;height:.4em"></i>当初の計画</span>` : '') +
+        `<span><i style="background:repeating-linear-gradient(45deg,#e9edf2,#e9edf2 4px,#f6f8fa 4px,#f6f8fa 8px)"></i>休憩</span>` +
+        (live ? `<span><i style="background:var(--st-bad);width:3px"></i>現在時刻</span>` : '') + '</div>';
+      $('pvGantt').innerHTML = `<div class="gantt">${html}</div>`;
+    }
+
+    // 一覧表
+    let t = `<table class="pv-table"><thead><tr><th>ライン</th><th>順番</th><th>品目</th><th>計画数量</th>${live && started() ? '<th>実績</th>' : ''}` +
+      `<th>1個あたり</th><th>所要時間</th><th>開始</th><th>終了</th>${live && started() ? '<th>当初の計画</th><th>状態</th>' : ''}</tr></thead><tbody>`;
+    for (const r of rows) {
+      if (!r.items.length) {
+        t += `<tr class="first"><td class="l" style="background:${r.l.color}">${esc(r.l.name)}</td><td colspan="${live && started() ? 10 : 7}">計画なし</td></tr>`;
+        continue;
+      }
+      r.items.forEach((it, k) => {
+        const lateMs = it.end && it.planEnd ? it.end - it.planEnd : 0;
+        t += `<tr class="${it.state}${k === 0 ? ' first' : ''}">` + (k === 0 ? `<td class="l" rowspan="${r.items.length}" style="background:${r.l.color}">${esc(r.l.name)}</td>` : '') +
+          `<td>${k + 1}</td><td class="it">${esc(itemName(it.e.item) || '品目なし')}</td><td>${fmtNum(it.e.qty)}</td>` +
+          (live && started() ? `<td>${fmtNum(it.e.act)}</td>` : '') +
+          `<td>${fmtNum(it.ct)}秒</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
+          `<td class="${live && started() && lateMs > 60000 ? 'late' : ''}">${it.end ? fmtD(it.end) : '-'}</td>` +
+          (live && started() ? `<td>${it.planStart ? fmtD(it.planStart) + '〜' + fmtD(it.planEnd) : '-'}</td>` +
+            `<td>${it.state === 'done' ? '✓ 完了' : it.state === 'cur' ? '作業中' : 'これから'}${lateMs > 60000 && it.state !== 'done' ? `<br><span class="late">${fmtMin(lateMs)}遅れ</span>` : ''}</td>` : '') +
+          '</tr>';
+      });
+    }
+    $('pvTable').innerHTML = t + '</tbody></table>';
+  }
+  const shiftPlanDate = n => { const d = keyToDate(planDate); d.setDate(d.getDate() + n); planDate = dateKey(d.getTime()); renderPlanView(); };
+  $('btnPlanView').onclick = e => { e.currentTarget.blur(); togglePlanView(); };
+  $('pvBack').onclick = e => { e.currentTarget.blur(); togglePlanView(false); };
+  $('pvPrev').onclick = e => { e.currentTarget.blur(); shiftPlanDate(-1); };
+  $('pvNext').onclick = e => { e.currentTarget.blur(); shiftPlanDate(1); };
+  $('pvToday').onclick = e => { e.currentTarget.blur(); planDate = dateKey(Date.now()); renderPlanView(); };
+  $('pvPrint').onclick = e => { e.currentTarget.blur(); window.print(); };
+
   // ---------- 起動 ----------
   function startApp() {
     checkDayChange(Date.now());
@@ -2354,8 +2591,10 @@
       checkDayChange(now);
       checkAutoStart(now);
       render();
+      if (planMode && ++planTick % 2 === 0) renderPlanView();
       updateFocusWarn();
     }, 1000);
+    if (location.hash === '#plan') togglePlanView(true);
     if (SERVER) setInterval(poll, 2000);
   }
   if (SERVER) {
