@@ -55,6 +55,9 @@
   .state.run { background: var(--green); }
   .state.pause { background: var(--orange); }
   .state.break { background: #7b3fd0; }
+  .sync { font-size: clamp(11px, 1vw, 18px); font-weight: bold; padding: 0.2vh 0.6vw; border-radius: 5px; display: none; }
+  .sync.on { display: inline-block; background: #e7f6ea; color: #1a7a33; }
+  .sync.off { display: inline-block; background: #ffe1e1; color: #c00; animation: blink 1s steps(2) infinite; }
   .info { font-size: clamp(12px, 1.1vw, 20px); opacity: 0.9; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
@@ -260,6 +263,7 @@
   <h1>ライン進捗アンドン</h1>
   <span class="clock" id="clock">--:--:--</span>
   <span class="state" id="state">待機中</span>
+  <span class="sync" id="syncState"></span>
   <span class="info" id="info"></span>
   <span class="spacer"></span>
   <button id="btnStart">▶ 作業開始</button>
@@ -324,6 +328,15 @@
       <tbody id="sLines"></tbody>
     </table>
     <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
+
+    <h3>事務所との共有</h3>
+    <div id="sShare" class="note"></div>
+    <div class="row-flex">
+      <button id="sExport">💾 データを書き出す（バックアップ）</button>
+      <button id="sImportData">📂 データを読み込む</button>
+      <input type="file" id="sDataFile" accept=".json" hidden>
+      <span class="note">計画・品目・実績・設定をまとめて1つのファイルに保存／復元します。</span>
+    </div>
 
     <h3>品目の登録</h3>
     <p class="note">品目ごとに「1個あたりの時間」を登録します。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
@@ -478,11 +491,29 @@
       <li>「リセット」ボタン／<kbd>／</kbd>×2 では、実績と作業時間を消去します（計画と設定は残ります）。</li>
     </ul>
 
-    <h3>6. 困ったとき</h3>
+    <h3>6. 事務所との共有（社内LAN）</h3>
+    <p>現場PCを「サーバー役」にすると、事務所などの PC のブラウザから同じ画面を開いて、見たり変更したりできます（計画・品目・設定・実績の修正・作業開始など、現場と同じ操作ができます）。変更は約2秒で全部の画面に反映されます。</p>
+    <ol>
+      <li><b>現場PC（最初に1回）</b>：アンドンのフォルダー（index.html・andon-server.ps1 と .bat ファイル）を現場PCに置きます。</li>
+      <li><b>setup-firewall.bat</b> を右クリック →「管理者として実行」（事務所からつなげるようにする設定。最初に1回だけ）。会社のルールで実行できない場合は、システム担当者に「TCP 8080番の受信許可」を依頼してください。</li>
+      <li><b>start-server.bat</b> をダブルクリック。黒い画面（サーバー）が開き、ブラウザでアンドンが開きます。<b>黒い画面は閉じないでください</b>（最小化は可）。</li>
+      <li>毎朝自動で起動したいときは <b>register-startup.bat</b> をダブルクリック（Windows にサインインすると自動で起動します）。</li>
+      <li><b>事務所PC</b>：ブラウザで <b>http://現場PCの名前:8080/</b> を開きます（正しいアドレスは「⚙ 設定 → 事務所との共有」に表示されます）。ブックマークしておくと便利です。</li>
+    </ol>
+    <ul>
+      <li><b>これまでのデータを引き継ぐ</b>：前に index.html を直接開いて使っていた場合は、そちらの画面で「⚙ 設定 → 💾 データを書き出す」→ サーバーの画面で「📂 データを読み込む」。</li>
+      <li>画面上部の <b>● 共有中</b> がつながっている印です。<b>● サーバー未接続</b> のときもその PC で操作はでき、つながった時に自動で合わせます。</li>
+      <li>現場と事務所で同時に変更しても、両方の変更が残るように自動で合わせます（同じラインを両方で数えた場合は両方の数を足します）。</li>
+      <li>データは現場PCの <b>andon-data.json</b> に保存され、<b>backup</b> フォルダーに1日1回コピーが残ります（60日分）。</li>
+      <li>現場PCがスリープすると事務所から見られなくなります。Windows の電源設定で「スリープしない」にしてください。</li>
+    </ul>
+
+    <h3>7. 困ったとき</h3>
     <ul>
       <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。計画数量に達した品目は、それ以上数えません。</li>
       <li><b>画面がはみ出す</b>：「⛶ 全画面」を押すか F11 キーで全画面にしてください。文字の大きさは自動で調整されます。</li>
-      <li><b>データの保存</b>：このパソコンのブラウザに自動で保存されます。別のパソコンやブラウザには引き継がれません。</li>
+      <li><b>データの保存</b>：ファイルを直接開いた場合は、このパソコンのブラウザに保存されます。共有サーバーを使う場合は現場PCの andon-data.json に保存されます（6. 参照）。</li>
+      <li><b>事務所から開けない</b>：現場PCで start-server.bat の黒い画面が開いているか、setup-firewall.bat を実行したか、現場PCがスリープしていないかを確認してください。名前で開けない場合は、黒い画面に表示される http://数字:8080/ のアドレスを使ってください。</li>
     </ul>
   </div>
   <div class="dlg-foot">
@@ -568,6 +599,146 @@
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (e) { /* noop */ }
+    if (SERVER) { sync.dirty = true; schedulePush(); }
+  }
+  // 保存データを今のバージョンの形にそろえる（読み込み・共有サーバーから受け取ったとき）
+  function normalizeState(obj) {
+    const s = Object.assign(defaultState(), obj || {});
+    migrate(s);
+    s.lines.forEach(l => l.queue.forEach(e => {
+      e.qty = Math.max(0, Number(e.qty) || 0);
+      e.act = Math.min(Math.max(0, Number(e.act) || 0), e.qty);
+      if (!(e.qty > 0 && e.act >= e.qty - 1e-9)) e.doneAt = null;
+    }));
+    return s;
+  }
+
+  // ---------- 共有サーバーとの同期 ----------
+  // andon-server.ps1 から開いたとき（http://〜）は、状態をサーバーに置いて全 PC で共有する。
+  // 変更はすぐ送り、2秒ごとに他の PC の変更を受け取る。同時に変更したときは 3方向マージで合わせる。
+  const SERVER = /^https?:$/.test(location.protocol);
+  const SYNC_KEY = STORE_KEY + '-sync';
+  const sync = { rev: -1, base: null, dirty: false, pushing: false, online: null, contacted: false, timer: null };
+  try {
+    const m = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null');
+    if (m && SERVER) { sync.rev = m.rev; sync.base = m.base; }
+  } catch (e) { /* noop */ }
+  function setBase(rev, base) {
+    sync.rev = rev;
+    sync.base = base;
+    try { localStorage.setItem(SYNC_KEY, JSON.stringify({ rev, base })); } catch (e) { /* noop */ }
+  }
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  // base（前回そろえた状態）から見て、自分が変えた所は自分の値、相手が変えた所は相手の値を使う。
+  // 実績（act）を両方で数えたときは、両方の増減を足す。
+  function merge3(base, local, remote, key) {
+    if (same(local, base)) return remote;
+    if (same(remote, base) || same(local, remote)) return local;
+    if (key === 'act' && [base, local, remote].every(v => typeof v === 'number')) return Math.max(0, round2(local + remote - base));
+    const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (isObj(base) && isObj(local) && isObj(remote)) {
+      const out = {};
+      for (const k of new Set([...Object.keys(local), ...Object.keys(remote)])) {
+        const inB = k in base, inL = k in local, inR = k in remote;
+        if (inB && !inL && (!inR || same(remote[k], base[k]))) continue;     // 自分が消した
+        if (inB && !inR && (!inL || same(local[k], base[k]))) continue;     // 相手が消した
+        out[k] = merge3(base[k], local[k], remote[k], k);
+      }
+      return out;
+    }
+    if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote) &&
+        local.length === base.length && remote.length === base.length) {
+      return local.map((v, i) => merge3(base[i], v, remote[i], key));
+    }
+    return local;
+  }
+
+  // 受け取った状態を画面に反映する
+  function adopt(next) {
+    const before = st.lines.map(l => l.queue.reduce((a, e) => a + e.act, 0));
+    const rebuild = !same(st.lines.map(l => [l.name, l.color, l.key]), next.lines.map(l => [l.name, l.color, l.key]));
+    st = next;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (e) { /* noop */ }
+    if (!rowsEl.children.length) return;
+    if (rebuild) { buildRows(); return; }
+    applyStatusColors();
+    renderKeyLegend();
+    render();
+    // 他の PC で数えたラインを光らせる
+    st.lines.forEach((l, i) => {
+      const now = l.queue.reduce((a, e) => a + e.act, 0);
+      if (before[i] !== undefined && now !== before[i]) flashCell(i, now > before[i] ? 'flash' : 'flash-minus');
+    });
+  }
+  function receive(j) {
+    const remote = normalizeState(j.state);
+    let next = remote;
+    if (sync.base && !same(st, sync.base)) {
+      next = normalizeState(merge3(sync.base, clone(st), clone(remote)));
+      if (!same(next, remote)) sync.dirty = true;
+    }
+    setBase(j.rev, clone(remote));
+    adopt(next);
+  }
+  function setOnline(on) {
+    if (!SERVER || sync.online === on) return;
+    sync.online = on;
+    const el = $('syncState');
+    el.className = 'sync ' + (on ? 'on' : 'off');
+    el.textContent = on ? '● 共有中' : '● サーバー未接続';
+    el.title = on ? '共有サーバーとつながっています' : 'andon-server.ps1 が動いているか確認してください（このPCの変更は、つながった時に送ります）';
+  }
+  function schedulePush() {
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(push, 150);
+  }
+  async function push() {
+    if (!SERVER || sync.pushing || !sync.dirty || !sync.contacted) return;
+    sync.pushing = true;
+    sync.dirty = false;
+    const body = JSON.stringify(st);
+    try {
+      const res = await fetch('api/state', { method: 'POST', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-Base-Rev': String(sync.rev) }, body });
+      const j = await res.json();
+      if (res.status === 200) setBase(j.rev, JSON.parse(body));
+      else if (res.status === 409) receive(j);
+      else throw new Error('HTTP ' + res.status);
+      setOnline(true);
+    } catch (e) {
+      sync.dirty = true;
+      setOnline(false);
+    }
+    sync.pushing = false;
+    if (sync.dirty) setTimeout(push, sync.online ? 0 : 3000);
+  }
+  async function poll() {
+    if (!SERVER || sync.pushing) return;
+    try {
+      const res = await fetch(sync.contacted ? `api/state?rev=${sync.rev}` : 'api/state', { cache: 'no-store' });
+      const j = await res.json();
+      if (sync.pushing) return;
+      setOnline(true);
+      if (!sync.contacted) {
+        // 最初の接続：サーバーが空ならこの PC のデータを共有データにする。前回の続きならマージ、初めての PC ならサーバーの内容を使う
+        sync.contacted = true;
+        if (j.state === null) { setBase(j.rev, null); sync.dirty = true; }
+        else if (j.rev === sync.rev) { if (!same(st, sync.base)) sync.dirty = true; }
+        else if (sync.base) receive(j);
+        else { setBase(j.rev, clone(normalizeState(j.state))); adopt(normalizeState(j.state)); }
+      } else if (!j.same && j.rev > sync.rev) {
+        receive(j);
+      } else if (!j.same && j.rev < sync.rev) {
+        // サーバーのデータが入れ替わった（データファイルを戻した等）：サーバーの内容に合わせる
+        setBase(j.rev, clone(normalizeState(j.state)));
+        adopt(normalizeState(j.state));
+      }
+      if (sync.dirty) push();
+    } catch (e) {
+      setOnline(false);
+    }
   }
 
   const started = () => st.segments.length > 0;
@@ -991,12 +1162,16 @@
     save();
     render();
     beep(delta > 0);
-    const cell = rowsEl.children[i].children[4];
-    const cls = delta > 0 ? 'flash' : 'flash-minus';
+    flashCell(i, delta > 0 ? 'flash' : 'flash-minus');
+    if (msg) banner(msg);
+  }
+  function flashCell(i, cls) {
+    const tr = rowsEl.children[i];
+    if (!tr) return;
+    const cell = tr.children[4];
     cell.classList.remove('flash', 'flash-minus');
     void cell.offsetWidth;
     cell.classList.add(cls);
-    if (msg) banner(msg);
   }
 
   function dateKey(ms) {
@@ -1238,8 +1413,52 @@
     draft.statusColors = { ...DEFAULT_STATUS_COLORS, ...draft.statusColors };
     renderStatusColors();
     renderSettings();
+    renderShareInfo();
     dlg.showModal();
   }
+  async function renderShareInfo() {
+    const el = $('sShare');
+    if (!SERVER) {
+      el.innerHTML = '今は <b>ファイルを直接開いています</b>（このPCだけで使う形）。事務所と共有するには、現場PCで <b>andon-server.ps1</b> を起動し、ブラウザで <b>http://localhost:8080/</b> を開いてください（「？ 使い方」の「6. 事務所との共有」参照）。';
+      return;
+    }
+    el.textContent = '共有サーバーにつないでいます。';
+    try {
+      const info = await (await fetch('api/info', { cache: 'no-store' })).json();
+      const urls = [`http://${info.host}:${info.port}/`, ...info.ips.map(ip => `http://${ip}:${info.port}/`)];
+      el.innerHTML = `共有サーバーにつないでいます（${sync.online ? '接続中' : '未接続'}）。事務所などの PC のブラウザで次のどれかを開くと、同じ画面を見たり変更したりできます：<br>` +
+        urls.map(u => `<b>${esc(u)}</b>`).join('　');
+    } catch (e) {
+      el.textContent = '共有サーバーに接続できません。andon-server.ps1 が動いているか確認してください。';
+    }
+  }
+  $('sExport').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(st, null, 1)], { type: 'application/json' }));
+    a.download = `andon-backup_${dateKey(Date.now())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  };
+  $('sImportData').onclick = () => { $('sDataFile').value = ''; $('sDataFile').click(); };
+  $('sDataFile').onchange = async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); if (!data || !Array.isArray(data.lines)) throw new Error(); }
+    catch (err) { alert('アンドンのデータファイルとして読み込めません'); return; }
+    if (!confirm('今のデータ（計画・品目・実績・設定）を、このファイルの内容に置き換えます。よろしいですか？' +
+      (SERVER ? '\n（共有中のすべての PC に反映されます）' : ''))) return;
+    learning = null;
+    dlg.close();
+    st = normalizeState(data);
+    st.day = null;            // 今日の計画をカレンダーから読み直す
+    checkDayChange(Date.now());
+    save();
+    buildRows();
+    banner('データを読み込みました');
+  };
   function renderSettings() {
     const lt = $('sLines');
     lt.innerHTML = '';
@@ -1384,11 +1603,12 @@
   // ---------- 計画カレンダー ----------
   const calDlg = $('calDlg');
   const WD = ['日', '月', '火', '水', '木', '金', '土'];
-  let calDraft = null, calMonth = null, calSel = null;
+  let calDraft = null, calOrig = null, calMonth = null, calSel = null;
 
   function keyToDate(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
   function openCalendar() {
     calDraft = JSON.parse(JSON.stringify(st.calendar));
+    calOrig = JSON.parse(JSON.stringify(st.calendar));
     const now = new Date();
     calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     calSel = dateKey(now.getTime());
@@ -1523,9 +1743,12 @@
   $('calClear').onclick = () => { delete calDraft[calSel]; renderCalendar(); };
   $('calCancel').onclick = () => calDlg.close();
   $('calSave').onclick = () => {
-    // 数量 0 の行は除いて保存
-    for (const k of Object.keys(calDraft)) calDraft[k] = calendarDay(calDraft, k);
-    st.calendar = calDraft;
+    // 数量 0 の行は除き、変更した日だけを書き戻す（開いている間に他の PC が変えた日は消さない）
+    for (const k of new Set([...Object.keys(calDraft), ...Object.keys(calOrig)])) {
+      if (same(calDraft[k], calOrig[k])) continue;
+      if (calDraft[k]) st.calendar[k] = calendarDay(calDraft, k);
+      else delete st.calendar[k];
+    }
     applyPlans(calendarDay(st.calendar, dateKey(Date.now())));
     save();
     calDlg.close();
@@ -2089,17 +2312,27 @@
   };
 
   // ---------- 起動 ----------
-  checkDayChange(Date.now());
-  checkAutoStart(Date.now());
-  buildRows();
-  updateFocusWarn();
-  setInterval(() => {
-    const now = Date.now();
-    checkDayChange(now);
-    checkAutoStart(now);
-    render();
+  function startApp() {
+    checkDayChange(Date.now());
+    checkAutoStart(Date.now());
+    buildRows();
     updateFocusWarn();
-  }, 1000);
+    setInterval(() => {
+      const now = Date.now();
+      checkDayChange(now);
+      checkAutoStart(now);
+      render();
+      updateFocusWarn();
+    }, 1000);
+    if (SERVER) setInterval(poll, 2000);
+  }
+  if (SERVER) {
+    // 共有サーバーの最新データを受け取ってから始める（つながらなければこの PC のデータで始め、あとで合わせる）
+    setOnline(false);
+    Promise.race([poll(), new Promise(res => setTimeout(res, 3000))]).then(startApp);
+  } else {
+    startApp();
+  }
 })();
 </script>
 </body>

@@ -1,0 +1,5 @@
+# 共有サーバーのデータ（各現場PCのもの）
+andon-data.json
+andon-rev.txt
+andon-data.json.tmp
+backup/
