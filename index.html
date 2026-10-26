@@ -1761,7 +1761,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     catch (e) { el.textContent = '共有サーバーに接続できません。現場PCで start-server.bat の黒い画面が開いているか確認してください。'; return; }
     // PC には名前のアドレス、スマートフォンには数字（IP）のアドレスが確実
     const byName = `http://${info.host}:${info.port}/`;
-    const byIp = info.ips.length ? `http://${info.ips[0]}:${info.port}/` : byName;
+    // この端末が IP で開いているならそのアドレス（実際につながっている）を、そうでなければ社内 LAN のアドレスを使う
+    const here = /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname) && !location.hostname.startsWith('127.') ? location.hostname : null;
+    const ips = here ? [here, ...info.ips.filter(ip => ip !== here)] : info.ips;
+    const byIp = ips.length ? `http://${ips[0]}:${info.port}/` : byName;
+    const otherIps = ips.slice(1).map(ip => `http://${ip}:${info.port}/`);
     el.innerHTML = `
       <div>共有サーバーにつないでいます（${sync.online ? '接続中' : '未接続'}）。事務所などの PC・スマートフォンから、同じ画面を見たり変更したりできます。</div>
       <div class="share-box">
@@ -1783,7 +1787,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
             <figure>${qrSvg(byIp)}<figcaption>アンドン</figcaption></figure>
             <figure>${qrSvg(byIp + '#plan')}<figcaption>本日の計画</figcaption></figure>
           </div>
-          <div class="note">社内の Wi-Fi につないだ端末で読み取ってください。</div>
+          <div class="note">社内の Wi-Fi につないだ端末で読み取ってください（${esc(byIp)}）。${otherIps.length ? `つながらないときは ${otherIps.map(u => `<b>${esc(u)}</b>`).join('、')} も試してください。` : ''}</div>
         </div>
       </div>`;
     el.querySelector('[data-act=copy]').onclick = () => copyText(byName);

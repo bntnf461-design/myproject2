@@ -41,6 +41,24 @@ function Save-State([string]$json, [int]$rev) {
   }
 }
 
+# ---------- この PC の社内向け IP アドレス ----------
+# 仮想マシン用・VPN 用などのアダプターがあっても、社内 LAN で使っているアドレスを先頭にする
+function Get-LanIPs {
+  $all = @([Net.Dns]::GetHostAddresses([Net.Dns]::GetHostName()) |
+    Where-Object { $_.AddressFamily -eq 'InterNetwork' -and -not [Net.IPAddress]::IsLoopback($_) -and -not $_.ToString().StartsWith('169.254.') } |
+    ForEach-Object { $_.ToString() } | Select-Object -Unique)
+  $primary = $null
+  try {
+    # 外へ向かう経路のアドレスを調べる（UDP なので実際には何も送らない）
+    $u = New-Object Net.Sockets.UdpClient
+    $u.Connect('10.255.255.255', 9)
+    $primary = $u.Client.LocalEndPoint.Address.ToString()
+    $u.Close()
+  } catch { }
+  if ($primary -and ($all -contains $primary)) { $all = @($primary) + @($all | Where-Object { $_ -ne $primary }) }
+  return $all
+}
+
 # ---------- HTTP ----------
 function Send-Response($stream, [int]$code, [string]$type, [byte[]]$body) {
   $reason = @{ 200 = 'OK'; 400 = 'Bad Request'; 404 = 'Not Found'; 405 = 'Method Not Allowed'; 409 = 'Conflict'; 413 = 'Payload Too Large'; 500 = 'Internal Server Error' }[$code]
@@ -135,7 +153,7 @@ function Handle($stream, $req) {
     return
   }
   if ($req.Method -eq 'GET' -and $path -eq '/api/info') {
-    $ips = @([Net.Dns]::GetHostAddresses([Net.Dns]::GetHostName()) | Where-Object { $_.AddressFamily -eq 'InterNetwork' -and -not [Net.IPAddress]::IsLoopback($_) } | ForEach-Object { '"' + $_.ToString() + '"' })
+    $ips = @(Get-LanIPs | ForEach-Object { '"' + $_ + '"' })
     $info = '{"host":"' + [Net.Dns]::GetHostName() + '","port":' + $Port + ',"ips":[' + ($ips -join ',') + ']}'
     Send-Text $stream 200 'application/json; charset=utf-8' $info
     return
@@ -178,8 +196,7 @@ Write-Host ' ライン進捗アンドン サーバー 起動中（この画面�
 Write-Host '========================================================'
 Write-Host " この PC で開く     : http://localhost:$Port/"
 Write-Host " 事務所などから開く : http://${hostName}:$Port/"
-[Net.Dns]::GetHostAddresses($hostName) | Where-Object { $_.AddressFamily -eq 'InterNetwork' -and -not [Net.IPAddress]::IsLoopback($_) } |
-  ForEach-Object { Write-Host "                      http://$($_.ToString()):$Port/" }
+Get-LanIPs | ForEach-Object { Write-Host "                      http://${_}:$Port/" }
 Write-Host " データの保存先     : $dataFile"
 # 事務所 PC に配るショートカット（ダブルクリックでブラウザが開く）をこのフォルダーに作る
 try {
