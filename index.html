@@ -233,6 +233,7 @@
   .cal-edit .lines { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0; }
   .cal-edit .lines label { display: flex; align-items: center; gap: 6px; font-weight: bold; }
   .cal-edit .lines input { width: 6em; font: inherit; padding: 3px 4px; }
+  .excel-row { background: #eef6ee; border: 1px solid #b9d8b9; border-radius: 6px; padding: 6px 8px; }
 
   /* ---- 説明書 ---- */
   .help h3 { margin-top: 18px; }
@@ -387,6 +388,13 @@
         <button id="calFillWeekdays">この計画を今月の平日すべてに入れる</button>
         <button id="calClear">この日をクリア</button>
       </div>
+      <div class="row-flex excel-row">
+        <b>Excel：</b>
+        <button id="calTemplate">📄 雛形をダウンロード（表示中の月）</button>
+        <button id="calImport">📥 Excelから取り込み</button>
+        <input type="file" id="calFile" accept=".xlsx,.xls,.csv" hidden>
+        <span class="note">雛形に計画数量を入力して保存し、そのファイルを取り込みます（.xlsx / .csv）。</span>
+      </div>
       <p class="note">日付をクリックして各ラインの計画数量を入力します。24時を過ぎると、実績・計画数量がすべてリセットされ、その日の計画がカレンダーから自動で読み込まれます（未入力の日は 0）。今日の計画を変更すると、画面の計画数量にもすぐ反映されます。</p>
     </div>
   </div>
@@ -423,6 +431,14 @@
       <li><b>前もって入力する</b>：「📅 計画」を押し、日付をクリックして各ラインの計画数量を入れて「保存」。「この計画を今月の平日すべてに入れる」でまとめて入力できます。</li>
       <li><b>当日に入力する</b>：表の計画数量をクリックして入力するか、テンキー <kbd>＊</kbd> を押して数字＋<kbd>Enter</kbd>（次のラインへ進みます）。</li>
     </ul>
+
+    <h3>3-2. Excel から取り込む</h3>
+    <ol>
+      <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・日付が入った Excel ファイルができます）。</li>
+      <li>Excel で開き、「計画」シートの各日付の行に計画数量を入力して保存します。休みの日は空欄のままにします。</li>
+      <li>「📥 Excelから取り込み」でそのファイルを選び、内容を確認して「OK」→「保存」を押します。</li>
+    </ol>
+    <p class="note">読み込めるのは .xlsx と .csv です（古い .xls は「.xlsx」で保存し直してください）。1行目の見出しのライン名で列を判断します。入力ミス（数字以外・マイナスなど）がある行は取り込まず、行番号を表示します。</p>
 
     <h3>4. 毎日の操作（テンキー）</h3>
     <table>
@@ -599,6 +615,14 @@
 
   const pad = n => String(n).padStart(2, '0');
   const fmtHM = ms => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  // 終了時刻の表示：翌日以降は「翌」や日付を付ける
+  function fmtEnd(ms) {
+    const days = Math.round((midnight(ms) - midnight(Date.now())) / DAY);
+    if (days === 0) return fmtHM(ms);
+    if (days === 1) return '翌' + fmtHM(ms);
+    const d = new Date(ms);
+    return `${d.getMonth() + 1}/${d.getDate()} ${fmtHM(ms)}`;
+  }
   const fmtHMS = ms => { const d = new Date(ms); return `${fmtHM(ms)}:${pad(d.getSeconds())}`; };
   const fmtDur = ms => { const m = Math.floor(ms / 60000); return `${Math.floor(m / 60)}時間${pad(m % 60)}分`; };
   function keyLabel(code) {
@@ -741,8 +765,8 @@
       tr.children[0].textContent = l.name;
       const inp = tr.children[1].querySelector('input');
       if (document.activeElement !== inp) inp.value = l.plan;
-      const endText = c.done ? '完了' : c.planEnd ? fmtHM(c.planEnd) : '-';
-      const endSub = c.done ? (c.doneAt ? fmtHM(c.doneAt) + ' 完了' : '') : c.forecast ? '予測 ' + fmtHM(c.forecast) : '';
+      const endText = c.done ? '完了' : c.planEnd ? fmtEnd(c.planEnd) : '-';
+      const endSub = c.done ? (c.doneAt ? fmtHM(c.doneAt) + ' 完了' : '') : c.forecast ? '予測 ' + fmtEnd(c.forecast) : '';
       setCells(tr, c, l.act, endText, endSub);
       sp += c.plan; stg += c.target; sa += l.act;
       maxPlanEnd = later(maxPlanEnd, c.planEnd);
@@ -756,8 +780,8 @@
     const rate = stg > 0 ? (sa / stg) * 100 : (started() && sa > 0 ? 100 : null);
     const totDone = sp > 0 && allDone;
     setCells(tot, { target: stg, diff, rate }, sa,
-      totDone ? '完了' : maxPlanEnd ? fmtHM(maxPlanEnd) : '-',
-      totDone ? (maxDone ? fmtHM(maxDone) + ' 完了' : '') : maxForecast ? '予測 ' + fmtHM(maxForecast) : '');
+      totDone ? '完了' : maxPlanEnd ? fmtEnd(maxPlanEnd) : '-',
+      totDone ? (maxDone ? fmtHM(maxDone) + ' 完了' : '') : maxForecast ? '予測 ' + fmtEnd(maxForecast) : '');
     fitText();
   }
 
@@ -1128,12 +1152,17 @@
   $('sSave').onclick = () => {
     learning = null;
     draft.breaks = draft.breaks.filter(b => b.s && b.e);
-    draft.lines.forEach(l => {
+    // 設定を開いている間に自動開始・日付変更があっても、実績・稼働区間は最新を保持
+    const dayChanged = draft.day !== st.day;
+    draft.lines.forEach((l, i) => {
+      const cur = st.lines[i];
+      l.act = cur ? cur.act : 0;
+      l.doneAt = cur ? cur.doneAt : null;
+      if (dayChanged) l.plan = cur ? cur.plan : 0;
       l.plan = Math.max(0, parseInt(l.plan, 10) || 0);
       l.ct = Math.max(1, Number(l.ct) || 1);
       l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
     });
-    // 稼働区間は設定中にも進んでいる可能性があるので最新を保持
     draft.segments = st.segments;
     draft.autoStartDate = st.autoStartDate;
     draft.calendar = st.calendar;
@@ -1266,6 +1295,411 @@
     render();
   };
   $('btnCal').onclick = e => { e.currentTarget.blur(); openCalendar(); };
+
+  // ---------- Excel 取り込み・雛形 ----------
+  // 外部ライブラリを使わず、.xlsx（ZIP + XML）をブラウザだけで読み書きする
+
+  // ZIP を読み込んで { ファイル名: Uint8Array } を返す
+  async function unzip(buf) {
+    const u8 = new Uint8Array(buf);
+    const dv = new DataView(buf);
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('Excel ファイル（.xlsx）として読み込めません');
+    const count = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const files = {};
+    const dec = new TextDecoder();
+    for (let n = 0; n < count; n++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('ファイルが壊れています');
+      const method = dv.getUint16(p + 10, true);
+      const csize = dv.getUint32(p + 20, true);
+      const nameLen = dv.getUint16(p + 28, true);
+      const extraLen = dv.getUint16(p + 30, true);
+      const commentLen = dv.getUint16(p + 32, true);
+      const local = dv.getUint32(p + 42, true);
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nameLen));
+      p += 46 + nameLen + extraLen + commentLen;
+      if (!/\.(xml|rels)$/i.test(name)) continue;
+      const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+      const data = u8.subarray(start, start + csize);
+      if (method === 0) files[name] = data;
+      else if (method === 8) {
+        const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        files[name] = new Uint8Array(await new Response(stream).arrayBuffer());
+      }
+    }
+    return files;
+  }
+
+  function colIndex(ref) {
+    let n = 0;
+    for (const ch of ref.replace(/\d+$/, '')) n = n * 26 + (ch.charCodeAt(0) - 64);
+    return n - 1;
+  }
+  const xmlText = el => [...el.getElementsByTagName('t')].map(t => t.textContent).join('');
+
+  // .xlsx の「計画」シート（なければ先頭シート）を 2 次元配列で返す。日付書式のセルは Date にする
+  async function readXlsx(buf) {
+    const files = await unzip(buf);
+    const dec = new TextDecoder();
+    const xml = name => files[name] ? new DOMParser().parseFromString(dec.decode(files[name]), 'application/xml') : null;
+    const wb = xml('xl/workbook.xml');
+    if (!wb) throw new Error('Excel ファイル（.xlsx）として読み込めません');
+    const sheets = [...wb.getElementsByTagName('sheet')];
+    if (!sheets.length) throw new Error('シートがありません');
+    const sheet = sheets.find(sh => sh.getAttribute('name') === '計画') || sheets[0];
+    const rid = sheet.getAttribute('r:id') || sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    let target = 'worksheets/sheet1.xml';
+    const rels = xml('xl/_rels/workbook.xml.rels');
+    if (rels) {
+      const rel = [...rels.getElementsByTagName('Relationship')].find(x => x.getAttribute('Id') === rid);
+      if (rel) target = rel.getAttribute('Target');
+    }
+    const path = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+    const ws = xml(path);
+    if (!ws) throw new Error('シートを読み込めません');
+
+    const sst = xml('xl/sharedStrings.xml');
+    const strings = sst ? [...sst.getElementsByTagName('si')].map(xmlText) : [];
+
+    // 日付書式のスタイル番号を調べる
+    const dateStyles = new Set();
+    const styles = xml('xl/styles.xml');
+    if (styles) {
+      const custom = {};
+      for (const f of styles.getElementsByTagName('numFmt')) custom[f.getAttribute('numFmtId')] = f.getAttribute('formatCode');
+      const xfsEl = styles.getElementsByTagName('cellXfs')[0];
+      if (xfsEl) [...xfsEl.getElementsByTagName('xf')].forEach((xf, i) => {
+        const id = +xf.getAttribute('numFmtId');
+        const code = (custom[id] || '').replace(/"[^"]*"|\[[^\]]*\]/g, '');
+        if ((id >= 14 && id <= 22) || (id >= 27 && id <= 36) || (id >= 50 && id <= 58) || /[ymd]/i.test(code)) dateStyles.add(i);
+      });
+    }
+
+    const rows = [];
+    for (const row of ws.getElementsByTagName('row')) {
+      const ri = +row.getAttribute('r') - 1;
+      const cells = [];
+      for (const c of row.getElementsByTagName('c')) {
+        const ci = colIndex(c.getAttribute('r'));
+        const t = c.getAttribute('t');
+        const v = c.getElementsByTagName('v')[0];
+        let val = null;
+        if (t === 's') val = strings[+v?.textContent] ?? '';
+        else if (t === 'inlineStr') val = xmlText(c);
+        else if (t === 'str' || t === 'e') val = v ? v.textContent : '';
+        else if (t === 'b') val = v ? v.textContent === '1' : null;
+        else if (v) {
+          val = Number(v.textContent);
+          if (dateStyles.has(+(c.getAttribute('s') || 0))) val = serialToDate(val);
+        }
+        cells[ci] = val;
+      }
+      rows[ri] = cells;
+    }
+    return Array.from(rows, x => x || []);
+  }
+
+  function serialToDate(n) {
+    const d = new Date(1899, 11, 30);
+    d.setDate(d.getDate() + Math.floor(n));
+    return d;
+  }
+  function dateToSerial(d) {
+    return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / DAY);
+  }
+
+  // CSV（UTF-8 / Shift_JIS）を 2 次元配列で返す
+  function readCsv(buf) {
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { text = new TextDecoder('shift_jis').decode(buf); }
+    text = text.replace(/^﻿/, '');
+    const rows = [];
+    let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) {
+        if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+        else if (ch === '"') q = false;
+        else cell += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === ',') { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(cell); rows.push(row); row = []; cell = '';
+      } else cell += ch;
+    }
+    if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  // セルの値を日付キー（YYYY-MM-DD）に変換。読めなければ null
+  function cellToDateKey(v) {
+    if (v instanceof Date) return dateKey(v.getTime());
+    if (typeof v === 'number' && v > 30000 && v < 80000) return dateKey(serialToDate(v).getTime());
+    if (typeof v !== 'string') return null;
+    const sv = v.trim().replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    let m = /^(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/.exec(sv);
+    let y, mo, d;
+    if (m) { [y, mo, d] = [+m[1], +m[2], +m[3]]; }
+    else if ((m = /^(\d{1,2})[\/\-.月](\d{1,2})/.exec(sv))) { y = new Date().getFullYear(); mo = +m[1]; d = +m[2]; }
+    else return null;
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+    return dateKey(dt.getTime());
+  }
+  const normName = v => String(v ?? '').trim().replace(/ライン$/, '').replace(/\s+/g, '').toUpperCase();
+
+  // 2 次元配列から計画を取り出す。{ plans: {日付: [..]}, errors: [], warnings: [] }
+  function parsePlanRows(rows) {
+    const errors = [], warnings = [];
+    const firstDate = rows.findIndex(r => cellToDateKey(r[0]) !== null);
+    if (firstDate < 0) {
+      errors.push('A列に日付が見つかりません（雛形の形式で入力してください）');
+      return { plans: {}, errors, warnings };
+    }
+    // 見出し行（日付行の直前）から列とラインを対応付ける
+    const header = firstDate > 0 ? rows[firstDate - 1] : [];
+    const colOf = st.lines.map((l, i) => {
+      const hit = header.findIndex((h, ci) => ci > 0 && normName(h) === normName(l.name));
+      return hit > 0 ? hit : (header.length > 1 ? -1 : i + 1);
+    });
+    st.lines.forEach((l, i) => { if (colOf[i] < 0) warnings.push(`ライン「${l.name}」の列が見出しにありません（0 として扱います）`); });
+    header.forEach((h, ci) => {
+      if (ci > 0 && h !== null && String(h).trim() !== '' && !st.lines.some(l => normName(l.name) === normName(h))) {
+        warnings.push(`見出し「${h}」に対応するラインがありません（取り込みません）`);
+      }
+    });
+
+    const plans = {};
+    for (let ri = firstDate; ri < rows.length; ri++) {
+      const r = rows[ri];
+      const rowNo = ri + 1;
+      if (!r.some(v => v !== null && v !== undefined && String(v).trim() !== '')) continue;
+      const key = cellToDateKey(r[0]);
+      if (!key) { errors.push(`${rowNo}行目：日付「${r[0] ?? ''}」を読み取れません`); continue; }
+      const vals = colOf.map(ci => (ci < 0 ? null : r[ci]));
+      if (vals.every(v => v === null || v === undefined || String(v).trim() === '')) continue; // 空欄の日は取り込まない
+      const nums = [];
+      let bad = false;
+      vals.forEach((v, i) => {
+        if (v === null || v === undefined || String(v).trim() === '') { nums.push(0); return; }
+        const n = typeof v === 'number' ? v : Number(String(v).trim().replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/,/g, ''));
+        if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+          errors.push(`${rowNo}行目：ライン「${st.lines[i].name}」の計画数量「${v}」は 0 以上の整数で入力してください`);
+          bad = true;
+        }
+        nums.push(n);
+      });
+      if (bad) continue;
+      if (plans[key]) warnings.push(`${rowNo}行目：日付 ${key} が重複しています（後の行を使います）`);
+      plans[key] = nums;
+    }
+    return { plans, errors, warnings };
+  }
+
+  async function importPlanFile(file) {
+    let rows;
+    try {
+      const buf = await file.arrayBuffer();
+      rows = /\.csv$/i.test(file.name) ? readCsv(buf) : await readXlsx(buf);
+    } catch (e) {
+      alert('取り込みできませんでした。\n' + (e.message || e) +
+        (/\.xls$/i.test(file.name) ? '\n\n古い形式（.xls）は読めません。Excel で「.xlsx」形式で保存し直してください。' : ''));
+      return;
+    }
+    const { plans, errors, warnings } = parsePlanRows(rows);
+    const keys = Object.keys(plans).sort();
+    const list = a => a.slice(0, 15).join('\n') + (a.length > 15 ? `\n…ほか ${a.length - 15} 件` : '');
+    if (!keys.length) {
+      alert('取り込める計画がありませんでした。' + (errors.length ? '\n\n【エラー】\n' + list(errors) : ''));
+      return;
+    }
+    let msg = `${keys[0]} 〜 ${keys[keys.length - 1]} の ${keys.length} 日分を取り込みます。\n同じ日の計画は上書きされます。`;
+    if (errors.length) msg += `\n\n【エラー：この行は取り込みません】\n${list(errors)}`;
+    if (warnings.length) msg += `\n\n【注意】\n${list(warnings)}`;
+    if (!confirm(msg + '\n\nよろしいですか？')) return;
+    Object.assign(calDraft, plans);
+    const d0 = keyToDate(keys[0]);
+    calMonth = new Date(d0.getFullYear(), d0.getMonth(), 1);
+    calSel = keys[0];
+    renderCalendar();
+    banner(`${keys.length} 日分を取り込みました。「保存」で確定します`);
+  }
+
+  // ---- .xlsx 雛形の作成 ----
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(u8) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  // 無圧縮の ZIP を作る
+  function zip(files) {
+    const enc = new TextEncoder();
+    const parts = [], central = [];
+    let offset = 0;
+    for (const [name, text] of Object.entries(files)) {
+      const nameU8 = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+      lh.setUint16(26, nameU8.length, true); lh.setUint16(28, 0, true);
+      parts.push(new Uint8Array(lh.buffer), nameU8, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+      ch.setUint16(28, nameU8.length, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), nameU8);
+      offset += 30 + nameU8.length + data.length;
+    }
+    const cdSize = central.reduce((a, b) => a + b.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, Object.keys(files).length, true); end.setUint16(10, Object.keys(files).length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)],
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  function colName(i) { let s = ''; i++; while (i) { s = String.fromCharCode(65 + (i - 1) % 26) + s; i = Math.floor((i - 1) / 26); } return s; }
+
+  // 表示中の月の雛形（日付 × ライン）。入力済みの計画は値として入れる
+  function buildTemplate(year, month) {
+    const days = new Date(year, month + 1, 0).getDate();
+    const n = st.lines.length;
+    const strCell = (ref, v, s) => `<c r="${ref}" t="inlineStr"${s ? ` s="${s}"` : ''}><is><t>${esc(v)}</t></is></c>`;
+    let rowsXml = `<row r="1">${strCell('A1', '日付', 1)}${st.lines.map((l, i) => strCell(colName(i + 1) + '1', l.name, 1)).join('')}</row>`;
+    for (let d = 1; d <= days; d++) {
+      const dt = new Date(year, month, d);
+      const r = d + 1;
+      const wd = dt.getDay();
+      const style = wd === 0 ? 3 : wd === 6 ? 4 : 2;
+      const plan = calDraft[dateKey(dt.getTime())];
+      let cells = `<c r="A${r}" s="${style}"><v>${dateToSerial(dt)}</v></c>`;
+      st.lines.forEach((_, i) => {
+        const ref = colName(i + 1) + r;
+        cells += plan ? `<c r="${ref}" s="5"><v>${Number(plan[i]) || 0}</v></c>` : `<c r="${ref}" s="5"/>`;
+      });
+      rowsXml += `<row r="${r}">${cells}</row>`;
+    }
+    const sheet1 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<dimension ref="A1:${colName(n)}${days + 1}"/>
+<sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="18"/>
+<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="${n + 1}" width="12" customWidth="1"/></cols>
+<sheetData>${rowsXml}</sheetData>
+<dataValidations count="1"><dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0以上の整数を入力してください" sqref="B2:${colName(n)}${days + 1}"><formula1>0</formula1></dataValidation></dataValidations>
+</worksheet>`;
+    const help = [
+      'ライン進捗アンドン 計画取り込み用の雛形',
+      '',
+      '【入力のしかた】',
+      '1. 「計画」シートの各日付の行に、ラインごとの計画数量（0以上の整数）を入力します。',
+      '2. 休みの日など、計画のない日は空欄のままにします（空欄の行は取り込みません）。',
+      '3. 1行目の見出し（ライン名）は、アンドンのライン名と同じにしてください。',
+      '4. 日付の行は追加・削除できます。日付は A 列に「2026/11/02」のように入力します。',
+      '5. 保存するときは「Excel ブック（.xlsx）」または「CSV」形式にします。',
+      '',
+      '【取り込みかた】',
+      'アンドンの「📅 計画」→「📥 Excelから取り込み」でこのファイルを選び、内容を確認して「保存」を押します。',
+      '同じ日の計画は上書きされます。',
+    ];
+    const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<cols><col min="1" max="1" width="110" customWidth="1"/></cols>
+<sheetData>${help.map((t, i) => `<row r="${i + 1}">${t ? strCell('A' + (i + 1), t, i === 0 ? 6 : 0) : ''}</row>`).join('')}</sheetData>
+</worksheet>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy/mm/dd(aaa)"/></numFmts>
+<fonts count="5">
+<font><sz val="11"/><name val="Meiryo UI"/><family val="2"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Meiryo UI"/><family val="2"/></font>
+<font><sz val="11"/><color rgb="FFC62828"/><name val="Meiryo UI"/><family val="2"/></font>
+<font><sz val="11"/><color rgb="FF1565C0"/><name val="Meiryo UI"/><family val="2"/></font>
+<font><b/><sz val="14"/><name val="Meiryo UI"/><family val="2"/></font>
+</fonts>
+<fills count="3">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF0B5CAD"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="7">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+<xf numFmtId="164" fontId="2" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>
+<xf numFmtId="164" fontId="3" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+    return zip({
+      '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`,
+      '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+      'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<bookViews><workbookView activeTab="0"/></bookViews>
+<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="説明" sheetId="2" r:id="rId2"/></sheets>
+</workbook>`,
+      'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`,
+      'xl/worksheets/sheet1.xml': sheet1,
+      'xl/worksheets/sheet2.xml': sheet2,
+      'xl/styles.xml': styles,
+    });
+  }
+
+  $('calTemplate').onclick = () => {
+    const y = calMonth.getFullYear(), m = calMonth.getMonth();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(buildTemplate(y, m));
+    a.download = `plan_${y}-${pad(m + 1)}.xlsx`;   // 日本語名だと環境によって名前が付かないため英数字にする
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  };
+  $('calImport').onclick = () => { $('calFile').value = ''; $('calFile').click(); };
+  $('calFile').onchange = e => { const f = e.target.files[0]; if (f) importPlanFile(f); };
+
 
   // ---------- 説明書 ----------
   $('btnHelp').onclick = e => { e.currentTarget.blur(); $('helpDlg').showModal(); };
