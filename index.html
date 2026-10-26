@@ -646,7 +646,7 @@
     <h3>3-2. Excel から取り込む</h3>
     <ol>
       <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・品目・日付が入った Excel ファイルができます）。</li>
-      <li>「品目」シートに品目名・1個あたりの時間・単位（秒／分／時間）を入力します。</li>
+      <li>「品目」シートに品目名・1個あたりの時間・単位（秒／分／時間）を入力します。時間は Excel の時刻の形（例：0:01:30）でも入力できます。</li>
       <li>「計画」シートに「日付・ライン・品目・計画数量」を1行ずつ入力します。同じ日・同じラインで複数の品目を作るときは、作る順番に行を並べます（行は挿入して増やせます。日付を省略すると上の行と同じ日）。</li>
       <li>「📥 Excelから取り込み」でそのファイルを選び、内容を確認して「OK」→「保存」を押します。</li>
     </ol>
@@ -1077,6 +1077,8 @@
   const UNITS = { s: { label: '秒', sec: 1 }, m: { label: '分', sec: 60 }, h: { label: '時間', sec: 3600 } };
   const unitOf = u => (UNITS[u] ? u : 's');
   const ctValue = (ct, u) => Math.round((Number(ct) || 0) / UNITS[unitOf(u)].sec * 10000) / 10000;
+  // 数字＋単位 → 秒（1.15分 → 68.99999… のような誤差を丸める）
+  const toSec = (v, u) => Math.round(v * UNITS[unitOf(u)].sec * 1e6) / 1e6;
   const fmtCt = (ct, u) => `${fmtNum(ctValue(ct, u))}${UNITS[unitOf(u)].label}`;
   // Excel・CSV の単位の文字（秒／分／時間、s／min／h など）
   function parseUnit(v) {
@@ -1101,7 +1103,7 @@
     sel.value = unitOf(obj[unitKey]);
     inp.value = ctValue(obj[ctKey], sel.value);
     // 単位を変えたときは、入力した数字をそのまま新しい単位で読む（例：2 のまま 秒→時間）
-    const apply = () => { obj[unitKey] = sel.value; obj[ctKey] = (Number(inp.value) || 0) * UNITS[sel.value].sec; };
+    const apply = () => { obj[unitKey] = sel.value; obj[ctKey] = toSec(Number(inp.value) || 0, sel.value); };
     inp.oninput = apply;
     sel.onchange = apply;
     return box;
@@ -1865,10 +1867,11 @@
     const dup = names.find((n, i) => names.indexOf(n) !== i);
     if (dup) { alert(`品目名「${dup}」が重複しています`); return; }
     if (draft.items.some(it => !(it.ct > 0))) { alert('品目の「1個あたりの時間」は 0 より大きい数で入力してください'); return; }
+    const badLine = draft.lines.find(l => !(Number(l.ct) > 0));
+    if (badLine) { alert(`ライン「${badLine.name}」の「品目なしの時の1個あたりの時間」は 0 より大きい数で入力してください`); return; }
     // 設定を開いている間に実績・計画・自動開始・日付変更が変わっても最新を保持（ライン数を増やした分は空）
     draft.lines.forEach((l, i) => {
       l.queue = st.lines[i] ? st.lines[i].queue : [];
-      if (!(Number(l.ct) > 0)) l.ct = 60;
     });
     draft.segments = st.segments;
     draft.autoStartDate = st.autoStartDate;
@@ -2100,7 +2103,7 @@
     const strings = sst ? [...sst.getElementsByTagName('si')].map(xmlText) : [];
 
     // 日付書式のスタイル番号を調べる
-    const dateStyles = new Set();
+    const dateStyles = new Set(), timeStyles = new Set();
     const styles = xml('xl/styles.xml');
     if (styles) {
       const custom = {};
@@ -2108,8 +2111,11 @@
       const xfsEl = styles.getElementsByTagName('cellXfs')[0];
       if (xfsEl) [...xfsEl.getElementsByTagName('xf')].forEach((xf, i) => {
         const id = +xf.getAttribute('numFmtId');
-        const code = (custom[id] || '').replace(/"[^"]*"|\[[^\]]*\]/g, '');
-        if ((id >= 14 && id <= 22) || (id >= 27 && id <= 36) || (id >= 50 && id <= 58) || /[ymd]/i.test(code)) dateStyles.add(i);
+        const raw = (custom[id] || '').replace(/"[^"]*"/g, '');
+        const code = raw.replace(/\[[^\]]*\]/g, '');
+        // 時刻だけの書式（h:mm:ss、[h]:mm など）は「作業時間」として秒で読む
+        if ((id >= 18 && id <= 21) || (id >= 45 && id <= 47) || (raw && /[hs]/i.test(raw) && !/[yd]/i.test(code))) timeStyles.add(i);
+        else if ((id >= 14 && id <= 22) || (id >= 27 && id <= 36) || (id >= 50 && id <= 58) || /[ymd]/i.test(code)) dateStyles.add(i);
       });
     }
 
@@ -2138,7 +2144,9 @@
           else if (t === 'b') val = v ? v.textContent === '1' : null;
           else if (v) {
             val = Number(v.textContent);
-            if (dateStyles.has(+(c.getAttribute('s') || 0))) val = serialToDate(val);
+            const si = +(c.getAttribute('s') || 0);
+            if (timeStyles.has(si)) val = { sec: Math.round(val * 86400 * 1000) / 1000 };
+            else if (dateStyles.has(si)) val = serialToDate(val);
           }
           cells[ci] = val;
         }
@@ -2229,12 +2237,19 @@
       const r = rows[ri];
       if (isBlank(r[cName])) continue;
       const name = normText(r[cName]);
-      const v = cCt >= 0 ? toNum(r[cCt]) : NaN;
+      const cell = cCt >= 0 ? r[cCt] : null;
       let unit = cUnit >= 0 ? parseUnit(r[cUnit]) : null;
       if (unit === undefined) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の単位「${r[cUnit]}」は 秒・分・時間 のどれかで入力してください`); continue; }
+      if (cell && typeof cell === 'object' && 'sec' in cell) {
+        // Excel の時刻形式（0:01:30 など）で入力された時間。単位の指定がなければ大きさで決める
+        if (!(cell.sec > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間は 0 より大きくしてください`); continue; }
+        items.push({ name, ct: cell.sec, unit: unit || (cell.sec >= 3600 ? 'h' : cell.sec >= 60 ? 'm' : 's') });
+        continue;
+      }
       unit = unit || headUnit;
-      if (!(v > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間「${r[cCt] ?? ''}」は 0 より大きい数で入力してください`); continue; }
-      items.push({ name, ct: v * UNITS[unit].sec, unit });
+      const v = toNum(cell);
+      if (!(v > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間「${cell ?? ''}」は 0 より大きい数で入力してください`); continue; }
+      items.push({ name, ct: toSec(v, unit), unit });
     }
     return { items, errors };
   }
@@ -2484,6 +2499,7 @@
       '',
       '【「品目」シート】',
       '品目名・1個あたりの時間・単位（秒／分／時間）を登録します。単位が空欄のときは秒になります。',
+      '時間は Excel の時刻の形（例：0:01:30＝1分30秒）で入力することもできます。',
       'ここに書いた品目は、取り込むとアンドンの品目に追加・更新されます。',
       '',
       '【「計画」シート】',
