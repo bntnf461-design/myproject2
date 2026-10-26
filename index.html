@@ -40,7 +40,8 @@
     padding: 0.8vh 1.2vw;
     background: #0a3f78;
     color: #fff;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    white-space: nowrap;
   }
   header h1 { margin: 0; font-size: clamp(16px, 2.2vw, 40px); white-space: nowrap; }
   .clock { font-size: clamp(16px, 2.2vw, 40px); font-variant-numeric: tabular-nums; font-weight: bold; }
@@ -54,13 +55,15 @@
   .state.run { background: var(--green); }
   .state.pause { background: var(--orange); }
   .state.break { background: #7b3fd0; }
-  .info { font-size: clamp(12px, 1.1vw, 20px); opacity: 0.9; }
+  .info { font-size: clamp(12px, 1.1vw, 20px); opacity: 0.9; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   header button {
     font: inherit;
-    font-size: clamp(13px, 1.2vw, 22px);
+    font-size: clamp(12px, 1.05vw, 22px);
     font-weight: bold;
-    padding: 0.6vh 1.2vw;
+    padding: 0.6vh 0.8vw;
+    flex-shrink: 0;
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -206,6 +209,39 @@
   .keybtn.learning { background: #ffeb7a !important; }
   .row-flex { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
   .note { color: #555; font-size: 13px; }
+
+  /* ---- 計画カレンダー ---- */
+  .cal-nav { display: flex; align-items: center; gap: 12px; justify-content: center; margin-bottom: 8px; }
+  .cal-nav b { font-size: 20px; min-width: 9em; text-align: center; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .cal .wd { text-align: center; font-weight: bold; font-size: 13px; padding: 2px; }
+  .cal .wd.sun, .cal .day.sun .num { color: #c62828; }
+  .cal .wd.sat, .cal .day.sat .num { color: #1565c0; }
+  .cal .day {
+    border: 1px solid #c5cfdb; border-radius: 6px; min-height: 64px; padding: 3px 5px;
+    cursor: pointer; background: #fff; font-size: 12px; line-height: 1.3; overflow: hidden;
+  }
+  .cal .day:hover { border-color: var(--head); }
+  .cal .day.other { visibility: hidden; }
+  .cal .day.today { background: #fff8d6; }
+  .cal .day.sel { outline: 3px solid var(--head); outline-offset: -2px; }
+  .cal .day.past { opacity: 0.55; }
+  .cal .num { font-weight: bold; font-size: 14px; }
+  .cal .tot { font-weight: bold; color: var(--head); font-size: 15px; }
+  .cal .det { color: #445; word-break: break-all; }
+  .cal-edit { margin-top: 10px; border-top: 1px solid #ccc; padding-top: 8px; }
+  .cal-edit .lines { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0; }
+  .cal-edit .lines label { display: flex; align-items: center; gap: 6px; font-weight: bold; }
+  .cal-edit .lines input { width: 6em; font: inherit; padding: 3px 4px; }
+
+  /* ---- 説明書 ---- */
+  .help h3 { margin-top: 18px; }
+  .help table { margin: 6px 0; }
+  .help td, .help th { text-align: left !important; }
+  .help th { width: 9em; background: #e4ecf6; border: 1px solid #aab; padding: 4px 8px; font-size: 15px; white-space: nowrap; vertical-align: top; }
+  .help td { line-height: 1.6; }
+  .help ol, .help ul { margin: 4px 0; padding-left: 1.5em; line-height: 1.7; }
+  .help kbd { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; font-family: inherit; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -217,7 +253,9 @@
   <span class="info" id="info"></span>
   <span class="spacer"></span>
   <button id="btnStart">▶ 作業開始</button>
+  <button id="btnCal">📅 計画</button>
   <button id="btnSettings">⚙ 設定</button>
+  <button id="btnHelp">？ 使い方</button>
   <button id="btnFull">⛶ 全画面</button>
   <button id="btnReset">リセット</button>
 </header>
@@ -279,10 +317,11 @@
 
     <h3>作業開始時刻</h3>
     <div class="row-flex">
-      <label><input type="checkbox" id="sAutoStart"> 毎日この時刻に自動で作業開始する</label>
+      <span>作業開始時刻：</span>
       <input type="time" id="sStartTime" style="width:auto">
+      <label><input type="checkbox" id="sAutoStart"> この時刻に自動で作業開始する</label>
     </div>
-    <p class="note">設定した時刻になると自動で作業開始します（前日の実績はリセットされます）。開始時刻より後に画面を開いた場合も、設定した時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
+    <p class="note">作業開始前の終了時間は「作業開始時刻 ＋ 計画数量 × 1個あたりの時間 ＋ 休憩」で表示します。自動開始にすると、この時刻に自動で作業開始します。開始時刻より後に画面を開いた場合も、この時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
 
     <h3>休憩時間</h3>
     <table>
@@ -330,6 +369,90 @@
   </div>
 </dialog>
 
+<dialog id="calDlg">
+  <div class="dlg-head">計画カレンダー（1日の計画数量を先に入力）</div>
+  <div class="dlg-body">
+    <div class="cal-nav">
+      <button id="calPrev">◀ 前の月</button>
+      <b id="calTitle"></b>
+      <button id="calNext">次の月 ▶</button>
+      <button id="calToday">今日</button>
+    </div>
+    <div class="cal" id="calGrid"></div>
+    <div class="cal-edit">
+      <b id="calSelTitle"></b>
+      <div class="lines" id="calLines"></div>
+      <div class="row-flex">
+        <button id="calCopyPrev">前日の計画をコピー</button>
+        <button id="calFillWeekdays">この計画を今月の平日すべてに入れる</button>
+        <button id="calClear">この日をクリア</button>
+      </div>
+      <p class="note">日付をクリックして各ラインの計画数量を入力します。24時を過ぎると、実績・計画数量がすべてリセットされ、その日の計画がカレンダーから自動で読み込まれます（未入力の日は 0）。今日の計画を変更すると、画面の計画数量にもすぐ反映されます。</p>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button id="calCancel">キャンセル</button>
+    <button id="calSave" class="primary">保存</button>
+  </div>
+</dialog>
+
+<dialog id="helpDlg">
+  <div class="dlg-head">使い方（説明書）</div>
+  <div class="dlg-body help" id="helpBody">
+    <h3>1. 画面の見かた</h3>
+    <table>
+      <tr><th>計画数量</th><td>その日に作る数。計画カレンダーで先に入力しておけます。</td></tr>
+      <tr><th>現時点目標</th><td>今の時刻までに作り終えているべき数。<br>実稼働時間 ÷ 1個あたりの時間（休憩・一時停止中は増えません）</td></tr>
+      <tr><th>実績数量</th><td>テンキーで数えた数。</td></tr>
+      <tr><th>差異</th><td>実績 − 現時点目標。足りない分は ▲ で表示。</td></tr>
+      <tr><th>進捗率</th><td>実績 ÷ 現時点目標。</td></tr>
+      <tr><th>状況</th><td><span class="dot good"></span> 100%以上 ／ <span class="dot warn"></span> 90〜99.9% ／ <span class="dot bad"></span> 90%未満（90%未満は稼働中に点滅）。色は設定で変更できます。</td></tr>
+      <tr><th>終了時間</th><td>大きい数字：作業開始時刻から計画どおりに作った場合の終了時刻（休憩を含む）。<br>小さい「予測」：今の実績から、残りを作り終える見込み時刻。<br>すべて作り終えると「完了」と完了時刻を表示します。</td></tr>
+    </table>
+
+    <h3>2. 準備（最初に1回）</h3>
+    <ol>
+      <li>「⚙ 設定」でライン数（4ライン・5ラインなど）を選びます。</li>
+      <li>各ラインの「1個あたりの時間（秒）」を入力します。</li>
+      <li>作業開始時刻と休憩時間を入力します。毎日決まった時刻に始めるなら「自動で作業開始する」にチェックを入れます。</li>
+      <li>必要に応じて、キーの割り当て・行の色・状況の色を変えて「保存」します。</li>
+    </ol>
+
+    <h3>3. 計画の入力</h3>
+    <ul>
+      <li><b>前もって入力する</b>：「📅 計画」を押し、日付をクリックして各ラインの計画数量を入れて「保存」。「この計画を今月の平日すべてに入れる」でまとめて入力できます。</li>
+      <li><b>当日に入力する</b>：表の計画数量をクリックして入力するか、テンキー <kbd>＊</kbd> を押して数字＋<kbd>Enter</kbd>（次のラインへ進みます）。</li>
+    </ul>
+
+    <h3>4. 毎日の操作（テンキー）</h3>
+    <table>
+      <tr><th>作業開始・一時停止・再開</th><td><kbd>Enter</kbd>（押すたびに切り替わります。自動開始なら押さなくても始まります）</td></tr>
+      <tr><th>1個できた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）</td></tr>
+      <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー</td></tr>
+      <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>−</kbd> で1文字消す）</td></tr>
+      <tr><th>リセット</th><td><kbd>／</kbd> を3秒以内に2回</td></tr>
+    </table>
+    <p class="note">複数のラインで同時に押しても、それぞれ数えます。テンキーを複数台つなぐ場合は、ラインごとに別のキーを割り当ててください（どの機器から押したかはブラウザで区別できません）。</p>
+
+    <h3>5. 自動でリセットされるもの</h3>
+    <ul>
+      <li>24時を過ぎると、実績・作業時間・計画数量がすべてリセットされ、新しい日の計画がカレンダーから読み込まれます。</li>
+      <li>「リセット」ボタン／<kbd>／</kbd>×2 では、実績・作業時間・終了時間の予測を消去します（計画数量と設定は残ります）。</li>
+    </ul>
+
+    <h3>6. 困ったとき</h3>
+    <ul>
+      <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。</li>
+      <li><b>画面がはみ出す</b>：「⛶ 全画面」を押すか F11 キーで全画面にしてください。文字の大きさは自動で調整されます。</li>
+      <li><b>データの保存</b>：このパソコンのブラウザに自動で保存されます。別のパソコンやブラウザには引き継がれません。</li>
+    </ul>
+  </div>
+  <div class="dlg-foot">
+    <button id="helpPrint">🖨 印刷</button>
+    <button id="helpClose" class="primary">閉じる</button>
+  </div>
+</dialog>
+
 <script>
 (() => {
   'use strict';
@@ -363,6 +486,8 @@
       sound: true,
       statusColors: { ...DEFAULT_STATUS_COLORS },
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
+      calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順の計画数量] }
+      day: null,           // 表示中データの日付
     };
   }
 
@@ -500,16 +625,16 @@
     const target = started() ? Math.min(plan, Math.floor(workSec / ct)) : 0;
     const diff = l.act - target;
     const rate = target > 0 ? (l.act / target) * 100 : (started() && l.act > 0 ? 100 : null);
-    let end = null, planEnd = null;
-    if (!started()) {
-      // 作業開始前（リセット直後を含む）は終了時間を表示しない
-    } else if (plan > 0 && l.act >= plan) {
-      end = l.doneAt;
-    } else if (plan > 0) {
-      end = addWork(now, (plan - l.act) * ct * 1000);
-      planEnd = planReachTime(plan * ct * 1000, now);
+    // planEnd：作業開始時刻から計画どおりに作った場合の終了時刻
+    // forecast：今の実績から残りを作り終える見込み時刻
+    let planEnd = null, forecast = null;
+    const done = plan > 0 && l.act >= plan;
+    if (plan > 0) {
+      if (started()) planEnd = planReachTime(plan * ct * 1000, now);
+      else if (st.startTime) planEnd = addWork(midnight(now) + parseHM(st.startTime), plan * ct * 1000);
+      if (started() && !done) forecast = addWork(now, (plan - l.act) * ct * 1000);
     }
-    return { plan, target, diff, rate, end, planEnd, done: plan > 0 && l.act >= plan };
+    return { plan, target, diff, rate, planEnd, forecast, doneAt: done ? l.doneAt : null, done };
   }
 
   // ---------- 描画 ----------
@@ -600,7 +725,7 @@
     else if (brk) { stEl.textContent = `休憩中 ${brk.s}〜${brk.e}`; stEl.className = 'state break'; }
     else { stEl.textContent = '稼働中'; stEl.className = 'state run'; }
     $('info').textContent = started() ? `開始 ${fmtHM(st.segments[0].s)}　実稼働 ${fmtDur(workSec * 1000)}`
-      : st.autoStart && st.startTime && st.autoStartDate !== dateKey(now) ? `開始予定 ${st.startTime}（自動）` : '';
+      : st.startTime ? `開始予定 ${st.startTime}${st.autoStart && st.autoStartDate !== dateKey(now) ? '（自動）' : ''}` : '';
 
     const btn = $('btnStart');
     if (!started()) { btn.textContent = '▶ 作業開始'; btn.className = ''; }
@@ -608,28 +733,31 @@
     else { btn.textContent = '▶ 再開'; btn.className = ''; }
 
     const trs = rowsEl.children;
-    let sp = 0, stg = 0, sa = 0, maxEnd = null, maxPlanEnd = null, allDone = true;
+    let sp = 0, stg = 0, sa = 0, maxPlanEnd = null, maxForecast = null, maxDone = null, allDone = true;
+    const later = (a, b) => (b && (a === null || b > a) ? b : a);
     st.lines.forEach((l, i) => {
       const c = calcLine(l, workSec, now);
       const tr = trs[i];
       tr.children[0].textContent = l.name;
       const inp = tr.children[1].querySelector('input');
       if (document.activeElement !== inp) inp.value = l.plan;
-      const endText = c.done ? '完了' : c.end ? fmtHM(c.end) : '-';
-      const endSub = c.done && c.end ? fmtHM(c.end) + ' 完了' : c.planEnd ? '計画 ' + fmtHM(c.planEnd) : '';
+      const endText = c.done ? '完了' : c.planEnd ? fmtHM(c.planEnd) : '-';
+      const endSub = c.done ? (c.doneAt ? fmtHM(c.doneAt) + ' 完了' : '') : c.forecast ? '予測 ' + fmtHM(c.forecast) : '';
       setCells(tr, c, l.act, endText, endSub);
       sp += c.plan; stg += c.target; sa += l.act;
-      if (c.end && (maxEnd === null || c.end > maxEnd)) maxEnd = c.end;
-      if (c.planEnd && (maxPlanEnd === null || c.planEnd > maxPlanEnd)) maxPlanEnd = c.planEnd;
-      if (!c.done) allDone = false;
+      maxPlanEnd = later(maxPlanEnd, c.planEnd);
+      maxForecast = later(maxForecast, c.forecast);
+      maxDone = later(maxDone, c.doneAt);
+      if (c.plan > 0 && !c.done) allDone = false;
     });
     const tot = trs[st.lines.length];
     tot.children[1].textContent = sp;
     const diff = sa - stg;
     const rate = stg > 0 ? (sa / stg) * 100 : (started() && sa > 0 ? 100 : null);
+    const totDone = sp > 0 && allDone;
     setCells(tot, { target: stg, diff, rate }, sa,
-      sp > 0 && maxEnd ? (allDone ? '完了' : fmtHM(maxEnd)) : '-',
-      !allDone && maxPlanEnd ? '計画 ' + fmtHM(maxPlanEnd) : '');
+      totDone ? '完了' : maxPlanEnd ? fmtHM(maxPlanEnd) : '-',
+      totDone ? (maxDone ? fmtHM(maxDone) + ' 完了' : '') : maxForecast ? '予測 ' + fmtHM(maxForecast) : '');
     fitText();
   }
 
@@ -705,6 +833,44 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
 
+  // カレンダーの計画（未入力は 0）
+  function calendarPlans(key) {
+    const arr = st.calendar[key] || [];
+    return st.lines.map((_, i) => Math.max(0, Number(arr[i]) || 0));
+  }
+  // 画面の計画数量を今日のカレンダーへ書き込む
+  function syncTodayCalendar() {
+    st.calendar[dateKey(Date.now())] = st.lines.map(l => Number(l.plan) || 0);
+  }
+  function applyPlans(plans) {
+    st.lines.forEach((l, i) => {
+      l.plan = plans[i];
+      l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+    });
+  }
+
+  // 24時を過ぎたら、実績・作業時間・計画数量をリセットし、その日の計画をカレンダーから読み込む
+  function checkDayChange(now) {
+    const today = dateKey(now);
+    if (st.day === today) return;
+    if (st.day === null) {
+      // 初回（旧バージョンからの移行を含む）：今日の計画があれば読み込み、なければ今の計画を今日の計画にする
+      if (st.calendar[today]) applyPlans(calendarPlans(today));
+      else syncTodayCalendar();
+    } else {
+      st.segments = [];
+      st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
+      applyPlans(calendarPlans(today));
+      banner('日付が変わりました（リセット）');
+      // 1年より前のカレンダーは削除
+      const old = dateKey(now - 366 * DAY);
+      for (const k of Object.keys(st.calendar)) if (k < old) delete st.calendar[k];
+    }
+    st.day = today;
+    save();
+    if (rowsEl.children.length) render();
+  }
+
   // 設定した作業開始時刻になったら自動で開始する
   function checkAutoStart(now) {
     if (!st.autoStart || !st.startTime) return;
@@ -761,6 +927,7 @@
     const l = st.lines[+inp.dataset.i];
     l.plan = Math.max(0, parseInt(inp.value, 10) || 0);
     l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+    syncTodayCalendar();
     save();
     render();
   }
@@ -816,7 +983,7 @@
     if (on) minusTimer = setTimeout(() => armMinus(false), 3000);
   }
   document.addEventListener('keydown', e => {
-    if ($('dlg').open || e.repeat) return;
+    if (document.querySelector('dialog[open]') || e.repeat) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
     const code = e.code;
@@ -969,18 +1136,170 @@
     // 稼働区間は設定中にも進んでいる可能性があるので最新を保持
     draft.segments = st.segments;
     draft.autoStartDate = st.autoStartDate;
+    draft.calendar = st.calendar;
+    draft.day = st.day;
     st = draft;
+    syncTodayCalendar();
     save();
     dlg.close();
     buildRows();
   };
   $('btnSettings').onclick = e => { e.currentTarget.blur(); openSettings(); };
 
+  // ---------- 計画カレンダー ----------
+  const calDlg = $('calDlg');
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  let calDraft = null, calMonth = null, calSel = null;
+
+  function keyToDate(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
+  function openCalendar() {
+    calDraft = JSON.parse(JSON.stringify(st.calendar));
+    const now = new Date();
+    calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    calSel = dateKey(now.getTime());
+    renderCalendar();
+    calDlg.showModal();
+  }
+  function calPlans(k) {
+    const arr = calDraft[k] || [];
+    return st.lines.map((_, i) => Math.max(0, Number(arr[i]) || 0));
+  }
+  function renderCalendar() {
+    const y = calMonth.getFullYear(), m = calMonth.getMonth();
+    $('calTitle').textContent = `${y}年${m + 1}月`;
+    const today = dateKey(Date.now());
+    const grid = $('calGrid');
+    grid.innerHTML = WD.map((w, i) => `<div class="wd${i === 0 ? ' sun' : i === 6 ? ' sat' : ''}">${w}</div>`).join('');
+    const first = new Date(y, m, 1).getDay();
+    const days = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < first; i++) grid.insertAdjacentHTML('beforeend', '<div class="day other"></div>');
+    for (let d = 1; d <= days; d++) {
+      const k = dateKey(new Date(y, m, d).getTime());
+      const wd = new Date(y, m, d).getDay();
+      const el = document.createElement('div');
+      el.className = 'day' + (wd === 0 ? ' sun' : wd === 6 ? ' sat' : '') + (k === today ? ' today' : '') +
+        (k === calSel ? ' sel' : '') + (k < today ? ' past' : '');
+      let html = `<div class="num">${d}${k === today ? ' 今日' : ''}</div>`;
+      if (calDraft[k]) {
+        const plans = calPlans(k);
+        html += `<div class="tot">計 ${plans.reduce((a, b) => a + b, 0)}</div>` +
+          `<div class="det">${st.lines.map((l, i) => `${l.name}${plans[i]}`).join(' ')}</div>`;
+      }
+      el.innerHTML = html;
+      el.onclick = () => { calSel = k; renderCalendar(); };
+      grid.appendChild(el);
+    }
+    const sd = keyToDate(calSel);
+    $('calSelTitle').textContent = `${sd.getMonth() + 1}月${sd.getDate()}日（${WD[sd.getDay()]}）の計画数量`;
+    const box = $('calLines');
+    box.innerHTML = '';
+    const plans = calPlans(calSel);
+    st.lines.forEach((l, i) => {
+      const lab = document.createElement('label');
+      lab.innerHTML = `${l.name}<input type="number" min="0" inputmode="numeric">`;
+      const inp = lab.querySelector('input');
+      inp.value = calDraft[calSel] ? plans[i] : '';
+      inp.placeholder = '0';
+      inp.oninput = () => {
+        const cur = calPlans(calSel);
+        cur[i] = Math.max(0, parseInt(inp.value, 10) || 0);
+        calDraft[calSel] = cur;
+        refreshCalCell();
+      };
+      inp.onkeydown = e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const ins = box.querySelectorAll('input');
+        if (ins[i + 1]) { ins[i + 1].focus(); ins[i + 1].select(); }
+      };
+      box.appendChild(lab);
+    });
+  }
+  // 入力中にフォーカスを失わないよう、選択中の日のセルだけ更新
+  function refreshCalCell() {
+    const cell = $('calGrid').querySelector('.day.sel');
+    if (!cell) return;
+    const plans = calPlans(calSel);
+    cell.querySelectorAll('.tot, .det').forEach(e => e.remove());
+    cell.insertAdjacentHTML('beforeend', `<div class="tot">計 ${plans.reduce((a, b) => a + b, 0)}</div>` +
+      `<div class="det">${st.lines.map((l, i) => `${l.name}${plans[i]}`).join(' ')}</div>`);
+  }
+  $('calPrev').onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCalendar(); };
+  $('calNext').onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); };
+  $('calToday').onclick = () => {
+    const now = new Date();
+    calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    calSel = dateKey(now.getTime());
+    renderCalendar();
+  };
+  $('calCopyPrev').onclick = () => {
+    const prev = keyToDate(calSel);
+    prev.setDate(prev.getDate() - 1);
+    const pk = dateKey(prev.getTime());
+    if (!calDraft[pk]) { alert('前日の計画が入力されていません'); return; }
+    calDraft[calSel] = calPlans(pk);
+    renderCalendar();
+  };
+  $('calFillWeekdays').onclick = () => {
+    const plans = calPlans(calSel);
+    const y = calMonth.getFullYear(), m = calMonth.getMonth();
+    const today = dateKey(Date.now());
+    const days = new Date(y, m + 1, 0).getDate();
+    let n = 0;
+    for (let d = 1; d <= days; d++) {
+      const dt = new Date(y, m, d);
+      const k = dateKey(dt.getTime());
+      if (dt.getDay() === 0 || dt.getDay() === 6 || k < today) continue;
+      calDraft[k] = plans.slice();
+      n++;
+    }
+    renderCalendar();
+    banner(`${n}日分に入力しました（今日以降の平日）`);
+  };
+  $('calClear').onclick = () => { delete calDraft[calSel]; renderCalendar(); };
+  $('calCancel').onclick = () => calDlg.close();
+  $('calSave').onclick = () => {
+    st.calendar = calDraft;
+    applyPlans(calendarPlans(dateKey(Date.now())));
+    save();
+    calDlg.close();
+    render();
+  };
+  $('btnCal').onclick = e => { e.currentTarget.blur(); openCalendar(); };
+
+  // ---------- 説明書 ----------
+  $('btnHelp').onclick = e => { e.currentTarget.blur(); $('helpDlg').showModal(); };
+  $('helpClose').onclick = () => $('helpDlg').close();
+  $('helpPrint').onclick = () => {
+    const sc = { ...DEFAULT_STATUS_COLORS, ...st.statusColors };
+    const w = window.open('', '_blank');
+    if (!w) { alert('印刷画面を開けませんでした（ポップアップを許可してください）'); return; }
+    w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ライン進捗アンドン 説明書</title>
+      <style>body{font-family:"Meiryo","Yu Gothic UI",sans-serif;margin:24px;font-size:14px;color:#111}
+      h1{font-size:22px}h3{border-left:5px solid #0b5cad;padding-left:8px;margin-top:20px}
+      table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 8px;text-align:left;vertical-align:top}
+      th{background:#e4ecf6;white-space:nowrap;width:12em}kbd{border:1px solid #888;border-radius:4px;padding:0 4px;font-family:inherit}
+      li{line-height:1.7}.note{color:#555;font-size:12px}
+      .dot{display:inline-block;width:.8em;height:.8em;border-radius:50%;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .dot.good{background:${sc.good}}.dot.warn{background:${sc.warn}}.dot.bad{background:${sc.bad}}</style></head>
+      <body><h1>ライン進捗アンドン 説明書</h1>${$('helpBody').innerHTML}</body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
   // ---------- 起動 ----------
+  checkDayChange(Date.now());
   checkAutoStart(Date.now());
   buildRows();
   updateFocusWarn();
-  setInterval(() => { checkAutoStart(Date.now()); render(); updateFocusWarn(); }, 1000);
+  setInterval(() => {
+    const now = Date.now();
+    checkDayChange(now);
+    checkAutoStart(now);
+    render();
+    updateFocusWarn();
+  }, 1000);
 })();
 </script>
 </body>
