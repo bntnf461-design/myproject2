@@ -103,6 +103,9 @@
     overflow: hidden;
   }
   td.rate { font-size: calc(var(--cell-font, 6vh) * 0.8); }
+  td.item { text-align: left; padding: 0 0.6vw; line-height: 1.1; }
+  td.item .it-cur { font-size: calc(var(--cell-font, 6vh) * 0.42); overflow: hidden; text-overflow: ellipsis; }
+  td.item .it-next { font-size: calc(var(--cell-font, 6vh) * 0.22); font-weight: normal; color: #334; overflow: hidden; text-overflow: ellipsis; margin-top: 0.15em; }
   td.target { color: #33475b; }
   td.diff.neg, td.rate.bad { color: var(--st-bad); }
   td.rate.warn { color: var(--st-warn); }
@@ -230,9 +233,15 @@
   .cal .tot { font-weight: bold; color: var(--head); font-size: 15px; }
   .cal .det { color: #445; word-break: break-all; }
   .cal-edit { margin-top: 10px; border-top: 1px solid #ccc; padding-top: 8px; }
-  .cal-edit .lines { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0; }
-  .cal-edit .lines label { display: flex; align-items: center; gap: 6px; font-weight: bold; }
-  .cal-edit .lines input { width: 6em; font: inherit; padding: 3px 4px; }
+  .cal-edit .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; margin: 6px 0; }
+  .cal-line { border: 1px solid #c5cfdb; border-radius: 6px; padding: 6px 8px; background: #fafcff; }
+  .cal-line > b { display: block; margin-bottom: 4px; }
+  .cal-ent { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+  .cal-ent .no { width: 1.4em; color: #667; text-align: right; }
+  .dlg-body .cal-ent select { flex: 1 1 auto; width: auto; min-width: 0; font: inherit; padding: 3px; }
+  .dlg-body .cal-ent input[type=text] { flex: 0 0 5.5em; width: 5.5em; font: inherit; padding: 3px 4px; }
+  .cal-ent button { padding: 2px 6px !important; }
+  .cal-ent .sec { font-size: 12px; color: #667; white-space: nowrap; }
   .excel-row { background: #eef6ee; border: 1px solid #b9d8b9; border-radius: 6px; padding: 6px 8px; }
 
   /* ---- 説明書 ---- */
@@ -264,12 +273,13 @@
 <main>
   <table id="board">
     <colgroup>
-      <col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:11%">
-      <col style="width:13%"><col style="width:16%"><col style="width:8%"><col style="width:19%">
+      <col style="width:6%"><col style="width:21%"><col style="width:10%"><col style="width:9%"><col style="width:9%">
+      <col style="width:10%"><col style="width:12%"><col style="width:6%"><col style="width:17%">
     </colgroup>
     <thead>
       <tr>
         <th>ライン<small>LINE</small></th>
+        <th>品目<small>Item / Next</small></th>
         <th>計画数量<small>Plan</small></th>
         <th>現時点目標<small>Target</small></th>
         <th>実績数量<small>Act</small></th>
@@ -308,13 +318,21 @@
           <option>5</option><option>6</option><option>7</option><option>8</option>
         </select>
       </label>
-      <span class="note">「1個あたりの時間」から現時点目標・差異・進捗率・終了時間を自動計算します。</span>
     </div>
     <table>
-      <thead><tr><th>ライン名</th><th>計画数量</th><th>1個あたりの時間（秒）</th><th>+1 キー</th><th>色</th></tr></thead>
+      <thead><tr><th>ライン名</th><th>品目なしの時の<br>1個あたりの時間（秒）</th><th>+1 キー</th><th>色</th></tr></thead>
       <tbody id="sLines"></tbody>
     </table>
     <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
+
+    <h3>品目の登録</h3>
+    <p class="note">品目ごとに「1個あたりの時間」を登録します。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
+    <table>
+      <thead><tr><th>品目名</th><th>1個あたりの時間（秒）</th><th style="width:80px"></th></tr></thead>
+      <tbody id="sItems"></tbody>
+    </table>
+    <div class="row-flex"><button id="sAddItem">＋ 品目を追加</button>
+      <span class="note">品目は Excel の雛形（「品目」シート）からもまとめて登録できます。</span></div>
 
     <h3>作業開始時刻</h3>
     <div class="row-flex">
@@ -382,6 +400,7 @@
     <div class="cal" id="calGrid"></div>
     <div class="cal-edit">
       <b id="calSelTitle"></b>
+      <span class="note">　ラインごとに作る順番に品目を並べます（品目は「⚙ 設定 → 品目の登録」で登録）。</span>
       <div class="lines" id="calLines"></div>
       <div class="row-flex">
         <button id="calCopyPrev">前日の計画をコピー</button>
@@ -409,43 +428,46 @@
   <div class="dlg-body help" id="helpBody">
     <h3>1. 画面の見かた</h3>
     <table>
-      <tr><th>計画数量</th><td>その日に作る数。計画カレンダーで先に入力しておけます。</td></tr>
-      <tr><th>現時点目標</th><td>今の時刻までに作り終えているべき数。<br>実稼働時間 ÷ 1個あたりの時間（休憩・一時停止中は増えません）</td></tr>
-      <tr><th>実績数量</th><td>テンキーで数えた数。</td></tr>
-      <tr><th>差異</th><td>実績 − 現時点目標。足りない分は ▲ で表示。</td></tr>
-      <tr><th>進捗率</th><td>実績 ÷ 現時点目標。</td></tr>
+      <tr><th>品目</th><td>今作っている品目。下の小さい字は「何品目め／全品目数」「今の品目の終了見込み」「次の品目と数量」。<br>品目は1日に複数登録でき、上から順番に作ります。全部作り終えると「完了」になります。</td></tr>
+      <tr><th>計画数量</th><td>今の品目の計画数量（小数も可。例：10.5）。</td></tr>
+      <tr><th>現時点目標</th><td>今の品目で、今の時刻までに作り終えているべき数。<br>前の品目が<b>実際に終わった時刻</b>から数えます（休憩・一時停止中は増えません）。前の品目が遅れても、次の品目の目標は自動で後ろにずれます。</td></tr>
+      <tr><th>実績数量</th><td>今の品目でテンキーを押して数えた数。</td></tr>
+      <tr><th>差異／進捗率</th><td>実績 − 現時点目標（不足は ▲）／ 実績 ÷ 現時点目標。</td></tr>
       <tr><th>状況</th><td><span class="dot good"></span> 100%以上 ／ <span class="dot warn"></span> 90〜99.9% ／ <span class="dot bad"></span> 90%未満（90%未満は稼働中に点滅）。色は設定で変更できます。</td></tr>
-      <tr><th>終了時間</th><td>大きい数字：作業開始時刻から計画どおりに作った場合の終了時刻（休憩を含む）。<br>小さい「予測」：今の実績から、残りを作り終える見込み時刻。<br>すべて作り終えると「完了」と完了時刻を表示します。</td></tr>
+      <tr><th>終了時間</th><td>大きい数字：そのラインの全品目が終わる見込み時刻（休憩を含む）。<br>作業開始前は「作業開始時刻 ＋ 各品目の数量 × 1個あたりの時間」、開始後は今の遅れ・進みを含めて自動で更新します。<br>小さい「計画」：遅れがない場合の当初の終了時刻。</td></tr>
+      <tr><th>合計</th><td>全ライン・全品目の計画数量・現時点目標・実績の合計。</td></tr>
     </table>
 
     <h3>2. 準備（最初に1回）</h3>
     <ol>
       <li>「⚙ 設定」でライン数（4ライン・5ラインなど）を選びます。</li>
-      <li>各ラインの「1個あたりの時間（秒）」を入力します。</li>
+      <li>「品目の登録」で、品目名と「1個あたりの時間（秒）」を登録します（Excel の「品目」シートからも登録できます）。</li>
       <li>作業開始時刻と休憩時間を入力します。毎日決まった時刻に始めるなら「自動で作業開始する」にチェックを入れます。</li>
       <li>必要に応じて、キーの割り当て・行の色・状況の色を変えて「保存」します。</li>
     </ol>
 
     <h3>3. 計画の入力</h3>
     <ul>
-      <li><b>前もって入力する</b>：「📅 計画」を押し、日付をクリックして各ラインの計画数量を入れて「保存」。「この計画を今月の平日すべてに入れる」でまとめて入力できます。</li>
-      <li><b>当日に入力する</b>：表の計画数量をクリックして入力するか、テンキー <kbd>＊</kbd> を押して数字＋<kbd>Enter</kbd>（次のラインへ進みます）。</li>
+      <li><b>カレンダーで入力</b>：「📅 計画」を押し、日付をクリック → ラインごとに「＋ 品目を追加」で品目を呼び出し、数量を入れます。作る順番は ▲▼ で並べ替えます。最後に「保存」。</li>
+      <li>「前日の計画をコピー」「この計画を今月の平日すべてに入れる」でまとめて入力できます。</li>
+      <li><b>当日に数量だけ直す</b>：表の計画数量をクリックするか、テンキー <kbd>＊</kbd> → 数字（小数点は <kbd>.</kbd>）→ <kbd>Enter</kbd>。今の品目の数量が変わります。</li>
     </ul>
 
     <h3>3-2. Excel から取り込む</h3>
     <ol>
-      <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・日付が入った Excel ファイルができます）。</li>
-      <li>Excel で開き、「計画」シートの各日付の行に計画数量を入力して保存します。休みの日は空欄のままにします。</li>
+      <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・品目・日付が入った Excel ファイルができます）。</li>
+      <li>「品目」シートに品目名と1個あたりの時間（秒）を入力します。</li>
+      <li>「計画」シートに「日付・ライン・品目・計画数量」を1行ずつ入力します。同じ日・同じラインで複数の品目を作るときは、作る順番に行を並べます（行は挿入して増やせます。日付を省略すると上の行と同じ日）。</li>
       <li>「📥 Excelから取り込み」でそのファイルを選び、内容を確認して「OK」→「保存」を押します。</li>
     </ol>
-    <p class="note">読み込めるのは .xlsx と .csv です（古い .xls は「.xlsx」で保存し直してください）。1行目の見出しのライン名で列を判断します。入力ミス（数字以外・マイナスなど）がある行は取り込まず、行番号を表示します。</p>
+    <p class="note">読み込めるのは .xlsx と .csv です。ファイルに入っている日の計画は、全ラインともファイルの内容に置き換わります。入力ミス（未登録の品目・数字以外・マイナスなど）がある行は取り込まず、行番号を表示します。前の形式（A列：日付、B列以降：ラインごとの数量）の雛形も取り込めます。</p>
 
     <h3>4. 毎日の操作（テンキー）</h3>
     <table>
       <tr><th>作業開始・一時停止・再開</th><td><kbd>Enter</kbd>（押すたびに切り替わります。自動開始なら押さなくても始まります）</td></tr>
-      <tr><th>1個できた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）</td></tr>
-      <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー</td></tr>
-      <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>−</kbd> で1文字消す）</td></tr>
+      <tr><th>1個できた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）<br>実績は<b>計画数量まで</b>しか増えません。計画数量が小数（例：10.5）のときは、10 の次に押すと 10.5 になって完了します。<br>計画数量に達すると、次に押した分から<b>次の品目</b>を数えます。</td></tr>
+      <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー（最後に数えた品目から取り消します。端数で増えた分は端数だけ戻ります）</td></tr>
+      <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>.</kbd> で小数点、<kbd>−</kbd> で1文字消す）</td></tr>
       <tr><th>リセット</th><td><kbd>／</kbd> を3秒以内に2回</td></tr>
     </table>
     <p class="note">複数のラインで同時に押しても、それぞれ数えます。テンキーを複数台つなぐ場合は、ラインごとに別のキーを割り当ててください（どの機器から押したかはブラウザで区別できません）。</p>
@@ -453,12 +475,12 @@
     <h3>5. 自動でリセットされるもの</h3>
     <ul>
       <li>24時を過ぎると、実績・作業時間・計画数量がすべてリセットされ、新しい日の計画がカレンダーから読み込まれます。</li>
-      <li>「リセット」ボタン／<kbd>／</kbd>×2 では、実績・作業時間・終了時間の予測を消去します（計画数量と設定は残ります）。</li>
+      <li>「リセット」ボタン／<kbd>／</kbd>×2 では、実績と作業時間を消去します（計画と設定は残ります）。</li>
     </ul>
 
     <h3>6. 困ったとき</h3>
     <ul>
-      <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。</li>
+      <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。計画数量に達した品目は、それ以上数えません。</li>
       <li><b>画面がはみ出す</b>：「⛶ 全画面」を押すか F11 キーで全画面にしてください。文字の大きさは自動で調整されます。</li>
       <li><b>データの保存</b>：このパソコンのブラウザに自動で保存されます。別のパソコンやブラウザには引き継がれません。</li>
     </ul>
@@ -479,9 +501,13 @@
   const DEFAULT_STATUS_COLORS = { good: '#1a9e3a', warn: '#f29b00', bad: '#d40000' };
   const DEFAULT_KEYS = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'];
 
+  const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   // ---------- 状態 ----------
+  // queue：その日にこのラインで作る品目の順番 [{ item: 品目ID|null, qty: 計画数量, act: 実績, doneAt: 完了時刻 }]
+  // ct：品目を指定しないときの 1個あたりの時間（秒）
   function defaultLine(i) {
-    return { name: String.fromCharCode(65 + i), plan: 0, ct: 60, key: DEFAULT_KEYS[i], color: PALETTE[i], act: 0, doneAt: null };
+    return { name: String.fromCharCode(65 + i), ct: 60, key: DEFAULT_KEYS[i], color: PALETTE[i], queue: [] };
   }
   function defaultState() {
     return {
@@ -502,7 +528,9 @@
       sound: true,
       statusColors: { ...DEFAULT_STATUS_COLORS },
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
-      calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順の計画数量] }
+      calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順に [{ item, qty }, ...]] }
+      items: [],           // 品目マスタ [{ id, name, ct }]（ct は 1個あたりの時間・秒）
+      itemSeq: 0,
       day: null,           // 表示中データの日付
     };
   }
@@ -519,10 +547,24 @@
           if (!saved.startKey) s.startKey = defaultState().startKey;
           s.keyVer = 2;
         }
+        migrate(s);
         return s;
       }
     } catch (e) { /* 保存領域が使えなくても動作させる */ }
     return defaultState();
+  }
+  // 旧バージョン（ライン1品目・整数の計画）の保存データを品目キューの形に変換する
+  function migrate(s) {
+    s.lines.forEach(l => {
+      if (!Array.isArray(l.queue)) {
+        const plan = Number(l.plan) || 0;
+        l.queue = plan > 0 ? [{ item: null, qty: plan, act: Math.min(Number(l.act) || 0, plan), doneAt: l.doneAt || null }] : [];
+      }
+      delete l.plan; delete l.act; delete l.doneAt;
+    });
+    for (const [k, day] of Object.entries(s.calendar || {})) {
+      s.calendar[k] = (day || []).map(v => Array.isArray(v) ? v : (Number(v) > 0 ? [{ item: null, qty: Number(v) }] : []));
+    }
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (e) { /* noop */ }
@@ -600,6 +642,15 @@
     }
     return addWork(now, need - acc);
   }
+  // 時刻 from 以降の実稼働時間（休憩・一時停止を除く）
+  function workSince(from, now) {
+    let ms = 0;
+    for (const seg of st.segments) {
+      const a = Math.max(seg.s, from), b = Math.min(seg.e ?? now, now);
+      if (b > a) ms += workMs(a, b);
+    }
+    return ms;
+  }
   function currentBreak(now) {
     for (const b of st.breaks) {
       if (!b.s || !b.e) continue;
@@ -643,22 +694,57 @@
     if (rate >= 90) return 'warn';
     return 'bad';
   }
-  function calcLine(l, workSec, now) {
-    const ct = Math.max(1, Number(l.ct) || 1);
-    const plan = Math.max(0, Number(l.plan) || 0);
-    const target = started() ? Math.min(plan, Math.floor(workSec / ct)) : 0;
-    const diff = l.act - target;
-    const rate = target > 0 ? (l.act / target) * 100 : (started() && l.act > 0 ? 100 : null);
-    // planEnd：作業開始時刻から計画どおりに作った場合の終了時刻
-    // forecast：今の実績から残りを作り終える見込み時刻
-    let planEnd = null, forecast = null;
-    const done = plan > 0 && l.act >= plan;
-    if (plan > 0) {
-      if (started()) planEnd = planReachTime(plan * ct * 1000, now);
-      else if (st.startTime) planEnd = addWork(midnight(now) + parseHM(st.startTime), plan * ct * 1000);
-      if (started() && !done) forecast = addWork(now, (plan - l.act) * ct * 1000);
-    }
-    return { plan, target, diff, rate, planEnd, forecast, doneAt: done ? l.doneAt : null, done };
+  // ---------- 品目 ----------
+  const round2 = n => Math.round(n * 100) / 100;
+  const fmtNum = n => String(round2(n));
+  const itemOf = id => (id ? st.items.find(it => it.id === id) || null : null);
+  function itemName(id) {
+    if (!id) return '';
+    const it = itemOf(id);
+    return it ? it.name : '（削除された品目）';
+  }
+  // 1個あたりの時間（秒）。品目の設定がなければラインの値を使う
+  function ctOf(e, l) {
+    const it = itemOf(e.item);
+    return Math.max(0.1, Number(it ? it.ct : l.ct) || 1);
+  }
+  const isDone = e => e.qty > 0 && e.act >= e.qty - 1e-9;
+  const currentIndex = l => l.queue.findIndex(e => e.qty > 0 && !isDone(e));
+  const nextIndex = (l, from) => l.queue.findIndex((e, j) => j > from && e.qty > 0 && !isDone(e));
+
+  // ラインの品目を順番に並べた予定を計算する。
+  // 今の品目の目標は「前の品目が実際に終わった時刻」から数えるので、前の品目が遅れると後の品目も自動で後ろへずれる。
+  function lineSchedule(l, now) {
+    const base = started() ? st.segments[0].s : (st.startTime ? midnight(now) + parseHM(st.startTime) : null);
+    let prev = base, cur = -1, curTarget = null, curEnd = null, doneAt = null;
+    let dayPlan = 0, dayAct = 0, dayTarget = 0, totalMs = 0;
+    l.queue.forEach((e, j) => {
+      if (!(e.qty > 0)) return;
+      const ctMs = ctOf(e, l) * 1000;
+      dayPlan += e.qty; dayAct += e.act; totalMs += e.qty * ctMs;
+      if (isDone(e)) {
+        prev = e.doneAt ?? prev;
+        doneAt = prev;
+        dayTarget += e.qty;
+      } else if (cur < 0) {
+        cur = j;
+        if (started()) {
+          const n = workSince(prev ?? base, now) / ctMs;
+          curTarget = n >= e.qty ? e.qty : Math.floor(n);
+          curEnd = addWork(now, (e.qty - e.act) * ctMs);
+          dayTarget += curTarget;
+        } else {
+          curEnd = prev !== null ? addWork(prev, e.qty * ctMs) : null;
+        }
+        prev = curEnd;
+      } else {
+        prev = prev !== null ? addWork(prev, e.qty * ctMs) : null;
+      }
+    });
+    // 当初の計画どおりに進んだ場合の終了時刻（作業開始時刻から、遅れを含まない）
+    const planEnd = totalMs > 0 && base !== null ? (started() ? planReachTime(totalMs, now) : addWork(base, totalMs)) : null;
+    return { cur, curTarget, curEnd, planEnd, lineEnd: cur >= 0 ? prev : null, doneAt: cur < 0 ? doneAt : null,
+      dayPlan: round2(dayPlan), dayAct: round2(dayAct), dayTarget: round2(dayTarget), hasPlan: dayPlan > 0 };
   }
 
   // ---------- 描画 ----------
@@ -672,7 +758,8 @@
       tr.style.background = l.color;
       tr.innerHTML = `
         <td class="name"></td>
-        <td><input class="plan" type="number" min="0" inputmode="numeric" data-i="${i}"></td>
+        <td class="item"></td>
+        <td><input class="plan" type="text" inputmode="decimal" autocomplete="off" data-i="${i}"></td>
         <td class="target"></td>
         <td class="act"><span class="v"></span>
           <span class="btns"><button data-i="${i}" data-d="1">＋</button><button data-i="${i}" data-d="-1">−</button></span></td>
@@ -685,7 +772,7 @@
     const tr = document.createElement('tr');
     tr.className = 'total';
     tr.style.background = '#e9d6fb';
-    tr.innerHTML = `<td class="name">合計</td><td class="plan-sum"></td><td class="target"></td>
+    tr.innerHTML = `<td class="name">合計</td><td class="item"></td><td class="plan-sum"></td><td class="target"></td>
       <td class="act"><span class="v"></span></td><td class="diff"></td><td class="rate"></td>
       <td class="status"><span class="dot"></span></td><td class="end"></td>`;
     rowsEl.appendChild(tr);
@@ -722,19 +809,23 @@
     root.setProperty('--st-bad', c.bad);
   }
 
-  function setCells(tr, c, actVal, endText, endSub) {
+  // c: { target, act, diff, rate }（target が null なら作業開始前）
+  function setCells(tr, c, endText, endSub) {
     const cells = tr.children;
-    cells[2].textContent = started() ? c.target : '-';
-    cells[3].querySelector('.v').textContent = actVal;
-    const d = cells[4];
-    d.className = 'diff' + (started() ? (c.diff < 0 ? ' neg' : c.diff > 0 ? ' pos' : '') : '');
-    d.innerHTML = !started() ? '-' : c.diff < 0 ? `<span class="tri">▲</span> ${-c.diff}` : c.diff > 0 ? `+${c.diff}` : '0';
-    const j = judge(c.rate);
-    cells[5].className = 'rate ' + j;
-    cells[5].textContent = c.rate === null ? '-' : c.rate.toFixed(1) + '%';
-    const dot = cells[6].querySelector('.dot');
+    const on = c.target !== null;
+    cells[3].textContent = on ? fmtNum(c.target) : '-';
+    cells[4].querySelector('.v').textContent = fmtNum(c.act);
+    const d = cells[5];
+    const diff = on ? round2(c.act - c.target) : 0;
+    d.className = 'diff' + (on ? (diff < 0 ? ' neg' : diff > 0 ? ' pos' : '') : '');
+    d.innerHTML = !on ? '-' : diff < 0 ? `<span class="tri">▲</span> ${fmtNum(-diff)}` : diff > 0 ? `+${fmtNum(diff)}` : '0';
+    const rate = !on ? null : c.target > 0 ? (c.act / c.target) * 100 : (c.act > 0 ? 100 : null);
+    const j = judge(rate);
+    cells[6].className = 'rate ' + j;
+    cells[6].textContent = rate === null ? '-' : rate.toFixed(1) + '%';
+    const dot = cells[7].querySelector('.dot');
     dot.className = 'dot ' + j + (j === 'bad' && running() ? ' blink' : '');
-    cells[7].innerHTML = endText + (endSub ? `<small>${endSub}</small>` : '');
+    cells[8].innerHTML = endText + (endSub ? `<small>${esc(endSub)}</small>` : '');
   }
 
   function render() {
@@ -757,35 +848,62 @@
     else { btn.textContent = '▶ 再開'; btn.className = ''; }
 
     const trs = rowsEl.children;
-    let sp = 0, stg = 0, sa = 0, maxPlanEnd = null, maxForecast = null, maxDone = null, allDone = true;
+    let sp = 0, stg = 0, sa = 0, maxEnd = null, maxDone = null, maxPlanEnd = null, allDone = true, anyPlan = false;
     const later = (a, b) => (b && (a === null || b > a) ? b : a);
     st.lines.forEach((l, i) => {
-      const c = calcLine(l, workSec, now);
+      const sc = lineSchedule(l, now);
       const tr = trs[i];
       tr.children[0].textContent = l.name;
-      const inp = tr.children[1].querySelector('input');
-      if (document.activeElement !== inp) inp.value = l.plan;
-      const endText = c.done ? '完了' : c.planEnd ? fmtEnd(c.planEnd) : '-';
-      const endSub = c.done ? (c.doneAt ? fmtHM(c.doneAt) + ' 完了' : '') : c.forecast ? '予測 ' + fmtEnd(c.forecast) : '';
-      setCells(tr, c, l.act, endText, endSub);
-      sp += c.plan; stg += c.target; sa += l.act;
-      maxPlanEnd = later(maxPlanEnd, c.planEnd);
-      maxForecast = later(maxForecast, c.forecast);
-      maxDone = later(maxDone, c.doneAt);
-      if (c.plan > 0 && !c.done) allDone = false;
+      const inp = tr.children[2].querySelector('input');
+      const itemCell = tr.children[1];
+      let endText, endSub = '';
+      if (sc.cur >= 0) {
+        // 作業中の品目を表示
+        const e = l.queue[sc.cur];
+        const nx = nextIndex(l, sc.cur);
+        const pos = l.queue.filter(x => x.qty > 0).indexOf(e) + 1;
+        const total = l.queue.filter(x => x.qty > 0).length;
+        const info = (total > 1 ? `${pos}/${total}品目` : '') + (nx >= 0 && sc.curEnd ? `　〜${fmtEnd(sc.curEnd)}` : '');
+        const nextText = `次：${nx >= 0 ? esc(itemName(l.queue[nx].item) || '品目なし') + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
+        itemCell.innerHTML = `<div class="it-cur">${esc(itemName(e.item) || '品目なし')}</div>` +
+          (info ? `<div class="it-next">${info}</div>` : '') + `<div class="it-next">${nextText}</div>`;
+        itemCell.title = l.queue.filter(x => x.qty > 0).map((x, k) => `${k + 1}. ${itemName(x.item) || '品目なし'} ${fmtNum(x.act)}/${fmtNum(x.qty)}`).join('\n');
+        if (document.activeElement !== inp) inp.value = fmtNum(e.qty);
+        setCells(tr, { target: started() ? sc.curTarget : null, act: e.act }, '', '');
+        endText = sc.lineEnd ? fmtEnd(sc.lineEnd) : '-';
+        if (started() && sc.planEnd) endSub = '計画 ' + fmtEnd(sc.planEnd);
+        allDone = false;
+      } else if (sc.hasPlan) {
+        // 全品目完了
+        itemCell.innerHTML = `<div class="it-cur">完了</div><div class="it-next">次：なし</div>`;
+        if (document.activeElement !== inp) inp.value = fmtNum(l.queue.filter(x => x.qty > 0).slice(-1)[0].qty);
+        setCells(tr, { target: started() ? sc.dayTarget : null, act: sc.dayAct }, '', '');
+        endText = '完了';
+        if (sc.doneAt) endSub = fmtHM(sc.doneAt) + ' 完了';
+      } else {
+        itemCell.innerHTML = `<div class="it-cur">-</div>`;
+        if (document.activeElement !== inp) inp.value = '0';
+        setCells(tr, { target: null, act: 0 }, '', '');
+        endText = '-';
+      }
+      tr.children[8].innerHTML = endText + (endSub ? `<small>${esc(endSub)}</small>` : '');
+      sp += sc.dayPlan; stg += sc.dayTarget; sa += sc.dayAct;
+      if (sc.hasPlan) anyPlan = true;
+      maxEnd = later(maxEnd, sc.lineEnd);
+      if (sc.cur >= 0) maxPlanEnd = later(maxPlanEnd, sc.planEnd);
+      maxDone = later(maxDone, sc.doneAt);
     });
     const tot = trs[st.lines.length];
-    tot.children[1].textContent = sp;
-    const diff = sa - stg;
-    const rate = stg > 0 ? (sa / stg) * 100 : (started() && sa > 0 ? 100 : null);
-    const totDone = sp > 0 && allDone;
-    setCells(tot, { target: stg, diff, rate }, sa,
-      totDone ? '完了' : maxPlanEnd ? fmtEnd(maxPlanEnd) : '-',
-      totDone ? (maxDone ? fmtHM(maxDone) + ' 完了' : '') : maxForecast ? '予測 ' + fmtEnd(maxForecast) : '');
+    tot.children[2].textContent = fmtNum(sp);
+    const totDone = anyPlan && allDone;
+    setCells(tot, { target: started() ? round2(stg) : null, act: round2(sa) },
+      totDone ? '完了' : maxEnd ? fmtEnd(maxEnd) : '-',
+      totDone ? (maxDone ? fmtHM(maxDone) + ' 完了' : '') : started() && maxPlanEnd ? '計画 ' + fmtEnd(maxPlanEnd) : '');
     fitText();
   }
 
   // 見出し・セルの文字が枠からはみ出す場合は、収まるまで文字を小さくする
+  const measureCtx = document.createElement('canvas').getContext('2d');
   function fitText() {
     document.querySelectorAll('#board th, #board td').forEach(el => {
       el.style.fontSize = '';
@@ -793,6 +911,15 @@
       if (over > 1.01) {
         el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) / over * 0.95) + 'px';
       }
+    });
+    // 計画数量の入力欄は文字の幅を測って収める
+    document.querySelectorAll('#board input.plan').forEach(inp => {
+      inp.style.fontSize = '';
+      const cs = getComputedStyle(inp);
+      measureCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const w = measureCtx.measureText(inp.value || '0').width;
+      const avail = inp.clientWidth * 0.92;
+      if (w > avail) inp.style.fontSize = (parseFloat(cs.fontSize) * avail / w) + 'px';
     });
   }
   window.addEventListener('resize', () => fitLayout());
@@ -831,25 +958,45 @@
     bannerTimer = setTimeout(() => (b.style.display = 'none'), 1800);
   }
 
+  // 実績を数える。+1 は今の品目の計画数量まで（小数の計画なら端数分だけ増える）。
+  // 品目が計画数量に達したら完了とし、次に押すと次の品目を数える。
   function count(i, delta) {
     const l = st.lines[i];
     if (!l) return;
     if (!started()) { banner('「作業開始」を押してください'); return; }
-    const next = Math.max(0, l.act + delta);
-    if (next === l.act) return;
-    l.act = next;
-    const plan = Number(l.plan) || 0;
-    if (plan > 0 && l.act >= plan) { if (!l.doneAt) l.doneAt = Date.now(); }
-    else l.doneAt = null;
+    const now = Date.now();
+    let msg = '';
+    if (delta > 0) {
+      const j = currentIndex(l);
+      if (j < 0) { banner(l.queue.some(e => e.qty > 0) ? `${l.name}：全品目完了（計画数量に達しています）` : `${l.name}：計画がありません`); return; }
+      const e = l.queue[j];
+      e.act = round2(e.act + Math.min(1, e.qty - e.act));
+      if (isDone(e)) {
+        e.doneAt = now;
+        const nx = nextIndex(l, j);
+        msg = `${l.name}：${itemName(e.item) || '品目'} 完了 → ` +
+          (nx >= 0 ? `次 ${itemName(l.queue[nx].item) || '品目なし'} ${fmtNum(l.queue[nx].qty)}` : '全品目完了');
+      }
+    } else {
+      // 最後に数えた品目から取り消す（端数で増えた分は端数だけ戻す）
+      let j = -1;
+      l.queue.forEach((e, k) => { if (e.act > 0) j = k; });
+      if (j < 0) return;
+      const e = l.queue[j];
+      e.act = round2(Number.isInteger(round2(e.act)) ? e.act - 1 : Math.floor(e.act));
+      if (e.act < 0) e.act = 0;
+      if (!isDone(e)) e.doneAt = null;
+      msg = `${l.name} ライン −1 取消`;
+    }
     save();
     render();
     beep(delta > 0);
-    const cell = rowsEl.children[i].children[3];
+    const cell = rowsEl.children[i].children[4];
     const cls = delta > 0 ? 'flash' : 'flash-minus';
     cell.classList.remove('flash', 'flash-minus');
     void cell.offsetWidth;
     cell.classList.add(cls);
-    if (delta < 0) banner(`${l.name} ライン −1 取消`);
+    if (msg) banner(msg);
   }
 
   function dateKey(ms) {
@@ -857,20 +1004,32 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
 
-  // カレンダーの計画（未入力は 0）
-  function calendarPlans(key) {
-    const arr = st.calendar[key] || [];
-    return st.lines.map((_, i) => Math.max(0, Number(arr[i]) || 0));
+  // カレンダーの計画（ライン順の [{ item, qty }]）。未入力のラインは空
+  // keepEmpty：編集中は数量 0 の行も残す
+  function calendarDay(cal, key, keepEmpty) {
+    const day = cal[key] || [];
+    return st.lines.map((_, i) => (day[i] || []).filter(e => e && (keepEmpty || e.qty > 0))
+      .map(e => ({ item: e.item || null, qty: round2(Number(e.qty) || 0) })));
   }
-  // 画面の計画数量を今日のカレンダーへ書き込む
+  // 画面の計画を今日のカレンダーへ書き込む
   function syncTodayCalendar() {
-    st.calendar[dateKey(Date.now())] = st.lines.map(l => Number(l.plan) || 0);
+    st.calendar[dateKey(Date.now())] = st.lines.map(l => l.queue.filter(e => e.qty > 0).map(e => ({ item: e.item, qty: e.qty })));
   }
-  function applyPlans(plans) {
+  // 計画を画面に反映する。同じ順番・同じ品目の実績は引き継ぐ
+  function applyPlans(day) {
     st.lines.forEach((l, i) => {
-      l.plan = plans[i];
-      l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+      const old = l.queue;
+      l.queue = day[i].map((p, j) => {
+        const o = old[j] && old[j].item === p.item ? old[j] : null;
+        const act = o ? Math.min(o.act, p.qty) : 0;
+        const e = { item: p.item, qty: p.qty, act, doneAt: null };
+        if (isDone(e)) e.doneAt = (o && o.doneAt) || Date.now();
+        return e;
+      });
     });
+  }
+  function clearActs() {
+    st.lines.forEach(l => l.queue.forEach(e => { e.act = 0; e.doneAt = null; }));
   }
 
   // 24時を過ぎたら、実績・作業時間・計画数量をリセットし、その日の計画をカレンダーから読み込む
@@ -879,12 +1038,12 @@
     if (st.day === today) return;
     if (st.day === null) {
       // 初回（旧バージョンからの移行を含む）：今日の計画があれば読み込み、なければ今の計画を今日の計画にする
-      if (st.calendar[today]) applyPlans(calendarPlans(today));
+      if (st.calendar[today]) applyPlans(calendarDay(st.calendar, today));
       else syncTodayCalendar();
     } else {
       st.segments = [];
-      st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
-      applyPlans(calendarPlans(today));
+      clearActs();
+      applyPlans(calendarDay(st.calendar, today));
       banner('日付が変わりました（リセット）');
       // 1年より前のカレンダーは削除
       const old = dateKey(now - 366 * DAY);
@@ -904,7 +1063,7 @@
     if (now < s || now - s > 12 * 3600000) return;   // 開始時刻から12時間以内のみ
     st.autoStartDate = today;
     if (!(started() && dateKey(st.segments[0].s) === today)) {
-      st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
+      clearActs();
       st.segments = [{ s, e: null }];
       banner(`▶ 作業開始（${st.startTime}）`);
     }
@@ -925,7 +1084,7 @@
 
   function resetAll() {
     st.segments = [];
-    st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
+    clearActs();
     save();
     render();
     banner('リセットしました');
@@ -947,10 +1106,23 @@
     const b = e.target.closest('button[data-d]');
     if (b) { b.blur(); count(+b.dataset.i, +b.dataset.d); }
   });
+  // 表の計画数量の入力：今の品目の計画数量を変更する（計画がなければ「品目なし」で追加）
   function commitPlan(inp) {
     const l = st.lines[+inp.dataset.i];
-    l.plan = Math.max(0, parseInt(inp.value, 10) || 0);
-    l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+    const v = round2(Math.max(0, parseFloat(String(inp.value).replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))) || 0));
+    let j = currentIndex(l);
+    if (j < 0) {
+      const list = l.queue.map((e, k) => (e.qty > 0 ? k : -1)).filter(k => k >= 0);
+      j = list.length ? list[list.length - 1] : -1;
+    }
+    if (j < 0) {
+      if (v > 0) l.queue.push({ item: null, qty: v, act: 0, doneAt: null });
+    } else {
+      const e = l.queue[j];
+      e.qty = v;
+      if (e.act > v) e.act = v;
+      e.doneAt = isDone(e) ? (e.doneAt || Date.now()) : null;
+    }
     syncTodayCalendar();
     save();
     render();
@@ -966,6 +1138,14 @@
       inp.value = (inp.dataset.fresh ? '' : inp.value) + digit[1];
       delete inp.dataset.fresh;
       commitPlan(inp);
+      return;
+    }
+    if (e.code === 'NumpadDecimal' || e.key === '.') {
+      // 小数点（テンキーの . ）
+      e.preventDefault();
+      const base = inp.dataset.fresh ? '0' : (inp.value || '0');
+      if (!base.includes('.')) inp.value = base + '.';
+      delete inp.dataset.fresh;
       return;
     }
     if (e.code === 'NumpadSubtract' || e.code === 'Backspace') {
@@ -1067,18 +1247,36 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input type="text" data-f="name" value=""></td>
-        <td><input type="number" min="0" data-f="plan"></td>
-        <td><input type="number" min="1" step="1" data-f="ct"></td>
+        <td><input type="number" min="0.1" step="any" data-f="ct"></td>
         <td><button class="keybtn" data-line="${i}"></button></td>
         <td><input type="color" data-f="color"></td>`;
       tr.querySelectorAll('[data-f]').forEach(inp => {
         inp.value = l[inp.dataset.f];
         inp.oninput = () => {
           const f = inp.dataset.f;
-          l[f] = f === 'plan' || f === 'ct' ? Math.max(f === 'ct' ? 1 : 0, Number(inp.value) || 0) : inp.value;
+          l[f] = f === 'ct' ? Math.max(0.1, Number(inp.value) || 0) : inp.value;
         };
       });
       lt.appendChild(tr);
+    });
+    const it = $('sItems');
+    it.innerHTML = '';
+    draft.items.forEach((item, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><input type="text" data-f="name"></td><td><input type="number" min="0.1" step="any" data-f="ct"></td>
+        <td><button>削除</button></td>`;
+      tr.querySelectorAll('[data-f]').forEach(inp => {
+        inp.value = item[inp.dataset.f];
+        inp.oninput = () => (item[inp.dataset.f] = inp.dataset.f === 'ct' ? Number(inp.value) || 0 : inp.value);
+      });
+      tr.querySelector('button').onclick = () => {
+        const used = Object.values(draft.calendar).some(day => (day || []).some(ln => (ln || []).some(e => e.item === item.id))) ||
+          st.lines.some(l => l.queue.some(e => e.item === item.id));
+        if (used && !confirm(`品目「${item.name}」は計画で使われています。削除しますか？\n（計画には「削除された品目」と表示され、ラインの時間で計算します）`)) return;
+        draft.items.splice(i, 1);
+        renderSettings();
+      };
+      it.appendChild(tr);
     });
     const bt = $('sBreaks');
     bt.innerHTML = '';
@@ -1134,6 +1332,13 @@
     renderSettings();
   };
   $('sAddBreak').onclick = () => { draft.breaks.push({ s: '', e: '' }); renderSettings(); };
+  $('sAddItem').onclick = () => {
+    draft.itemSeq = (draft.itemSeq || 0) + 1;
+    draft.items.push({ id: 'i' + draft.itemSeq, name: '', ct: 60 });
+    renderSettings();
+    const ins = $('sItems').querySelectorAll('input[data-f="name"]');
+    ins[ins.length - 1].focus();
+  };
   dlg.querySelectorAll('[data-clear]').forEach(b => {
     b.onclick = () => { draft[b.dataset.clear] = null; refreshKeyButtons(); };
   });
@@ -1152,16 +1357,17 @@
   $('sSave').onclick = () => {
     learning = null;
     draft.breaks = draft.breaks.filter(b => b.s && b.e);
-    // 設定を開いている間に自動開始・日付変更があっても、実績・稼働区間は最新を保持
-    const dayChanged = draft.day !== st.day;
+    // 品目名の確認
+    draft.items.forEach(it => { it.name = String(it.name || '').trim(); it.ct = Number(it.ct) || 0; });
+    const names = draft.items.map(it => it.name);
+    if (names.some(n => !n)) { alert('品目名が空欄の行があります'); return; }
+    const dup = names.find((n, i) => names.indexOf(n) !== i);
+    if (dup) { alert(`品目名「${dup}」が重複しています`); return; }
+    if (draft.items.some(it => !(it.ct > 0))) { alert('品目の「1個あたりの時間」は 0 より大きい数で入力してください'); return; }
+    // 設定を開いている間に実績・計画・自動開始・日付変更が変わっても最新を保持（ライン数を増やした分は空）
     draft.lines.forEach((l, i) => {
-      const cur = st.lines[i];
-      l.act = cur ? cur.act : 0;
-      l.doneAt = cur ? cur.doneAt : null;
-      if (dayChanged) l.plan = cur ? cur.plan : 0;
-      l.plan = Math.max(0, parseInt(l.plan, 10) || 0);
-      l.ct = Math.max(1, Number(l.ct) || 1);
-      l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+      l.queue = st.lines[i] ? st.lines[i].queue : [];
+      l.ct = Math.max(0.1, Number(l.ct) || 1);
     });
     draft.segments = st.segments;
     draft.autoStartDate = st.autoStartDate;
@@ -1189,9 +1395,12 @@
     renderCalendar();
     calDlg.showModal();
   }
-  function calPlans(k) {
-    const arr = calDraft[k] || [];
-    return st.lines.map((_, i) => Math.max(0, Number(arr[i]) || 0));
+  // セルに表示する概要（ラインごとの合計数量と品目数）
+  function calSummary(k) {
+    const day = calendarDay(calDraft, k);
+    const tot = round2(day.flat().reduce((a, e) => a + e.qty, 0));
+    return `<div class="tot">計 ${fmtNum(tot)}</div><div class="det">` +
+      st.lines.map((l, i) => `${esc(l.name)}${fmtNum(round2(day[i].reduce((a, e) => a + e.qty, 0)))}${day[i].length > 1 ? `(${day[i].length})` : ''}`).join(' ') + '</div>';
   }
   function renderCalendar() {
     const y = calMonth.getFullYear(), m = calMonth.getMonth();
@@ -1208,50 +1417,76 @@
       const el = document.createElement('div');
       el.className = 'day' + (wd === 0 ? ' sun' : wd === 6 ? ' sat' : '') + (k === today ? ' today' : '') +
         (k === calSel ? ' sel' : '') + (k < today ? ' past' : '');
-      let html = `<div class="num">${d}${k === today ? ' 今日' : ''}</div>`;
-      if (calDraft[k]) {
-        const plans = calPlans(k);
-        html += `<div class="tot">計 ${plans.reduce((a, b) => a + b, 0)}</div>` +
-          `<div class="det">${st.lines.map((l, i) => `${l.name}${plans[i]}`).join(' ')}</div>`;
-      }
-      el.innerHTML = html;
+      el.innerHTML = `<div class="num">${d}${k === today ? ' 今日' : ''}</div>` + (calDraft[k] ? calSummary(k) : '');
       el.onclick = () => { calSel = k; renderCalendar(); };
       grid.appendChild(el);
     }
     const sd = keyToDate(calSel);
-    $('calSelTitle').textContent = `${sd.getMonth() + 1}月${sd.getDate()}日（${WD[sd.getDay()]}）の計画数量`;
+    $('calSelTitle').textContent = `${sd.getMonth() + 1}月${sd.getDate()}日（${WD[sd.getDay()]}）の計画`;
+    renderCalEditor();
+  }
+  // 選択中の日の編集欄（ラインごとに品目と数量を順番に並べる）
+  function renderCalEditor() {
     const box = $('calLines');
     box.innerHTML = '';
-    const plans = calPlans(calSel);
+    const day = calendarDay(calDraft, calSel, true);
+    const store = () => { calDraft[calSel] = day; refreshCalCell(); };
+    const options = sel => `<option value="">品目なし（ラインの時間）</option>` +
+      st.items.map(it => `<option value="${esc(it.id)}"${it.id === sel ? ' selected' : ''}>${esc(it.name)}（${fmtNum(it.ct)}秒）</option>`).join('') +
+      (sel && !itemOf(sel) ? `<option value="${esc(sel)}" selected>（削除された品目）</option>` : '');
     st.lines.forEach((l, i) => {
-      const lab = document.createElement('label');
-      lab.innerHTML = `${l.name}<input type="number" min="0" inputmode="numeric">`;
-      const inp = lab.querySelector('input');
-      inp.value = calDraft[calSel] ? plans[i] : '';
-      inp.placeholder = '0';
-      inp.oninput = () => {
-        const cur = calPlans(calSel);
-        cur[i] = Math.max(0, parseInt(inp.value, 10) || 0);
-        calDraft[calSel] = cur;
-        refreshCalCell();
+      const wrap = document.createElement('div');
+      wrap.className = 'cal-line';
+      wrap.innerHTML = `<b>${esc(l.name)} ライン</b>`;
+      const list = day[i];
+      list.forEach((e, j) => {
+        const row = document.createElement('div');
+        row.className = 'cal-ent';
+        row.innerHTML = `<span class="no">${j + 1}</span><select>${options(e.item)}</select>
+          <input type="text" inputmode="decimal" placeholder="数量"><span class="sec"></span>
+          <button title="上へ">▲</button><button title="下へ">▼</button><button title="削除">✕</button>`;
+        const [sel, inp] = [row.querySelector('select'), row.querySelector('input')];
+        const sec = row.querySelector('.sec');
+        const showSec = () => {
+          const ct = ctOf(e, l);
+          sec.textContent = e.qty > 0 ? `${fmtNum(round2(e.qty * ct / 60))}分` : '';
+        };
+        inp.value = e.qty > 0 ? fmtNum(e.qty) : '';
+        showSec();
+        sel.onchange = () => { e.item = sel.value || null; showSec(); store(); };
+        inp.oninput = () => { e.qty = round2(Math.max(0, parseFloat(inp.value) || 0)); showSec(); store(); };
+        inp.onkeydown = ev => {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          const ins = [...box.querySelectorAll('.cal-ent input')];
+          const nxt = ins[ins.indexOf(inp) + 1];
+          if (nxt) { nxt.focus(); nxt.select(); }
+        };
+        const [up, down, del] = row.querySelectorAll('button');
+        up.onclick = () => { if (j > 0) { [list[j - 1], list[j]] = [list[j], list[j - 1]]; store(); renderCalEditor(); } };
+        down.onclick = () => { if (j < list.length - 1) { [list[j + 1], list[j]] = [list[j], list[j + 1]]; store(); renderCalEditor(); } };
+        del.onclick = () => { list.splice(j, 1); store(); renderCalEditor(); };
+        wrap.appendChild(row);
+      });
+      const add = document.createElement('button');
+      add.textContent = '＋ 品目を追加';
+      add.onclick = () => {
+        list.push({ item: st.items[0] ? st.items[0].id : null, qty: 0 });
+        store();
+        renderCalEditor();
+        const ins = $('calLines').children[i].querySelectorAll('.cal-ent input');
+        ins[ins.length - 1].focus();
       };
-      inp.onkeydown = e => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        const ins = box.querySelectorAll('input');
-        if (ins[i + 1]) { ins[i + 1].focus(); ins[i + 1].select(); }
-      };
-      box.appendChild(lab);
+      wrap.appendChild(add);
+      box.appendChild(wrap);
     });
   }
   // 入力中にフォーカスを失わないよう、選択中の日のセルだけ更新
   function refreshCalCell() {
     const cell = $('calGrid').querySelector('.day.sel');
     if (!cell) return;
-    const plans = calPlans(calSel);
     cell.querySelectorAll('.tot, .det').forEach(e => e.remove());
-    cell.insertAdjacentHTML('beforeend', `<div class="tot">計 ${plans.reduce((a, b) => a + b, 0)}</div>` +
-      `<div class="det">${st.lines.map((l, i) => `${l.name}${plans[i]}`).join(' ')}</div>`);
+    cell.insertAdjacentHTML('beforeend', calSummary(calSel));
   }
   $('calPrev').onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCalendar(); };
   $('calNext').onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); };
@@ -1266,11 +1501,11 @@
     prev.setDate(prev.getDate() - 1);
     const pk = dateKey(prev.getTime());
     if (!calDraft[pk]) { alert('前日の計画が入力されていません'); return; }
-    calDraft[calSel] = calPlans(pk);
+    calDraft[calSel] = calendarDay(calDraft, pk);
     renderCalendar();
   };
   $('calFillWeekdays').onclick = () => {
-    const plans = calPlans(calSel);
+    const plans = calendarDay(calDraft, calSel);
     const y = calMonth.getFullYear(), m = calMonth.getMonth();
     const today = dateKey(Date.now());
     const days = new Date(y, m + 1, 0).getDate();
@@ -1279,7 +1514,7 @@
       const dt = new Date(y, m, d);
       const k = dateKey(dt.getTime());
       if (dt.getDay() === 0 || dt.getDay() === 6 || k < today) continue;
-      calDraft[k] = plans.slice();
+      calDraft[k] = JSON.parse(JSON.stringify(plans));
       n++;
     }
     renderCalendar();
@@ -1288,8 +1523,10 @@
   $('calClear').onclick = () => { delete calDraft[calSel]; renderCalendar(); };
   $('calCancel').onclick = () => calDlg.close();
   $('calSave').onclick = () => {
+    // 数量 0 の行は除いて保存
+    for (const k of Object.keys(calDraft)) calDraft[k] = calendarDay(calDraft, k);
     st.calendar = calDraft;
-    applyPlans(calendarPlans(dateKey(Date.now())));
+    applyPlans(calendarDay(st.calendar, dateKey(Date.now())));
     save();
     calDlg.close();
     render();
@@ -1341,7 +1578,7 @@
   }
   const xmlText = el => [...el.getElementsByTagName('t')].map(t => t.textContent).join('');
 
-  // .xlsx の「計画」シート（なければ先頭シート）を 2 次元配列で返す。日付書式のセルは Date にする
+  // .xlsx の全シートを { シート名: 2 次元配列 } で返す（シートの順番どおり）。日付書式のセルは Date にする
   async function readXlsx(buf) {
     const files = await unzip(buf);
     const dec = new TextDecoder();
@@ -1350,17 +1587,8 @@
     if (!wb) throw new Error('Excel ファイル（.xlsx）として読み込めません');
     const sheets = [...wb.getElementsByTagName('sheet')];
     if (!sheets.length) throw new Error('シートがありません');
-    const sheet = sheets.find(sh => sh.getAttribute('name') === '計画') || sheets[0];
-    const rid = sheet.getAttribute('r:id') || sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
-    let target = 'worksheets/sheet1.xml';
     const rels = xml('xl/_rels/workbook.xml.rels');
-    if (rels) {
-      const rel = [...rels.getElementsByTagName('Relationship')].find(x => x.getAttribute('Id') === rid);
-      if (rel) target = rel.getAttribute('Target');
-    }
-    const path = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
-    const ws = xml(path);
-    if (!ws) throw new Error('シートを読み込めません');
+    const relList = rels ? [...rels.getElementsByTagName('Relationship')] : [];
 
     const sst = xml('xl/sharedStrings.xml');
     const strings = sst ? [...sst.getElementsByTagName('si')].map(xmlText) : [];
@@ -1379,28 +1607,41 @@
       });
     }
 
-    const rows = [];
-    for (const row of ws.getElementsByTagName('row')) {
-      const ri = +row.getAttribute('r') - 1;
-      const cells = [];
-      for (const c of row.getElementsByTagName('c')) {
-        const ci = colIndex(c.getAttribute('r'));
-        const t = c.getAttribute('t');
-        const v = c.getElementsByTagName('v')[0];
-        let val = null;
-        if (t === 's') val = strings[+v?.textContent] ?? '';
-        else if (t === 'inlineStr') val = xmlText(c);
-        else if (t === 'str' || t === 'e') val = v ? v.textContent : '';
-        else if (t === 'b') val = v ? v.textContent === '1' : null;
-        else if (v) {
-          val = Number(v.textContent);
-          if (dateStyles.has(+(c.getAttribute('s') || 0))) val = serialToDate(val);
+    const result = {};
+    sheets.forEach((sheet, si) => {
+      const rid = sheet.getAttribute('r:id') || sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+      const rel = relList.find(x => x.getAttribute('Id') === rid);
+      const target = rel ? rel.getAttribute('Target') : `worksheets/sheet${si + 1}.xml`;
+      const path = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+      const ws = xml(path);
+      if (!ws) return;
+      const rows = [];
+      let ri = -1;
+      for (const row of ws.getElementsByTagName('row')) {
+        ri = row.getAttribute('r') ? +row.getAttribute('r') - 1 : ri + 1;
+        const cells = [];
+        let ci = -1;
+        for (const c of row.getElementsByTagName('c')) {
+          ci = c.getAttribute('r') ? colIndex(c.getAttribute('r')) : ci + 1;
+          const t = c.getAttribute('t');
+          const v = c.getElementsByTagName('v')[0];
+          let val = null;
+          if (t === 's') val = strings[+v?.textContent] ?? '';
+          else if (t === 'inlineStr') val = xmlText(c);
+          else if (t === 'str' || t === 'e') val = v ? v.textContent : '';
+          else if (t === 'b') val = v ? v.textContent === '1' : null;
+          else if (v) {
+            val = Number(v.textContent);
+            if (dateStyles.has(+(c.getAttribute('s') || 0))) val = serialToDate(val);
+          }
+          cells[ci] = val;
         }
-        cells[ci] = val;
+        rows[ri] = cells;
       }
-      rows[ri] = cells;
-    }
-    return Array.from(rows, x => x || []);
+      result[sheet.getAttribute('name')] = Array.from(rows, x => x || []);
+    });
+    if (!Object.keys(result).length) throw new Error('シートを読み込めません');
+    return result;
   }
 
   function serialToDate(n) {
@@ -1453,82 +1694,169 @@
     return dateKey(dt.getTime());
   }
   const normName = v => String(v ?? '').trim().replace(/ライン$/, '').replace(/\s+/g, '').toUpperCase();
+  const normText = v => String(v ?? '').normalize('NFKC').trim();
+  const isBlank = v => v === null || v === undefined || String(v).trim() === '';
+  // 数値（全角・カンマ可）。読めなければ NaN
+  const toNum = v => (typeof v === 'number' ? v : Number(normText(v).replace(/,/g, '')));
+  const hdr = v => normText(v).replace(/\s+/g, '');
+  // 見出し行（指定の見出しをすべて含む最初の行）を探す
+  function findHeader(rows, need) {
+    for (let i = 0; i < Math.min(rows.length, 20); i++) {
+      const h = (rows[i] || []).map(hdr);
+      if (need.every(n => h.some(x => x.includes(n)))) return i;
+    }
+    return -1;
+  }
 
-  // 2 次元配列から計画を取り出す。{ plans: {日付: [..]}, errors: [], warnings: [] }
-  function parsePlanRows(rows) {
+  // 「品目」シート：品目名と 1個あたりの時間（秒）。{ items: [{ name, ct }], errors }
+  function parseItemRows(rows) {
+    const items = [], errors = [];
+    const h = findHeader(rows, ['品目']);
+    if (h < 0) return { items, errors };
+    const head = rows[h].map(hdr);
+    const cName = head.findIndex(x => x.includes('品目'));
+    const cCt = head.findIndex(x => x.includes('時間') || x.includes('秒'));
+    for (let ri = h + 1; ri < rows.length; ri++) {
+      const r = rows[ri];
+      if (isBlank(r[cName])) continue;
+      const name = normText(r[cName]);
+      const ct = cCt >= 0 ? toNum(r[cCt]) : NaN;
+      if (!(ct > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間「${r[cCt] ?? ''}」は 0 より大きい数で入力してください`); continue; }
+      items.push({ name, ct: round2(ct) });
+    }
+    return { items, errors };
+  }
+
+  // 「計画」シート（日付・ライン・品目・計画数量の縦並び）。同じ日・同じラインの行は上から順番に作る
+  // { plans: { 日付: [ライン順に [{ itemName, qty }]] }, errors, warnings }
+  function parseLongPlanRows(rows, h, knownItem) {
+    const errors = [], warnings = [];
+    const head = rows[h].map(hdr);
+    const col = test => head.findIndex(test);
+    const cDate = col(x => x.includes('日付'));
+    const cLine = col(x => x.includes('ライン'));
+    const cItem = col(x => x.includes('品目'));
+    const cQty = col(x => x.includes('数量') || x === '計画');
+    const plans = {};
+    if (cLine < 0 || cQty < 0) {
+      errors.push('見出しに「ライン」「計画数量」の列がありません（雛形の形式で入力してください）');
+      return { plans, errors, warnings };
+    }
+    let lastDate = null;
+    for (let ri = h + 1; ri < rows.length; ri++) {
+      const r = rows[ri], rowNo = ri + 1;
+      if (!isBlank(r[cDate])) {
+        lastDate = cellToDateKey(r[cDate]);
+        if (!lastDate) { errors.push(`${rowNo}行目：日付「${r[cDate]}」を読み取れません`); continue; }
+      }
+      if (isBlank(r[cQty]) && (cItem < 0 || isBlank(r[cItem]))) continue;     // 数量も品目も空欄の行は取り込まない
+      if (!lastDate) { errors.push(`${rowNo}行目：日付がありません`); continue; }
+      const li = st.lines.findIndex(l => normName(l.name) === normName(r[cLine]));
+      if (li < 0) { errors.push(`${rowNo}行目：ライン「${r[cLine] ?? ''}」がありません`); continue; }
+      const itemName = cItem >= 0 && !isBlank(r[cItem]) ? normText(r[cItem]) : null;
+      if (itemName && !knownItem(itemName)) { errors.push(`${rowNo}行目：品目「${itemName}」が登録されていません（「品目」シートに追加してください）`); continue; }
+      const qty = toNum(r[cQty]);
+      if (isBlank(r[cQty]) || !Number.isFinite(qty) || qty < 0) {
+        errors.push(`${rowNo}行目：計画数量「${r[cQty] ?? ''}」は 0 以上の数で入力してください`);
+        continue;
+      }
+      if (qty === 0) continue;
+      if (!plans[lastDate]) plans[lastDate] = st.lines.map(() => []);
+      plans[lastDate][li].push({ itemName, qty: round2(qty) });
+    }
+    return { plans, errors, warnings };
+  }
+
+  // 旧形式（A列：日付、B列以降：ラインごとの計画数量）。品目なしで取り込む
+  function parseWidePlanRows(rows) {
     const errors = [], warnings = [];
     const firstDate = rows.findIndex(r => cellToDateKey(r[0]) !== null);
     if (firstDate < 0) {
-      errors.push('A列に日付が見つかりません（雛形の形式で入力してください）');
+      errors.push('日付が見つかりません（雛形の形式で入力してください）');
       return { plans: {}, errors, warnings };
     }
-    // 見出し行（日付行の直前）から列とラインを対応付ける
     const header = firstDate > 0 ? rows[firstDate - 1] : [];
     const colOf = st.lines.map((l, i) => {
       const hit = header.findIndex((h, ci) => ci > 0 && normName(h) === normName(l.name));
       return hit > 0 ? hit : (header.length > 1 ? -1 : i + 1);
     });
     st.lines.forEach((l, i) => { if (colOf[i] < 0) warnings.push(`ライン「${l.name}」の列が見出しにありません（0 として扱います）`); });
-    header.forEach((h, ci) => {
-      if (ci > 0 && h !== null && String(h).trim() !== '' && !st.lines.some(l => normName(l.name) === normName(h))) {
-        warnings.push(`見出し「${h}」に対応するラインがありません（取り込みません）`);
-      }
-    });
-
     const plans = {};
     for (let ri = firstDate; ri < rows.length; ri++) {
-      const r = rows[ri];
-      const rowNo = ri + 1;
-      if (!r.some(v => v !== null && v !== undefined && String(v).trim() !== '')) continue;
+      const r = rows[ri], rowNo = ri + 1;
+      if (!r.some(v => !isBlank(v))) continue;
       const key = cellToDateKey(r[0]);
       if (!key) { errors.push(`${rowNo}行目：日付「${r[0] ?? ''}」を読み取れません`); continue; }
       const vals = colOf.map(ci => (ci < 0 ? null : r[ci]));
-      if (vals.every(v => v === null || v === undefined || String(v).trim() === '')) continue; // 空欄の日は取り込まない
-      const nums = [];
+      if (vals.every(isBlank)) continue;
       let bad = false;
-      vals.forEach((v, i) => {
-        if (v === null || v === undefined || String(v).trim() === '') { nums.push(0); return; }
-        const n = typeof v === 'number' ? v : Number(String(v).trim().replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/,/g, ''));
-        if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
-          errors.push(`${rowNo}行目：ライン「${st.lines[i].name}」の計画数量「${v}」は 0 以上の整数で入力してください`);
+      const day = vals.map((v, i) => {
+        if (isBlank(v)) return [];
+        const n = toNum(v);
+        if (!Number.isFinite(n) || n < 0) {
+          errors.push(`${rowNo}行目：ライン「${st.lines[i].name}」の計画数量「${v}」は 0 以上の数で入力してください`);
           bad = true;
         }
-        nums.push(n);
+        return n > 0 ? [{ itemName: null, qty: round2(n) }] : [];
       });
-      if (bad) continue;
-      if (plans[key]) warnings.push(`${rowNo}行目：日付 ${key} が重複しています（後の行を使います）`);
-      plans[key] = nums;
+      if (!bad) plans[key] = day;
     }
     return { plans, errors, warnings };
   }
 
   async function importPlanFile(file) {
-    let rows;
+    let sheets;
     try {
       const buf = await file.arrayBuffer();
-      rows = /\.csv$/i.test(file.name) ? readCsv(buf) : await readXlsx(buf);
+      sheets = /\.csv$/i.test(file.name) ? { 計画: readCsv(buf) } : await readXlsx(buf);
     } catch (e) {
       alert('取り込みできませんでした。\n' + (e.message || e) +
         (/\.xls$/i.test(file.name) ? '\n\n古い形式（.xls）は読めません。Excel で「.xlsx」形式で保存し直してください。' : ''));
       return;
     }
-    const { plans, errors, warnings } = parsePlanRows(rows);
-    const keys = Object.keys(plans).sort();
+    // 品目シート（あれば品目マスタへ追加・更新）
+    const itemRes = sheets['品目'] ? parseItemRows(sheets['品目']) : { items: [], errors: [] };
+    const fileItems = new Map(itemRes.items.map(it => [it.name, it]));
+    const knownItem = name => fileItems.has(name) || st.items.some(it => normText(it.name) === name);
+
+    const planRows = sheets['計画'] || Object.values(sheets)[0];
+    const h = findHeader(planRows, ['日付', 'ライン']);
+    const res = h >= 0 ? parseLongPlanRows(planRows, h, knownItem) : parseWidePlanRows(planRows);
+    const errors = [...itemRes.errors, ...res.errors], warnings = res.warnings;
+    const keys = Object.keys(res.plans).sort();
     const list = a => a.slice(0, 15).join('\n') + (a.length > 15 ? `\n…ほか ${a.length - 15} 件` : '');
-    if (!keys.length) {
+
+    const newItems = [...fileItems.values()].filter(it => !st.items.some(x => normText(x.name) === it.name));
+    const changed = [...fileItems.values()].filter(it => st.items.some(x => normText(x.name) === it.name && x.ct !== it.ct));
+    if (!keys.length && !newItems.length && !changed.length) {
       alert('取り込める計画がありませんでした。' + (errors.length ? '\n\n【エラー】\n' + list(errors) : ''));
       return;
     }
-    let msg = `${keys[0]} 〜 ${keys[keys.length - 1]} の ${keys.length} 日分を取り込みます。\n同じ日の計画は上書きされます。`;
+    let msg = '';
+    if (keys.length) msg += `${keys[0]} 〜 ${keys[keys.length - 1]} の ${keys.length} 日分の計画を取り込みます。\n取り込む日の計画は、全ラインともファイルの内容に置き換わります。\n`;
+    if (newItems.length) msg += `\n品目を追加：${newItems.map(it => `${it.name}（${fmtNum(it.ct)}秒）`).join('、')}`;
+    if (changed.length) msg += `\n1個あたりの時間を変更：${changed.map(it => `${it.name}（${fmtNum(it.ct)}秒）`).join('、')}`;
     if (errors.length) msg += `\n\n【エラー：この行は取り込みません】\n${list(errors)}`;
     if (warnings.length) msg += `\n\n【注意】\n${list(warnings)}`;
-    if (!confirm(msg + '\n\nよろしいですか？')) return;
-    Object.assign(calDraft, plans);
-    const d0 = keyToDate(keys[0]);
-    calMonth = new Date(d0.getFullYear(), d0.getMonth(), 1);
-    calSel = keys[0];
+    if (!confirm(msg.trim() + '\n\nよろしいですか？')) return;
+
+    // 品目マスタは今すぐ反映（計画は「保存」で確定）
+    for (const it of fileItems.values()) {
+      const cur = st.items.find(x => normText(x.name) === it.name);
+      if (cur) cur.ct = it.ct;
+      else { st.itemSeq = (st.itemSeq || 0) + 1; st.items.push({ id: 'i' + st.itemSeq, name: it.name, ct: it.ct }); }
+    }
+    save();
+    const idOf = name => (name ? (st.items.find(x => normText(x.name) === name) || {}).id || null : null);
+    for (const k of keys) calDraft[k] = res.plans[k].map(ln => ln.map(e => ({ item: idOf(e.itemName), qty: e.qty })));
+    if (keys.length) {
+      const d0 = keyToDate(keys[0]);
+      calMonth = new Date(d0.getFullYear(), d0.getMonth(), 1);
+      calSel = keys[0];
+    }
     renderCalendar();
-    banner(`${keys.length} 日分を取り込みました。「保存」で確定します`);
+    render();
+    banner(keys.length ? `${keys.length} 日分を取り込みました。「保存」で確定します` : '品目を登録しました');
   }
 
   // ---- .xlsx 雛形の作成 ----
@@ -1575,54 +1903,88 @@
     return new Blob([...parts, ...central, new Uint8Array(end.buffer)],
       { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
-  const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   function colName(i) { let s = ''; i++; while (i) { s = String.fromCharCode(65 + (i - 1) % 26) + s; i = Math.floor((i - 1) / 26); } return s; }
 
-  // 表示中の月の雛形（日付 × ライン）。入力済みの計画は値として入れる
+  // 表示中の月の雛形。「計画」シートは 日付・ライン・品目・計画数量 の縦並び（同じ日・同じラインは上から順に作る）。
+  // 入力済みの計画は値として入れ、未入力の日はラインごとに空欄の行を用意する。「品目」シートには品目マスタを入れる
   function buildTemplate(year, month) {
     const days = new Date(year, month + 1, 0).getDate();
-    const n = st.lines.length;
     const strCell = (ref, v, s) => `<c r="${ref}" t="inlineStr"${s ? ` s="${s}"` : ''}><is><t>${esc(v)}</t></is></c>`;
-    let rowsXml = `<row r="1">${strCell('A1', '日付', 1)}${st.lines.map((l, i) => strCell(colName(i + 1) + '1', l.name, 1)).join('')}</row>`;
+    const numCell = (ref, v, s) => `<c r="${ref}" s="${s}"><v>${v}</v></c>`;
+    const head = ['日付', 'ライン', '品目', '計画数量'];
+    let rowsXml = `<row r="1">${head.map((h, i) => strCell(colName(i) + '1', h, 1)).join('')}</row>`;
+    let r = 1;
     for (let d = 1; d <= days; d++) {
       const dt = new Date(year, month, d);
-      const r = d + 1;
+      const k = dateKey(dt.getTime());
       const wd = dt.getDay();
-      const style = wd === 0 ? 3 : wd === 6 ? 4 : 2;
-      const plan = calDraft[dateKey(dt.getTime())];
-      let cells = `<c r="A${r}" s="${style}"><v>${dateToSerial(dt)}</v></c>`;
-      st.lines.forEach((_, i) => {
-        const ref = colName(i + 1) + r;
-        cells += plan ? `<c r="${ref}" s="5"><v>${Number(plan[i]) || 0}</v></c>` : `<c r="${ref}" s="5"/>`;
+      const dateStyle = wd === 0 ? 3 : wd === 6 ? 4 : 2;
+      const day = calDraft[k] ? calendarDay(calDraft, k) : null;
+      st.lines.forEach((l, i) => {
+        const list = day && day[i].length ? day[i] : [null];
+        list.forEach(e => {
+          r++;
+          rowsXml += `<row r="${r}">${numCell('A' + r, dateToSerial(dt), dateStyle)}${strCell('B' + r, l.name, 5)}` +
+            (e && e.item ? strCell('C' + r, itemName(e.item), 7) : `<c r="C${r}" s="7"/>`) +
+            (e ? numCell('D' + r, e.qty, 5) : `<c r="D${r}" s="5"/>`) + '</row>';
+        });
       });
-      rowsXml += `<row r="${r}">${cells}</row>`;
     }
+    const last = Math.max(r, 2) + 300;   // 行を追加して入力できるよう、入力規則は余分に付ける
+    const lineList = st.lines.map(l => l.name).join(',');
+    const lineDv = lineList.length < 250 && !st.lines.some(l => /[,"]/.test(l.name))
+      ? `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="ライン名を選んでください" sqref="B2:B${last}"><formula1>${esc('"' + lineList + '"')}</formula1></dataValidation>` : '';
+    const dvs = [
+      lineDv,
+      `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="「品目」シートに登録した品目を選んでください" sqref="C2:C${last}"><formula1>'品目'!$A$2:$A$1000</formula1></dataValidation>`,
+      `<dataValidation type="decimal" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0以上の数を入力してください（小数も可）" sqref="D2:D${last}"><formula1>0</formula1></dataValidation>`,
+    ].filter(Boolean);
     const sheet1 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<dimension ref="A1:${colName(n)}${days + 1}"/>
+<dimension ref="A1:D${r}"/>
 <sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
 <sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="${n + 1}" width="12" customWidth="1"/></cols>
+<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="10" customWidth="1"/><col min="3" max="3" width="28" customWidth="1"/><col min="4" max="4" width="12" customWidth="1"/></cols>
 <sheetData>${rowsXml}</sheetData>
-<dataValidations count="1"><dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0以上の整数を入力してください" sqref="B2:${colName(n)}${days + 1}"><formula1>0</formula1></dataValidation></dataValidations>
+<dataValidations count="${dvs.length}">${dvs.join('')}</dataValidations>
 </worksheet>`;
+
+    let itemXml = `<row r="1">${strCell('A1', '品目', 1)}${strCell('B1', '1個あたりの時間（秒）', 1)}</row>`;
+    st.items.forEach((it, i) => {
+      const rr = i + 2;
+      itemXml += `<row r="${rr}">${strCell('A' + rr, it.name, 7)}${numCell('B' + rr, it.ct, 5)}</row>`;
+    });
+    const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:B${st.items.length + 1}"/>
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="18"/>
+<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="22" customWidth="1"/></cols>
+<sheetData>${itemXml}</sheetData>
+<dataValidations count="1"><dataValidation type="decimal" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0より大きい数を入力してください" sqref="B2:B1000"><formula1>0</formula1></dataValidation></dataValidations>
+</worksheet>`;
+
     const help = [
       'ライン進捗アンドン 計画取り込み用の雛形',
       '',
-      '【入力のしかた】',
-      '1. 「計画」シートの各日付の行に、ラインごとの計画数量（0以上の整数）を入力します。',
-      '2. 休みの日など、計画のない日は空欄のままにします（空欄の行は取り込みません）。',
-      '3. 1行目の見出し（ライン名）は、アンドンのライン名と同じにしてください。',
-      '4. 日付の行は追加・削除できます。日付は A 列に「2026/11/02」のように入力します。',
-      '5. 保存するときは「Excel ブック（.xlsx）」または「CSV」形式にします。',
+      '【「品目」シート】',
+      '品目名と、1個あたりの時間（秒）を登録します。ここに書いた品目は、取り込むとアンドンの品目に追加・更新されます。',
+      '',
+      '【「計画」シート】',
+      '1. 1行に「日付・ライン・品目・計画数量」を入力します。',
+      '2. 同じ日・同じラインで複数の品目を作るときは、作る順番に行を並べます（上の行から順に作ります）。',
+      '   行が足りないときは、行を挿入して追加してください。日付は省略すると上の行と同じ日になります。',
+      '3. 品目は一覧から選びます（「品目」シートに登録した品目）。空欄にすると、ラインの「品目なしの時の時間」で計算します。',
+      '4. 計画数量は小数も入力できます（例：10.5）。休みの日など、計画のない行は数量を空欄のままにします（取り込みません）。',
+      '5. 保存するときは「Excel ブック（.xlsx）」形式にします。',
       '',
       '【取り込みかた】',
       'アンドンの「📅 計画」→「📥 Excelから取り込み」でこのファイルを選び、内容を確認して「保存」を押します。',
-      '同じ日の計画は上書きされます。',
+      'ファイルに入っている日の計画は、全ラインともファイルの内容に置き換わります。',
     ];
-    const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    const sheet3 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<cols><col min="1" max="1" width="110" customWidth="1"/></cols>
+<cols><col min="1" max="1" width="120" customWidth="1"/></cols>
 <sheetData>${help.map((t, i) => `<row r="${i + 1}">${t ? strCell('A' + (i + 1), t, i === 0 ? 6 : 0) : ''}</row>`).join('')}</sheetData>
 </worksheet>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1645,7 +2007,7 @@
 <border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border>
 </borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="7">
+<cellXfs count="8">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
@@ -1653,6 +2015,7 @@
 <xf numFmtId="164" fontId="3" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -1664,6 +2027,7 @@
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`,
       '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1673,16 +2037,18 @@
       'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <bookViews><workbookView activeTab="0"/></bookViews>
-<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="説明" sheetId="2" r:id="rId2"/></sheets>
+<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="品目" sheetId="2" r:id="rId2"/><sheet name="説明" sheetId="3" r:id="rId4"/></sheets>
 </workbook>`,
       'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
 <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
 </Relationships>`,
       'xl/worksheets/sheet1.xml': sheet1,
       'xl/worksheets/sheet2.xml': sheet2,
+      'xl/worksheets/sheet3.xml': sheet3,
       'xl/styles.xml': styles,
     });
   }
