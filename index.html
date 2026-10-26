@@ -158,8 +158,9 @@
   }
   footer .legend { display: flex; gap: 1.5vw; align-items: center; }
   footer .dot { width: 1em; height: 1em; }
-  .keys { color: #234; }
-  .keys b { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; }
+  .keys { color: #234; display: flex; flex-wrap: wrap; gap: 0.3em 1.2em; align-items: center; }
+  .keys > span { white-space: nowrap; }
+  .keys b { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; margin-right: 0.2em; }
 
   #banner {
     position: fixed; left: 50%; top: 12%; transform: translateX(-50%);
@@ -276,6 +277,13 @@
     </table>
     <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
 
+    <h3>作業開始時刻</h3>
+    <div class="row-flex">
+      <label><input type="checkbox" id="sAutoStart"> 毎日この時刻に自動で作業開始する</label>
+      <input type="time" id="sStartTime" style="width:auto">
+    </div>
+    <p class="note">設定した時刻になると自動で作業開始します（前日の実績はリセットされます）。開始時刻より後に画面を開いた場合も、設定した時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
+
     <h3>休憩時間</h3>
     <table>
       <thead><tr><th>開始</th><th>終了</th><th style="width:80px"></th></tr></thead>
@@ -349,6 +357,9 @@
       resetKey: 'NumpadDivide',
       planKey: 'NumpadMultiply',
       keyVer: 2,
+      autoStart: false,
+      startTime: '08:00',
+      autoStartDate: null,   // 自動開始（または手動開始）した日
       sound: true,
       statusColors: { ...DEFAULT_STATUS_COLORS },
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
@@ -531,10 +542,27 @@
     rowsEl.appendChild(tr);
     // 行数に合わせて文字サイズを調整
     const rows = st.lines.length + 1;
-    document.documentElement.style.setProperty('--cell-font', `min(${Math.min(9, 62 / rows)}vh, 5vw)`);
+    fontVh = Math.min(9, 62 / rows);
     applyStatusColors();
     renderKeyLegend();
     render();
+    fitLayout();
+  }
+
+  // 画面（全画面を含む）に表・凡例が収まるよう、セルの文字サイズを調整する
+  let fontVh = 9;
+  function fitLayout() {
+    const root = document.documentElement.style;
+    const footer = document.querySelector('footer');
+    let vh = fontVh;
+    for (let i = 0; i < 30; i++) {
+      root.setProperty('--cell-font', `min(${vh}vh, 5vw)`);
+      render();
+      const fits = footer.getBoundingClientRect().bottom <= window.innerHeight + 1 &&
+        $('board').getBoundingClientRect().bottom <= footer.getBoundingClientRect().top + 1;
+      if (fits) break;
+      vh *= 0.93;
+    }
   }
 
   function applyStatusColors() {
@@ -571,7 +599,8 @@
     else if (!running()) { stEl.textContent = '一時停止'; stEl.className = 'state pause'; }
     else if (brk) { stEl.textContent = `休憩中 ${brk.s}〜${brk.e}`; stEl.className = 'state break'; }
     else { stEl.textContent = '稼働中'; stEl.className = 'state run'; }
-    $('info').textContent = started() ? `開始 ${fmtHM(st.segments[0].s)}　実稼働 ${fmtDur(workSec * 1000)}` : '';
+    $('info').textContent = started() ? `開始 ${fmtHM(st.segments[0].s)}　実稼働 ${fmtDur(workSec * 1000)}`
+      : st.autoStart && st.startTime && st.autoStartDate !== dateKey(now) ? `開始予定 ${st.startTime}（自動）` : '';
 
     const btn = $('btnStart');
     if (!started()) { btn.textContent = '▶ 作業開始'; btn.className = ''; }
@@ -614,15 +643,17 @@
       }
     });
   }
-  window.addEventListener('resize', () => render());
+  window.addEventListener('resize', () => fitLayout());
 
   function renderKeyLegend() {
-    const parts = st.lines.map(l => `<b>${keyLabel(l.key)}</b> ${l.name}+1`);
-    parts.push(`<b>${keyLabel(st.minusKey)}</b>→ライン 取消`);
-    if (st.startKey) parts.push(`<b>${keyLabel(st.startKey)}</b> 開始/停止`);
-    if (st.planKey) parts.push(`<b>${keyLabel(st.planKey)}</b> 計画入力`);
-    if (st.resetKey) parts.push(`<b>${keyLabel(st.resetKey)}</b>×2 リセット`);
-    $('keyLegend').innerHTML = parts.join('　');
+    // 凡例は短く表示（テンキーは「テンキー」を省略）
+    const k = code => `<b>${keyLabel(code).replace(/^テンキー /, '')}</b>`;
+    const parts = st.lines.filter(l => l.key).map(l => `${k(l.key)}${l.name}+1`);
+    if (st.minusKey) parts.push(`${k(st.minusKey)}→ライン 取消`);
+    if (st.startKey) parts.push(`${k(st.startKey)}開始/停止`);
+    if (st.planKey) parts.push(`${k(st.planKey)}計画入力`);
+    if (st.resetKey) parts.push(`${k(st.resetKey)}×2 リセット`);
+    $('keyLegend').innerHTML = '<span>テンキー：</span>' + parts.map(p => `<span>${p}</span>`).join('');
   }
 
   // ---------- 操作 ----------
@@ -669,10 +700,35 @@
     if (delta < 0) banner(`${l.name} ライン −1 取消`);
   }
 
+  function dateKey(ms) {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  // 設定した作業開始時刻になったら自動で開始する
+  function checkAutoStart(now) {
+    if (!st.autoStart || !st.startTime) return;
+    const today = dateKey(now);
+    if (st.autoStartDate === today) return;
+    const s = midnight(now) + parseHM(st.startTime);
+    if (now < s || now - s > 12 * 3600000) return;   // 開始時刻から12時間以内のみ
+    st.autoStartDate = today;
+    if (!(started() && dateKey(st.segments[0].s) === today)) {
+      st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
+      st.segments = [{ s, e: null }];
+      banner(`▶ 作業開始（${st.startTime}）`);
+    }
+    save();
+  }
+
   function toggleRun() {
     const now = Date.now();
     if (running()) { st.segments[st.segments.length - 1].e = now; banner('⏸ 一時停止'); }
-    else { banner(started() ? '▶ 再開' : '▶ 作業開始'); st.segments.push({ s: now, e: null }); }
+    else {
+      banner(started() ? '▶ 再開' : '▶ 作業開始');
+      st.segments.push({ s: now, e: null });
+      st.autoStartDate = dateKey(now);
+    }
     save();
     render();
   }
@@ -806,6 +862,8 @@
     draft = JSON.parse(JSON.stringify(st));
     $('sLineCount').value = draft.lines.length;
     $('sSound').checked = draft.sound;
+    $('sAutoStart').checked = draft.autoStart;
+    $('sStartTime').value = draft.startTime || '';
     draft.statusColors = { ...DEFAULT_STATUS_COLORS, ...draft.statusColors };
     renderStatusColors();
     renderSettings();
@@ -897,6 +955,8 @@
   }
   $('sColReset').onclick = () => { draft.statusColors = { ...DEFAULT_STATUS_COLORS }; renderStatusColors(); };
   $('sSound').onchange = e => (draft.sound = e.target.checked);
+  $('sAutoStart').onchange = e => (draft.autoStart = e.target.checked);
+  $('sStartTime').oninput = e => (draft.startTime = e.target.value);
   $('sCancel').onclick = () => { learning = null; dlg.close(); };
   $('sSave').onclick = () => {
     learning = null;
@@ -908,6 +968,7 @@
     });
     // 稼働区間は設定中にも進んでいる可能性があるので最新を保持
     draft.segments = st.segments;
+    draft.autoStartDate = st.autoStartDate;
     st = draft;
     save();
     dlg.close();
@@ -916,9 +977,10 @@
   $('btnSettings').onclick = e => { e.currentTarget.blur(); openSettings(); };
 
   // ---------- 起動 ----------
+  checkAutoStart(Date.now());
   buildRows();
   updateFocusWarn();
-  setInterval(() => { render(); updateFocusWarn(); }, 1000);
+  setInterval(() => { checkAutoStart(Date.now()); render(); updateFocusWarn(); }, 1000);
 })();
 </script>
 </body>
