@@ -43,7 +43,7 @@
     flex-wrap: nowrap;
     white-space: nowrap;
   }
-  header h1 { margin: 0; font-size: clamp(16px, 2.2vw, 40px); white-space: nowrap; }
+  header h1 { margin: 0; font-size: clamp(15px, 1.7vw, 32px); white-space: nowrap; flex-shrink: 0; }
   .clock { font-size: clamp(16px, 2.2vw, 40px); font-variant-numeric: tabular-nums; font-weight: bold; }
   .state {
     padding: 0.3vh 1vw;
@@ -58,8 +58,7 @@
   .sync { font-size: clamp(11px, 1vw, 18px); font-weight: bold; padding: 0.2vh 0.6vw; border-radius: 5px; display: none; }
   .sync.on { display: inline-block; background: #e7f6ea; color: #1a7a33; }
   .sync.off { display: inline-block; background: #ffe1e1; color: #c00; animation: blink 1s steps(2) infinite; }
-  .info { font-size: clamp(12px, 1.1vw, 20px); opacity: 0.9; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .info { font-size: clamp(11px, 0.95vw, 18px); line-height: 1.25; opacity: 0.9; min-width: 0; overflow: hidden; white-space: normal; }
   .spacer { flex: 1; }
   header button {
     font: inherit;
@@ -164,6 +163,7 @@
   .carry-msg { font-size: 18px; margin: 4px 0 10px; }
   .carry-tbl td, .carry-tbl th { font-size: 17px !important; text-align: center; }
   .carry-tbl td.it { text-align: left; }
+  .carry-tbl th:nth-child(1) { width: 12%; } .carry-tbl th:nth-child(2) { width: 52%; } .carry-tbl th:nth-child(3) { width: 18%; }
   .carry-tbl input[type=checkbox] { width: 22px; height: 22px; }
   .carry-keys { font-size: 16px; margin-top: 10px; background: #fff6e6; border: 1px solid #f0c880; border-radius: 6px; padding: 6px 10px; }
   .carry-keys kbd { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; font-family: inherit; font-weight: bold; }
@@ -183,7 +183,7 @@
   .pv-card { background: #fff; border-radius: 8px; padding: 0.8vh 1vw; border-left: 6px solid var(--head); box-shadow: 0 1px 3px #0002; }
   .pv-card .k { font-size: clamp(11px, 0.9vw, 16px); color: #556; }
   .pv-card .v { font-size: clamp(18px, 2.2vw, 40px); font-weight: bold; font-variant-numeric: tabular-nums; }
-  .pv-card .v small { font-size: 0.5em; font-weight: normal; color: #556; margin-left: 0.3em; }
+  .pv-card .v small { font-size: 0.5em; font-weight: normal; color: #556; margin-left: 0.3em; display: inline-block; white-space: nowrap; }
   .pv-card.late { border-left-color: var(--st-bad); }
   .pv-card.late .v { color: var(--st-bad); }
   .gantt { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px #0002; padding: 0.6vh 0.8vw 1vh; }
@@ -216,6 +216,42 @@
   .pv-table tr.cur td { background: #fff7c8; font-weight: bold !important; }
   .pv-table .late { color: var(--st-bad); font-weight: bold; }
   .pv-empty { background: #fff; border-radius: 8px; padding: 3vh; text-align: center; color: #556; font-size: clamp(14px, 1.4vw, 24px); }
+  .pv-scroll { overflow-x: auto; }
+
+  /* ---- 狭い画面（スマートフォン・タブレット縦）---- */
+  @media (max-width: 760px) {
+    header { flex-wrap: wrap; white-space: normal; gap: 6px; padding: 6px 8px; }
+    header h1, header .info, #btnFull { display: none; }
+    header .spacer { display: none; }
+    header button { font-size: 13px; padding: 5px 8px; }
+    .clock { font-size: 18px; }
+    .cal .det { display: none; }
+    .cal-nav { flex-wrap: wrap; gap: 6px; }
+    .cal-nav b { min-width: 0; width: 100%; order: -1; }
+    .cal-nav button { font-size: 14px !important; padding: 4px 10px !important; }
+    .cal { gap: 2px; }
+    .cal .num { font-size: 12px; }
+    .cal-ent { flex-wrap: wrap; }
+    .dlg-body .cal-ent select { flex: 1 1 calc(100% - 2em); }
+    .dlg-body .cal-ent input[type=text] { flex: 1 1 5em; }
+    .cal .day { min-height: 46px; padding: 2px 3px; }
+    .cal .tot { font-size: 12px; }
+    .cal-edit .lines { grid-template-columns: 1fr; }
+    .g-row { grid-template-columns: 2.4em 1fr; }
+    .g-name { font-size: 16px; }
+    .pv-top h2 { width: 100%; }
+    dialog, #calDlg, #carryDlg { width: 98vw; max-height: 96vh; }
+    .dlg-head, #carryDlg .dlg-head { font-size: 17px; padding: 10px 12px; }
+    .dlg-body { padding: 10px 10px; }
+    .dlg-body th, .dlg-body td { font-size: 13px !important; }
+    .keybtn { min-width: 0; }
+    #dlg .dlg-body table { display: block; overflow-x: auto; }
+    .dlg-foot { flex-wrap: wrap; padding: 8px 10px; }
+    .dlg-foot button, #carryDlg .dlg-foot button { font-size: 14px; padding: 6px 10px; white-space: nowrap; }
+    .carry-msg { font-size: 15px; }
+    .carry-keys { font-size: 13px; }
+  }
+
   @media print {
     body { overflow: visible; height: auto; background: #fff; }
     header, main, footer, #banner, #minusMode, #focusWarn, .pv-top button { display: none !important; }
@@ -263,7 +299,10 @@
   }
   dialog::backdrop { background: #0008; }
   .dlg-head { background: var(--head); color: #fff; padding: 12px 18px; font-size: 20px; font-weight: bold; }
-  .dlg-body { padding: 14px 18px; overflow: auto; max-height: calc(92vh - 120px); }
+  dialog[open] { display: flex; flex-direction: column; }
+  .dlg-head, .dlg-foot { flex: 0 0 auto; }
+  .dlg-body { padding: 14px 18px; overflow: auto; flex: 1 1 auto; min-height: 0; }
+  .dlg-body table { table-layout: auto; height: auto; }
   .dlg-foot { padding: 10px 18px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #ccc; }
   .dlg-foot button, .dlg-body button {
     font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #889; background: #f4f6f9; cursor: pointer;
@@ -300,9 +339,13 @@
   .cal .day.past { opacity: 0.55; }
   .cal .num { font-weight: bold; font-size: 14px; }
   .cal .tot { font-weight: bold; color: var(--head); font-size: 15px; }
-  .cal .det { color: #445; word-break: break-all; }
+  .cal .det { color: #445; }
+  .cal .det span { white-space: nowrap; }
+  .cal-nav button { white-space: nowrap; }
+  #calDlg { width: min(1240px, 96vw); }
+  .cal .tot { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-edit { margin-top: 10px; border-top: 1px solid #ccc; padding-top: 8px; }
-  .cal-edit .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; margin: 6px 0; }
+  .cal-edit .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 8px; margin: 6px 0; }
   .cal-line { border: 1px solid #c5cfdb; border-radius: 6px; padding: 6px 8px; background: #fafcff; }
   .cal-line > b { display: block; margin-bottom: 4px; }
   .cal-ent { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
@@ -1171,8 +1214,8 @@
     else if (!running()) { stEl.textContent = '一時停止'; stEl.className = 'state pause'; }
     else if (brk) { stEl.textContent = `休憩中 ${brk.s}〜${brk.e}`; stEl.className = 'state break'; }
     else { stEl.textContent = '稼働中'; stEl.className = 'state run'; }
-    $('info').textContent = started() ? `開始 ${fmtHM(st.segments[0].s)}　実稼働 ${fmtDur(workSec * 1000)}`
-      : st.startTime ? `開始予定 ${st.startTime}${st.autoStart && st.autoStartDate !== dateKey(now) ? '（自動）' : ''}` : '';
+    $('info').innerHTML = started() ? `開始 ${fmtHM(st.segments[0].s)}<br>実稼働 ${fmtDur(workSec * 1000)}`
+      : st.startTime ? `開始予定<br>${st.startTime}${st.autoStart && st.autoStartDate !== dateKey(now) ? '（自動）' : ''}` : '';
 
     const btn = $('btnStart');
     if (!started()) { btn.textContent = '▶ 作業開始'; btn.className = ''; }
@@ -1241,7 +1284,7 @@
       el.style.fontSize = '';
       const over = Math.max(el.scrollWidth / el.clientWidth, el.scrollHeight / el.clientHeight);
       if (over > 1.01) {
-        el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) / over * 0.95) + 'px';
+        el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) / over * 0.92) + 'px';
       }
     });
     // 計画数量の入力欄は文字の幅を測って収める
@@ -1820,7 +1863,7 @@
     const day = calendarDay(calDraft, k);
     const tot = round2(day.flat().reduce((a, e) => a + e.qty, 0));
     return `<div class="tot">計 ${fmtNum(tot)}</div><div class="det">` +
-      st.lines.map((l, i) => `${esc(l.name)}${fmtNum(round2(day[i].reduce((a, e) => a + e.qty, 0)))}${day[i].length > 1 ? `(${day[i].length})` : ''}`).join(' ') + '</div>';
+      st.lines.map((l, i) => `<span>${esc(l.name)}${fmtNum(round2(day[i].reduce((a, e) => a + e.qty, 0)))}${day[i].length > 1 ? `(${day[i].length})` : ''}</span>`).join(' ') + '</div>';
   }
   function renderCalendar() {
     const y = calMonth.getFullYear(), m = calMonth.getMonth();
@@ -1869,7 +1912,7 @@
         const sec = row.querySelector('.sec');
         const showSec = () => {
           const ct = ctOf(e, l);
-          sec.textContent = e.qty > 0 ? `${fmtNum(round2(e.qty * ct / 60))}分` : '';
+          sec.textContent = e.qty > 0 ? fmtMin(e.qty * ct * 1000) : '';
         };
         inp.value = e.qty > 0 ? fmtNum(e.qty) : '';
         showSec();
@@ -2675,7 +2718,9 @@
       if (t1 - t0 < 2 * HOUR) t1 = t0 + 2 * HOUR;
       const x = t => ((t - t0) / (t1 - t0) * 100).toFixed(3) + '%';
       const w = (a, b) => (Math.max(0, b - a) / (t1 - t0) * 100).toFixed(3) + '%';
-      const step = t1 - t0 > 14 * HOUR ? 2 * HOUR : HOUR;
+      // 目盛りの間隔：画面が狭いときは間引く
+      const hours = (t1 - t0) / HOUR, room = Math.max(1, Math.floor(($('planView').clientWidth || 1200) / 70));
+      const step = Math.max(1, Math.ceil(hours / room)) * HOUR;
       let ticks = '';
       for (let t = t0; t <= t1; t += step) ticks += `<div class="g-tick" style="left:${x(t)}"><span>${t === t1 ? '' : fmtD(t)}</span></div>`;
       const breaks = breakIntervals(t0, t1).map(([a, b]) => `<div class="g-break" style="left:${x(a)};width:${w(a, b)}" title="休憩"></div>`).join('');
@@ -2727,7 +2772,7 @@
           '</tr>';
       });
     }
-    $('pvTable').innerHTML = t + '</tbody></table>';
+    $('pvTable').innerHTML = '<div class="pv-scroll">' + t + '</tbody></table></div>';
   }
   const shiftPlanDate = n => { const d = keyToDate(planDate); d.setDate(d.getDate() + n); planDate = dateKey(d.getTime()); renderPlanView(); };
   $('btnPlanView').onclick = e => { e.currentTarget.blur(); togglePlanView(); };
