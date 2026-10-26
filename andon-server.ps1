@@ -181,6 +181,17 @@ Write-Host " 事務所などから開く : http://${hostName}:$Port/"
 [Net.Dns]::GetHostAddresses($hostName) | Where-Object { $_.AddressFamily -eq 'InterNetwork' -and -not [Net.IPAddress]::IsLoopback($_) } |
   ForEach-Object { Write-Host "                      http://$($_.ToString()):$Port/" }
 Write-Host " データの保存先     : $dataFile"
+# 事務所 PC に配るショートカット（ダブルクリックでブラウザが開く）をこのフォルダーに作る
+try {
+  $links = @{ 'アンドン（事務所PC用）.url' = "http://${hostName}:$Port/"; '本日の計画（事務所PC用）.url' = "http://${hostName}:$Port/#plan" }
+  foreach ($name in $links.Keys) {
+    [IO.File]::WriteAllText((Join-Path $root $name), "[InternetShortcut]`r`nURL=$($links[$name])`r`n", [Text.Encoding]::ASCII)
+  }
+  Write-Host " 事務所PC用のショートカット : 「アンドン（事務所PC用）」「本日の計画（事務所PC用）」をこのフォルダーに作りました。"
+  Write-Host "                              事務所PCのデスクトップにコピーすると、ダブルクリックで開けます。"
+} catch {
+  Write-Host ' 事務所PC用のショートカットを作れませんでした（フォルダーに書き込めません）。' -ForegroundColor Yellow
+}
 Write-Host ' 終了するには Ctrl + C を押すか、この画面を閉じます。'
 Write-Host ''
 if ($Open) { Start-Process "http://localhost:$Port/" }
