@@ -88,6 +88,8 @@
     line-height: 1.15;
     padding: 0.6vh 0.3vw;
     height: 1%;
+    white-space: nowrap;
+    overflow: hidden;
   }
   thead th small { display: block; font-size: 0.6em; font-weight: normal; }
   tbody td {
@@ -97,11 +99,11 @@
     white-space: nowrap;
     overflow: hidden;
   }
-  td.name { font-size: calc(var(--cell-font, 6vh) * 1.05); }
+  td.rate { font-size: calc(var(--cell-font, 6vh) * 0.8); }
   td.target { color: #33475b; }
-  td.diff.neg, td.rate.bad { color: var(--red); }
-  td.rate.warn { color: #c46f00; }
-  td.diff.pos, td.rate.good { color: var(--green); }
+  td.diff.neg, td.rate.bad { color: var(--st-bad); }
+  td.rate.warn { color: var(--st-warn); }
+  td.diff.pos, td.rate.good { color: var(--st-good); }
   td.end { font-size: calc(var(--cell-font, 6vh) * 0.85); line-height: 1.05; }
   td.end small { display: block; font-size: 0.4em; color: #445; font-weight: normal; }
   .tri { font-size: 0.75em; }
@@ -223,7 +225,7 @@
   <table id="board">
     <colgroup>
       <col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:11%">
-      <col style="width:13%"><col style="width:15%"><col style="width:8%"><col style="width:20%">
+      <col style="width:13%"><col style="width:16%"><col style="width:8%"><col style="width:19%">
     </colgroup>
     <thead>
       <tr>
@@ -504,7 +506,7 @@
     rowsEl.appendChild(tr);
     // 行数に合わせて文字サイズを調整
     const rows = st.lines.length + 1;
-    document.documentElement.style.setProperty('--cell-font', `${Math.min(9, 62 / rows)}vh`);
+    document.documentElement.style.setProperty('--cell-font', `min(${Math.min(9, 62 / rows)}vh, 5vw)`);
     applyStatusColors();
     renderKeyLegend();
     render();
@@ -574,7 +576,20 @@
     setCells(tot, { target: stg, diff, rate }, sa,
       sp > 0 && maxEnd ? (allDone ? '完了' : fmtHM(maxEnd)) : '-',
       !allDone && maxPlanEnd ? '計画 ' + fmtHM(maxPlanEnd) : '');
+    fitText();
   }
+
+  // 見出し・セルの文字が枠からはみ出す場合は、収まるまで文字を小さくする
+  function fitText() {
+    document.querySelectorAll('#board th, #board td').forEach(el => {
+      el.style.fontSize = '';
+      const over = Math.max(el.scrollWidth / el.clientWidth, el.scrollHeight / el.clientHeight);
+      if (over > 1.01) {
+        el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) / over * 0.95) + 'px';
+      }
+    });
+  }
+  window.addEventListener('resize', () => render());
 
   function renderKeyLegend() {
     const parts = st.lines.map(l => `<b>${keyLabel(l.key)}</b> ${l.name}+1`);
