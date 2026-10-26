@@ -299,7 +299,18 @@
     </div>
     <div class="row-flex">
       <span>作業開始／一時停止キー：</span><button class="keybtn" data-key="startKey"></button>
-      <button id="sClearStartKey">なし</button>
+      <button data-clear="startKey">なし</button>
+      <span class="note">押すたびに 作業開始 → 一時停止 → 再開 が切り替わります。</span>
+    </div>
+    <div class="row-flex">
+      <span>リセットキー：</span><button class="keybtn" data-key="resetKey"></button>
+      <button data-clear="resetKey">なし</button>
+      <span class="note">誤操作防止のため、3秒以内に2回押すとリセットします。</span>
+    </div>
+    <div class="row-flex">
+      <span>計画数量入力キー：</span><button class="keybtn" data-key="planKey"></button>
+      <button data-clear="planKey">なし</button>
+      <span class="note">押すと先頭ラインの計画数量の入力になります。数字＋Enter で次のラインへ、最後のラインで Enter（またはこのキー）を押すと終了します。</span>
     </div>
     <div class="row-flex">
       <label><input type="checkbox" id="sSound"> カウント時に音を鳴らす</label>
@@ -334,7 +345,10 @@
         { s: '15:00', e: '15:10' },
       ],
       minusKey: 'NumpadSubtract',
-      startKey: null,
+      startKey: 'NumpadEnter',
+      resetKey: 'NumpadDivide',
+      planKey: 'NumpadMultiply',
+      keyVer: 2,
       sound: true,
       statusColors: { ...DEFAULT_STATUS_COLORS },
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
@@ -345,7 +359,16 @@
   function load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      if (raw) return Object.assign(defaultState(), JSON.parse(raw));
+      if (raw) {
+        const saved = JSON.parse(raw);
+        const s = Object.assign(defaultState(), saved);
+        if (saved.keyVer !== 2) {
+          // 旧バージョンの保存データ：開始キー未設定なら初期キーを割り当てる
+          if (!saved.startKey) s.startKey = defaultState().startKey;
+          s.keyVer = 2;
+        }
+        return s;
+      }
     } catch (e) { /* 保存領域が使えなくても動作させる */ }
     return defaultState();
   }
@@ -467,11 +490,13 @@
     const diff = l.act - target;
     const rate = target > 0 ? (l.act / target) * 100 : (started() && l.act > 0 ? 100 : null);
     let end = null, planEnd = null;
-    if (plan > 0 && l.act >= plan) {
+    if (!started()) {
+      // 作業開始前（リセット直後を含む）は終了時間を表示しない
+    } else if (plan > 0 && l.act >= plan) {
       end = l.doneAt;
     } else if (plan > 0) {
       end = addWork(now, (plan - l.act) * ct * 1000);
-      if (started()) planEnd = planReachTime(plan * ct * 1000, now);
+      planEnd = planReachTime(plan * ct * 1000, now);
     }
     return { plan, target, diff, rate, end, planEnd, done: plan > 0 && l.act >= plan };
   }
@@ -595,6 +620,8 @@
     const parts = st.lines.map(l => `<b>${keyLabel(l.key)}</b> ${l.name}+1`);
     parts.push(`<b>${keyLabel(st.minusKey)}</b>→ライン 取消`);
     if (st.startKey) parts.push(`<b>${keyLabel(st.startKey)}</b> 開始/停止`);
+    if (st.planKey) parts.push(`<b>${keyLabel(st.planKey)}</b> 計画入力`);
+    if (st.resetKey) parts.push(`<b>${keyLabel(st.resetKey)}</b>×2 リセット`);
     $('keyLegend').innerHTML = parts.join('　');
   }
 
@@ -644,20 +671,25 @@
 
   function toggleRun() {
     const now = Date.now();
-    if (running()) st.segments[st.segments.length - 1].e = now;
-    else st.segments.push({ s: now, e: null });
+    if (running()) { st.segments[st.segments.length - 1].e = now; banner('⏸ 一時停止'); }
+    else { banner(started() ? '▶ 再開' : '▶ 作業開始'); st.segments.push({ s: now, e: null }); }
     save();
     render();
+  }
+
+  function resetAll() {
+    st.segments = [];
+    st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
+    save();
+    render();
+    banner('リセットしました');
   }
 
   $('btnStart').onclick = e => { e.currentTarget.blur(); toggleRun(); };
   $('btnReset').onclick = e => {
     e.currentTarget.blur();
     if (!confirm('実績と作業時間をリセットします。よろしいですか？\n（計画数量・設定は残ります）')) return;
-    st.segments = [];
-    st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
-    save();
-    render();
+    resetAll();
   };
   $('btnFull').onclick = e => {
     e.currentTarget.blur();
@@ -669,17 +701,38 @@
     const b = e.target.closest('button[data-d]');
     if (b) { b.blur(); count(+b.dataset.i, +b.dataset.d); }
   });
-  rowsEl.addEventListener('change', e => {
-    if (!e.target.matches('input.plan')) return;
-    const l = st.lines[+e.target.dataset.i];
-    l.plan = Math.max(0, parseInt(e.target.value, 10) || 0);
+  function commitPlan(inp) {
+    const l = st.lines[+inp.dataset.i];
+    l.plan = Math.max(0, parseInt(inp.value, 10) || 0);
     l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
     save();
     render();
-  });
+  }
+  rowsEl.addEventListener('change', e => { if (e.target.matches('input.plan')) commitPlan(e.target); });
   rowsEl.addEventListener('keydown', e => {
     if (!e.target.matches('input.plan')) return;
-    if (e.key === 'Enter') {
+    const inp = e.target;
+    const digit = /^Numpad(\d)$/.exec(e.code);
+    if (digit) {
+      // NumLock がオフでもテンキーの数字で入力できるようにする
+      e.preventDefault();
+      inp.value = (inp.dataset.fresh ? '' : inp.value) + digit[1];
+      delete inp.dataset.fresh;
+      commitPlan(inp);
+      return;
+    }
+    if (e.code === 'NumpadSubtract' || e.code === 'Backspace') {
+      // テンキー − は1文字消す
+      e.preventDefault();
+      inp.value = inp.dataset.fresh ? '' : inp.value.slice(0, -1);
+      delete inp.dataset.fresh;
+      commitPlan(inp);
+      return;
+    }
+    if (st.planKey && e.code === st.planKey) {
+      e.preventDefault();
+      e.target.blur();
+    } else if (e.key === 'Enter') {
       // Enter で確定して次のラインへ。最後のラインならカウント操作に戻る
       e.preventDefault();
       const i = +e.target.dataset.i;
@@ -690,10 +743,16 @@
       e.target.blur();
     }
   });
-  rowsEl.addEventListener('focusin', e => { if (e.target.matches('input.plan')) e.target.select(); });
+  rowsEl.addEventListener('focusin', e => {
+    if (!e.target.matches('input.plan')) return;
+    e.target.select();
+    e.target.dataset.fresh = '1';   // 最初の数字で値を置き換える
+  });
+  rowsEl.addEventListener('input', e => { if (e.target.matches('input.plan')) delete e.target.dataset.fresh; });
+  rowsEl.addEventListener('focusout', e => { if (e.target.matches('input.plan')) delete e.target.dataset.fresh; });
 
   // テンキー入力（複数ラインのキーを同時に受け付ける）
-  let minusArmed = false, minusTimer = null;
+  let minusArmed = false, minusTimer = null, resetArmed = false, resetTimer = null;
   function armMinus(on) {
     minusArmed = on;
     $('minusMode').style.display = on ? 'block' : 'none';
@@ -707,6 +766,23 @@
     const code = e.code;
     if (code === st.minusKey) { e.preventDefault(); armMinus(!minusArmed); return; }
     if (st.startKey && code === st.startKey) { e.preventDefault(); toggleRun(); return; }
+    if (st.resetKey && code === st.resetKey) {
+      e.preventDefault();
+      if (resetArmed) { resetArmed = false; clearTimeout(resetTimer); resetAll(); }
+      else {
+        resetArmed = true;
+        banner(`もう一度 ${keyLabel(st.resetKey)} でリセット`);
+        clearTimeout(resetTimer);
+        resetTimer = setTimeout(() => (resetArmed = false), 3000);
+      }
+      return;
+    }
+    if (st.planKey && code === st.planKey) {
+      e.preventDefault();
+      const first = rowsEl.querySelector('input.plan');
+      if (first) { first.focus(); first.select(); }
+      return;
+    }
     const i = st.lines.findIndex(l => l.key === code);
     if (i >= 0) {
       e.preventDefault();
@@ -794,7 +870,7 @@
     // 同じキーが他で使われていたら外す
     draft.lines.forEach(l => { if (l.key === code) l.key = null; });
     if (draft.minusKey === code) draft.minusKey = null;
-    if (draft.startKey === code) draft.startKey = null;
+    for (const k of ['startKey', 'resetKey', 'planKey']) if (draft[k] === code) draft[k] = null;
     if (learning.line !== undefined) draft.lines[learning.line].key = code;
     else draft[learning.key] = code;
     learning = null;
@@ -809,7 +885,9 @@
     renderSettings();
   };
   $('sAddBreak').onclick = () => { draft.breaks.push({ s: '', e: '' }); renderSettings(); };
-  $('sClearStartKey').onclick = () => { draft.startKey = null; refreshKeyButtons(); };
+  dlg.querySelectorAll('[data-clear]').forEach(b => {
+    b.onclick = () => { draft[b.dataset.clear] = null; refreshKeyButtons(); };
+  });
   const statusColorInputs = { good: 'sColGood', warn: 'sColWarn', bad: 'sColBad' };
   function renderStatusColors() {
     for (const [k, id] of Object.entries(statusColorInputs)) $(id).value = draft.statusColors[k];
