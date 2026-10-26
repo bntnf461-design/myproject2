@@ -763,7 +763,7 @@
   // 変更はすぐ送り、2秒ごとに他の PC の変更を受け取る。同時に変更したときは 3方向マージで合わせる。
   const SERVER = /^https?:$/.test(location.protocol);
   const SYNC_KEY = STORE_KEY + '-sync';
-  const sync = { rev: -1, base: null, dirty: false, pushing: false, online: null, contacted: false, timer: null };
+  const sync = { rev: -1, base: null, dirty: false, pushing: false, online: null, contacted: false, timer: null, lastOk: 0 };
   try {
     const m = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null');
     if (m && SERVER) { sync.rev = m.rev; sync.base = m.base; }
@@ -878,6 +878,7 @@
       const j = await res.json();
       if (sync.pushing) return;
       setOnline(true);
+      sync.lastOk = Date.now();
       if (!sync.contacted) {
         // 最初の接続：サーバーが空ならこの PC のデータを共有データにする。前回の続きならマージ、初めての PC ならサーバーの内容を使う
         sync.contacted = true;
@@ -1861,7 +1862,7 @@
       list.forEach((e, j) => {
         const row = document.createElement('div');
         row.className = 'cal-ent';
-        row.innerHTML = `<span class="no">${j + 1}</span><select>${options(e.item)}</select>
+        row.innerHTML = `<span class="no">${e.carry ? '<span class="carry-mark" title="' + esc(carryLabel(e.carry)) + '">↻</span>' : j + 1}</span><select>${options(e.item)}</select>
           <input type="text" inputmode="decimal" placeholder="数量"><span class="sec"></span>
           <button title="上へ">▲</button><button title="下へ">▼</button><button title="削除">✕</button>`;
         const [sel, inp] = [row.querySelector('select'), row.querySelector('input')];
@@ -2744,8 +2745,12 @@
     updateFocusWarn();
     setInterval(() => {
       const now = Date.now();
-      checkDayChange(now);
-      checkAutoStart(now);
+      // 共有中は、日付が変わったあとにサーバーの最新を一度受け取ってから日替わりの処理をする
+      //（先に日替わりした PC の持ち越しなどを、時計の少し遅い PC が上書きしないように）
+      if (!SERVER || !sync.online || sync.lastOk >= midnight(now)) {
+        checkDayChange(now);
+        checkAutoStart(now);
+      }
       render();
       if (planMode && ++planTick % 2 === 0) renderPlanView();
       checkCarry();
