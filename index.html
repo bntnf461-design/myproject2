@@ -317,6 +317,9 @@
   }
   .dlg-body input[type=color] { width: 48px; height: 30px; padding: 0; border: none; }
   .keybtn { min-width: 9em; }
+  .ct-in { display: flex; gap: 4px; align-items: center; }
+  .dlg-body .ct-in input[type=number] { flex: 1 1 auto; min-width: 4em; }
+  .dlg-body .ct-in select { flex: 0 0 auto; width: auto; }
   .keybtn.learning { background: #ffeb7a !important; }
   .row-flex { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
   .note { color: #555; font-size: 13px; }
@@ -450,7 +453,7 @@
       </label>
     </div>
     <table>
-      <thead><tr><th>ライン名</th><th>品目なしの時の<br>1個あたりの時間（秒）</th><th>+1 キー</th><th>色</th></tr></thead>
+      <thead><tr><th>ライン名</th><th>品目なしの時の<br>1個あたりの時間</th><th>+1 キー</th><th>色</th></tr></thead>
       <tbody id="sLines"></tbody>
     </table>
     <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
@@ -465,9 +468,9 @@
     </div>
 
     <h3>品目の登録</h3>
-    <p class="note">品目ごとに「1個あたりの時間」を登録します。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
+    <p class="note">品目ごとに「1個あたりの時間」を登録します。単位は 秒・分・時間 から選べます（例：2 と「時間」で 1個あたり2時間）。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
     <table>
-      <thead><tr><th>品目名</th><th>1個あたりの時間（秒）</th><th style="width:80px"></th></tr></thead>
+      <thead><tr><th>品目名</th><th>1個あたりの時間</th><th style="width:80px"></th></tr></thead>
       <tbody id="sItems"></tbody>
     </table>
     <div class="row-flex"><button id="sAddItem">＋ 品目を追加</button>
@@ -628,7 +631,7 @@
     <h3>2. 準備（最初に1回）</h3>
     <ol>
       <li>「⚙ 設定」でライン数（4ライン・5ラインなど）を選びます。</li>
-      <li>「品目の登録」で、品目名と「1個あたりの時間（秒）」を登録します（Excel の「品目」シートからも登録できます）。</li>
+      <li>「品目の登録」で、品目名と「1個あたりの時間」を登録します。単位は 秒・分・時間 から選べます（Excel の「品目」シートからも登録できます）。</li>
       <li>作業開始時刻と休憩時間を入力します。毎日決まった時刻に始めるなら「自動で作業開始する」にチェックを入れます。</li>
       <li>必要に応じて、キーの割り当て・行の色・状況の色を変えて「保存」します。</li>
     </ol>
@@ -643,7 +646,7 @@
     <h3>3-2. Excel から取り込む</h3>
     <ol>
       <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・品目・日付が入った Excel ファイルができます）。</li>
-      <li>「品目」シートに品目名と1個あたりの時間（秒）を入力します。</li>
+      <li>「品目」シートに品目名・1個あたりの時間・単位（秒／分／時間）を入力します。</li>
       <li>「計画」シートに「日付・ライン・品目・計画数量」を1行ずつ入力します。同じ日・同じラインで複数の品目を作るときは、作る順番に行を並べます（行は挿入して増やせます。日付を省略すると上の行と同じ日）。</li>
       <li>「📥 Excelから取り込み」でそのファイルを選び、内容を確認して「OK」→「保存」を押します。</li>
     </ol>
@@ -746,7 +749,7 @@
       statusColors: { ...DEFAULT_STATUS_COLORS },
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
       calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順に [{ item, qty }, ...]] }
-      items: [],           // 品目マスタ [{ id, name, ct }]（ct は 1個あたりの時間・秒）
+      items: [],           // 品目マスタ [{ id, name, ct, unit }]（ct は 1個あたりの時間・秒、unit は表示の単位 s/m/h）
       itemSeq: 0,
       day: null,           // 表示中データの日付
       carryMode: 'ask',    // 前日の残り：ask=毎回確認 / auto=自動で持ち越す / none=持ち越さない
@@ -1068,6 +1071,41 @@
   }
   // 持ち越した品目の表示（例：10/26の残り）
   const carryLabel = k => { const [, m, d] = String(k).split('-').map(Number); return m ? `${m}/${d}の残り` : '前日の残り'; };
+
+  // ---------- 時間の単位 ----------
+  // 1個あたりの時間は内部では秒で持ち、入力・表示だけ 秒／分／時間 を切り替える
+  const UNITS = { s: { label: '秒', sec: 1 }, m: { label: '分', sec: 60 }, h: { label: '時間', sec: 3600 } };
+  const unitOf = u => (UNITS[u] ? u : 's');
+  const ctValue = (ct, u) => Math.round((Number(ct) || 0) / UNITS[unitOf(u)].sec * 10000) / 10000;
+  const fmtCt = (ct, u) => `${fmtNum(ctValue(ct, u))}${UNITS[unitOf(u)].label}`;
+  // Excel・CSV の単位の文字（秒／分／時間、s／min／h など）
+  function parseUnit(v) {
+    const t = normText(v).toLowerCase();
+    if (!t) return null;
+    if (/^(時間|時|h|hr|hrs|hour|hours)$/.test(t)) return 'h';
+    if (/^(分|m|min|mins|minute|minutes)$/.test(t)) return 'm';
+    if (/^(秒|s|sec|secs|second|seconds)$/.test(t)) return 's';
+    return undefined;
+  }
+  // 品目（なければライン）の時間の表示
+  function ctText(e, l) {
+    const it = itemOf(e.item);
+    return it ? fmtCt(it.ct, it.unit) : fmtCt(l.ct, l.ctUnit);
+  }
+  // 設定画面の「数字＋単位」入力欄。obj[ctKey] を秒で、obj[unitKey] を単位で更新する
+  function ctInput(obj, ctKey, unitKey) {
+    const box = document.createElement('div');
+    box.className = 'ct-in';
+    box.innerHTML = `<input type="number" min="0" step="any"><select>${Object.entries(UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('')}</select>`;
+    const [inp, sel] = [box.querySelector('input'), box.querySelector('select')];
+    sel.value = unitOf(obj[unitKey]);
+    inp.value = ctValue(obj[ctKey], sel.value);
+    // 単位を変えたときは、入力した数字をそのまま新しい単位で読む（例：2 のまま 秒→時間）
+    const apply = () => { obj[unitKey] = sel.value; obj[ctKey] = (Number(inp.value) || 0) * UNITS[sel.value].sec; };
+    inp.oninput = apply;
+    sel.onchange = apply;
+    return box;
+  }
 
   // ---------- 品目 ----------
   const round2 = n => Math.round(n * 100) / 100;
@@ -1707,28 +1745,29 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input type="text" data-f="name" value=""></td>
-        <td><input type="number" min="0.1" step="any" data-f="ct"></td>
+        <td class="ct-cell"></td>
         <td><button class="keybtn" data-line="${i}"></button></td>
         <td><input type="color" data-f="color"></td>`;
       tr.querySelectorAll('[data-f]').forEach(inp => {
         inp.value = l[inp.dataset.f];
         inp.oninput = () => {
           const f = inp.dataset.f;
-          l[f] = f === 'ct' ? Math.max(0.1, Number(inp.value) || 0) : inp.value;
+          l[f] = inp.value;
         };
       });
+      tr.querySelector('.ct-cell').appendChild(ctInput(l, 'ct', 'ctUnit'));
       lt.appendChild(tr);
     });
     const it = $('sItems');
     it.innerHTML = '';
     draft.items.forEach((item, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><input type="text" data-f="name"></td><td><input type="number" min="0.1" step="any" data-f="ct"></td>
+      tr.innerHTML = `<td><input type="text" data-f="name"></td><td class="ct-cell"></td>
         <td><button>削除</button></td>`;
-      tr.querySelectorAll('[data-f]').forEach(inp => {
-        inp.value = item[inp.dataset.f];
-        inp.oninput = () => (item[inp.dataset.f] = inp.dataset.f === 'ct' ? Number(inp.value) || 0 : inp.value);
-      });
+      const nameIn = tr.querySelector('[data-f="name"]');
+      nameIn.value = item.name;
+      nameIn.oninput = () => (item.name = nameIn.value);
+      tr.querySelector('.ct-cell').appendChild(ctInput(item, 'ct', 'unit'));
       tr.querySelector('button').onclick = () => {
         const used = Object.values(draft.calendar).some(day => (day || []).some(ln => (ln || []).some(e => e.item === item.id))) ||
           st.lines.some(l => l.queue.some(e => e.item === item.id));
@@ -1794,7 +1833,8 @@
   $('sAddBreak').onclick = () => { draft.breaks.push({ s: '', e: '' }); renderSettings(); };
   $('sAddItem').onclick = () => {
     draft.itemSeq = (draft.itemSeq || 0) + 1;
-    draft.items.push({ id: 'i' + draft.itemSeq, name: '', ct: 60 });
+    const lastUnit = draft.items.length ? unitOf(draft.items[draft.items.length - 1].unit) : 's';
+    draft.items.push({ id: 'i' + draft.itemSeq, name: '', ct: UNITS[lastUnit].sec * (lastUnit === 's' ? 60 : 1), unit: lastUnit });
     renderSettings();
     const ins = $('sItems').querySelectorAll('input[data-f="name"]');
     ins[ins.length - 1].focus();
@@ -1828,7 +1868,7 @@
     // 設定を開いている間に実績・計画・自動開始・日付変更が変わっても最新を保持（ライン数を増やした分は空）
     draft.lines.forEach((l, i) => {
       l.queue = st.lines[i] ? st.lines[i].queue : [];
-      l.ct = Math.max(0.1, Number(l.ct) || 1);
+      if (!(Number(l.ct) > 0)) l.ct = 60;
     });
     draft.segments = st.segments;
     draft.autoStartDate = st.autoStartDate;
@@ -1895,7 +1935,7 @@
     const day = calendarDay(calDraft, calSel, true);
     const store = () => { calDraft[calSel] = day; refreshCalCell(); };
     const options = sel => `<option value="">品目なし（ラインの時間）</option>` +
-      st.items.map(it => `<option value="${esc(it.id)}"${it.id === sel ? ' selected' : ''}>${esc(it.name)}（${fmtNum(it.ct)}秒）</option>`).join('') +
+      st.items.map(it => `<option value="${esc(it.id)}"${it.id === sel ? ' selected' : ''}>${esc(it.name)}（${fmtCt(it.ct, it.unit)}）</option>`).join('') +
       (sel && !itemOf(sel) ? `<option value="${esc(sel)}" selected>（削除された品目）</option>` : '');
     st.lines.forEach((l, i) => {
       const wrap = document.createElement('div');
@@ -2181,14 +2221,20 @@
     if (h < 0) return { items, errors };
     const head = rows[h].map(hdr);
     const cName = head.findIndex(x => x.includes('品目'));
-    const cCt = head.findIndex(x => x.includes('時間') || x.includes('秒'));
+    const cCt = head.findIndex(x => (x.includes('時間') || x.includes('秒')) && !x.includes('単位'));
+    const cUnit = head.findIndex(x => x.includes('単位'));
+    // 単位の列がないときは、見出しの（秒）（分）（時間）で決める。何もなければ秒
+    const headUnit = cCt >= 0 ? (/[（(]時間[）)]/.test(head[cCt]) ? 'h' : /[（(]分[）)]/.test(head[cCt]) ? 'm' : 's') : 's';
     for (let ri = h + 1; ri < rows.length; ri++) {
       const r = rows[ri];
       if (isBlank(r[cName])) continue;
       const name = normText(r[cName]);
-      const ct = cCt >= 0 ? toNum(r[cCt]) : NaN;
-      if (!(ct > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間「${r[cCt] ?? ''}」は 0 より大きい数で入力してください`); continue; }
-      items.push({ name, ct: round2(ct) });
+      const v = cCt >= 0 ? toNum(r[cCt]) : NaN;
+      let unit = cUnit >= 0 ? parseUnit(r[cUnit]) : null;
+      if (unit === undefined) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の単位「${r[cUnit]}」は 秒・分・時間 のどれかで入力してください`); continue; }
+      unit = unit || headUnit;
+      if (!(v > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間「${r[cCt] ?? ''}」は 0 より大きい数で入力してください`); continue; }
+      items.push({ name, ct: v * UNITS[unit].sec, unit });
     }
     return { items, errors };
   }
@@ -2285,23 +2331,26 @@
     const fileItems = new Map(itemRes.items.map(it => [it.name, it]));
     const knownItem = name => fileItems.has(name) || st.items.some(it => normText(it.name) === name);
 
-    const planRows = sheets['計画'] || Object.values(sheets)[0];
-    const h = findHeader(planRows, ['日付', 'ライン']);
-    const res = h >= 0 ? parseLongPlanRows(planRows, h, knownItem) : parseWidePlanRows(planRows);
+    // 「品目」シートだけのファイルは品目の登録だけ行う
+    const others = Object.keys(sheets).filter(k => k !== '品目' && k !== '説明');
+    const planRows = sheets['計画'] || (others.length ? sheets[others[0]] : null);
+    const h = planRows ? findHeader(planRows, ['日付', 'ライン']) : -1;
+    const res = !planRows ? { plans: {}, errors: [], warnings: [] }
+      : h >= 0 ? parseLongPlanRows(planRows, h, knownItem) : parseWidePlanRows(planRows);
     const errors = [...itemRes.errors, ...res.errors], warnings = res.warnings;
     const keys = Object.keys(res.plans).sort();
     const list = a => a.slice(0, 15).join('\n') + (a.length > 15 ? `\n…ほか ${a.length - 15} 件` : '');
 
     const newItems = [...fileItems.values()].filter(it => !st.items.some(x => normText(x.name) === it.name));
-    const changed = [...fileItems.values()].filter(it => st.items.some(x => normText(x.name) === it.name && x.ct !== it.ct));
+    const changed = [...fileItems.values()].filter(it => st.items.some(x => normText(x.name) === it.name && (Math.abs(x.ct - it.ct) > 1e-6 || unitOf(x.unit) !== it.unit)));
     if (!keys.length && !newItems.length && !changed.length) {
       alert('取り込める計画がありませんでした。' + (errors.length ? '\n\n【エラー】\n' + list(errors) : ''));
       return;
     }
     let msg = '';
     if (keys.length) msg += `${keys[0]} 〜 ${keys[keys.length - 1]} の ${keys.length} 日分の計画を取り込みます。\n取り込む日の計画は、全ラインともファイルの内容に置き換わります。\n`;
-    if (newItems.length) msg += `\n品目を追加：${newItems.map(it => `${it.name}（${fmtNum(it.ct)}秒）`).join('、')}`;
-    if (changed.length) msg += `\n1個あたりの時間を変更：${changed.map(it => `${it.name}（${fmtNum(it.ct)}秒）`).join('、')}`;
+    if (newItems.length) msg += `\n品目を追加：${newItems.map(it => `${it.name}（${fmtCt(it.ct, it.unit)}）`).join('、')}`;
+    if (changed.length) msg += `\n1個あたりの時間を変更：${changed.map(it => `${it.name}（${fmtCt(it.ct, it.unit)}）`).join('、')}`;
     if (errors.length) msg += `\n\n【エラー：この行は取り込みません】\n${list(errors)}`;
     if (warnings.length) msg += `\n\n【注意】\n${list(warnings)}`;
     if (!confirm(msg.trim() + '\n\nよろしいですか？')) return;
@@ -2309,8 +2358,8 @@
     // 品目マスタは今すぐ反映（計画は「保存」で確定）
     for (const it of fileItems.values()) {
       const cur = st.items.find(x => normText(x.name) === it.name);
-      if (cur) cur.ct = it.ct;
-      else { st.itemSeq = (st.itemSeq || 0) + 1; st.items.push({ id: 'i' + st.itemSeq, name: it.name, ct: it.ct }); }
+      if (cur) { cur.ct = it.ct; cur.unit = it.unit; }
+      else { st.itemSeq = (st.itemSeq || 0) + 1; st.items.push({ id: 'i' + st.itemSeq, name: it.name, ct: it.ct, unit: it.unit }); }
     }
     save();
     const idOf = name => (name ? (st.items.find(x => normText(x.name) === name) || {}).id || null : null);
@@ -2415,26 +2464,27 @@
 <dataValidations count="${dvs.length}">${dvs.join('')}</dataValidations>
 </worksheet>`;
 
-    let itemXml = `<row r="1">${strCell('A1', '品目', 1)}${strCell('B1', '1個あたりの時間（秒）', 1)}</row>`;
+    let itemXml = `<row r="1">${strCell('A1', '品目', 1)}${strCell('B1', '1個あたりの時間', 1)}${strCell('C1', '単位', 1)}</row>`;
     st.items.forEach((it, i) => {
       const rr = i + 2;
-      itemXml += `<row r="${rr}">${strCell('A' + rr, it.name, 7)}${numCell('B' + rr, it.ct, 5)}</row>`;
+      itemXml += `<row r="${rr}">${strCell('A' + rr, it.name, 7)}${numCell('B' + rr, ctValue(it.ct, it.unit), 5)}${strCell('C' + rr, UNITS[unitOf(it.unit)].label, 5)}</row>`;
     });
     const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:B${st.items.length + 1}"/>
+<dimension ref="A1:C${st.items.length + 1}"/>
 <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
 <sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="22" customWidth="1"/></cols>
+<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/><col min="3" max="3" width="10" customWidth="1"/></cols>
 <sheetData>${itemXml}</sheetData>
-<dataValidations count="1"><dataValidation type="decimal" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0より大きい数を入力してください" sqref="B2:B1000"><formula1>0</formula1></dataValidation></dataValidations>
+<dataValidations count="2"><dataValidation type="decimal" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0より大きい数を入力してください" sqref="B2:B1000"><formula1>0</formula1></dataValidation><dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="秒・分・時間 から選んでください" sqref="C2:C1000"><formula1>"秒,分,時間"</formula1></dataValidation></dataValidations>
 </worksheet>`;
 
     const help = [
       'ライン進捗アンドン 計画取り込み用の雛形',
       '',
       '【「品目」シート】',
-      '品目名と、1個あたりの時間（秒）を登録します。ここに書いた品目は、取り込むとアンドンの品目に追加・更新されます。',
+      '品目名・1個あたりの時間・単位（秒／分／時間）を登録します。単位が空欄のときは秒になります。',
+      'ここに書いた品目は、取り込むとアンドンの品目に追加・更新されます。',
       '',
       '【「計画」シート】',
       '1. 1行に「日付・ライン・品目・計画数量」を入力します。',
@@ -2735,7 +2785,7 @@
           const name = itemName(it.e.item) || '品目なし';
           const prog = it.state === 'cur' ? `<div class="fill" style="width:${Math.min(100, it.e.act / it.e.qty * 100).toFixed(1)}%"></div>` : '';
           const qtyText = it.state === 'cur' || it.state === 'done' ? `${fmtNum(it.e.act)}/${fmtNum(it.e.qty)}` : fmtNum(it.e.qty);
-          const tip = `${name}　${qtyText}個\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1個 ${fmtNum(it.ct)}秒・所要 ${fmtMin(it.ms)}`;
+          const tip = `${name}　${qtyText}個\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1個 ${ctText(it.e, r.l)}・所要 ${fmtMin(it.ms)}`;
           blocks += `<div class="g-blk ${it.state}" style="left:${x(it.start)};width:${w(it.start, it.end)};background:${r.l.color}" title="${esc(tip)}">${prog}` +
             `<div class="t1">${it.state === 'done' ? '✓ ' : ''}${it.e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(name)} ${qtyText}</div><div class="t2">${fmtD(it.start)}〜${fmtD(it.end)}</div></div>`;
           if (live && started() && it.planStart !== null && it.planEnd !== null) {
@@ -2765,7 +2815,7 @@
         t += `<tr class="${it.state}${k === 0 ? ' first' : ''}">` + (k === 0 ? `<td class="l" rowspan="${r.items.length}" style="background:${r.l.color}">${esc(r.l.name)}</td>` : '') +
           `<td>${k + 1}</td><td class="it">${it.e.carry ? `<span class="carry-mark">↻</span>` : ''}${esc(itemName(it.e.item) || '品目なし')}${it.e.carry ? `<small class="carry-mark">（${carryLabel(it.e.carry)}）</small>` : ''}</td><td>${fmtNum(it.e.qty)}</td>` +
           (live && started() ? `<td>${fmtNum(it.e.act)}</td>` : '') +
-          `<td>${fmtNum(it.ct)}秒</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
+          `<td>${ctText(it.e, r.l)}</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
           `<td class="${live && started() && lateMs > 60000 ? 'late' : ''}">${it.end ? fmtD(it.end) : '-'}</td>` +
           (live && started() ? `<td>${it.planStart ? fmtD(it.planStart) + '〜' + fmtD(it.planEnd) : '-'}</td>` +
             `<td>${it.state === 'done' ? '✓ 完了' : it.state === 'cur' ? '作業中' : 'これから'}${lateMs > 60000 && it.state !== 'done' ? `<br><span class="late">${fmtMin(lateMs)}遅れ</span>` : ''}</td>` : '') +
