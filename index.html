@@ -158,6 +158,19 @@
   td.flash-minus { animation: flashm .5s ease-out; }
   @keyframes flashm { 0% { background: #ff9c9c; } 100% { } }
 
+  /* ---- 前日の残りの持ち越し ---- */
+  #carryDlg { width: min(820px, 96vw); }
+  #carryDlg .dlg-head { background: #b35c00; font-size: 22px; }
+  .carry-msg { font-size: 18px; margin: 4px 0 10px; }
+  .carry-tbl td, .carry-tbl th { font-size: 17px !important; text-align: center; }
+  .carry-tbl td.it { text-align: left; }
+  .carry-tbl input[type=checkbox] { width: 22px; height: 22px; }
+  .carry-keys { font-size: 16px; margin-top: 10px; background: #fff6e6; border: 1px solid #f0c880; border-radius: 6px; padding: 6px 10px; }
+  .carry-keys kbd { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; font-family: inherit; font-weight: bold; }
+  #carryDlg .dlg-foot button { font-size: 17px; padding: 8px 16px; }
+  .carry-mark { color: #b35c00; font-weight: bold; }
+  #pvCarry { background: #b35c00; color: #fff; border-color: #b35c00; }
+
   /* ---- 本日の計画ページ ---- */
   #planView { display: none; }
   body.planmode main, body.planmode footer { display: none; }
@@ -368,6 +381,7 @@
     <button id="pvToday">本日</button>
     <button id="pvNext">次の日 ▶</button>
     <span class="spacer"></span>
+    <button id="pvCarry" hidden>↻ 前日の残りを持ち越す</button>
     <button id="pvPrint">🖨 印刷</button>
     <button id="pvBack">✕ アンドン表示に戻る</button>
   </div>
@@ -424,6 +438,17 @@
     </div>
     <p class="note">作業開始前の終了時間は「作業開始時刻 ＋ 計画数量 × 1個あたりの時間 ＋ 休憩」で表示します。自動開始にすると、この時刻に自動で作業開始します。開始時刻より後に画面を開いた場合も、この時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
 
+    <h3>前日の残りの持ち越し</h3>
+    <div class="row-flex">
+      <span>24時を過ぎたとき、前日に終わらなかった分を：</span>
+      <select id="sCarryMode" style="width:auto">
+        <option value="ask">毎回確認する</option>
+        <option value="auto">自動で持ち越す（本日の計画の前に入れる）</option>
+        <option value="none">持ち越さない</option>
+      </select>
+    </div>
+    <p class="note">「毎回確認する」では、翌日の画面に確認が出ます（テンキー Enter＝持ち越す、−＝持ち越さない）。持ち越した品目には「↻」と元の日付が付きます。休みの日をはさんだ場合は、次に計画のある日に持ち越せます。</p>
+
     <h3>休憩時間</h3>
     <table>
       <thead><tr><th>開始</th><th>終了</th><th style="width:80px"></th></tr></thead>
@@ -472,6 +497,28 @@
   <div class="dlg-foot">
     <button id="sCancel">キャンセル</button>
     <button id="sSave" class="primary">保存</button>
+  </div>
+</dialog>
+
+<dialog id="carryDlg">
+  <div class="dlg-head">↻ 前日の生産の残り</div>
+  <div class="dlg-body">
+    <p class="carry-msg" id="carryMsg"></p>
+    <table class="carry-tbl">
+      <thead><tr><th>ライン</th><th>品目</th><th>残り数量</th><th>持ち越す</th></tr></thead>
+      <tbody id="carryRows"></tbody>
+    </table>
+    <div class="row-flex" style="font-size:16px">
+      <b>入れる位置：</b>
+      <label><input type="radio" name="carryPos" value="front" checked> 本日の計画の前（先に作る）</label>
+      <label><input type="radio" name="carryPos" value="back"> 本日の計画の後</label>
+    </div>
+    <div class="carry-keys">テンキー：<kbd>Enter</kbd> チェックした分を持ち越す　／　<kbd>−</kbd> 持ち越さない　／　<kbd>Esc</kbd> あとで決める（「📋 本日」から選べます）</div>
+  </div>
+  <div class="dlg-foot">
+    <button id="carryLater">あとで決める</button>
+    <button id="carryNo">持ち越さない（−）</button>
+    <button id="carryYes" class="primary">持ち越す（Enter）</button>
   </div>
 </dialog>
 
@@ -572,8 +619,18 @@
 
     <h3>5. 自動でリセットされるもの</h3>
     <ul>
-      <li>24時を過ぎると、実績・作業時間・計画数量がすべてリセットされ、新しい日の計画がカレンダーから読み込まれます。</li>
+      <li>24時を過ぎると、実績・作業時間・計画数量がすべてリセットされ、新しい日の計画がカレンダーから読み込まれます（前日に終わらなかった分は持ち越せます → 5-2.）。</li>
       <li>「リセット」ボタン／<kbd>／</kbd>×2 では、実績と作業時間を消去します（計画と設定は残ります）。</li>
+    </ul>
+
+    <h3>5-2. 前日の残りの持ち越し</h3>
+    <ul>
+      <li>24時を過ぎたとき、前日に終わらなかった品目の残り（計画 − 実績）があると、翌日の画面に「↻ 前日の生産の残り」の確認が出ます。</li>
+      <li>テンキー <kbd>Enter</kbd> で持ち越し、<kbd>−</kbd> で持ち越しません。品目ごとにチェックを外したり、「本日の計画の前（先に作る）／後」を選んだりもできます。</li>
+      <li>持ち越した品目には <span class="carry-mark">↻</span> と「10/30の残り」のような元の日付が付きます。すでに数え始めた品目があるラインでは、その品目の後ろに入ります。</li>
+      <li>「あとで決める（Esc）」や「持ち越さない」を選んだあとでも、「📋 本日」の「↻ 前日の残りを持ち越す」から持ち越せます。</li>
+      <li>休みの日をはさんだ場合も、残りはまとめて次の日に持ち越せます。</li>
+      <li>「⚙ 設定 → 前日の残りの持ち越し」で「毎回確認する／自動で持ち越す／持ち越さない」を選べます。</li>
     </ul>
 
     <h3>6. 事務所との共有（社内LAN）</h3>
@@ -649,6 +706,8 @@
       items: [],           // 品目マスタ [{ id, name, ct }]（ct は 1個あたりの時間・秒）
       itemSeq: 0,
       day: null,           // 表示中データの日付
+      carryMode: 'ask',    // 前日の残り：ask=毎回確認 / auto=自動で持ち越す / none=持ち越さない
+      carry: null,         // 前日の残り { from, lines: [ライン順に [{ item, qty, carry }]], decided, applied }
     };
   }
 
@@ -963,6 +1022,9 @@
     if (rate >= 90) return 'warn';
     return 'bad';
   }
+  // 持ち越した品目の表示（例：10/26の残り）
+  const carryLabel = k => { const [, m, d] = String(k).split('-').map(Number); return m ? `${m}/${d}の残り` : '前日の残り'; };
+
   // ---------- 品目 ----------
   const round2 = n => Math.round(n * 100) / 100;
   const fmtNum = n => String(round2(n));
@@ -1132,9 +1194,9 @@
         const nx = nextIndex(l, sc.cur);
         const pos = l.queue.filter(x => x.qty > 0).indexOf(e) + 1;
         const total = l.queue.filter(x => x.qty > 0).length;
-        const info = (total > 1 ? `${pos}/${total}品目` : '') + (nx >= 0 && sc.curEnd ? `　〜${fmtEnd(sc.curEnd)}` : '');
-        const nextText = `次：${nx >= 0 ? esc(itemName(l.queue[nx].item) || '品目なし') + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
-        itemCell.innerHTML = `<div class="it-cur">${esc(itemName(e.item) || '品目なし')}</div>` +
+        const info = (e.carry ? `${carryLabel(e.carry)}　` : '') + (total > 1 ? `${pos}/${total}品目` : '') + (nx >= 0 && sc.curEnd ? `　〜${fmtEnd(sc.curEnd)}` : '');
+        const nextText = `次：${nx >= 0 ? (l.queue[nx].carry ? '↻' : '') + esc(itemName(l.queue[nx].item) || '品目なし') + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
+        itemCell.innerHTML = `<div class="it-cur">${e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(itemName(e.item) || '品目なし')}</div>` +
           (info ? `<div class="it-next">${info}</div>` : '') + `<div class="it-next">${nextText}</div>`;
         itemCell.title = l.queue.filter(x => x.qty > 0).map((x, k) => `${k + 1}. ${itemName(x.item) || '品目なし'} ${fmtNum(x.act)}/${fmtNum(x.qty)}`).join('\n');
         if (document.activeElement !== inp) inp.value = fmtNum(e.qty);
@@ -1283,11 +1345,12 @@
   function calendarDay(cal, key, keepEmpty) {
     const day = cal[key] || [];
     return st.lines.map((_, i) => (day[i] || []).filter(e => e && (keepEmpty || e.qty > 0))
-      .map(e => ({ item: e.item || null, qty: round2(Number(e.qty) || 0) })));
+      .map(e => Object.assign({ item: e.item || null, qty: round2(Number(e.qty) || 0) }, e.carry ? { carry: e.carry } : {})));
   }
   // 画面の計画を今日のカレンダーへ書き込む
   function syncTodayCalendar() {
-    st.calendar[dateKey(Date.now())] = st.lines.map(l => l.queue.filter(e => e.qty > 0).map(e => ({ item: e.item, qty: e.qty })));
+    st.calendar[dateKey(Date.now())] = st.lines.map(l => l.queue.filter(e => e.qty > 0)
+      .map(e => Object.assign({ item: e.item, qty: e.qty }, e.carry ? { carry: e.carry } : {})));
   }
   // 計画を画面に反映する。同じ順番・同じ品目の実績は引き継ぐ
   function applyPlans(day) {
@@ -1297,6 +1360,7 @@
         const o = old[j] && old[j].item === p.item ? old[j] : null;
         const act = o ? Math.min(o.act, p.qty) : 0;
         const e = { item: p.item, qty: p.qty, act, doneAt: null };
+        if (p.carry) e.carry = p.carry;
         if (isDone(e)) e.doneAt = (o && o.doneAt) || Date.now();
         return e;
       });
@@ -1315,10 +1379,22 @@
       if (st.calendar[today]) applyPlans(calendarDay(st.calendar, today));
       else syncTodayCalendar();
     } else {
+      // 終わらなかった分（計画 − 実績）を前日の残りとして取っておく。まだ決めていない残りがあれば合わせる
+      const left = st.lines.map(l => l.queue.filter(e => e.qty > 0 && !isDone(e))
+        .map(e => ({ item: e.item, qty: round2(e.qty - e.act), carry: e.carry || st.day })));
+      const pending = st.carry && !st.carry.decided ? st.carry : null;
+      if (pending) pending.lines.forEach((ln, i) => { if (left[i]) left[i] = [...ln, ...left[i]]; });
       st.segments = [];
       clearActs();
       applyPlans(calendarDay(st.calendar, today));
       banner('日付が変わりました（リセット）');
+      if (left.some(ln => ln.length)) {
+        st.carry = { from: pending ? pending.from : st.day, lines: left, decided: false, applied: false };
+        if (st.carryMode === 'auto') applyCarry(left.map(ln => ln.map(() => true)), 'front');
+        else if (st.carryMode === 'none') st.carry.decided = true;
+      } else if (!pending) {
+        st.carry = null;
+      }
       // 1年より前のカレンダーは削除
       const old = dateKey(now - 366 * DAY);
       for (const k of Object.keys(st.calendar)) if (k < old) delete st.calendar[k];
@@ -1530,6 +1606,7 @@
     $('sSound').checked = draft.sound;
     $('sAutoStart').checked = draft.autoStart;
     $('sStartTime').value = draft.startTime || '';
+    $('sCarryMode').value = draft.carryMode || 'ask';
     draft.statusColors = { ...DEFAULT_STATUS_COLORS, ...draft.statusColors };
     renderStatusColors();
     renderSettings();
@@ -1692,6 +1769,7 @@
   $('sSound').onchange = e => (draft.sound = e.target.checked);
   $('sAutoStart').onchange = e => (draft.autoStart = e.target.checked);
   $('sStartTime').oninput = e => (draft.startTime = e.target.value);
+  $('sCarryMode').onchange = e => (draft.carryMode = e.target.value);
   $('sCancel').onclick = () => { learning = null; dlg.close(); };
   $('sSave').onclick = () => {
     learning = null;
@@ -1712,6 +1790,7 @@
     draft.autoStartDate = st.autoStartDate;
     draft.calendar = st.calendar;
     draft.day = st.day;
+    draft.carry = st.carry;
     st = draft;
     syncTodayCalendar();
     save();
@@ -2431,6 +2510,81 @@
     w.print();
   };
 
+  // ---------- 前日の残りの持ち越し ----------
+  // sel：ライン順に、各残り品目を持ち越すかどうか（true/false）。pos：front=本日の計画の前 / back=後
+  function applyCarry(sel, pos) {
+    const c = st.carry;
+    if (!c) return;
+    let n = 0;
+    st.lines.forEach((l, i) => {
+      const add = (c.lines[i] || []).filter((e, k) => sel[i] && sel[i][k] && e.qty > 0)
+        .map(e => ({ item: e.item, qty: e.qty, act: 0, doneAt: null, carry: e.carry || c.from }));
+      if (!add.length) return;
+      // 前に入れるとき、すでに数え始めた品目があればその後ろに入れる（数え中の品目を変えない）
+      let at = l.queue.length;
+      if (pos === 'front') { at = 0; while (at < l.queue.length && l.queue[at].act > 0) at++; }
+      l.queue.splice(at, 0, ...add);
+      n += add.length;
+    });
+    c.decided = true;
+    c.applied = true;
+    syncTodayCalendar();
+    save();
+    if (rowsEl.children.length) { render(); renderPlanView(); }
+    banner(`↻ ${n}品目を持ち越しました`);
+  }
+  let carryDismissed = null;     // 「あとで決める」を押した日（その日だけ確認を出さない）
+  const carryDlg = $('carryDlg');
+  function openCarry() {
+    const c = st.carry;
+    if (!c || c.applied || carryDlg.open) return;
+    if (document.querySelector('dialog[open]')) return;      // 他の画面を開いている間は待つ
+    const total = round2(c.lines.flat().reduce((a, e) => a + e.qty, 0));
+    $('carryMsg').innerHTML = `<b>${esc(carryLabel(c.from).replace('の残り', ''))}</b> に終わらなかった生産が <b>${c.lines.flat().length} 品目（${fmtNum(total)}個）</b> あります。今日に持ち越しますか？`;
+    const rows = $('carryRows');
+    rows.innerHTML = '';
+    st.lines.forEach((l, i) => (c.lines[i] || []).forEach((e, k) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td style="background:${l.color};font-weight:bold">${esc(l.name)}</td><td class="it">${esc(itemName(e.item) || '品目なし')}` +
+        `${e.carry && e.carry !== c.from ? `<small>（${esc(carryLabel(e.carry))}）</small>` : ''}</td><td>${fmtNum(e.qty)}</td>` +
+        `<td><input type="checkbox" checked data-i="${i}" data-k="${k}"></td>`;
+      rows.appendChild(tr);
+    }));
+    carryDlg.showModal();
+    $('carryYes').focus();
+  }
+  function carryDecide(yes) {
+    const c = st.carry;
+    carryDlg.close();
+    if (!c) return;
+    if (yes) {
+      const sel = st.lines.map((_, i) => (c.lines[i] || []).map(() => false));
+      carryDlg.querySelectorAll('input[type=checkbox]').forEach(cb => { if (cb.checked) sel[+cb.dataset.i][+cb.dataset.k] = true; });
+      applyCarry(sel, carryDlg.querySelector('input[name=carryPos]:checked').value);
+    } else {
+      c.decided = true;
+      save();
+      if (planMode) renderPlanView();
+      banner('前日の残りは持ち越しませんでした（「📋 本日」からあとで持ち越せます）');
+    }
+  }
+  $('carryYes').onclick = () => carryDecide(true);
+  $('carryNo').onclick = () => carryDecide(false);
+  $('carryLater').onclick = () => { carryDismissed = st.day; carryDlg.close(); };
+  carryDlg.addEventListener('cancel', () => { carryDismissed = st.day; });
+  carryDlg.addEventListener('keydown', e => {
+    // 決めたキーが閉じた後のアンドン画面に届かないよう（作業開始・取消にならないよう）止める
+    if (e.code === 'NumpadEnter' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); carryDecide(true); }
+    else if (e.code === 'NumpadSubtract') { e.preventDefault(); e.stopPropagation(); carryDecide(false); }
+  });
+  // 毎秒：まだ決めていない残りがあれば確認を出す（他の PC で決めたら閉じる）
+  function checkCarry() {
+    const c = st.carry;
+    if (carryDlg.open && (!c || c.decided)) carryDlg.close();
+    if (c && !c.decided && carryDismissed !== st.day) openCarry();
+  }
+  $('pvCarry').onclick = e => { e.currentTarget.blur(); carryDismissed = null; openCarry(); };
+
   // ---------- 本日の計画ページ ----------
   // ラインごとに品目を作る順番に並べ、開始・終了の時刻をタイムラインと表で表示する。
   // 稼働中は、完了した品目は実際の時刻、作業中・これからの品目は今の進み具合からの見込み時刻で表示する（遅れは後ろへずれる）。
@@ -2470,6 +2624,7 @@
     const now = Date.now();
     const today = dateKey(now);
     const live = planDate === today;
+    $('pvCarry').hidden = !(live && st.carry && !st.carry.applied);
     const d = keyToDate(planDate);
     const dayStart = d.getTime();
     // 表示している日を基準に時刻を書く（翌日にかかる分は「翌」）
@@ -2499,6 +2654,7 @@
       card('作業開始', live && started() ? fmtHM(st.segments[0].s) : (st.startTime || '-')),
       card('計画の終了', maxPlan ? fmtD(maxPlan) : '-'),
       live && started() ? card(allDone ? '完了' : '今の見込み終了', allDone ? '完了' : maxEnd ? fmtD(maxEnd) : '-', late ? 'late' : '') : '',
+      live && st.carry && !st.carry.applied ? card('前日の残り（未持ち越し）', `${fmtNum(round2(st.carry.lines.flat().reduce((a, e) => a + e.qty, 0)))}<small>${st.carry.lines.flat().length}品目</small>`, 'late') : '',
       card('休憩', st.breaks.length ? st.breaks.map(b => `${b.s}〜${b.e}`).join('<br>').replace(/^/, '<small style="margin:0;font-size:0.45em;line-height:1.3;display:block">') + '</small>' : '-'),
     ].join('');
 
@@ -2535,7 +2691,7 @@
           const qtyText = it.state === 'cur' || it.state === 'done' ? `${fmtNum(it.e.act)}/${fmtNum(it.e.qty)}` : fmtNum(it.e.qty);
           const tip = `${name}　${qtyText}個\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1個 ${fmtNum(it.ct)}秒・所要 ${fmtMin(it.ms)}`;
           blocks += `<div class="g-blk ${it.state}" style="left:${x(it.start)};width:${w(it.start, it.end)};background:${r.l.color}" title="${esc(tip)}">${prog}` +
-            `<div class="t1">${it.state === 'done' ? '✓ ' : ''}${esc(name)} ${qtyText}</div><div class="t2">${fmtD(it.start)}〜${fmtD(it.end)}</div></div>`;
+            `<div class="t1">${it.state === 'done' ? '✓ ' : ''}${it.e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(name)} ${qtyText}</div><div class="t2">${fmtD(it.start)}〜${fmtD(it.end)}</div></div>`;
           if (live && started() && it.planStart !== null && it.planEnd !== null) {
             blocks += `<div class="g-plan" style="left:${x(it.planStart)};width:${w(it.planStart, it.planEnd)}" title="当初の計画 ${fmtD(it.planStart)}〜${fmtD(it.planEnd)}"></div>`;
           }
@@ -2561,7 +2717,7 @@
       r.items.forEach((it, k) => {
         const lateMs = it.end && it.planEnd ? it.end - it.planEnd : 0;
         t += `<tr class="${it.state}${k === 0 ? ' first' : ''}">` + (k === 0 ? `<td class="l" rowspan="${r.items.length}" style="background:${r.l.color}">${esc(r.l.name)}</td>` : '') +
-          `<td>${k + 1}</td><td class="it">${esc(itemName(it.e.item) || '品目なし')}</td><td>${fmtNum(it.e.qty)}</td>` +
+          `<td>${k + 1}</td><td class="it">${it.e.carry ? `<span class="carry-mark">↻</span>` : ''}${esc(itemName(it.e.item) || '品目なし')}${it.e.carry ? `<small class="carry-mark">（${carryLabel(it.e.carry)}）</small>` : ''}</td><td>${fmtNum(it.e.qty)}</td>` +
           (live && started() ? `<td>${fmtNum(it.e.act)}</td>` : '') +
           `<td>${fmtNum(it.ct)}秒</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
           `<td class="${live && started() && lateMs > 60000 ? 'late' : ''}">${it.end ? fmtD(it.end) : '-'}</td>` +
@@ -2592,6 +2748,7 @@
       checkAutoStart(now);
       render();
       if (planMode && ++planTick % 2 === 0) renderPlanView();
+      checkCarry();
       updateFocusWarn();
     }, 1000);
     if (location.hash === '#plan') togglePlanView(true);
