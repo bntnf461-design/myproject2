@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ライン進捗アンドン</title>
+<style>
+  :root {
+    --head: #0b5cad;
+    --head-text: #ffffff;
+    --bg: #dfe9f5;
+    --panel: #ffffff;
+    --text: #111111;
+    --grid: #6b7a8c;
+    --red: #d40000;
+    --orange: #f29b00;
+    --green: #1a9e3a;
+    --gray: #9aa3ad;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Meiryo", "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---- 上部バー ---- */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 1.2vw;
+    padding: 0.8vh 1.2vw;
+    background: #0a3f78;
+    color: #fff;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: clamp(16px, 2.2vw, 40px); white-space: nowrap; }
+  .clock { font-size: clamp(16px, 2.2vw, 40px); font-variant-numeric: tabular-nums; font-weight: bold; }
+  .state {
+    padding: 0.3vh 1vw;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: clamp(14px, 1.6vw, 30px);
+    background: var(--gray);
+  }
+  .state.run { background: var(--green); }
+  .state.pause { background: var(--orange); }
+  .state.break { background: #7b3fd0; }
+  .info { font-size: clamp(12px, 1.1vw, 20px); opacity: 0.9; }
+  .spacer { flex: 1; }
+  header button {
+    font: inherit;
+    font-size: clamp(13px, 1.2vw, 22px);
+    font-weight: bold;
+    padding: 0.6vh 1.2vw;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #fff;
+    background: #4a6a8c;
+  }
+  #btnStart { background: var(--green); }
+  #btnStart.pause { background: var(--orange); }
+  #btnReset { background: #a33; }
+
+  /* ---- 表 ---- */
+  main { flex: 1; padding: 1vh 1vw; display: flex; flex-direction: column; min-height: 0; }
+  table {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: var(--panel);
+  }
+  th, td { border: 2px solid var(--grid); text-align: center; padding: 0 0.4vw; }
+  thead th {
+    background: var(--head);
+    color: var(--head-text);
+    font-size: clamp(14px, 2vw, 40px);
+    line-height: 1.15;
+    padding: 0.6vh 0.3vw;
+    height: 1%;
+  }
+  thead th small { display: block; font-size: 0.6em; font-weight: normal; }
+  tbody td {
+    font-weight: bold;
+    font-size: var(--cell-font, 6vh);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  td.name { font-size: calc(var(--cell-font, 6vh) * 1.05); }
+  td.target { color: #33475b; }
+  td.diff.neg, td.rate.bad { color: var(--red); }
+  td.rate.warn { color: #c46f00; }
+  td.diff.pos, td.rate.good { color: var(--green); }
+  td.end { font-size: calc(var(--cell-font, 6vh) * 0.85); line-height: 1.05; }
+  td.end small { display: block; font-size: 0.4em; color: #445; font-weight: normal; }
+  .tri { font-size: 0.75em; }
+  .dot {
+    display: inline-block;
+    width: 0.8em; height: 0.8em;
+    border-radius: 50%;
+    background: var(--gray);
+    vertical-align: middle;
+  }
+  .dot.good { background: var(--green); }
+  .dot.warn { background: var(--orange); }
+  .dot.bad { background: var(--red); }
+  .dot.blink { animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  input.plan {
+    width: 100%;
+    font: inherit;
+    text-align: center;
+    border: 2px dashed transparent;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+  }
+  input.plan:hover { border-color: #0006; }
+  input.plan:focus { outline: none; border-color: var(--head); background: #fff; }
+  input.plan::-webkit-inner-spin-button, input.plan::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input.plan { -moz-appearance: textfield; }
+
+  td.act { position: relative; }
+  td.act .btns {
+    position: absolute; right: 0.3vw; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 2px; opacity: 0; transition: opacity .2s;
+  }
+  td.act:hover .btns { opacity: 1; }
+  td.act .btns button {
+    font-size: clamp(11px, 1vw, 18px); width: 2em; height: 1.6em; cursor: pointer;
+    border: 1px solid #555; border-radius: 4px; background: #fff;
+  }
+  td.flash { animation: flash .5s ease-out; }
+  @keyframes flash { 0% { background: #fff36b; } 100% { } }
+  td.flash-minus { animation: flashm .5s ease-out; }
+  @keyframes flashm { 0% { background: #ff9c9c; } 100% { } }
+  tr.total td { border-top: 4px solid #333; }
+
+  /* ---- 下部 ---- */
+  footer {
+    display: flex; align-items: center; gap: 2vw; flex-wrap: wrap;
+    padding: 0.6vh 1.2vw 1vh;
+    font-size: clamp(12px, 1.2vw, 22px);
+  }
+  footer .legend { display: flex; gap: 1.5vw; align-items: center; }
+  footer .dot { width: 1em; height: 1em; }
+  .keys { color: #234; }
+  .keys b { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; }
+
+  #banner {
+    position: fixed; left: 50%; top: 12%; transform: translateX(-50%);
+    background: #000c; color: #fff; padding: 1.5vh 3vw; border-radius: 10px;
+    font-size: clamp(18px, 3vw, 56px); font-weight: bold; display: none; z-index: 20;
+    pointer-events: none; text-align: center;
+  }
+  #minusMode {
+    position: fixed; right: 2vw; bottom: 8vh; background: var(--red); color: #fff;
+    padding: 1vh 2vw; border-radius: 10px; font-size: clamp(16px, 2.2vw, 40px);
+    font-weight: bold; display: none; z-index: 20;
+  }
+  #focusWarn {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--orange); color: #000;
+    text-align: center; font-weight: bold; padding: 0.6vh; display: none; z-index: 15;
+    font-size: clamp(13px, 1.3vw, 24px);
+  }
+
+  /* ---- 設定 ---- */
+  dialog {
+    width: min(960px, 96vw);
+    max-height: 92vh;
+    border: none; border-radius: 10px; padding: 0;
+    font-size: 16px;
+  }
+  dialog::backdrop { background: #0008; }
+  .dlg-head { background: var(--head); color: #fff; padding: 12px 18px; font-size: 20px; font-weight: bold; }
+  .dlg-body { padding: 14px 18px; overflow: auto; max-height: calc(92vh - 120px); }
+  .dlg-foot { padding: 10px 18px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #ccc; }
+  .dlg-foot button, .dlg-body button {
+    font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #889; background: #f4f6f9; cursor: pointer;
+  }
+  .dlg-foot .primary { background: var(--head); color: #fff; border-color: var(--head); }
+  .dlg-body h3 { margin: 14px 0 6px; font-size: 17px; border-left: 5px solid var(--head); padding-left: 8px; }
+  .dlg-body table { height: auto; font-size: 15px; }
+  .dlg-body thead th { background: #e4ecf6; color: #123; border: 1px solid #aab; padding: 4px; font-size: 15px; height: auto; }
+  .dlg-body td { border: 1px solid #aab; padding: 4px; font-size: 15px; font-weight: normal; white-space: normal; }
+  .dlg-body input[type=text], .dlg-body input[type=number], .dlg-body input[type=time], .dlg-body select {
+    font: inherit; width: 100%; padding: 3px 4px;
+  }
+  .dlg-body input[type=color] { width: 48px; height: 30px; padding: 0; border: none; }
+  .keybtn { min-width: 9em; }
+  .keybtn.learning { background: #ffeb7a !important; }
+  .row-flex { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .note { color: #555; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ライン進捗アンドン</h1>
+  <span class="clock" id="clock">--:--:--</span>
+  <span class="state" id="state">待機中</span>
+  <span class="info" id="info"></span>
+  <span class="spacer"></span>
+  <button id="btnStart">▶ 作業開始</button>
+  <button id="btnSettings">⚙ 設定</button>
+  <button id="btnFull">⛶ 全画面</button>
+  <button id="btnReset">リセット</button>
+</header>
+
+<main>
+  <table id="board">
+    <colgroup>
+      <col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:11%">
+      <col style="width:13%"><col style="width:15%"><col style="width:8%"><col style="width:20%">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>ライン<small>LINE</small></th>
+        <th>計画数量<small>Plan</small></th>
+        <th>現時点目標<small>Target</small></th>
+        <th>実績数量<small>Act</small></th>
+        <th>差異<small>Diff</small></th>
+        <th>進捗率<small>Progress rate</small></th>
+        <th>状況<small>Status</small></th>
+        <th>終了時間<small>End time</small></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+
+<footer>
+  <div class="legend">
+    <span>進捗判定 progress judgment：</span>
+    <span><span class="dot good"></span> 100%以上</span>
+    <span><span class="dot warn"></span> 90〜99.9%</span>
+    <span><span class="dot bad"></span> 90%未満</span>
+  </div>
+  <div class="keys" id="keyLegend"></div>
+</footer>
+
+<div id="banner"></div>
+<div id="minusMode">− 取消モード：ラインのキーを押す</div>
+<div id="focusWarn">画面をクリックしてください（テンキー入力を受け付けていません）</div>
+
+<dialog id="dlg">
+  <div class="dlg-head">設定</div>
+  <div class="dlg-body">
+    <h3>ライン</h3>
+    <div class="row-flex">
+      <label>ライン数：
+        <select id="sLineCount" style="width:auto">
+          <option>1</option><option>2</option><option>3</option><option>4</option>
+          <option>5</option><option>6</option><option>7</option><option>8</option>
+        </select>
+      </label>
+      <span class="note">「1個あたりの時間」から現時点目標・差異・進捗率・終了時間を自動計算します。</span>
+    </div>
+    <table>
+      <thead><tr><th>ライン名</th><th>計画数量</th><th>1個あたりの時間（秒）</th><th>+1 キー</th><th>色</th></tr></thead>
+      <tbody id="sLines"></tbody>
+    </table>
+    <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
+
+    <h3>休憩時間</h3>
+    <table>
+      <thead><tr><th>開始</th><th>終了</th><th style="width:80px"></th></tr></thead>
+      <tbody id="sBreaks"></tbody>
+    </table>
+    <div class="row-flex"><button id="sAddBreak">＋ 休憩を追加</button>
+      <span class="note">休憩中は目標が増えず、終了時間の計算でも休憩分を除外します。</span></div>
+
+    <h3>操作キー</h3>
+    <div class="row-flex">
+      <span>取消（−1）キー：</span><button class="keybtn" data-key="minusKey"></button>
+      <span class="note">このキーの後にラインのキーを押すと、そのラインの実績が −1 されます。</span>
+    </div>
+    <div class="row-flex">
+      <span>作業開始／一時停止キー：</span><button class="keybtn" data-key="startKey"></button>
+      <button id="sClearStartKey">なし</button>
+    </div>
+    <div class="row-flex">
+      <label><input type="checkbox" id="sSound"> カウント時に音を鳴らす</label>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button id="sCancel">キャンセル</button>
+    <button id="sSave" class="primary">保存</button>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  const STORE_KEY = 'andon-v1';
+  const DAY = 86400000;
+  const PALETTE = ['#d9e88a', '#d9e88a', '#c9a6f2', '#c9a6f2', '#9fd8f0', '#f5c28a', '#f2a6c4', '#b5e3b0'];
+  const DEFAULT_KEYS = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'];
+
+  // ---------- 状態 ----------
+  function defaultLine(i) {
+    return { name: String.fromCharCode(65 + i), plan: 0, ct: 60, key: DEFAULT_KEYS[i], color: PALETTE[i], act: 0, doneAt: null };
+  }
+  function defaultState() {
+    return {
+      lines: [0, 1, 2, 3].map(defaultLine),
+      breaks: [
+        { s: '10:00', e: '10:10' },
+        { s: '12:00', e: '12:45' },
+        { s: '15:00', e: '15:10' },
+      ],
+      minusKey: 'NumpadSubtract',
+      startKey: null,
+      sound: true,
+      segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
+    };
+  }
+
+  let st = load();
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return Object.assign(defaultState(), JSON.parse(raw));
+    } catch (e) { /* 保存領域が使えなくても動作させる */ }
+    return defaultState();
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (e) { /* noop */ }
+  }
+
+  const started = () => st.segments.length > 0;
+  const running = () => started() && st.segments[st.segments.length - 1].e === null;
+
+  // ---------- 時間計算 ----------
+  function parseHM(hm) {
+    const [h, m] = hm.split(':').map(Number);
+    return (h * 60 + m) * 60000;
+  }
+  function midnight(ms) { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+  // [from, to) と重なる休憩区間（結合・ソート済み）
+  function breakIntervals(from, to) {
+    const list = [];
+    for (let d = midnight(from) - DAY; d <= to; d += DAY) {
+      for (const b of st.breaks) {
+        if (!b.s || !b.e) continue;
+        const s = d + parseHM(b.s);
+        let e = d + parseHM(b.e);
+        if (e <= s) e += DAY;            // 日付をまたぐ休憩
+        if (e > from && s < to) list.push([Math.max(s, from), Math.min(e, to)]);
+      }
+    }
+    list.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const iv of list) {
+      const last = merged[merged.length - 1];
+      if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]);
+      else merged.push(iv.slice());
+    }
+    return merged;
+  }
+  function workMs(from, to) {
+    if (to <= from) return 0;
+    let ms = to - from;
+    for (const [s, e] of breakIntervals(from, to)) ms -= e - s;
+    return ms;
+  }
+  // 開始からの実稼働時間（休憩・一時停止を除く）
+  function elapsedWork(now) {
+    let ms = 0;
+    for (const seg of st.segments) ms += workMs(seg.s, seg.e ?? now);
+    return ms;
+  }
+  // from から休憩を飛ばしながら need ミリ秒働いた時刻
+  function addWork(from, need) {
+    let cursor = from;
+    for (let guard = 0; guard < 60 && need > 0; guard++) {
+      const ivs = breakIntervals(cursor, cursor + 2 * DAY);
+      let advanced = false;
+      for (const [s, e] of ivs) {
+        if (e <= cursor) continue;
+        if (s <= cursor) { cursor = e; continue; }
+        const gap = s - cursor;
+        if (gap >= need) return cursor + need;
+        need -= gap;
+        cursor = e;
+        advanced = true;
+      }
+      if (!advanced) return cursor + need;
+    }
+    return cursor + need;
+  }
+  // 計画ペースで実稼働 need ミリ秒に達する（達した）時刻
+  function planReachTime(need, now) {
+    let acc = 0;
+    for (const seg of st.segments) {
+      const w = workMs(seg.s, seg.e ?? now);
+      if (acc + w >= need) return addWork(seg.s, need - acc);
+      acc += w;
+    }
+    return addWork(now, need - acc);
+  }
+  function currentBreak(now) {
+    for (const b of st.breaks) {
+      if (!b.s || !b.e) continue;
+      for (const d of [midnight(now) - DAY, midnight(now)]) {
+        const s = d + parseHM(b.s);
+        let e = d + parseHM(b.e);
+        if (e <= s) e += DAY;
+        if (now >= s && now < e) return b;
+      }
+    }
+    return null;
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  const fmtHM = ms => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const fmtHMS = ms => { const d = new Date(ms); return `${fmtHM(ms)}:${pad(d.getSeconds())}`; };
+  const fmtDur = ms => { const m = Math.floor(ms / 60000); return `${Math.floor(m / 60)}時間${pad(m % 60)}分`; };
+  function keyLabel(code) {
+    if (!code) return '（なし）';
+    const map = { NumpadSubtract: 'テンキー −', NumpadAdd: 'テンキー ＋', NumpadMultiply: 'テンキー ＊',
+      NumpadDivide: 'テンキー ／', NumpadEnter: 'テンキー Enter', NumpadDecimal: 'テンキー .', Space: 'スペース' };
+    if (map[code]) return map[code];
+    if (code.startsWith('Numpad')) return 'テンキー ' + code.slice(6);
+    if (code.startsWith('Digit')) return code.slice(5);
+    if (code.startsWith('Key')) return code.slice(3);
+    return code;
+  }
+
+  // ---------- 計算 ----------
+  function judge(rate) {
+    if (rate === null) return '';
+    if (rate >= 100) return 'good';
+    if (rate >= 90) return 'warn';
+    return 'bad';
+  }
+  function calcLine(l, workSec, now) {
+    const ct = Math.max(1, Number(l.ct) || 1);
+    const plan = Math.max(0, Number(l.plan) || 0);
+    const target = started() ? Math.min(plan, Math.floor(workSec / ct)) : 0;
+    const diff = l.act - target;
+    const rate = target > 0 ? (l.act / target) * 100 : (started() && l.act > 0 ? 100 : null);
+    let end = null, planEnd = null;
+    if (plan > 0 && l.act >= plan) {
+      end = l.doneAt;
+    } else if (plan > 0) {
+      end = addWork(now, (plan - l.act) * ct * 1000);
+      if (started()) planEnd = planReachTime(plan * ct * 1000, now);
+    }
+    return { plan, target, diff, rate, end, planEnd, done: plan > 0 && l.act >= plan };
+  }
+
+  // ---------- 描画 ----------
+  const $ = id => document.getElementById(id);
+  const rowsEl = $('rows');
+
+  function buildRows() {
+    rowsEl.innerHTML = '';
+    st.lines.forEach((l, i) => {
+      const tr = document.createElement('tr');
+      tr.style.background = l.color;
+      tr.innerHTML = `
+        <td class="name"></td>
+        <td><input class="plan" type="number" min="0" inputmode="numeric" data-i="${i}"></td>
+        <td class="target"></td>
+        <td class="act"><span class="v"></span>
+          <span class="btns"><button data-i="${i}" data-d="1">＋</button><button data-i="${i}" data-d="-1">−</button></span></td>
+        <td class="diff"></td>
+        <td class="rate"></td>
+        <td class="status"><span class="dot"></span></td>
+        <td class="end"></td>`;
+      rowsEl.appendChild(tr);
+    });
+    const tr = document.createElement('tr');
+    tr.className = 'total';
+    tr.style.background = '#e9d6fb';
+    tr.innerHTML = `<td class="name">合計</td><td class="plan-sum"></td><td class="target"></td>
+      <td class="act"><span class="v"></span></td><td class="diff"></td><td class="rate"></td>
+      <td class="status"><span class="dot"></span></td><td class="end"></td>`;
+    rowsEl.appendChild(tr);
+    // 行数に合わせて文字サイズを調整
+    const rows = st.lines.length + 1;
+    document.documentElement.style.setProperty('--cell-font', `${Math.min(9, 62 / rows)}vh`);
+    renderKeyLegend();
+    render();
+  }
+
+  function setCells(tr, c, actVal, endText, endSub) {
+    const cells = tr.children;
+    cells[2].textContent = started() ? c.target : '-';
+    cells[3].querySelector('.v').textContent = actVal;
+    const d = cells[4];
+    d.className = 'diff' + (started() ? (c.diff < 0 ? ' neg' : c.diff > 0 ? ' pos' : '') : '');
+    d.innerHTML = !started() ? '-' : c.diff < 0 ? `<span class="tri">▲</span> ${-c.diff}` : c.diff > 0 ? `+${c.diff}` : '0';
+    const j = judge(c.rate);
+    cells[5].className = 'rate ' + j;
+    cells[5].textContent = c.rate === null ? '-' : c.rate.toFixed(1) + '%';
+    const dot = cells[6].querySelector('.dot');
+    dot.className = 'dot ' + j + (j === 'bad' && running() ? ' blink' : '');
+    cells[7].innerHTML = endText + (endSub ? `<small>${endSub}</small>` : '');
+  }
+
+  function render() {
+    const now = Date.now();
+    const brk = currentBreak(now);
+    const workSec = elapsedWork(now) / 1000;
+
+    $('clock').textContent = fmtHMS(now);
+    const stEl = $('state');
+    if (!started()) { stEl.textContent = '待機中'; stEl.className = 'state'; }
+    else if (!running()) { stEl.textContent = '一時停止'; stEl.className = 'state pause'; }
+    else if (brk) { stEl.textContent = `休憩中 ${brk.s}〜${brk.e}`; stEl.className = 'state break'; }
+    else { stEl.textContent = '稼働中'; stEl.className = 'state run'; }
+    $('info').textContent = started() ? `開始 ${fmtHM(st.segments[0].s)}　実稼働 ${fmtDur(workSec * 1000)}` : '';
+
+    const btn = $('btnStart');
+    if (!started()) { btn.textContent = '▶ 作業開始'; btn.className = ''; }
+    else if (running()) { btn.textContent = '⏸ 一時停止'; btn.className = 'pause'; }
+    else { btn.textContent = '▶ 再開'; btn.className = ''; }
+
+    const trs = rowsEl.children;
+    let sp = 0, stg = 0, sa = 0, maxEnd = null, maxPlanEnd = null, allDone = true;
+    st.lines.forEach((l, i) => {
+      const c = calcLine(l, workSec, now);
+      const tr = trs[i];
+      tr.children[0].textContent = l.name;
+      const inp = tr.children[1].querySelector('input');
+      if (document.activeElement !== inp) inp.value = l.plan;
+      const endText = c.done ? '完了' : c.end ? fmtHM(c.end) : '-';
+      const endSub = c.done && c.end ? fmtHM(c.end) + ' 完了' : c.planEnd ? '計画 ' + fmtHM(c.planEnd) : '';
+      setCells(tr, c, l.act, endText, endSub);
+      sp += c.plan; stg += c.target; sa += l.act;
+      if (c.end && (maxEnd === null || c.end > maxEnd)) maxEnd = c.end;
+      if (c.planEnd && (maxPlanEnd === null || c.planEnd > maxPlanEnd)) maxPlanEnd = c.planEnd;
+      if (!c.done) allDone = false;
+    });
+    const tot = trs[st.lines.length];
+    tot.children[1].textContent = sp;
+    const diff = sa - stg;
+    const rate = stg > 0 ? (sa / stg) * 100 : (started() && sa > 0 ? 100 : null);
+    setCells(tot, { target: stg, diff, rate }, sa,
+      sp > 0 && maxEnd ? (allDone ? '完了' : fmtHM(maxEnd)) : '-',
+      !allDone && maxPlanEnd ? '計画 ' + fmtHM(maxPlanEnd) : '');
+  }
+
+  function renderKeyLegend() {
+    const parts = st.lines.map(l => `<b>${keyLabel(l.key)}</b> ${l.name}+1`);
+    parts.push(`<b>${keyLabel(st.minusKey)}</b>→ライン 取消`);
+    if (st.startKey) parts.push(`<b>${keyLabel(st.startKey)}</b> 開始/停止`);
+    $('keyLegend').innerHTML = parts.join('　');
+  }
+
+  // ---------- 操作 ----------
+  let audio = null;
+  function beep(up) {
+    if (!st.sound) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = up ? 1200 : 400;
+      g.gain.value = 0.15;
+      o.connect(g); g.connect(audio.destination);
+      o.start(); o.stop(audio.currentTime + 0.08);
+    } catch (e) { /* noop */ }
+  }
+
+  let bannerTimer = null;
+  function banner(msg) {
+    const b = $('banner');
+    b.textContent = msg;
+    b.style.display = 'block';
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => (b.style.display = 'none'), 1800);
+  }
+
+  function count(i, delta) {
+    const l = st.lines[i];
+    if (!l) return;
+    if (!started()) { banner('「作業開始」を押してください'); return; }
+    const next = Math.max(0, l.act + delta);
+    if (next === l.act) return;
+    l.act = next;
+    const plan = Number(l.plan) || 0;
+    if (plan > 0 && l.act >= plan) { if (!l.doneAt) l.doneAt = Date.now(); }
+    else l.doneAt = null;
+    save();
+    render();
+    beep(delta > 0);
+    const cell = rowsEl.children[i].children[3];
+    const cls = delta > 0 ? 'flash' : 'flash-minus';
+    cell.classList.remove('flash', 'flash-minus');
+    void cell.offsetWidth;
+    cell.classList.add(cls);
+    if (delta < 0) banner(`${l.name} ライン −1 取消`);
+  }
+
+  function toggleRun() {
+    const now = Date.now();
+    if (running()) st.segments[st.segments.length - 1].e = now;
+    else st.segments.push({ s: now, e: null });
+    save();
+    render();
+  }
+
+  $('btnStart').onclick = e => { e.currentTarget.blur(); toggleRun(); };
+  $('btnReset').onclick = e => {
+    e.currentTarget.blur();
+    if (!confirm('実績と作業時間をリセットします。よろしいですか？\n（計画数量・設定は残ります）')) return;
+    st.segments = [];
+    st.lines.forEach(l => { l.act = 0; l.doneAt = null; });
+    save();
+    render();
+  };
+  $('btnFull').onclick = e => {
+    e.currentTarget.blur();
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen?.();
+  };
+
+  rowsEl.addEventListener('click', e => {
+    const b = e.target.closest('button[data-d]');
+    if (b) { b.blur(); count(+b.dataset.i, +b.dataset.d); }
+  });
+  rowsEl.addEventListener('change', e => {
+    if (!e.target.matches('input.plan')) return;
+    const l = st.lines[+e.target.dataset.i];
+    l.plan = Math.max(0, parseInt(e.target.value, 10) || 0);
+    l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+    save();
+    render();
+  });
+  rowsEl.addEventListener('keydown', e => {
+    if (!e.target.matches('input.plan')) return;
+    if (e.key === 'Enter') {
+      // Enter で確定して次のラインへ。最後のラインならカウント操作に戻る
+      e.preventDefault();
+      const i = +e.target.dataset.i;
+      e.target.blur();
+      const next = rowsEl.querySelector(`input.plan[data-i="${i + 1}"]`);
+      if (next) { next.focus(); next.select(); }
+    } else if (e.key === 'Escape') {
+      e.target.blur();
+    }
+  });
+  rowsEl.addEventListener('focusin', e => { if (e.target.matches('input.plan')) e.target.select(); });
+
+  // テンキー入力（複数ラインのキーを同時に受け付ける）
+  let minusArmed = false, minusTimer = null;
+  function armMinus(on) {
+    minusArmed = on;
+    $('minusMode').style.display = on ? 'block' : 'none';
+    clearTimeout(minusTimer);
+    if (on) minusTimer = setTimeout(() => armMinus(false), 3000);
+  }
+  document.addEventListener('keydown', e => {
+    if ($('dlg').open || e.repeat) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+    const code = e.code;
+    if (code === st.minusKey) { e.preventDefault(); armMinus(!minusArmed); return; }
+    if (st.startKey && code === st.startKey) { e.preventDefault(); toggleRun(); return; }
+    const i = st.lines.findIndex(l => l.key === code);
+    if (i >= 0) {
+      e.preventDefault();
+      count(i, minusArmed ? -1 : 1);
+      if (minusArmed) armMinus(false);
+    }
+  });
+
+  // フォーカスが外れていると入力できないので警告
+  function updateFocusWarn() {
+    $('focusWarn').style.display = document.hasFocus() ? 'none' : 'block';
+  }
+  window.addEventListener('focus', updateFocusWarn);
+  window.addEventListener('blur', updateFocusWarn);
+
+  // ---------- 設定ダイアログ ----------
+  let draft = null, learning = null;
+  const dlg = $('dlg');
+
+  function openSettings() {
+    draft = JSON.parse(JSON.stringify(st));
+    $('sLineCount').value = draft.lines.length;
+    $('sSound').checked = draft.sound;
+    renderSettings();
+    dlg.showModal();
+  }
+  function renderSettings() {
+    const lt = $('sLines');
+    lt.innerHTML = '';
+    draft.lines.forEach((l, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" data-f="name" value=""></td>
+        <td><input type="number" min="0" data-f="plan"></td>
+        <td><input type="number" min="1" step="1" data-f="ct"></td>
+        <td><button class="keybtn" data-line="${i}"></button></td>
+        <td><input type="color" data-f="color"></td>`;
+      tr.querySelectorAll('[data-f]').forEach(inp => {
+        inp.value = l[inp.dataset.f];
+        inp.oninput = () => {
+          const f = inp.dataset.f;
+          l[f] = f === 'plan' || f === 'ct' ? Math.max(f === 'ct' ? 1 : 0, Number(inp.value) || 0) : inp.value;
+        };
+      });
+      lt.appendChild(tr);
+    });
+    const bt = $('sBreaks');
+    bt.innerHTML = '';
+    draft.breaks.forEach((b, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><input type="time" data-f="s"></td><td><input type="time" data-f="e"></td>
+        <td><button data-del="${i}">削除</button></td>`;
+      tr.querySelectorAll('[data-f]').forEach(inp => {
+        inp.value = b[inp.dataset.f];
+        inp.oninput = () => (b[inp.dataset.f] = inp.value);
+      });
+      tr.querySelector('[data-del]').onclick = () => { draft.breaks.splice(i, 1); renderSettings(); };
+      bt.appendChild(tr);
+    });
+    refreshKeyButtons();
+  }
+  function refreshKeyButtons() {
+    dlg.querySelectorAll('.keybtn').forEach(b => {
+      const isLearn = learning && ((b.dataset.line !== undefined && learning.line === +b.dataset.line) ||
+        (b.dataset.key && learning.key === b.dataset.key));
+      b.classList.toggle('learning', !!isLearn);
+      const code = b.dataset.line !== undefined ? draft.lines[+b.dataset.line].key : draft[b.dataset.key];
+      b.textContent = isLearn ? 'キーを押してください…' : keyLabel(code);
+    });
+  }
+  dlg.addEventListener('click', e => {
+    const b = e.target.closest('.keybtn');
+    if (!b) return;
+    learning = b.dataset.line !== undefined ? { line: +b.dataset.line } : { key: b.dataset.key };
+    refreshKeyButtons();
+  });
+  dlg.addEventListener('keydown', e => {
+    if (!learning) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === 'Escape') { learning = null; refreshKeyButtons(); return; }
+    const code = e.code;
+    // 同じキーが他で使われていたら外す
+    draft.lines.forEach(l => { if (l.key === code) l.key = null; });
+    if (draft.minusKey === code) draft.minusKey = null;
+    if (draft.startKey === code) draft.startKey = null;
+    if (learning.line !== undefined) draft.lines[learning.line].key = code;
+    else draft[learning.key] = code;
+    learning = null;
+    refreshKeyButtons();
+  }, true);
+  dlg.addEventListener('cancel', e => { if (learning) { e.preventDefault(); learning = null; refreshKeyButtons(); } });
+
+  $('sLineCount').onchange = e => {
+    const n = +e.target.value;
+    while (draft.lines.length < n) draft.lines.push(defaultLine(draft.lines.length));
+    draft.lines.length = n;
+    renderSettings();
+  };
+  $('sAddBreak').onclick = () => { draft.breaks.push({ s: '', e: '' }); renderSettings(); };
+  $('sClearStartKey').onclick = () => { draft.startKey = null; refreshKeyButtons(); };
+  $('sSound').onchange = e => (draft.sound = e.target.checked);
+  $('sCancel').onclick = () => { learning = null; dlg.close(); };
+  $('sSave').onclick = () => {
+    learning = null;
+    draft.breaks = draft.breaks.filter(b => b.s && b.e);
+    draft.lines.forEach(l => {
+      l.plan = Math.max(0, parseInt(l.plan, 10) || 0);
+      l.ct = Math.max(1, Number(l.ct) || 1);
+      l.doneAt = l.plan > 0 && l.act >= l.plan ? (l.doneAt || Date.now()) : null;
+    });
+    // 稼働区間は設定中にも進んでいる可能性があるので最新を保持
+    draft.segments = st.segments;
+    st = draft;
+    save();
+    dlg.close();
+    buildRows();
+  };
+  $('btnSettings').onclick = e => { e.currentTarget.blur(); openSettings(); };
+
+  // ---------- 起動 ----------
+  buildRows();
+  updateFocusWarn();
+  setInterval(() => { render(); updateFocusWarn(); }, 1000);
+})();
+</script>
+</body>
+</html>
