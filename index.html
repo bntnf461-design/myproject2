@@ -648,9 +648,15 @@
       }
       return out;
     }
-    if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote) &&
-        local.length === base.length && remote.length === base.length) {
-      return local.map((v, i) => merge3(base[i], v, remote[i], key));
+    if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)) {
+      if (local.length === base.length && remote.length === base.length) return local.map((v, i) => merge3(base[i], v, remote[i], key));
+      // 片方だけが要素を増減した（品目の追加・削除など）：増減した側の並びを使い、もう片方の変更（実績など）は同じ品目の位置に合わせる
+      const sameId = (x, y) => !(isObj(x) && isObj(y) && 'item' in x && 'item' in y) || x.item === y.item;
+      const overlay = (shape, other, otherIsLocal) => shape.map((v, i) =>
+        i < base.length && i < other.length && sameId(base[i], v) && sameId(base[i], other[i])
+          ? (otherIsLocal ? merge3(base[i], other[i], v, key) : merge3(base[i], v, other[i], key)) : v);
+      if (local.length === base.length) return overlay(remote, local, true);
+      if (remote.length === base.length) return overlay(local, remote, false);
     }
     return local;
   }
@@ -690,6 +696,12 @@
     el.textContent = on ? '● 共有中' : '● サーバー未接続';
     el.title = on ? '共有サーバーとつながっています' : 'andon-server.ps1 が動いているか確認してください（このPCの変更は、つながった時に送ります）';
   }
+  // サーバーが応答しないまま止まらないよう、8秒で打ち切る
+  function fetchT(url, opt = {}) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 8000);
+    return fetch(url, { cache: 'no-store', ...opt, signal: ac.signal }).finally(() => clearTimeout(t));
+  }
   function schedulePush() {
     clearTimeout(sync.timer);
     sync.timer = setTimeout(push, 150);
@@ -700,7 +712,7 @@
     sync.dirty = false;
     const body = JSON.stringify(st);
     try {
-      const res = await fetch('api/state', { method: 'POST', cache: 'no-store',
+      const res = await fetchT('api/state', { method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Base-Rev': String(sync.rev) }, body });
       const j = await res.json();
       if (res.status === 200) setBase(j.rev, JSON.parse(body));
@@ -717,7 +729,7 @@
   async function poll() {
     if (!SERVER || sync.pushing) return;
     try {
-      const res = await fetch(sync.contacted ? `api/state?rev=${sync.rev}` : 'api/state', { cache: 'no-store' });
+      const res = await fetchT(sync.contacted ? `api/state?rev=${sync.rev}` : 'api/state');
       const j = await res.json();
       if (sync.pushing) return;
       setOnline(true);
@@ -1281,15 +1293,21 @@
     const b = e.target.closest('button[data-d]');
     if (b) { b.blur(); count(+b.dataset.i, +b.dataset.d); }
   });
-  // 表の計画数量の入力：今の品目の計画数量を変更する（計画がなければ「品目なし」で追加）
+  // 表の計画数量の入力で変更する品目（今の品目。全部完了なら最後の品目。計画がなければ -1）
+  function planTargetIndex(l) {
+    const j = currentIndex(l);
+    if (j >= 0) return j;
+    const list = l.queue.map((e, k) => (e.qty > 0 ? k : -1)).filter(k => k >= 0);
+    return list.length ? list[list.length - 1] : -1;
+  }
+  // 表の計画数量の入力：確定（Enter・他の欄へ移動）したときに、入力を始めた時点の品目の計画数量を変更する
+  //（計画がなければ「品目なし」で追加）。空欄のまま確定したときは変更しない
   function commitPlan(inp) {
     const l = st.lines[+inp.dataset.i];
+    if (!l || String(inp.value).trim() === '') { render(); return; }
     const v = round2(Math.max(0, parseFloat(String(inp.value).replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))) || 0));
-    let j = currentIndex(l);
-    if (j < 0) {
-      const list = l.queue.map((e, k) => (e.qty > 0 ? k : -1)).filter(k => k >= 0);
-      j = list.length ? list[list.length - 1] : -1;
-    }
+    let j = inp.dataset.j !== undefined ? +inp.dataset.j : planTargetIndex(l);
+    if (!l.queue[j]) j = planTargetIndex(l);
     if (j < 0) {
       if (v > 0) l.queue.push({ item: null, qty: v, act: 0, doneAt: null });
     } else {
@@ -1302,7 +1320,6 @@
     save();
     render();
   }
-  rowsEl.addEventListener('change', e => { if (e.target.matches('input.plan')) commitPlan(e.target); });
   rowsEl.addEventListener('keydown', e => {
     if (!e.target.matches('input.plan')) return;
     const inp = e.target;
@@ -1312,7 +1329,7 @@
       e.preventDefault();
       inp.value = (inp.dataset.fresh ? '' : inp.value) + digit[1];
       delete inp.dataset.fresh;
-      commitPlan(inp);
+      fitText();
       return;
     }
     if (e.code === 'NumpadDecimal' || e.key === '.') {
@@ -1328,7 +1345,6 @@
       e.preventDefault();
       inp.value = inp.dataset.fresh ? '' : inp.value.slice(0, -1);
       delete inp.dataset.fresh;
-      commitPlan(inp);
       return;
     }
     if (st.planKey && e.code === st.planKey) {
@@ -1342,16 +1358,32 @@
       const next = rowsEl.querySelector(`input.plan[data-i="${i + 1}"]`);
       if (next) { next.focus(); next.select(); }
     } else if (e.key === 'Escape') {
+      // 入力を取り消す
+      inp.value = inp.dataset.orig;
+      inp.dataset.cancel = '1';
       e.target.blur();
     }
   });
   rowsEl.addEventListener('focusin', e => {
-    if (!e.target.matches('input.plan')) return;
-    e.target.select();
-    e.target.dataset.fresh = '1';   // 最初の数字で値を置き換える
+    const inp = e.target;
+    if (!inp.matches('input.plan')) return;
+    inp.select();
+    inp.dataset.fresh = '1';   // 最初の数字で値を置き換える
+    inp.dataset.orig = inp.value;
+    inp.dataset.j = planTargetIndex(st.lines[+inp.dataset.i]);
+    delete inp.dataset.cancel;
   });
   rowsEl.addEventListener('input', e => { if (e.target.matches('input.plan')) delete e.target.dataset.fresh; });
-  rowsEl.addEventListener('focusout', e => { if (e.target.matches('input.plan')) delete e.target.dataset.fresh; });
+  rowsEl.addEventListener('focusout', e => {
+    const inp = e.target;
+    if (!inp.matches('input.plan')) return;
+    const changed = !inp.dataset.cancel && inp.value !== inp.dataset.orig;
+    delete inp.dataset.fresh;
+    delete inp.dataset.cancel;
+    if (changed) commitPlan(inp);
+    delete inp.dataset.j;
+    if (!changed) render();
+  });
 
   // テンキー入力（複数ラインのキーを同時に受け付ける）
   let minusArmed = false, minusTimer = null, resetArmed = false, resetTimer = null;
@@ -1424,7 +1456,7 @@
     }
     el.textContent = '共有サーバーにつないでいます。';
     try {
-      const info = await (await fetch('api/info', { cache: 'no-store' })).json();
+      const info = await (await fetchT('api/info')).json();
       const urls = [`http://${info.host}:${info.port}/`, ...info.ips.map(ip => `http://${ip}:${info.port}/`)];
       el.innerHTML = `共有サーバーにつないでいます（${sync.online ? '接続中' : '未接続'}）。事務所などの PC のブラウザで次のどれかを開くと、同じ画面を見たり変更したりできます：<br>` +
         urls.map(u => `<b>${esc(u)}</b>`).join('　');

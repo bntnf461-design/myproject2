@@ -23,7 +23,14 @@ function Save-State([string]$json, [int]$rev) {
   # 書きかけで壊れないよう、一時ファイルに書いてから置き換える（$null を渡すと空文字になるため [NullString] を使う）
   $tmp = $dataFile + '.tmp'
   [IO.File]::WriteAllText($tmp, $json, $utf8)
-  if (Test-Path $dataFile) { [IO.File]::Replace($tmp, $dataFile, [NullString]::Value) } else { [IO.File]::Move($tmp, $dataFile) }
+  if (Test-Path $dataFile) {
+    try { [IO.File]::Replace($tmp, $dataFile, [NullString]::Value) }
+    catch {
+      # OneDrive・ネットワークドライブなどで置き換えできないときは上書きコピーする
+      [IO.File]::Copy($tmp, $dataFile, $true)
+      [IO.File]::Delete($tmp)
+    }
+  } else { [IO.File]::Move($tmp, $dataFile) }
   [IO.File]::WriteAllText($revFile, [string]$rev, $utf8)
   # 1日1回バックアップ（60日分を残す）
   if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir | Out-Null }
@@ -137,6 +144,23 @@ function Handle($stream, $req) {
 }
 
 # ---------- 起動 ----------
+# 黒い画面をクリックすると「簡易編集モード」で処理が止まるため、このウィンドウでは無効にする
+if ($env:OS -eq 'Windows_NT') {
+  try {
+    Add-Type -Namespace AndonWin -Name Console -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern System.IntPtr GetStdHandle(int h);
+[DllImport("kernel32.dll")] public static extern bool GetConsoleMode(System.IntPtr h, out uint m);
+[DllImport("kernel32.dll")] public static extern bool SetConsoleMode(System.IntPtr h, uint m);
+'@
+    $h = [AndonWin.Console]::GetStdHandle(-10)
+    $mode = 0
+    if ([AndonWin.Console]::GetConsoleMode($h, [ref]$mode)) {
+      $new = $mode -bor 0x80                         # ENABLE_EXTENDED_FLAGS
+      if ($new -band 0x40) { $new = $new - 0x40 }   # ENABLE_QUICK_EDIT_MODE を外す
+      [void][AndonWin.Console]::SetConsoleMode($h, [uint32]$new)
+    }
+  } catch { }
+}
 if (-not (Test-Path (Join-Path $root 'index.html'))) {
   Write-Host 'index.html が同じフォルダーにありません。' -ForegroundColor Red
   Read-Host 'Enter キーで終了'
