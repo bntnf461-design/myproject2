@@ -36,14 +36,16 @@
   header {
     display: flex;
     align-items: center;
-    gap: 1.2vw;
+    gap: 0.9vw;
     padding: 0.8vh 1.2vw;
     background: #0a3f78;
     color: #fff;
     flex-wrap: nowrap;
     white-space: nowrap;
   }
-  header h1 { margin: 0; font-size: clamp(15px, 1.7vw, 32px); white-space: nowrap; flex-shrink: 0; }
+  header h1 { margin: 0; font-size: clamp(15px, 1.7vw, 32px); white-space: nowrap; flex-shrink: 0; display: flex; align-items: center; gap: 0.35em; }
+  header h1 .logo { width: 1.1em; height: 1.1em; fill: #7fd0ff; }
+  header .sep { width: 1px; align-self: stretch; margin: 0.4vh 0.2vw; background: #ffffff33; flex-shrink: 0; }
   .clock { font-size: clamp(16px, 2.2vw, 40px); font-variant-numeric: tabular-nums; font-weight: bold; }
   .state {
     padding: 0.3vh 1vw;
@@ -58,7 +60,7 @@
   .sync { font-size: clamp(11px, 1vw, 18px); font-weight: bold; padding: 0.2vh 0.6vw; border-radius: 5px; display: none; }
   .sync.on { display: inline-block; background: #e7f6ea; color: #1a7a33; }
   .sync.off { display: inline-block; background: #ffe1e1; color: #c00; animation: blink 1s steps(2) infinite; }
-  .info { font-size: clamp(11px, 0.95vw, 18px); line-height: 1.25; opacity: 0.9; min-width: 0; overflow: hidden; white-space: normal; }
+  .info { font-size: clamp(11px, 0.95vw, 18px); line-height: 1.25; opacity: 0.9; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   header button {
     font: inherit;
@@ -157,6 +159,46 @@
   td.flash-minus { animation: flashm .5s ease-out; }
   @keyframes flashm { 0% { background: #ff9c9c; } 100% { } }
 
+  /* ---- はじめに・バージョン・エラー表示 ---- */
+  #welcomeDlg { width: min(640px, 94vw); }
+  .welcome ol { line-height: 1.9; padding-left: 1.4em; }
+  .welcome kbd { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; font-family: inherit; font-weight: bold; }
+  .app-ver { margin-right: auto; align-self: center; color: #667; font-size: 13px; }
+  #errBar { position: fixed; left: 50%; bottom: 2vh; transform: translateX(-50%); z-index: 50; display: none; align-items: center; gap: 12px;
+    background: #b3261e; color: #fff; padding: 10px 14px 10px 18px; border-radius: 10px; box-shadow: 0 4px 16px #0005; font-size: clamp(13px, 1.1vw, 18px); max-width: 92vw; }
+  #errBar.on { display: flex; }
+  #errBar button { background: #ffffff33; border: none; color: #fff; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; flex-shrink: 0; }
+
+  /* ---- 実績の履歴 ---- */
+  #histDlg { width: min(1240px, 96vw); height: 92vh; }
+  .hist-ctl { position: sticky; top: 0; background: #fff; padding: 4px 0 8px; z-index: 1; }
+  .hist-ctl input[type=date] { font: inherit; padding: 3px 4px; border: 1px solid #b9c4d2; border-radius: 6px; }
+  .hist-ctl .spacer { flex: 1; }
+  .hist-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 4px 0 10px; }
+  .hist-sum div { background: #f4f7fb; border-radius: 8px; padding: 6px 10px; border-left: 5px solid var(--head); }
+  .hist-sum b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .hist-tbl { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .hist-tbl th { position: sticky; top: 44px; }
+  .dlg-body .hist-tbl td { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dlg-body .hist-tbl td.it { text-align: left; white-space: normal; }
+  .hist-tbl tr.day-first td { border-top: 3px solid #7a8899 !important; }
+  .hist-tbl .rate-dot { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 50%; vertical-align: -0.05em; margin-right: 4px; }
+  .hist-tbl tr.live td { background: #fffbe6; }
+  .hist-empty { padding: 30px; text-align: center; color: #667; }
+
+  /* ---- 管理者ロック ---- */
+  #pinDlg { width: min(420px, 94vw); }
+  .pin-msg { font-size: 16px; margin: 4px 0 10px; }
+  .dlg-body .pin-input { width: 100%; font-size: 30px; letter-spacing: 0.4em; text-align: center; padding: 8px; }
+  .pin-err { color: #b3261e; font-weight: bold; min-height: 1.4em; margin: 6px 0; }
+  .pin-shake { animation: shake .35s; }
+  @keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  #btnLock { background: #4a6a8c; }
+  #btnLock.open { background: #2e7d32; }
+  .admin-box { border: 1px solid #c5cfdb; border-radius: 8px; padding: 10px 14px; background: #fafcff; margin: 8px 0; }
+  .admin-box .row-flex input[type=password] { width: 10em; }
+  .admin-locks label { display: block; margin: 4px 0; }
+
   /* ---- 前日の残りの持ち越し ---- */
   #carryDlg { width: min(820px, 96vw); }
   #carryDlg .dlg-head { background: #b35c00; font-size: 22px; }
@@ -221,7 +263,7 @@
   /* ---- 狭い画面（スマートフォン・タブレット縦）---- */
   @media (max-width: 760px) {
     header { flex-wrap: wrap; white-space: normal; gap: 6px; padding: 6px 8px; }
-    header h1, header .info, #btnFull { display: none; }
+    header h1, header .info, #btnFull, header .sep { display: none; }
     header .spacer { display: none; }
     header button { font-size: 13px; padding: 5px 8px; }
     .clock { font-size: 18px; }
@@ -294,7 +336,7 @@
 
   /* ---- 設定 ---- */
   dialog {
-    width: min(960px, 96vw);
+    width: min(1080px, 96vw);
     max-height: 92vh;
     border: none; border-radius: 10px; padding: 0;
     font-size: 16px;
@@ -302,6 +344,34 @@
   dialog::backdrop { background: #0008; }
   .dlg-head { background: var(--head); color: #fff; padding: 12px 18px; font-size: 20px; font-weight: bold; }
   dialog[open] { display: flex; flex-direction: column; }
+  /* ボタン・入力欄の共通デザイン */
+  .dlg-body button, .dlg-foot button, .pv-top button {
+    border: 1px solid #b9c4d2 !important; background: #fff !important; border-radius: 7px !important; color: #1d2a3a;
+    transition: background .15s, border-color .15s, box-shadow .15s;
+  }
+  .dlg-body button:hover:not(:disabled), .dlg-foot button:hover:not(:disabled), .pv-top button:hover { background: #eef4fb !important; border-color: #7c9cc4 !important; }
+  .dlg-body button:disabled { opacity: .45; cursor: not-allowed; }
+  .dlg-foot button.primary, .dlg-body button.primary { background: var(--head) !important; border-color: var(--head) !important; color: #fff; }
+  .dlg-foot button.primary:hover { background: #094c90 !important; }
+  .dlg-body button.danger { color: #b3261e; border-color: #e3a19c !important; }
+  button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #5b9be0; outline-offset: 1px; }
+  .dlg-body input[type=text], .dlg-body input[type=number], .dlg-body input[type=time], .dlg-body input[type=password], .dlg-body select {
+    border: 1px solid #b9c4d2; border-radius: 6px; background: #fff;
+  }
+  .dlg-head { position: relative; padding-right: 54px !important; }
+  .dlg-x { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 50%;
+    border: none; background: #ffffff22; color: #fff; font-size: 20px; cursor: pointer; line-height: 1; }
+  .dlg-x:hover { background: #ffffff44; }
+  /* 設定：左の目次 */
+  .set-layout { display: grid; grid-template-columns: 170px 1fr; gap: 0; padding: 0 !important; overflow: hidden !important; }
+  .set-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; background: #f2f5f9; border-right: 1px solid #dde3ea; overflow: auto; }
+  .set-nav a { display: block; padding: 9px 12px; border-radius: 7px; color: #2c3e55; text-decoration: none; font-weight: bold; font-size: 15px; }
+  .set-nav a:hover { background: #e3ebf5; }
+  .set-nav a.on { background: var(--head); color: #fff; }
+  .set-main { overflow: auto; padding: 4px 22px 30px; scroll-behavior: smooth; }
+  .set-main section { padding-bottom: 14px; border-bottom: 1px dashed #d5dce4; }
+  .set-main section:last-child { border-bottom: none; min-height: 60vh; }
+  .set-main h2 { font-size: 19px; color: #0a3f78; margin: 18px 0 4px; }
   .dlg-head, .dlg-foot { flex: 0 0 auto; }
   .dlg-body { padding: 14px 18px; overflow: auto; flex: 1 1 auto; min-height: 0; }
   .dlg-body table { table-layout: auto; height: auto; }
@@ -376,24 +446,35 @@
   .help td { line-height: 1.6; }
   .help ol, .help ul { margin: 4px 0; padding-left: 1.5em; line-height: 1.7; }
   .help kbd { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; font-family: inherit; font-weight: bold; }
+  /* 狭い画面：設定の目次を上に横並び（基本の指定より後に置く）*/
+  @media (max-width: 760px) {
+    .set-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .set-nav { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid #dde3ea; padding: 6px; }
+    .set-nav a { white-space: nowrap; font-size: 13px; padding: 6px 10px; }
+    .set-main { padding: 4px 10px 20px; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>ライン進捗アンドン</h1>
+  <h1><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="13" width="4" height="8" rx="1"/><rect x="8.5" y="8" width="4" height="13" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/></svg>ライン進捗アンドン</h1>
   <span class="clock" id="clock">--:--:--</span>
   <span class="state" id="state">待機中</span>
   <span class="sync" id="syncState"></span>
   <span class="info" id="info"></span>
   <span class="spacer"></span>
   <button id="btnStart">▶ 作業開始</button>
+  <span class="sep"></span>
   <button id="btnPlanView">📋 本日</button>
   <button id="btnCal">📅 計画</button>
+  <button id="btnHist">📊 実績</button>
+  <span class="sep"></span>
   <button id="btnSettings">⚙ 設定</button>
   <button id="btnHelp">？ 使い方</button>
   <button id="btnFull">⛶ 全画面</button>
   <button id="btnReset">リセット</button>
+  <button id="btnLock" hidden title="管理者ロック"></button>
 </header>
 
 <main>
@@ -444,115 +525,194 @@
 </section>
 
 <div id="banner"></div>
+<div id="errBar" role="alert"><span id="errText"></span><button id="errClose" title="閉じる">✕</button></div>
 <div id="minusMode">− 取消モード：ラインのキーを押す</div>
 <div id="focusWarn">画面をクリックしてください（テンキー入力を受け付けていません）</div>
 
 <dialog id="dlg">
-  <div class="dlg-head">設定</div>
-  <div class="dlg-body">
-    <h3>ライン</h3>
-    <div class="row-flex">
-      <label>ライン数：
-        <select id="sLineCount" style="width:auto">
-          <option>1</option><option>2</option><option>3</option><option>4</option>
-          <option>5</option><option>6</option><option>7</option><option>8</option>
+  <div class="dlg-head">⚙ 設定</div>
+  <div class="dlg-body set-layout">
+    <nav class="set-nav" id="setNav">
+      <a href="#set-lines">ライン・品目</a>
+      <a href="#set-time">時間・休憩</a>
+      <a href="#set-view">表示・判定</a>
+      <a href="#set-keys">操作キー</a>
+      <a href="#set-share">共有・データ</a>
+      <a href="#set-admin">管理</a>
+    </nav>
+    <div class="set-main" id="setMain">
+      <section id="set-lines"><h2>ライン・品目</h2>
+      <h3>ライン</h3>
+      <div class="row-flex">
+        <label>ライン数：
+          <select id="sLineCount" style="width:auto">
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+            <option>5</option><option>6</option><option>7</option><option>8</option>
+          </select>
+        </label>
+      </div>
+      <table>
+        <thead><tr><th>ライン名</th><th>品目なしの時の<br>1個あたりの時間</th><th>+1 キー</th><th>色</th></tr></thead>
+        <tbody id="sLines"></tbody>
+      </table>
+      <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
+
+      <h3>品目の登録</h3>
+      <p class="note">品目ごとに「1個あたりの時間」を登録します。単位は 秒・分・時間 から選べます（例：2 と「時間」で 1個あたり2時間）。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
+      <table>
+        <thead><tr><th>品目名</th><th>1個あたりの時間</th><th style="width:80px"></th></tr></thead>
+        <tbody id="sItems"></tbody>
+      </table>
+      <div class="row-flex"><button id="sAddItem">＋ 品目を追加</button>
+        <span class="note">品目は Excel の雛形（「品目」シート）からもまとめて登録できます。</span></div>
+
+      </section>
+      <section id="set-time"><h2>時間・休憩</h2>
+      <h3>作業開始時刻</h3>
+      <div class="row-flex">
+        <span>作業開始時刻：</span>
+        <input type="time" id="sStartTime" style="width:auto">
+        <label><input type="checkbox" id="sAutoStart"> この時刻に自動で作業開始する</label>
+      </div>
+      <p class="note">作業開始前の終了時間は「作業開始時刻 ＋ 計画数量 × 1個あたりの時間 ＋ 休憩」で表示します。自動開始にすると、この時刻に自動で作業開始します。開始時刻より後に画面を開いた場合も、この時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
+
+      <h3>休憩時間</h3>
+      <table>
+        <thead><tr><th>開始</th><th>終了</th><th style="width:80px"></th></tr></thead>
+        <tbody id="sBreaks"></tbody>
+      </table>
+      <div class="row-flex"><button id="sAddBreak">＋ 休憩を追加</button>
+        <span class="note">休憩中は目標が増えず、終了時間の計算でも休憩分を除外します。</span></div>
+
+      <h3>前日の残りの持ち越し</h3>
+      <div class="row-flex">
+        <span>24時を過ぎたとき、前日に終わらなかった分を：</span>
+        <select id="sCarryMode" style="width:auto">
+          <option value="ask">毎回確認する</option>
+          <option value="auto">自動で持ち越す（本日の計画の前に入れる）</option>
+          <option value="none">持ち越さない</option>
         </select>
-      </label>
-    </div>
-    <table>
-      <thead><tr><th>ライン名</th><th>品目なしの時の<br>1個あたりの時間</th><th>+1 キー</th><th>色</th></tr></thead>
-      <tbody id="sLines"></tbody>
-    </table>
-    <p class="note">「+1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。</p>
+      </div>
+      <p class="note">「毎回確認する」では、翌日の画面に確認が出ます（テンキー Enter＝持ち越す、−＝持ち越さない）。持ち越した品目には「↻」と元の日付が付きます。休みの日をはさんだ場合は、次に計画のある日に持ち越せます。</p>
 
-    <h3>事務所との共有</h3>
-    <div id="sShare" class="note" style="color:inherit;font-size:14px"></div>
-    <div class="row-flex">
-      <button id="sExport">💾 データを書き出す（バックアップ）</button>
-      <button id="sImportData">📂 データを読み込む</button>
-      <input type="file" id="sDataFile" accept=".json" hidden>
-      <span class="note">計画・品目・実績・設定をまとめて1つのファイルに保存／復元します。</span>
-    </div>
+      </section>
+      <section id="set-view"><h2>表示・判定</h2>
+      <h3>状況の判定（％と色）</h3>
+      <p class="note">進捗率（実績 ÷ 現時点目標）で ● の色と、進捗率の文字の色が決まります。段階は「＋ 段階を追加」で増やせます（最大10段階）。上から高い順に並べ替えて保存します。</p>
+      <table class="lv-table">
+        <thead><tr><th style="width:70px">色</th><th>進捗率</th><th style="width:80px"></th></tr></thead>
+        <tbody id="sLevels"></tbody>
+      </table>
+      <div class="row-flex">
+        <button id="sAddLevel">＋ 段階を追加</button>
+        <button id="sColReset">初期設定に戻す（100%以上＝緑・90%以上＝黄・それ未満＝赤）</button>
+      </div>
 
-    <h3>品目の登録</h3>
-    <p class="note">品目ごとに「1個あたりの時間」を登録します。単位は 秒・分・時間 から選べます（例：2 と「時間」で 1個あたり2時間）。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
-    <table>
-      <thead><tr><th>品目名</th><th>1個あたりの時間</th><th style="width:80px"></th></tr></thead>
-      <tbody id="sItems"></tbody>
-    </table>
-    <div class="row-flex"><button id="sAddItem">＋ 品目を追加</button>
-      <span class="note">品目は Excel の雛形（「品目」シート）からもまとめて登録できます。</span></div>
+      <div class="row-flex">
+        <label><input type="checkbox" id="sSound"> カウント時に音を鳴らす</label>
+      </div>
+      </section>
+      <section id="set-keys"><h2>操作キー</h2>
+      <p class="note">ボタンを押してから、割り当てたいキーを押すと登録されます。</p>
+      <div class="row-flex">
+        <span>取消（−1）キー：</span><button class="keybtn" data-key="minusKey"></button>
+        <span class="note">このキーの後にラインのキーを押すと、そのラインの実績が −1 されます。</span>
+      </div>
+      <div class="row-flex">
+        <span>作業開始／一時停止キー：</span><button class="keybtn" data-key="startKey"></button>
+        <button data-clear="startKey">なし</button>
+        <span class="note">押すたびに 作業開始 → 一時停止 → 再開 が切り替わります。</span>
+      </div>
+      <div class="row-flex">
+        <span>リセットキー：</span><button class="keybtn" data-key="resetKey"></button>
+        <button data-clear="resetKey">なし</button>
+        <span class="note">誤操作防止のため、3秒以内に2回押すとリセットします。</span>
+      </div>
+      <div class="row-flex">
+        <span>計画数量入力キー：</span><button class="keybtn" data-key="planKey"></button>
+        <button data-clear="planKey">なし</button>
+        <span class="note">押すと先頭ラインの計画数量の入力になります。数字＋Enter で次のラインへ、最後のラインで Enter（またはこのキー）を押すと終了します。</span>
+      </div>
+      <div class="row-flex">
+        <span>表示切替キー：</span><button class="keybtn" data-key="viewKey"></button>
+        <button data-clear="viewKey">なし</button>
+        <span class="note">アンドン表示と「本日の計画」表示を切り替えます。</span>
+      </div>
+      </section>
+      <section id="set-share"><h2>共有・データ</h2>
+      <h3>事務所との共有</h3>
+      <div id="sShare" class="note" style="color:inherit;font-size:14px"></div>
+      <div class="row-flex">
+        <button id="sExport">💾 データを書き出す（バックアップ）</button>
+        <button id="sImportData">📂 データを読み込む</button>
+        <input type="file" id="sDataFile" accept=".json" hidden>
+        <span class="note">計画・品目・実績・設定をまとめて1つのファイルに保存／復元します。</span>
+      </div>
 
-    <h3>作業開始時刻</h3>
-    <div class="row-flex">
-      <span>作業開始時刻：</span>
-      <input type="time" id="sStartTime" style="width:auto">
-      <label><input type="checkbox" id="sAutoStart"> この時刻に自動で作業開始する</label>
-    </div>
-    <p class="note">作業開始前の終了時間は「作業開始時刻 ＋ 計画数量 × 1個あたりの時間 ＋ 休憩」で表示します。自動開始にすると、この時刻に自動で作業開始します。開始時刻より後に画面を開いた場合も、この時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
-
-    <h3>前日の残りの持ち越し</h3>
-    <div class="row-flex">
-      <span>24時を過ぎたとき、前日に終わらなかった分を：</span>
-      <select id="sCarryMode" style="width:auto">
-        <option value="ask">毎回確認する</option>
-        <option value="auto">自動で持ち越す（本日の計画の前に入れる）</option>
-        <option value="none">持ち越さない</option>
-      </select>
-    </div>
-    <p class="note">「毎回確認する」では、翌日の画面に確認が出ます（テンキー Enter＝持ち越す、−＝持ち越さない）。持ち越した品目には「↻」と元の日付が付きます。休みの日をはさんだ場合は、次に計画のある日に持ち越せます。</p>
-
-    <h3>休憩時間</h3>
-    <table>
-      <thead><tr><th>開始</th><th>終了</th><th style="width:80px"></th></tr></thead>
-      <tbody id="sBreaks"></tbody>
-    </table>
-    <div class="row-flex"><button id="sAddBreak">＋ 休憩を追加</button>
-      <span class="note">休憩中は目標が増えず、終了時間の計算でも休憩分を除外します。</span></div>
-
-    <h3>状況の判定（％と色）</h3>
-    <p class="note">進捗率（実績 ÷ 現時点目標）で ● の色と、進捗率の文字の色が決まります。段階は「＋ 段階を追加」で増やせます（最大10段階）。上から高い順に並べ替えて保存します。</p>
-    <table class="lv-table">
-      <thead><tr><th style="width:70px">色</th><th>進捗率</th><th style="width:80px"></th></tr></thead>
-      <tbody id="sLevels"></tbody>
-    </table>
-    <div class="row-flex">
-      <button id="sAddLevel">＋ 段階を追加</button>
-      <button id="sColReset">初期設定に戻す（100%以上＝緑・90%以上＝黄・それ未満＝赤）</button>
-    </div>
-
-    <h3>操作キー</h3>
-    <div class="row-flex">
-      <span>取消（−1）キー：</span><button class="keybtn" data-key="minusKey"></button>
-      <span class="note">このキーの後にラインのキーを押すと、そのラインの実績が −1 されます。</span>
-    </div>
-    <div class="row-flex">
-      <span>作業開始／一時停止キー：</span><button class="keybtn" data-key="startKey"></button>
-      <button data-clear="startKey">なし</button>
-      <span class="note">押すたびに 作業開始 → 一時停止 → 再開 が切り替わります。</span>
-    </div>
-    <div class="row-flex">
-      <span>リセットキー：</span><button class="keybtn" data-key="resetKey"></button>
-      <button data-clear="resetKey">なし</button>
-      <span class="note">誤操作防止のため、3秒以内に2回押すとリセットします。</span>
-    </div>
-    <div class="row-flex">
-      <span>計画数量入力キー：</span><button class="keybtn" data-key="planKey"></button>
-      <button data-clear="planKey">なし</button>
-      <span class="note">押すと先頭ラインの計画数量の入力になります。数字＋Enter で次のラインへ、最後のラインで Enter（またはこのキー）を押すと終了します。</span>
-    </div>
-    <div class="row-flex">
-      <span>表示切替キー：</span><button class="keybtn" data-key="viewKey"></button>
-      <button data-clear="viewKey">なし</button>
-      <span class="note">アンドン表示と「本日の計画」表示を切り替えます。</span>
-    </div>
-    <div class="row-flex">
-      <label><input type="checkbox" id="sSound"> カウント時に音を鳴らす</label>
+      </section>
+      <section id="set-admin"><h2>管理</h2>
+        <div id="sAdmin"></div>
+      </section>
     </div>
   </div>
   <div class="dlg-foot">
     <button id="sCancel">キャンセル</button>
     <button id="sSave" class="primary">保存</button>
+  </div>
+</dialog>
+
+<dialog id="welcomeDlg">
+  <div class="dlg-head">👋 はじめに</div>
+  <div class="dlg-body welcome">
+    <p>ライン進捗アンドンへようこそ。次の3つで使い始められます。</p>
+    <ol>
+      <li><b>⚙ 設定</b>：ライン数・ライン名、品目と「1個あたりの時間」、作業開始時刻と休憩時間を入れます。</li>
+      <li><b>📅 計画</b>：今日（または先の日）の計画を、ラインごとに品目と数量で入れます。Excel からも取り込めます。</li>
+      <li><b>テンキー</b>：<kbd>Enter</kbd> で作業開始。1個できたらそのラインの番号（<kbd>1</kbd>＝A ラインなど）を押します。</li>
+    </ol>
+    <p class="note">くわしくは画面右上の「？ 使い方」を見てください。事務所の PC と共有するには、現場PCで start-server.bat を起動します。</p>
+    <label><input type="checkbox" id="wNoMore" checked> 次からこの案内を表示しない</label>
+  </div>
+  <div class="dlg-foot">
+    <button id="wClose">閉じる</button>
+    <button id="wCal">📅 計画を開く</button>
+    <button id="wSet" class="primary">⚙ 設定を開く</button>
+  </div>
+</dialog>
+
+<dialog id="histDlg">
+  <div class="dlg-head">📊 実績の履歴・日報</div>
+  <div class="dlg-body">
+    <div class="row-flex hist-ctl">
+      <label>期間：<input type="date" id="hFrom"></label>
+      <label>〜 <input type="date" id="hTo"></label>
+      <button data-range="0">今日</button>
+      <button data-range="6">7日間</button>
+      <button data-range="30">31日間</button>
+      <button data-range="month">今月</button>
+      <span class="spacer"></span>
+      <button id="hExcel" class="primary">📥 Excel に書き出す</button>
+      <button id="hPrint">🖨 印刷</button>
+    </div>
+    <div id="hBody"></div>
+    <p class="note">24時に日付が変わるとき、その日の計画・実績・完了時刻を自動で記録します（1年分）。今日の分は途中の状態を表示しています。</p>
+  </div>
+  <div class="dlg-foot">
+    <button id="hClose" class="primary">閉じる</button>
+  </div>
+</dialog>
+
+<dialog id="pinDlg">
+  <div class="dlg-head">🔒 管理者の暗証番号</div>
+  <div class="dlg-body">
+    <p class="pin-msg" id="pinMsg"></p>
+    <input type="password" id="pinInput" inputmode="numeric" autocomplete="off" maxlength="12" class="pin-input">
+    <p class="pin-err" id="pinErr"></p>
+    <p class="note">テンキーで数字を入れて Enter。解除すると、このパソコンでは <span id="pinMins">10</span> 分間ロックが外れます。</p>
+  </div>
+  <div class="dlg-foot">
+    <button id="pinCancel">キャンセル</button>
+    <button id="pinOk" class="primary">解除</button>
   </div>
 </dialog>
 
@@ -712,15 +872,35 @@
       <li>現場PCがスリープすると事務所から見られなくなります。Windows の電源設定で「スリープしない」にしてください。</li>
     </ul>
 
+    <h3>6-2. 実績の履歴・日報（📊 実績）</h3>
+    <ul>
+      <li>24時に日付が変わるとき、その日の計画・実績・完了時刻・作業開始・最終入力を自動で記録します（1年分）。</li>
+      <li>「📊 実績」で期間を選ぶと、日別の集計と、ライン・品目ごとの明細を表示します。今日の分は途中の状態です。</li>
+      <li>「📥 Excel に書き出す」で「日別」「明細」の2シートの Excel ファイル、「🖨 印刷」で日報を印刷できます。</li>
+      <li>実稼働時間は「作業開始〜最後に実績を入力した時刻」（休憩・一時停止を除く）です。</li>
+    </ul>
+
+    <h3>6-3. 管理者の暗証番号（🔒）</h3>
+    <ul>
+      <li>「⚙ 設定 → 管理」で暗証番号（数字4〜12桁）を決めると、設定の変更に暗証番号が必要になります。計画カレンダー・リセット・計画数量の直接入力も、守るかどうかを選べます。</li>
+      <li>実績のカウント・作業開始・本日の計画・実績の表示は、だれでも使えます。</li>
+      <li>一度解除すると、そのパソコンでは決めた時間（初期値10分）ロックが外れます。画面右上の「🔓 解除中」を押すと、すぐロックします。</li>
+      <li>暗証番号を5回まちがえると、30秒待つ必要があります。</li>
+    </ul>
+
     <h3>7. 困ったとき</h3>
     <ul>
       <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。計画数量に達した品目は、それ以上数えません。</li>
       <li><b>画面がはみ出す</b>：「⛶ 全画面」を押すか F11 キーで全画面にしてください。文字の大きさは自動で調整されます。</li>
+      <li><b>画面の下に赤いお知らせが出た</b>：画面を読み込み直してください（F5 キー）。データは保存されています。「保存できませんでした」と出たときは、「⚙ 設定 → 💾 データを書き出す」でバックアップを取ってください。</li>
+      <li><b>暗証番号を忘れた</b>：共有サーバーで使っている場合は、現場PCの andon-data.json の "adminPin" を null に書き換えてから、サーバーを起動し直してください。</li>
       <li><b>データの保存</b>：ファイルを直接開いた場合は、このパソコンのブラウザに保存されます。共有サーバーを使う場合は現場PCの andon-data.json に保存されます（6. 参照）。</li>
       <li><b>事務所から開けない</b>：現場PCで start-server.bat の黒い画面が開いているか、setup-firewall.bat を実行したか、現場PCがスリープしていないかを確認してください。名前で開けない場合は、黒い画面に表示される http://数字:8080/ のアドレスを使ってください。</li>
     </ul>
   </div>
   <div class="dlg-foot">
+    <span class="app-ver" id="appVer"></span>
+    <button id="helpWelcome">👋 はじめにを表示</button>
     <button id="helpPrint">🖨 印刷</button>
     <button id="helpClose" class="primary">閉じる</button>
   </div>
@@ -730,6 +910,7 @@
 (() => {
   'use strict';
 
+  const APP_VERSION = '1.0.0';
   const STORE_KEY = 'andon-v1';
   const DAY = 86400000;
   const PALETTE = ['#d9e88a', '#d9e88a', '#c9a6f2', '#c9a6f2', '#9fd8f0', '#f5c28a', '#f2a6c4', '#b5e3b0'];
@@ -770,6 +951,11 @@
       thresholds: { ...DEFAULT_THRESHOLDS },   // （旧形式。levels が無い保存データの引き継ぎ用）
       levels: null,        // 状況の判定 [{ min: 進捗率%以上, color }]（高い順）。null なら旧形式から作る
       levelBelow: null,    // いちばん下（どの段階にも届かない）の色
+      adminPin: null,      // 管理者の暗証番号 { salt, hash }（null は暗証番号なし）
+      lastCountAt: null,   // 最後に実績を入力した時刻（日報の実稼働時間に使う）
+      welcomed: false,     // 「はじめに」を表示しない
+      history: {},         // 日ごとの実績の記録 { 'YYYY-MM-DD': { start, workMs, lines: [{ name, items: [{ name, qty, act, ct, unit, doneAt, carry }] }] } }
+      adminLock: { calendar: true, reset: true, planInput: false, minutes: 10 },   // 暗証番号で守る操作・解除が続く分数
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
       calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順に [{ item, qty }, ...]] }
       items: [],           // 品目マスタ [{ id, name, ct, unit }]（ct は 1個あたりの時間・秒、unit は表示の単位 s/m/h）
@@ -811,8 +997,16 @@
       s.calendar[k] = (day || []).map(v => Array.isArray(v) ? v : (Number(v) > 0 ? [{ item: null, qty: Number(v) }] : []));
     }
   }
+  let saveWarned = false;
   function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (e) { /* noop */ }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); }
+    catch (e) {
+      // 共有サーバーで使っているときはサーバーに保存されるので、ブラウザ側の失敗は知らせない
+      if (!SERVER && !saveWarned) {
+        saveWarned = true;
+        showError('このパソコンに保存できませんでした（ブラウザの保存領域がいっぱい・保存が禁止されている など）。「⚙ 設定 → 💾 データを書き出す」でバックアップを取ってください。');
+      }
+    }
     if (SERVER) { sync.dirty = true; schedulePush(); }
   }
   // 保存データを今のバージョンの形にそろえる（読み込み・共有サーバーから受け取ったとき）
@@ -1432,6 +1626,7 @@
     if (!started()) { banner('「作業開始」を押してください'); return; }
     const now = Date.now();
     let msg = '';
+    st.lastCountAt = now;
     if (delta > 0) {
       const j = currentIndex(l);
       if (j < 0) { banner(l.queue.some(e => e.qty > 0) ? `${l.name}：全品目完了（計画数量に達しています）` : `${l.name}：計画がありません`); return; }
@@ -1513,12 +1708,16 @@
       if (st.calendar[today]) applyPlans(calendarDay(st.calendar, today));
       else syncTodayCalendar();
     } else {
+      // その日の実績を履歴に残す
+      const rec = snapshotDay(now);
+      if (rec) st.history[st.day] = rec;
       // 終わらなかった分（計画 − 実績）を前日の残りとして取っておく。まだ決めていない残りがあれば合わせる
       const left = st.lines.map(l => l.queue.filter(e => e.qty > 0 && !isDone(e))
         .map(e => ({ item: e.item, qty: round2(e.qty - e.act), carry: e.carry || st.day })));
       const pending = st.carry && !st.carry.decided ? st.carry : null;
       if (pending) pending.lines.forEach((ln, i) => { if (left[i]) left[i] = [...ln, ...left[i]]; });
       st.segments = [];
+      st.lastCountAt = null;
       clearActs();
       applyPlans(calendarDay(st.calendar, today));
       banner('日付が変わりました（リセット）');
@@ -1529,9 +1728,10 @@
       } else if (!pending) {
         st.carry = null;
       }
-      // 1年より前のカレンダーは削除
+      // 1年より前のカレンダー・履歴は削除
       const old = dateKey(now - 366 * DAY);
       for (const k of Object.keys(st.calendar)) if (k < old) delete st.calendar[k];
+      for (const k of Object.keys(st.history || {})) if (k < old) delete st.history[k];
     }
     st.day = today;
     save();
@@ -1577,8 +1777,10 @@
   $('btnStart').onclick = e => { e.currentTarget.blur(); toggleRun(); };
   $('btnReset').onclick = e => {
     e.currentTarget.blur();
-    if (!confirm('実績と作業時間をリセットします。よろしいですか？\n（計画数量・設定は残ります）')) return;
-    resetAll();
+    requireAdmin('reset', () => {
+      if (!confirm('実績と作業時間をリセットします。よろしいですか？\n（計画数量・設定は残ります）')) return;
+      resetAll();
+    });
   };
   $('btnFull').onclick = e => {
     e.currentTarget.blur();
@@ -1664,6 +1866,12 @@
   rowsEl.addEventListener('focusin', e => {
     const inp = e.target;
     if (!inp.matches('input.plan')) return;
+    if (st.adminPin && adminLockOf(st).planInput && !isUnlocked()) {
+      inp.dataset.cancel = '1';
+      inp.blur();
+      requireAdmin('planInput', () => { inp.focus(); inp.select(); });
+      return;
+    }
     inp.select();
     inp.dataset.fresh = '1';   // 最初の数字で値を置き換える
     inp.dataset.orig = inp.value;
@@ -1699,7 +1907,7 @@
     if (st.startKey && code === st.startKey) { e.preventDefault(); toggleRun(); return; }
     if (st.resetKey && code === st.resetKey) {
       e.preventDefault();
-      if (resetArmed) { resetArmed = false; clearTimeout(resetTimer); resetAll(); }
+      if (resetArmed) { resetArmed = false; clearTimeout(resetTimer); requireAdmin('reset', resetAll); }
       else {
         resetArmed = true;
         banner(`もう一度 ${keyLabel(st.resetKey)} でリセット`);
@@ -1711,8 +1919,10 @@
     if (st.viewKey && code === st.viewKey) { e.preventDefault(); togglePlanView(); return; }
     if (st.planKey && code === st.planKey && !planMode) {
       e.preventDefault();
-      const first = rowsEl.querySelector('input.plan');
-      if (first) { first.focus(); first.select(); }
+      requireAdmin('planInput', () => {
+        const first = rowsEl.querySelector('input.plan');
+        if (first) { first.focus(); first.select(); }
+      });
       return;
     }
     const i = st.lines.findIndex(l => l.key === code);
@@ -1746,7 +1956,10 @@
     renderLevels();
     renderSettings();
     renderShareInfo();
+    renderAdmin();
     dlg.showModal();
+    $('setMain').scrollTop = 0;
+    updateSetNav();
   }
   // ダブルクリックでアンドンを開くファイル（ブラウザで開くとすぐそのアドレスへ移る）
   function downloadLauncher(url, file, title) {
@@ -2015,13 +2228,33 @@
     draft.calendar = st.calendar;
     draft.day = st.day;
     draft.carry = st.carry;
+    if (draft.adminPin) draft.adminPin = { salt: draft.adminPin.salt, hash: draft.adminPin.hash };
+    // 暗証番号を新しく決めた・変えたときは、このパソコンでは解除した状態にする
+    if (draft.adminPin && (!st.adminPin || st.adminPin.hash !== draft.adminPin.hash)) unlockedUntil = Date.now() + adminLockOf(draft).minutes * 60000;
     st = draft;
     syncTodayCalendar();
     save();
     dlg.close();
     buildRows();
+    updateLockButton();
   };
-  $('btnSettings').onclick = e => { e.currentTarget.blur(); openSettings(); };
+  $('btnSettings').onclick = e => { e.currentTarget.blur(); requireAdmin('settings', openSettings); };
+  // 設定の目次：押した項目へ移動し、表示中の項目を目次で強調する
+  $('setNav').addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    e.preventDefault();
+    const sec = document.querySelector(a.getAttribute('href'));
+    if (sec) $('setMain').scrollTo({ top: sec.offsetTop - $('setMain').offsetTop - 4, behavior: 'smooth' });
+  });
+  function updateSetNav() {
+    const main = $('setMain');
+    let cur = null;
+    main.querySelectorAll('section').forEach(sec => { if (sec.offsetTop - main.offsetTop - main.scrollTop <= 40) cur = sec.id; });
+    cur = cur || 'set-lines';
+    $('setNav').querySelectorAll('a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + cur));
+  }
+  $('setMain').addEventListener('scroll', updateSetNav);
 
   // ---------- 計画カレンダー ----------
   const calDlg = $('calDlg');
@@ -2177,7 +2410,7 @@
     calDlg.close();
     render();
   };
-  $('btnCal').onclick = e => { e.currentTarget.blur(); openCalendar(); };
+  $('btnCal').onclick = e => { e.currentTarget.blur(); requireAdmin('calendar', openCalendar); };
 
   // ---------- Excel 取り込み・雛形 ----------
   // 外部ライブラリを使わず、.xlsx（ZIP + XML）をブラウザだけで読み書きする
@@ -2542,6 +2775,62 @@
     return (c ^ 0xFFFFFFFF) >>> 0;
   }
   // 無圧縮の ZIP を作る
+  // 表を .xlsx にする。sheets：[{ name, header, rows, widths, pct: [割合の列番号] }]
+  function buildXlsx(sheets) {
+    const cell = (ref, v, st0) => (typeof v === 'number' && Number.isFinite(v)
+      ? `<c r="${ref}" s="${st0}"><v>${v}</v></c>`
+      : `<c r="${ref}" t="inlineStr" s="${st0}"><is><t>${esc(v ?? '')}</t></is></c>`);
+    const files = {};
+    sheets.forEach((sh, si) => {
+      let x = `<row r="1">${sh.header.map((h, c) => cell(colName(c) + '1', h, 1)).join('')}</row>`;
+      sh.rows.forEach((row, ri) => {
+        x += `<row r="${ri + 2}">${row.map((v, c) => cell(colName(c) + (ri + 2), v, (sh.pct || []).includes(c) && typeof v === 'number' ? 3 : 2)).join('')}</row>`;
+      });
+      files[`xl/worksheets/sheet${si + 1}.xml`] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"${si === 0 ? ' tabSelected="1"' : ''}><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<cols>${(sh.widths || []).map((w, c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>
+<sheetData>${x}</sheetData>
+</worksheet>`;
+    });
+    files['[Content_Types].xml'] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('\n')}
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+    files['_rels/.rels'] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+    files['xl/workbook.xml'] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<bookViews><workbookView activeTab="0"/></bookViews>
+<sheets>${sheets.map((sh, i) => `<sheet name="${esc(sh.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>
+</workbook>`;
+    files['xl/_rels/workbook.xml.rels'] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('\n')}
+<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+    files['xl/styles.xml'] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Meiryo UI"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Meiryo UI"/><family val="2"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0B5CAD"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="4">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="10" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+    return zip(files);
+  }
   function zip(files) {
     const enc = new TextEncoder();
     const parts = [], central = [];
@@ -2750,7 +3039,7 @@
       li{line-height:1.7}.note{color:#555;font-size:12px}
       .dot{display:inline-block;width:.8em;height:.8em;border-radius:50%;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       </style></head>
-      <body><h1>ライン進捗アンドン 説明書</h1>${$('helpBody').innerHTML}</body></html>`);
+      <body><h1>ライン進捗アンドン 説明書 <small style="font-size:12px;color:#666">ver ${APP_VERSION}</small></h1>${$('helpBody').innerHTML}</body></html>`);
     w.document.close();
     w.focus();
     w.print();
@@ -2984,6 +3273,288 @@
   $('pvToday').onclick = e => { e.currentTarget.blur(); planDate = dateKey(Date.now()); renderPlanView(); };
   $('pvPrint').onclick = e => { e.currentTarget.blur(); window.print(); };
 
+  // ---------- 実績の履歴・日報 ----------
+  // 今の画面の状態から、その日の記録を作る（計画も実績もなければ null）
+  function snapshotDay(now) {
+    const lines = st.lines.map(l => ({
+      name: l.name,
+      items: l.queue.filter(e => e.qty > 0).map(e => {
+        const it = itemOf(e.item);
+        return { name: itemName(e.item) || '品目なし', qty: e.qty, act: e.act, ct: ctOf(e, l), unit: it ? unitOf(it.unit) : unitOf(l.ctUnit),
+          doneAt: isDone(e) ? e.doneAt || null : null, carry: e.carry || null };
+      }),
+    }));
+    if (!lines.some(l => l.items.length)) return null;
+    // 実稼働は「作業開始〜最後に実績を入力した時刻」（終業後も作業中のままでも、夜まで数えない）
+    const s0 = started() ? st.segments[0].s : null;
+    const last = s0 && st.lastCountAt && st.lastCountAt >= s0 ? Math.min(st.lastCountAt, now) : null;
+    return { start: s0, last, workMs: last ? Math.round(workSince(s0, last)) : 0, lines };
+  }
+  const histDlg = $('histDlg');
+  function openHistory() {
+    const t = keyToDate(dateKey(Date.now()));
+    const from = new Date(t); from.setDate(from.getDate() - 6);
+    $('hFrom').value = dateKey(from.getTime());
+    $('hTo').value = dateKey(t.getTime());
+    renderHistory();
+    histDlg.showModal();
+  }
+  // 期間内の記録（今日は途中の状態）を日付順に
+  function historyRange() {
+    const from = $('hFrom').value, to = $('hTo').value, today = dateKey(Date.now());
+    const days = Object.keys(st.history || {}).filter(k => k >= from && k <= to).sort().map(k => ({ day: k, rec: st.history[k], live: false }));
+    if (today >= from && today <= to) {
+      const rec = snapshotDay(Date.now());
+      if (rec) { const i = days.findIndex(d => d.day === today); const row = { day: today, rec, live: true }; if (i >= 0) days[i] = row; else days.push(row); }
+    }
+    return days;
+  }
+  const fmtDay = k => { const d = keyToDate(k); return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}（${WD[d.getDay()]}）`; };
+  const pct = (a, q) => (q > 0 ? (a / q) * 100 : null);
+  const rateCell = r0 => { if (r0 === null) return '-'; const j = judge(r0); return `<span class="rate-dot" style="background:${esc(j.color)}"></span>${r0.toFixed(1)}%`; };
+  function renderHistory() {
+    const days = historyRange();
+    const box = $('hBody');
+    if (!days.length) { box.innerHTML = '<div class="hist-empty">この期間の記録はありません。</div>'; return; }
+    let tq = 0, ta = 0, items = 0, done = 0;
+    days.forEach(d => d.rec.lines.forEach(l => l.items.forEach(it => { tq += it.qty; ta += it.act; items++; if (it.doneAt) done++; })));
+    let h = `<div class="hist-sum">
+      <div>日数<b>${days.length}日</b></div>
+      <div>計画数量（合計）<b>${fmtNum(round2(tq))}</b></div>
+      <div>実績（合計）<b>${fmtNum(round2(ta))}</b></div>
+      <div>達成率<b>${rateCell(pct(ta, tq))}</b></div>
+      <div>完了した品目<b>${done} / ${items}</b></div>
+    </div>`;
+    h += `<h3>日別の集計</h3><table class="hist-tbl"><thead><tr><th>日付</th><th>作業開始</th><th>最終入力</th><th>実稼働</th><th>計画数量</th><th>実績</th><th>達成率</th><th>完了した品目</th></tr></thead><tbody>`;
+    for (const d of days) {
+      let q = 0, a = 0, n = 0, dn = 0;
+      d.rec.lines.forEach(l => l.items.forEach(it => { q += it.qty; a += it.act; n++; if (it.doneAt) dn++; }));
+      h += `<tr class="${d.live ? 'live' : ''}"><td>${fmtDay(d.day)}${d.live ? '　本日（途中）' : ''}</td><td>${d.rec.start ? fmtHM(d.rec.start) : '-'}</td><td>${d.rec.last ? fmtHM(d.rec.last) : '-'}</td>` +
+        `<td>${d.rec.workMs ? fmtDur(d.rec.workMs) : '-'}</td><td>${fmtNum(round2(q))}</td><td>${fmtNum(round2(a))}</td><td>${rateCell(pct(a, q))}</td><td>${dn} / ${n}</td></tr>`;
+    }
+    h += `</tbody></table><h3>明細（ライン・品目ごと）</h3><table class="hist-tbl"><thead><tr><th>日付</th><th>ライン</th><th>品目</th><th>計画数量</th><th>実績</th><th>達成率</th><th>1個あたり</th><th>完了時刻</th></tr></thead><tbody>`;
+    for (const d of days) {
+      let first = true;
+      for (const l of d.rec.lines) for (const it of l.items) {
+        h += `<tr class="${first ? 'day-first' : ''}${d.live ? ' live' : ''}"><td>${first ? fmtDay(d.day) : ''}</td><td>${esc(l.name)}</td>` +
+          `<td class="it">${it.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(it.name)}</td><td>${fmtNum(it.qty)}</td><td>${fmtNum(it.act)}</td>` +
+          `<td>${rateCell(pct(it.act, it.qty))}</td><td>${fmtCt(it.ct, it.unit)}</td><td>${it.doneAt ? fmtHM(it.doneAt) : '-'}</td></tr>`;
+        first = false;
+      }
+    }
+    box.innerHTML = h + '</tbody></table>';
+  }
+  $('hFrom').onchange = renderHistory;
+  $('hTo').onchange = renderHistory;
+  histDlg.querySelectorAll('[data-range]').forEach(b => (b.onclick = () => {
+    const t = keyToDate(dateKey(Date.now()));
+    const from = new Date(t);
+    if (b.dataset.range === 'month') from.setDate(1); else from.setDate(from.getDate() - Number(b.dataset.range));
+    $('hFrom').value = dateKey(from.getTime());
+    $('hTo').value = dateKey(t.getTime());
+    renderHistory();
+  }));
+  $('hClose').onclick = () => histDlg.close();
+  $('btnHist').onclick = e => { e.currentTarget.blur(); openHistory(); };
+  $('hExcel').onclick = () => {
+    const days = historyRange();
+    if (!days.length) { alert('この期間の記録はありません'); return; }
+    const daily = [], detail = [];
+    for (const d of days) {
+      let q = 0, a = 0, n = 0, dn = 0;
+      d.rec.lines.forEach(l => l.items.forEach(it => {
+        q += it.qty; a += it.act; n++; if (it.doneAt) dn++;
+        detail.push([fmtDay(d.day), l.name, it.name + (it.carry ? '（持ち越し）' : ''), it.qty, it.act, it.qty > 0 ? it.act / it.qty : '', fmtCt(it.ct, it.unit), it.doneAt ? fmtHM(it.doneAt) : '']);
+      }));
+      daily.push([fmtDay(d.day) + (d.live ? '（途中）' : ''), d.rec.start ? fmtHM(d.rec.start) : '', d.rec.last ? fmtHM(d.rec.last) : '', d.rec.workMs ? Math.round(d.rec.workMs / 60000) : '', round2(q), round2(a), q > 0 ? a / q : '', `${dn} / ${n}`]);
+    }
+    const blob = buildXlsx([
+      { name: '日別', header: ['日付', '作業開始', '最終入力', '実稼働（分）', '計画数量', '実績', '達成率', '完了した品目'], rows: daily, widths: [22, 10, 10, 12, 12, 12, 10, 14], pct: [6] },
+      { name: '明細', header: ['日付', 'ライン', '品目', '計画数量', '実績', '達成率', '1個あたりの時間', '完了時刻'], rows: detail, widths: [22, 8, 30, 12, 12, 10, 16, 10], pct: [5] },
+    ]);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `jisseki_${$('hFrom').value}_${$('hTo').value}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  };
+  $('hPrint').onclick = () => {
+    const w = window.open('', '_blank');
+    if (!w) { alert('印刷画面を開けませんでした（ポップアップを許可してください）'); return; }
+    w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>実績 ${esc($('hFrom').value)}〜${esc($('hTo').value)}</title>
+      <style>body{font-family:"Meiryo","Yu Gothic UI",sans-serif;margin:18px;font-size:12px}h1{font-size:18px}h3{font-size:14px;border-left:5px solid #0b5cad;padding-left:6px}
+      table{border-collapse:collapse;width:100%;margin-bottom:12px}th,td{border:1px solid #999;padding:3px 6px;text-align:center}th{background:#e4ecf6}td.it{text-align:left}
+      .hist-sum{display:flex;gap:10px;flex-wrap:wrap}.hist-sum div{border:1px solid #ccc;padding:4px 8px}.hist-sum b{display:block;font-size:16px}
+      .rate-dot{display:inline-block;width:.8em;height:.8em;border-radius:50%;margin-right:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head>
+      <body><h1>ライン進捗アンドン 実績（${esc($('hFrom').value)} 〜 ${esc($('hTo').value)}）</h1>${$('hBody').innerHTML}</body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  // ---------- 管理者ロック（暗証番号）----------
+  // 暗証番号は「塩」と合わせて変換した値だけを保存する（そのままの数字は保存しない）
+  function pinHash(pin, salt) {
+    let h = 0x811c9dc5;
+    const text = salt + ':' + pin;
+    for (let k = 0; k < 2000; k++) {
+      for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+      h ^= k;
+    }
+    return h.toString(16).padStart(8, '0');
+  }
+  const newSalt = () => Math.random().toString(36).slice(2, 10);
+  const adminLockOf = s => ({ calendar: true, reset: true, planInput: false, minutes: 10, ...(s && s.adminLock) });
+  let unlockedUntil = 0, pinAction = null;
+  const isUnlocked = () => !st.adminPin || Date.now() < unlockedUntil;
+  // 守られた操作：暗証番号が必要なら入力画面を出し、正しければ実行する
+  function requireAdmin(kind, action) {
+    if (kind !== 'settings' && !adminLockOf(st)[kind]) { action(); return; }
+    if (isUnlocked()) { action(); return; }
+    pinAction = action;
+    const names = { settings: '設定', calendar: '計画カレンダー', reset: 'リセット', planInput: '計画数量の入力' };
+    $('pinMsg').textContent = `「${names[kind] || kind}」は管理者の操作です。暗証番号を入れてください。`;
+    $('pinErr').textContent = '';
+    $('pinInput').value = '';
+    $('pinMins').textContent = adminLockOf(st).minutes;
+    $('pinDlg').showModal();
+    $('pinInput').focus();
+  }
+  let pinFails = 0, pinWaitUntil = 0;
+  function pinSubmit() {
+    if (Date.now() < pinWaitUntil) { $('pinErr').textContent = `しばらく待ってから入れてください（あと ${Math.ceil((pinWaitUntil - Date.now()) / 1000)} 秒）`; return; }
+    const v = $('pinInput').value;
+    if (st.adminPin && pinHash(v, st.adminPin.salt) === st.adminPin.hash) {
+      pinFails = 0;
+      unlockedUntil = Date.now() + adminLockOf(st).minutes * 60000;
+      $('pinDlg').close();
+      updateLockButton();
+      const act = pinAction;
+      pinAction = null;
+      if (act) act();
+      return;
+    }
+    pinFails++;
+    if (pinFails >= 5) { pinWaitUntil = Date.now() + 30000; pinFails = 0; }
+    $('pinErr').textContent = Date.now() < pinWaitUntil ? '5回まちがえたので、30秒待ってください' : '暗証番号が違います';
+    $('pinInput').value = '';
+    const box = $('pinDlg');
+    box.classList.remove('pin-shake'); void box.offsetWidth; box.classList.add('pin-shake');
+  }
+  $('pinOk').onclick = pinSubmit;
+  $('pinCancel').onclick = () => { pinAction = null; $('pinDlg').close(); };
+  $('pinDlg').addEventListener('cancel', () => { pinAction = null; });
+  $('pinInput').addEventListener('keydown', e => {
+    const d = /^Numpad(\d)$/.exec(e.code);
+    if (d) { e.preventDefault(); e.stopPropagation(); if (e.target.value.length < 12) e.target.value += d[1]; return; }   // NumLock オフでも数字が入る
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); pinSubmit(); }
+    else if (e.code === 'NumpadSubtract' || e.key === 'Backspace') { e.preventDefault(); e.target.value = e.target.value.slice(0, -1); }
+  });
+  // ヘッダーの鍵ボタン（暗証番号があるときだけ表示。解除中に押すとすぐロック）
+  function updateLockButton() {
+    const b = $('btnLock');
+    b.hidden = !st.adminPin;
+    const open = isUnlocked();
+    b.classList.toggle('open', open);
+    b.textContent = open ? '🔓 解除中' : '🔒';
+    b.title = open ? '押すとすぐロックします' : '管理者ロック中（押すと解除）';
+  }
+  $('btnLock').onclick = e => {
+    e.currentTarget.blur();
+    if (isUnlocked()) { unlockedUntil = 0; updateLockButton(); banner('🔒 ロックしました'); }
+    else requireAdmin('settings', () => banner('🔓 ロックを解除しました'));
+  };
+
+  // 設定画面の「管理」：暗証番号の設定・変更・なし、守る操作
+  function renderAdmin() {
+    const box = $('sAdmin');
+    const has = !!draft.adminPin;
+    const lock = draft.adminLock = adminLockOf(draft);
+    box.innerHTML = `
+      <h3>管理者の暗証番号</h3>
+      <p class="note">暗証番号を決めると、設定などの変更に暗証番号が必要になります（実績のカウント・作業開始・表示の切り替えは、今までどおり誰でも使えます）。</p>
+      <div class="admin-box">
+        <div><b>${has ? '🔒 暗証番号を設定しています' : '暗証番号は設定していません'}</b>${draft.adminPin && draft.adminPin.pending ? '（保存すると有効になります）' : ''}</div>
+        <div class="row-flex">
+          <span>${has ? '新しい暗証番号' : '暗証番号'}（数字4〜12桁）：</span>
+          <input type="password" id="sPin1" inputmode="numeric" autocomplete="new-password" maxlength="12">
+          <span>確認：</span><input type="password" id="sPin2" inputmode="numeric" autocomplete="new-password" maxlength="12">
+          <button id="sPinSet" class="primary">${has ? '変更する' : '設定する'}</button>
+          ${has ? '<button id="sPinClear" class="danger">暗証番号をなくす</button>' : ''}
+        </div>
+        <span class="pin-err" id="sPinErr"></span>
+      </div>
+      <div class="admin-box admin-locks"${has ? '' : ' style="opacity:.5"'}>
+        <b>暗証番号で守る操作</b>（「設定」は必ず守られます）
+        <label><input type="checkbox" data-lk="calendar"> 計画カレンダー（計画の入力・Excel 取り込み）</label>
+        <label><input type="checkbox" data-lk="reset"> リセット（ボタン・テンキー）</label>
+        <label><input type="checkbox" data-lk="planInput"> 計画数量の直接入力（表のクリック・テンキー ＊）</label>
+        <div class="row-flex">解除したあと、ロックが外れている時間：
+          <select id="sLockMins" style="width:auto"><option>5</option><option>10</option><option>30</option><option>60</option></select> 分</div>
+      </div>
+      <p class="note">暗証番号を忘れたとき：共有サーバーで使っている場合は、現場PCのアンドンのフォルダーにある andon-data.json の "adminPin" を null に書き換えて、サーバーを起動し直します。</p>`;
+    box.querySelectorAll('[data-lk]').forEach(cb => { cb.checked = !!lock[cb.dataset.lk]; cb.onchange = () => (lock[cb.dataset.lk] = cb.checked); });
+    $('sLockMins').value = String(lock.minutes);
+    $('sLockMins').onchange = e => (lock.minutes = Number(e.target.value));
+    $('sPinSet').onclick = () => {
+      const a = $('sPin1').value, b = $('sPin2').value;
+      if (!/^\d{4,12}$/.test(a)) { $('sPinErr').textContent = '数字4〜12桁で入れてください'; return; }
+      if (a !== b) { $('sPinErr').textContent = '確認の暗証番号が違います'; return; }
+      const salt = newSalt();
+      draft.adminPin = { salt, hash: pinHash(a, salt), pending: true };
+      renderAdmin();
+    };
+    const clr = $('sPinClear');
+    if (clr) clr.onclick = () => { if (confirm('暗証番号をなくしますか？（保存すると、だれでも設定を変えられるようになります）')) { draft.adminPin = null; renderAdmin(); } };
+  }
+
+  // ---------- エラーの知らせ ----------
+  let lastErrAt = 0;
+  function showError(msg) {
+    $('errText').textContent = msg;
+    $('errBar').classList.add('on');
+  }
+  $('errClose').onclick = () => $('errBar').classList.remove('on');
+  // 思わぬエラー：同じ知らせを何度も出さない（10秒に1回まで）
+  function onUnexpected(detail) {
+    console.error(detail);
+    if (Date.now() - lastErrAt < 10000) return;
+    lastErrAt = Date.now();
+    showError('エラーが発生しました。表示がおかしいときは、画面を読み込み直してください（F5 キー）。データは保存されています。');
+  }
+  window.addEventListener('error', e => onUnexpected(e.error || e.message));
+  window.addEventListener('unhandledrejection', e => onUnexpected(e.reason));
+
+  // ---------- はじめに ----------
+  function openWelcome() { $('wNoMore').checked = true; $('welcomeDlg').showModal(); }
+  const closeWelcome = () => {
+    if ($('wNoMore').checked && !st.welcomed) { st.welcomed = true; save(); }
+    $('welcomeDlg').close();
+  };
+  $('wClose').onclick = closeWelcome;
+  $('welcomeDlg').addEventListener('cancel', () => { if ($('wNoMore').checked && !st.welcomed) { st.welcomed = true; save(); } });
+  $('wSet').onclick = () => { closeWelcome(); requireAdmin('settings', openSettings); };
+  $('wCal').onclick = () => { closeWelcome(); requireAdmin('calendar', openCalendar); };
+  $('helpWelcome').onclick = () => { $('helpDlg').close(); openWelcome(); };
+  $('appVer').textContent = `ライン進捗アンドン ver ${APP_VERSION}`;
+  // まだ何も設定していないとき（品目・計画・カレンダーがすべて空）に表示する
+  const isFresh = () => !st.welcomed && !st.items.length && st.lines.every(l => !l.queue.length) && !Object.keys(st.calendar).some(k => calendarDay(st.calendar, k).some(ln => ln.length));
+
+  // ---------- 確認画面の ✕ ボタン（それぞれの「閉じる／キャンセル」と同じ動き）----------
+  for (const [dlgId, btnId] of [['dlg', 'sCancel'], ['calDlg', 'calCancel'], ['helpDlg', 'helpClose'], ['carryDlg', 'carryLater'], ['pinDlg', 'pinCancel'], ['histDlg', 'hClose'], ['welcomeDlg', 'wClose']]) {
+    const head = $(dlgId).querySelector('.dlg-head');
+    const x = document.createElement('button');
+    x.className = 'dlg-x';
+    x.type = 'button';
+    x.title = '閉じる';
+    x.setAttribute('aria-label', '閉じる');
+    x.textContent = '✕';
+    x.onclick = () => $(btnId).click();
+    head.appendChild(x);
+  }
+
   // ---------- 起動 ----------
   function startApp() {
     checkDayChange(Date.now());
@@ -3000,10 +3571,13 @@
       }
       render();
       if (planMode && ++planTick % 2 === 0) renderPlanView();
+      updateLockButton();
       checkCarry();
       updateFocusWarn();
     }, 1000);
     if (location.hash === '#plan') togglePlanView(true);
+    updateLockButton();
+    if (isFresh() && location.hash !== '#plan') openWelcome();
     if (SERVER) setInterval(poll, 2000);
   }
   if (SERVER) {
