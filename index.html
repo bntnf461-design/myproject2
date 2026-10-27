@@ -321,6 +321,9 @@
   .share-card { flex: 1 1 260px; border: 1px solid #c5cfdb; border-radius: 8px; padding: 10px 12px; background: #fafcff; }
   .share-card h4 { margin: 0 0 6px; font-size: 15px; }
   .share-url { font-size: 18px; font-weight: bold; font-family: Consolas, monospace; word-break: break-all; color: #0a3f78; user-select: all; }
+  .th-rows { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+  .th-rows label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .dlg-body .th-rows input[type=number] { width: 6em; }
   .ct-in { display: flex; gap: 4px; align-items: center; }
   .dlg-body .ct-in input[type=number] { flex: 1 1 auto; min-width: 4em; }
   .dlg-body .ct-in select { flex: 0 0 auto; width: auto; }
@@ -417,9 +420,9 @@
 <footer>
   <div class="legend">
     <span>進捗判定 progress judgment：</span>
-    <span><span class="dot good"></span> 100%以上</span>
-    <span><span class="dot warn"></span> 90〜99.9%</span>
-    <span><span class="dot bad"></span> 90%未満</span>
+    <span><span class="dot good"></span> <span class="lg-good">100%以上</span></span>
+    <span><span class="dot warn"></span> <span class="lg-warn">90〜100%未満</span></span>
+    <span><span class="dot bad"></span> <span class="lg-bad">90%未満</span></span>
   </div>
   <div class="keys" id="keyLegend"></div>
 </footer>
@@ -507,12 +510,15 @@
     <div class="row-flex"><button id="sAddBreak">＋ 休憩を追加</button>
       <span class="note">休憩中は目標が増えず、終了時間の計算でも休憩分を除外します。</span></div>
 
-    <h3>状況の色</h3>
+    <h3>状況の判定（％と色）</h3>
+    <div class="th-rows">
+      <label><input type="color" id="sColGood"> 進捗率 <input type="number" id="sThGood" min="0" max="1000" step="any"> %以上</label>
+      <label><input type="color" id="sColWarn"> 進捗率 <input type="number" id="sThWarn" min="0" max="1000" step="any"> %以上（<span id="sThWarnTo"></span>%未満）</label>
+      <label><input type="color" id="sColBad"> 進捗率 <span id="sThBadTo"></span>%未満</label>
+    </div>
     <div class="row-flex">
-      <label><input type="color" id="sColGood"> 100%以上</label>
-      <label><input type="color" id="sColWarn"> 90〜99.9%</label>
-      <label><input type="color" id="sColBad"> 90%未満</label>
-      <button id="sColReset">初期の色に戻す</button>
+      <button id="sColReset">初期設定に戻す（100%・90%・緑・黄・赤）</button>
+      <span class="note">進捗率（実績 ÷ 現時点目標）で ● の色と、進捗率・差異の文字の色が決まります。2つの % を同じにすると 2色で表示します。</span>
     </div>
 
     <h3>操作キー</h3>
@@ -617,7 +623,7 @@
       <tr><th>現時点目標</th><td>今の品目で、今の時刻までに作り終えているべき数。<br>前の品目が<b>実際に終わった時刻</b>から数えます（休憩・一時停止中は増えません）。前の品目が遅れても、次の品目の目標は自動で後ろにずれます。</td></tr>
       <tr><th>実績数量</th><td>今の品目でテンキーを押して数えた数。</td></tr>
       <tr><th>差異／進捗率</th><td>実績 − 現時点目標（不足は ▲）／ 実績 ÷ 現時点目標。</td></tr>
-      <tr><th>状況</th><td><span class="dot good"></span> 100%以上 ／ <span class="dot warn"></span> 90〜99.9% ／ <span class="dot bad"></span> 90%未満（90%未満は稼働中に点滅）。色は設定で変更できます。</td></tr>
+      <tr><th>状況</th><td><span class="dot good"></span> <span class="lg-good">100%以上</span> ／ <span class="dot warn"></span> <span class="lg-warn">90〜100%未満</span> ／ <span class="dot bad"></span> <span class="lg-bad">90%未満</span>（赤は稼働中に点滅）。区切りの % と色は設定で変更できます。</td></tr>
       <tr><th>終了時間</th><td>大きい数字：そのラインの全品目が終わる見込み時刻（休憩を含む）。<br>作業開始前は「作業開始時刻 ＋ 各品目の数量 × 1個あたりの時間」、開始後は今の遅れ・進みを含めて自動で更新します。<br>小さい「計画」：遅れがない場合の当初の終了時刻。</td></tr>
       <tr><th>合計</th><td>全ライン・全品目の計画数量・現時点目標・実績の合計。</td></tr>
     </table>
@@ -728,6 +734,7 @@
   const DAY = 86400000;
   const PALETTE = ['#d9e88a', '#d9e88a', '#c9a6f2', '#c9a6f2', '#9fd8f0', '#f5c28a', '#f2a6c4', '#b5e3b0'];
   const DEFAULT_STATUS_COLORS = { good: '#1a9e3a', warn: '#f29b00', bad: '#d40000' };
+  const DEFAULT_THRESHOLDS = { good: 100, warn: 90 };
   const DEFAULT_KEYS = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'];
 
   const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -757,6 +764,7 @@
       autoStartDate: null,   // 自動開始（または手動開始）した日
       sound: true,
       statusColors: { ...DEFAULT_STATUS_COLORS },
+      thresholds: { ...DEFAULT_THRESHOLDS },   // 状況の判定：good %以上＝緑、warn %以上＝黄、それ未満＝赤
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
       calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順に [{ item, qty }, ...]] }
       items: [],           // 品目マスタ [{ id, name, ct, unit }]（ct は 1個あたりの時間・秒、unit は表示の単位 s/m/h）
@@ -1073,11 +1081,18 @@
   }
 
   // ---------- 計算 ----------
+  const thresholdsOf = s => ({ ...DEFAULT_THRESHOLDS, ...(s && s.thresholds) });
   function judge(rate) {
     if (rate === null) return '';
-    if (rate >= 100) return 'good';
-    if (rate >= 90) return 'warn';
+    const th = thresholdsOf(st);
+    if (rate >= th.good - 1e-9) return 'good';
+    if (rate >= th.warn - 1e-9) return 'warn';
     return 'bad';
+  }
+  // 凡例の文字（例：100%以上 ／ 90〜100%未満 ／ 90%未満）
+  function judgeLabels(th) {
+    const g = fmtNum(th.good), w = fmtNum(th.warn);
+    return { good: `${g}%以上`, warn: th.warn < th.good ? `${w}〜${g}%未満` : '（なし）', bad: `${w}%未満` };
   }
   // 持ち越した品目の表示（例：10/26の残り）
   const carryLabel = k => { const [, m, d] = String(k).split('-').map(Number); return m ? `${m}/${d}の残り` : '前日の残り'; };
@@ -1232,6 +1247,12 @@
     root.setProperty('--st-good', c.good);
     root.setProperty('--st-warn', c.warn);
     root.setProperty('--st-bad', c.bad);
+    // 凡例（画面下・説明書）の % を設定に合わせる
+    const lb = judgeLabels(thresholdsOf(st));
+    for (const k of ['good', 'warn', 'bad']) document.querySelectorAll('.lg-' + k).forEach(e => (e.textContent = lb[k]));
+    // 2つの % が同じとき（2色）は、画面下の凡例から黄を外す
+    const twoColors = !(thresholdsOf(st).warn < thresholdsOf(st).good);
+    document.querySelectorAll('footer .lg-warn').forEach(e => (e.parentElement.style.display = twoColors ? 'none' : ''));
   }
 
   // c: { target, act, diff, rate }（target が null なら作業開始前）
@@ -1897,11 +1918,25 @@
   const statusColorInputs = { good: 'sColGood', warn: 'sColWarn', bad: 'sColBad' };
   function renderStatusColors() {
     for (const [k, id] of Object.entries(statusColorInputs)) $(id).value = draft.statusColors[k];
+    draft.thresholds = thresholdsOf(draft);
+    $('sThGood').value = draft.thresholds.good;
+    $('sThWarn').value = draft.thresholds.warn;
+    renderThresholdText();
   }
+  function renderThresholdText() {
+    $('sThWarnTo').textContent = $('sThGood').value || '?';
+    $('sThBadTo').textContent = $('sThWarn').value || '?';
+  }
+  $('sThGood').oninput = e => { draft.thresholds.good = e.target.value === '' ? NaN : Number(e.target.value); renderThresholdText(); };
+  $('sThWarn').oninput = e => { draft.thresholds.warn = e.target.value === '' ? NaN : Number(e.target.value); renderThresholdText(); };
   for (const [k, id] of Object.entries(statusColorInputs)) {
     $(id).oninput = e => (draft.statusColors[k] = e.target.value);
   }
-  $('sColReset').onclick = () => { draft.statusColors = { ...DEFAULT_STATUS_COLORS }; renderStatusColors(); };
+  $('sColReset').onclick = () => {
+    draft.statusColors = { ...DEFAULT_STATUS_COLORS };
+    draft.thresholds = { ...DEFAULT_THRESHOLDS };
+    renderStatusColors();
+  };
   $('sSound').onchange = e => (draft.sound = e.target.checked);
   $('sAutoStart').onchange = e => (draft.autoStart = e.target.checked);
   $('sStartTime').oninput = e => (draft.startTime = e.target.value);
@@ -1917,6 +1952,12 @@
     const dup = names.find((n, i) => names.indexOf(n) !== i);
     if (dup) { alert(`品目名「${dup}」が重複しています`); return; }
     if (draft.items.some(it => !(it.ct > 0))) { alert('品目の「1個あたりの時間」は 0 より大きい数で入力してください'); return; }
+    const th = thresholdsOf(draft);
+    if (!Number.isFinite(th.good) || !Number.isFinite(th.warn) || th.good < 0 || th.warn < 0 || th.good > 1000) {
+      alert('状況の判定の % は 0〜1000 の数で入力してください'); return;
+    }
+    if (th.warn > th.good) { alert(`状況の判定：黄の % （${fmtNum(th.warn)}）は、緑の % （${fmtNum(th.good)}）以下にしてください`); return; }
+    draft.thresholds = { good: th.good, warn: th.warn };
     const badLine = draft.lines.find(l => !(Number(l.ct) > 0));
     if (badLine) { alert(`ライン「${badLine.name}」の「品目なしの時の1個あたりの時間」は 0 より大きい数で入力してください`); return; }
     // 設定を開いている間に実績・計画・自動開始・日付変更が変わっても最新を保持（ライン数を増やした分は空）
