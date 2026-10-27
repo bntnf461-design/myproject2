@@ -269,6 +269,8 @@
   }
   footer .legend { display: flex; gap: 1.5vw; align-items: center; }
   footer .dot { width: 1em; height: 1em; }
+  .lg-items { display: inline-flex; flex-wrap: wrap; gap: 0.3em 1.2vw; align-items: center; }
+  .lg-items > span { white-space: nowrap; }
   .keys { color: #234; display: flex; flex-wrap: wrap; gap: 0.3em 1.2em; align-items: center; }
   .keys > span { white-space: nowrap; }
   .keys b { background: #fff; border: 1px solid #889; border-radius: 4px; padding: 0 0.4em; margin-right: 0.2em; }
@@ -321,9 +323,9 @@
   .share-card { flex: 1 1 260px; border: 1px solid #c5cfdb; border-radius: 8px; padding: 10px 12px; background: #fafcff; }
   .share-card h4 { margin: 0 0 6px; font-size: 15px; }
   .share-url { font-size: 18px; font-weight: bold; font-family: Consolas, monospace; word-break: break-all; color: #0a3f78; user-select: all; }
-  .th-rows { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
-  .th-rows label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .dlg-body .th-rows input[type=number] { width: 6em; }
+  .lv-table td { white-space: nowrap; }
+  .dlg-body .lv-table input[type=number] { width: 6em; }
+  .lv-table .lv-range { color: #556; font-size: 13px; margin-left: 6px; }
   .ct-in { display: flex; gap: 4px; align-items: center; }
   .dlg-body .ct-in input[type=number] { flex: 1 1 auto; min-width: 4em; }
   .dlg-body .ct-in select { flex: 0 0 auto; width: auto; }
@@ -420,9 +422,7 @@
 <footer>
   <div class="legend">
     <span>進捗判定 progress judgment：</span>
-    <span><span class="dot good"></span> <span class="lg-good">100%以上</span></span>
-    <span><span class="dot warn"></span> <span class="lg-warn">90〜100%未満</span></span>
-    <span><span class="dot bad"></span> <span class="lg-bad">90%未満</span></span>
+    <span class="lg-items" data-sep=""></span>
   </div>
   <div class="keys" id="keyLegend"></div>
 </footer>
@@ -511,14 +511,14 @@
       <span class="note">休憩中は目標が増えず、終了時間の計算でも休憩分を除外します。</span></div>
 
     <h3>状況の判定（％と色）</h3>
-    <div class="th-rows">
-      <label><input type="color" id="sColGood"> 進捗率 <input type="number" id="sThGood" min="0" max="1000" step="any"> %以上</label>
-      <label><input type="color" id="sColWarn"> 進捗率 <input type="number" id="sThWarn" min="0" max="1000" step="any"> %以上（<span id="sThWarnTo"></span>%未満）</label>
-      <label><input type="color" id="sColBad"> 進捗率 <span id="sThBadTo"></span>%未満</label>
-    </div>
+    <p class="note">進捗率（実績 ÷ 現時点目標）で ● の色と、進捗率の文字の色が決まります。段階は「＋ 段階を追加」で増やせます（最大10段階）。上から高い順に並べ替えて保存します。</p>
+    <table class="lv-table">
+      <thead><tr><th style="width:70px">色</th><th>進捗率</th><th style="width:80px"></th></tr></thead>
+      <tbody id="sLevels"></tbody>
+    </table>
     <div class="row-flex">
-      <button id="sColReset">初期設定に戻す（100%・90%・緑・黄・赤）</button>
-      <span class="note">進捗率（実績 ÷ 現時点目標）で ● の色と、進捗率・差異の文字の色が決まります。2つの % を同じにすると 2色で表示します。</span>
+      <button id="sAddLevel">＋ 段階を追加</button>
+      <button id="sColReset">初期設定に戻す（100%以上＝緑・90%以上＝黄・それ未満＝赤）</button>
     </div>
 
     <h3>操作キー</h3>
@@ -623,7 +623,7 @@
       <tr><th>現時点目標</th><td>今の品目で、今の時刻までに作り終えているべき数。<br>前の品目が<b>実際に終わった時刻</b>から数えます（休憩・一時停止中は増えません）。前の品目が遅れても、次の品目の目標は自動で後ろにずれます。</td></tr>
       <tr><th>実績数量</th><td>今の品目でテンキーを押して数えた数。</td></tr>
       <tr><th>差異／進捗率</th><td>実績 − 現時点目標（不足は ▲）／ 実績 ÷ 現時点目標。</td></tr>
-      <tr><th>状況</th><td><span class="dot good"></span> <span class="lg-good">100%以上</span> ／ <span class="dot warn"></span> <span class="lg-warn">90〜100%未満</span> ／ <span class="dot bad"></span> <span class="lg-bad">90%未満</span>（赤は稼働中に点滅）。区切りの % と色は設定で変更できます。</td></tr>
+      <tr><th>状況</th><td>進捗率で色が変わります：<span class="lg-items" data-sep=" ／ "></span>（いちばん下の色は稼働中に点滅）。段階の数・区切りの %・色は「⚙ 設定 → 状況の判定」で変更できます。</td></tr>
       <tr><th>終了時間</th><td>大きい数字：そのラインの全品目が終わる見込み時刻（休憩を含む）。<br>作業開始前は「作業開始時刻 ＋ 各品目の数量 × 1個あたりの時間」、開始後は今の遅れ・進みを含めて自動で更新します。<br>小さい「計画」：遅れがない場合の当初の終了時刻。</td></tr>
       <tr><th>合計</th><td>全ライン・全品目の計画数量・現時点目標・実績の合計。</td></tr>
     </table>
@@ -735,6 +735,9 @@
   const PALETTE = ['#d9e88a', '#d9e88a', '#c9a6f2', '#c9a6f2', '#9fd8f0', '#f5c28a', '#f2a6c4', '#b5e3b0'];
   const DEFAULT_STATUS_COLORS = { good: '#1a9e3a', warn: '#f29b00', bad: '#d40000' };
   const DEFAULT_THRESHOLDS = { good: 100, warn: 90 };
+  // 段階を追加するときの色の候補
+  //（追加した段階は低い % になるので、オレンジ系から順に使う）
+  const LEVEL_PALETTE = ['#ef6c00', '#f2c200', '#7cb342', '#1565c0', '#8e24aa', '#00897b', '#f29b00', '#1a9e3a', '#6d4c41', '#546e7a'];
   const DEFAULT_KEYS = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'];
 
   const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -764,7 +767,9 @@
       autoStartDate: null,   // 自動開始（または手動開始）した日
       sound: true,
       statusColors: { ...DEFAULT_STATUS_COLORS },
-      thresholds: { ...DEFAULT_THRESHOLDS },   // 状況の判定：good %以上＝緑、warn %以上＝黄、それ未満＝赤
+      thresholds: { ...DEFAULT_THRESHOLDS },   // （旧形式。levels が無い保存データの引き継ぎ用）
+      levels: null,        // 状況の判定 [{ min: 進捗率%以上, color }]（高い順）。null なら旧形式から作る
+      levelBelow: null,    // いちばん下（どの段階にも届かない）の色
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
       calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順に [{ item, qty }, ...]] }
       items: [],           // 品目マスタ [{ id, name, ct, unit }]（ct は 1個あたりの時間・秒、unit は表示の単位 s/m/h）
@@ -1082,18 +1087,29 @@
 
   // ---------- 計算 ----------
   const thresholdsOf = s => ({ ...DEFAULT_THRESHOLDS, ...(s && s.thresholds) });
+  // 状況の段階（高い順）。旧形式（緑・黄の % と色）の保存データからも作る
+  function levelsOf(s) {
+    if (s && Array.isArray(s.levels) && s.levels.length) {
+      return s.levels.filter(l => Number.isFinite(Number(l.min))).map(l => ({ min: Number(l.min), color: l.color || '#888888' }))
+        .sort((a, b) => b.min - a.min);
+    }
+    const th = thresholdsOf(s), c = { ...DEFAULT_STATUS_COLORS, ...(s && s.statusColors) };
+    return th.warn < th.good ? [{ min: th.good, color: c.good }, { min: th.warn, color: c.warn }] : [{ min: th.good, color: c.good }];
+  }
+  const belowOf = s => (s && s.levelBelow) || ({ ...DEFAULT_STATUS_COLORS, ...(s && s.statusColors) }).bad;
+  // 進捗率がどの段階か。{ i: 段階の番号（-1 はいちばん下）, color } / 判定なしは null
   function judge(rate) {
-    if (rate === null) return '';
-    const th = thresholdsOf(st);
-    if (rate >= th.good - 1e-9) return 'good';
-    if (rate >= th.warn - 1e-9) return 'warn';
-    return 'bad';
+    if (rate === null) return null;
+    const lv = levelsOf(st);
+    const i = lv.findIndex(l => rate >= l.min - 1e-9);
+    return i >= 0 ? { i, color: lv[i].color } : { i: -1, color: belowOf(st) };
   }
-  // 凡例の文字（例：100%以上 ／ 90〜100%未満 ／ 90%未満）
-  function judgeLabels(th) {
-    const g = fmtNum(th.good), w = fmtNum(th.warn);
-    return { good: `${g}%以上`, warn: th.warn < th.good ? `${w}〜${g}%未満` : '（なし）', bad: `${w}%未満` };
+  // 凡例の文字（例：110%以上 ／ 100〜110%未満 ／ … ／ 80%未満）
+  function levelLabels(lv) {
+    return lv.map((l, i) => (i === 0 ? `${fmtNum(l.min)}%以上` : `${fmtNum(l.min)}〜${fmtNum(lv[i - 1].min)}%未満`))
+      .concat(lv.length ? [`${fmtNum(lv[lv.length - 1].min)}%未満`] : ['すべて']);
   }
+
   // 持ち越した品目の表示（例：10/26の残り）
   const carryLabel = k => { const [, m, d] = String(k).split('-').map(Number); return m ? `${m}/${d}の残り` : '前日の残り'; };
 
@@ -1242,17 +1258,18 @@
   }
 
   function applyStatusColors() {
-    const c = { ...DEFAULT_STATUS_COLORS, ...st.statusColors };
+    const lv = levelsOf(st), below = belowOf(st);
     const root = document.documentElement.style;
-    root.setProperty('--st-good', c.good);
-    root.setProperty('--st-warn', c.warn);
-    root.setProperty('--st-bad', c.bad);
-    // 凡例（画面下・説明書）の % を設定に合わせる
-    const lb = judgeLabels(thresholdsOf(st));
-    for (const k of ['good', 'warn', 'bad']) document.querySelectorAll('.lg-' + k).forEach(e => (e.textContent = lb[k]));
-    // 2つの % が同じとき（2色）は、画面下の凡例から黄を外す
-    const twoColors = !(thresholdsOf(st).warn < thresholdsOf(st).good);
-    document.querySelectorAll('footer .lg-warn').forEach(e => (e.parentElement.style.display = twoColors ? 'none' : ''));
+    // 差異の文字色など：いちばん上の段階の色（プラス）と、いちばん下の色（マイナス）
+    root.setProperty('--st-good', lv.length ? lv[0].color : below);
+    root.setProperty('--st-warn', lv.length > 1 ? lv[1].color : below);
+    root.setProperty('--st-bad', below);
+    // 凡例（画面下・説明書）を段階の数に合わせて作る
+    const labels = levelLabels(lv), colors = lv.map(l => l.color).concat([below]);
+    document.querySelectorAll('.lg-items').forEach(el => {
+      el.innerHTML = labels.map((t, i) => `<span><span class="dot" style="background:${esc(colors[i])}"></span> ${esc(t)}</span>`)
+        .join(el.dataset.sep ? `<span>${esc(el.dataset.sep.trim())}</span>` : '');
+    });
   }
 
   // c: { target, act, diff, rate }（target が null なら作業開始前）
@@ -1267,10 +1284,12 @@
     d.innerHTML = !on ? '-' : diff < 0 ? `<span class="tri">▲</span> ${fmtNum(-diff)}` : diff > 0 ? `+${fmtNum(diff)}` : '0';
     const rate = !on ? null : c.target > 0 ? (c.act / c.target) * 100 : (c.act > 0 ? 100 : null);
     const j = judge(rate);
-    cells[6].className = 'rate ' + j;
+    cells[6].className = 'rate';
+    cells[6].style.color = j ? j.color : '';
     cells[6].textContent = rate === null ? '-' : rate.toFixed(1) + '%';
     const dot = cells[7].querySelector('.dot');
-    dot.className = 'dot ' + j + (j === 'bad' && running() ? ' blink' : '');
+    dot.className = 'dot' + (j && j.i < 0 && running() ? ' blink' : '');
+    dot.style.background = j ? j.color : '';
     cells[8].innerHTML = endText + (endSub ? `<small>${esc(endSub)}</small>` : '');
   }
 
@@ -1722,8 +1741,9 @@
     $('sAutoStart').checked = draft.autoStart;
     $('sStartTime').value = draft.startTime || '';
     $('sCarryMode').value = draft.carryMode || 'ask';
-    draft.statusColors = { ...DEFAULT_STATUS_COLORS, ...draft.statusColors };
-    renderStatusColors();
+    draft.levels = levelsOf(draft);
+    draft.levelBelow = belowOf(draft);
+    renderLevels();
     renderSettings();
     renderShareInfo();
     dlg.showModal();
@@ -1915,27 +1935,51 @@
   dlg.querySelectorAll('[data-clear]').forEach(b => {
     b.onclick = () => { draft[b.dataset.clear] = null; refreshKeyButtons(); };
   });
-  const statusColorInputs = { good: 'sColGood', warn: 'sColWarn', bad: 'sColBad' };
-  function renderStatusColors() {
-    for (const [k, id] of Object.entries(statusColorInputs)) $(id).value = draft.statusColors[k];
-    draft.thresholds = thresholdsOf(draft);
-    $('sThGood').value = draft.thresholds.good;
-    $('sThWarn').value = draft.thresholds.warn;
-    renderThresholdText();
+  // 状況の段階の編集欄（高い順に並べ、各行に範囲を表示する）
+  function renderLevels() {
+    const tb = $('sLevels');
+    tb.innerHTML = '';
+    const lv = draft.levels;
+    lv.forEach((l, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><input type="color"></td><td>進捗率 <input type="number" min="0" max="1000" step="any"> %以上` +
+        `<span class="lv-range">${i > 0 && Number.isFinite(lv[i - 1].min) ? `（${fmtNum(lv[i - 1].min)}%未満）` : ''}</span></td>` +
+        `<td><button${lv.length <= 1 ? ' disabled' : ''}>削除</button></td>`;
+      const [col, num] = tr.querySelectorAll('input');
+      col.value = l.color;
+      num.value = Number.isFinite(l.min) ? l.min : '';
+      col.oninput = () => (l.color = col.value);
+      num.oninput = () => (l.min = num.value === '' ? NaN : Number(num.value));
+      // 入力が終わったら高い順に並べ直す
+      num.onchange = () => { sortLevels(); renderLevels(); };
+      tr.querySelector('button').onclick = () => { lv.splice(i, 1); renderLevels(); };
+      tb.appendChild(tr);
+    });
+    const last = lv.length ? lv[lv.length - 1].min : NaN;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="color"></td><td>それ未満${Number.isFinite(last) ? `（${fmtNum(last)}%未満）` : ''}　<span class="note">稼働中は点滅</span></td><td></td>`;
+    const col = tr.querySelector('input');
+    col.value = draft.levelBelow;
+    col.oninput = () => (draft.levelBelow = col.value);
+    tb.appendChild(tr);
+    $('sAddLevel').disabled = lv.length >= 10;
   }
-  function renderThresholdText() {
-    $('sThWarnTo').textContent = $('sThGood').value || '?';
-    $('sThBadTo').textContent = $('sThWarn').value || '?';
-  }
-  $('sThGood').oninput = e => { draft.thresholds.good = e.target.value === '' ? NaN : Number(e.target.value); renderThresholdText(); };
-  $('sThWarn').oninput = e => { draft.thresholds.warn = e.target.value === '' ? NaN : Number(e.target.value); renderThresholdText(); };
-  for (const [k, id] of Object.entries(statusColorInputs)) {
-    $(id).oninput = e => (draft.statusColors[k] = e.target.value);
-  }
+  const sortLevels = () => draft.levels.sort((a, b) => (Number.isFinite(b.min) ? b.min : -1) - (Number.isFinite(a.min) ? a.min : -1));
+  $('sAddLevel').onclick = () => {
+    const lv = draft.levels;
+    if (lv.length >= 10) return;
+    const used = new Set(lv.map(l => l.color.toLowerCase()).concat([String(draft.levelBelow).toLowerCase()]));
+    const color = LEVEL_PALETTE.find(c => !used.has(c)) || '#888888';
+    const mins = lv.map(l => l.min).filter(Number.isFinite);
+    const min = mins.length ? Math.max(0, Math.min(...mins) - 10) : 100;
+    lv.push({ min: mins.includes(min) ? NaN : min, color });
+    sortLevels();
+    renderLevels();
+  };
   $('sColReset').onclick = () => {
-    draft.statusColors = { ...DEFAULT_STATUS_COLORS };
-    draft.thresholds = { ...DEFAULT_THRESHOLDS };
-    renderStatusColors();
+    draft.levels = [{ min: DEFAULT_THRESHOLDS.good, color: DEFAULT_STATUS_COLORS.good }, { min: DEFAULT_THRESHOLDS.warn, color: DEFAULT_STATUS_COLORS.warn }];
+    draft.levelBelow = DEFAULT_STATUS_COLORS.bad;
+    renderLevels();
   };
   $('sSound').onchange = e => (draft.sound = e.target.checked);
   $('sAutoStart').onchange = e => (draft.autoStart = e.target.checked);
@@ -1952,12 +1996,14 @@
     const dup = names.find((n, i) => names.indexOf(n) !== i);
     if (dup) { alert(`品目名「${dup}」が重複しています`); return; }
     if (draft.items.some(it => !(it.ct > 0))) { alert('品目の「1個あたりの時間」は 0 より大きい数で入力してください'); return; }
-    const th = thresholdsOf(draft);
-    if (!Number.isFinite(th.good) || !Number.isFinite(th.warn) || th.good < 0 || th.warn < 0 || th.good > 1000) {
-      alert('状況の判定の % は 0〜1000 の数で入力してください'); return;
-    }
-    if (th.warn > th.good) { alert(`状況の判定：黄の % （${fmtNum(th.warn)}）は、緑の % （${fmtNum(th.good)}）以下にしてください`); return; }
-    draft.thresholds = { good: th.good, warn: th.warn };
+    const lvs = draft.levels;
+    if (!lvs.length) { alert('状況の判定の段階を1つ以上にしてください'); return; }
+    if (lvs.some(l => !Number.isFinite(l.min) || l.min < 0 || l.min > 1000)) { alert('状況の判定の % は 0〜1000 の数で入力してください'); return; }
+    const mins = lvs.map(l => l.min);
+    const dupMin = mins.find((m, i) => mins.indexOf(m) !== i);
+    if (dupMin !== undefined) { alert(`状況の判定：${fmtNum(dupMin)}% の段階が重複しています`); return; }
+    sortLevels();
+    draft.levels = lvs.map(l => ({ min: l.min, color: l.color }));
     const badLine = draft.lines.find(l => !(Number(l.ct) > 0));
     if (badLine) { alert(`ライン「${badLine.name}」の「品目なしの時の1個あたりの時間」は 0 より大きい数で入力してください`); return; }
     // 設定を開いている間に実績・計画・自動開始・日付変更が変わっても最新を保持（ライン数を増やした分は空）
@@ -2694,7 +2740,6 @@
   $('btnHelp').onclick = e => { e.currentTarget.blur(); $('helpDlg').showModal(); };
   $('helpClose').onclick = () => $('helpDlg').close();
   $('helpPrint').onclick = () => {
-    const sc = { ...DEFAULT_STATUS_COLORS, ...st.statusColors };
     const w = window.open('', '_blank');
     if (!w) { alert('印刷画面を開けませんでした（ポップアップを許可してください）'); return; }
     w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ライン進捗アンドン 説明書</title>
@@ -2704,7 +2749,7 @@
       th{background:#e4ecf6;white-space:nowrap;width:12em}kbd{border:1px solid #888;border-radius:4px;padding:0 4px;font-family:inherit}
       li{line-height:1.7}.note{color:#555;font-size:12px}
       .dot{display:inline-block;width:.8em;height:.8em;border-radius:50%;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      .dot.good{background:${sc.good}}.dot.warn{background:${sc.warn}}.dot.bad{background:${sc.bad}}</style></head>
+      </style></head>
       <body><h1>ライン進捗アンドン 説明書</h1>${$('helpBody').innerHTML}</body></html>`);
     w.document.close();
     w.focus();
