@@ -173,6 +173,8 @@ Set-AreaRect $sc $rect; [void]$script:areas.Add($sc)
 T 'save schedule' (Save-SettingsFile $script:settingsPath)
 $script:areas.Clear(); [void](Load-SettingsFile $script:settingsPath); $sc2=$script:areas[0]
 T 'schedule / delay / repeat restored' ($sc2.ScheduleOn -and $sc2.ScheduleStart -eq '20:00' -and $sc2.ScheduleEnd -eq '06:00' -and $sc2.ScheduleDays -eq 62 -and $sc2.NGDelaySec -eq 120 -and $sc2.RepeatMin -eq 10)
+T 'area id (folder of the registered images) restored' ($sc2.Id -eq $sc.Id -and $sc.Id -match '^[0-9a-f]{32}$')
+T 'each new area gets its own id' ((New-MonitorArea 'p' $rect ([System.Drawing.Color]::Black)).Id -ne (New-MonitorArea 'q' $rect ([System.Drawing.Color]::Black)).Id)
 
 # --- v82：NGの状態が○秒続いたら鳴らす（ドアの開けっぱなし） ---
 $dr=New-MonitorArea 'ドア' $rect ([System.Drawing.Color]::Black); $dr.DiffThreshold=1; $dr.ConfirmFrames=2; $dr.NGDelaySec=60

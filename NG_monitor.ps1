@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v82 時間帯で監視（20:00を過ぎて電源が入っていたら鳴らす 等）・NGが○秒続いたら鳴らす・鳴らし直し
+﻿# NG MONITOR - v83 登録した画像を表示（どんな画面・色を登録したか、あとから確認できる）
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -155,6 +155,37 @@ public static class NgVision79 {
         int stride, bpp;
         byte[] buf = ReadPixels(bmp, out stride, out bpp);
         return RatioImage(buf, bmp.Width, bmp.Height, stride, bpp, target.R, target.G, target.B, sensitivity, hueMode);
+    }
+
+    // For the "registered images" window: inside the area (ax,ay,aw,ah) keep the pixels
+    // that count as the target colour and darken / grey out the others, so the user can
+    // see where the colour is found. Same colour test as RatioBuf (per pixel, a guide).
+    public static void MarkColor(Bitmap bmp, int ax, int ay, int aw, int ah, Color target, double sensitivity, bool hueMode) {
+        int tr = target.R, tg = target.G, tb = target.B;
+        bool useHue = hueMode && IsChromatic(tr, tg, tb);
+        double th, ts, tv;
+        RgbToHsv(tr, tg, tb, out th, out ts, out tv);
+        double minSat = Math.Max(0.08, ts * 0.35);
+        double thr = useHue ? HueThreshold(sensitivity) : RgbThreshold(sensitivity);
+        var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
+        var data = bmp.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        try {
+            int stride = Math.Abs(data.Stride);
+            byte[] buf = new byte[stride * bmp.Height];
+            Marshal.Copy(data.Scan0, buf, 0, buf.Length);
+            int x0 = Math.Max(0, ax), y0 = Math.Max(0, ay);
+            int x1 = Math.Min(bmp.Width, ax + aw), y1 = Math.Min(bmp.Height, ay + ah);
+            for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+                int i = y * stride + x * 4;
+                double d = Dist(buf[i + 2], buf[i + 1], buf[i], tr, tg, tb, useHue, th, ts, minSat);
+                if (d <= thr) continue;
+                int l = (int)(0.3 * (0.299 * buf[i + 2] + 0.587 * buf[i + 1] + 0.114 * buf[i]));
+                buf[i] = buf[i + 1] = buf[i + 2] = (byte)l;
+            }
+            Marshal.Copy(buf, 0, data.Scan0, buf.Length);
+        } finally {
+            bmp.UnlockBits(data);
+        }
     }
 
     public static int[] AverageColor(Bitmap bmp) {
@@ -1193,6 +1224,8 @@ $script:lastErrorDialogAt = [datetime]::MinValue
 $script:lastStatusText = $null
 $script:suppressEvents = $false
 $script:imageDir = Join-Path $PSScriptRoot 'ng_images'
+$script:refImageDir = Join-Path $PSScriptRoot 'ref_images'   # 登録した時の画面（エリアごとのフォルダ）
+$script:lastRefImagePath = $null
 $script:saveImages = $true        # NGの時に画像を保存する（このPCの設定）
 $script:autoStart = $false        # 起動したら自動で監視を始める（このPCの設定）
 $script:settingsDirty = $false    # 設定が変わった → 少し待ってから自動保存する
@@ -1405,6 +1438,7 @@ function Update-BuzzerState {
 # ================== 監視エリア ==================
 function New-MonitorArea($name,$rect,$color) {
     return [PSCustomObject]@{
+        Id=[guid]::NewGuid().ToString('N')   # 登録した画像のフォルダ名（名前を変えても変わらない）
         Name=$name
         Rect=$rect
         Color=$color
@@ -1837,7 +1871,7 @@ function Capture-AreaUnobstructed($rect) {
     }
 }
 
-function Capture-DiffFrames($a,$count,$intervalMs,$label) {
+function Capture-DiffFrames($a,$count,$intervalMs,$label,$snapKind) {
     # 何枚か続けて撮り、マス目ごとの平均色（{細かい, 粗い} の組）の一覧を返す。
     # 1枚だけでなく何枚も撮ることで、「普段からちらつく部分」も覚えられる。
     $rect=Get-CaptureRect $a
@@ -1857,6 +1891,7 @@ function Capture-DiffFrames($a,$count,$intervalMs,$label) {
                 $off=Get-InnerOffset $bmp $a
                 $frames[$i]=[NgDiff79]::Sample($bmp,$off[0],$off[1],$a.Rect.Width,$a.Rect.Height)
             } finally { $bmp.Dispose() }
+            if($i -eq 0 -and $snapKind) { [void](Save-RefImage $a $snapKind) }   # 何を登録したか、あとで見られるように
             if($label) { SetStatusPanel $colorReady $textOnReady ($label+'（'+($i+1)+'/'+$count+'）…このウィンドウやカメラの画面は動かさないでください') }
             [System.Windows.Forms.Application]::DoEvents()
             if($i -lt $count-1) { Start-Sleep -Milliseconds $intervalMs }
@@ -1899,6 +1934,123 @@ function Save-NGImage($a,$nowTime) {
     }
 }
 
+function Get-RefImageFolder($a) {
+    return (Join-Path $script:refImageDir ([string]$a.Id))
+}
+
+function New-ContextShot($a) {
+    # 今の画面から、エリア＋周り（60ピクセル）を撮り、エリアを赤い枠で囲んだ画像にする。
+    # 返り値：@(画像, 画像の中のエリアの位置)
+    $vs=[System.Windows.Forms.SystemInformation]::VirtualScreen
+    $m=60
+    $ctx=[System.Drawing.Rectangle]::Intersect((New-Object System.Drawing.Rectangle(($a.Rect.X-$m),($a.Rect.Y-$m),($a.Rect.Width+2*$m),($a.Rect.Height+2*$m))),$vs)
+    if($ctx.Width -le 0 -or $ctx.Height -le 0) { throw '範囲が画面の外です' }
+    $src=Capture-AreaUnobstructed $ctx
+    try {
+        $inner=New-Object System.Drawing.Rectangle(($a.Rect.X-$ctx.X),($a.Rect.Y-$ctx.Y),$a.Rect.Width,$a.Rect.Height)
+        return (Convert-RefImage $src $inner $true)
+    } finally { $src.Dispose() }
+}
+
+function Convert-RefImage($src,$inner,$frame) {
+    # 保存・表示しやすい大きさ（最大 900×700）に縮め、必要ならエリアに赤い枠を描く
+    $sc=[Math]::Min(1.0,[Math]::Min(900.0/$src.Width,700.0/$src.Height))
+    $w=[Math]::Max(1,[int]($src.Width*$sc)); $h=[Math]::Max(1,[int]($src.Height*$sc))
+    $out=New-Object System.Drawing.Bitmap($w,$h)
+    $g=[System.Drawing.Graphics]::FromImage($out)
+    try {
+        $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.DrawImage($src,0,0,$w,$h)
+        $ir=New-Object System.Drawing.Rectangle([int]($inner.X*$sc),[int]($inner.Y*$sc),[Math]::Max(1,[int]($inner.Width*$sc)),[Math]::Max(1,[int]($inner.Height*$sc)))
+        if($frame) {
+            $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,60,60),2)
+            $g.DrawRectangle($pen,($ir.X-2),($ir.Y-2),($ir.Width+3),($ir.Height+3))
+            $pen.Dispose()
+        }
+    } finally { $g.Dispose() }
+    return @($out,$ir)
+}
+
+function Save-RefImage($a,$kind,$bitmap) {
+    # 登録した時の画面を画像で残す（あとで「どんな画面・色を登録したか」を確認できるように）。
+    # $bitmap を渡さない時は、今の画面からエリア＋周りを撮る。返り値：保存したファイル（失敗したら $null）
+    $script:lastRefImagePath=$null
+    try {
+        $dir=Get-RefImageFolder $a
+        if(-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
+        if($bitmap) { $shot=Convert-RefImage $bitmap (New-Object System.Drawing.Rectangle(0,0,$bitmap.Width,$bitmap.Height)) $false }
+        else { $shot=New-ContextShot $a }
+        $img=$shot[0]; $ir=$shot[1]
+        try {
+            $name=(Get-Date -Format 'yyyyMMdd_HHmmss_fff')+'_'+$kind+'_r'+$ir.X+'-'+$ir.Y+'-'+$ir.Width+'-'+$ir.Height+'.png'
+            $path=Join-Path $dir $name
+            $img.Save($path,[System.Drawing.Imaging.ImageFormat]::Png)
+        } finally { $img.Dispose() }
+        $script:lastRefImagePath=$path
+        return $path
+    } catch {
+        Write-ErrorLogThrottled ('登録した画像の保存に失敗（'+$a.Name+'）: '+$_.Exception.Message)
+        return $null
+    }
+}
+
+function Get-RefImages($a) {
+    # 保存した登録画像の一覧（古い順）：Path, Time, Kind, Inner（画像の中のエリアの位置）
+    $list=New-Object System.Collections.ArrayList
+    try {
+        $dir=Get-RefImageFolder $a
+        if(-not (Test-Path -LiteralPath $dir)) { return ,$list }
+        foreach($fi in @(Get-ChildItem -LiteralPath $dir -Filter '*.png' -File | Sort-Object Name)) {
+            $m=[regex]::Match($fi.Name,'^(\d{8}_\d{6})_\d{3}_([a-z_]+?)(?:_r(\d+)-(\d+)-(\d+)-(\d+))?\.png$')
+            if(-not $m.Success) { continue }
+            $t=[datetime]::ParseExact($m.Groups[1].Value,'yyyyMMdd_HHmmss',[System.Globalization.CultureInfo]::InvariantCulture)
+            $inner=$null
+            if($m.Groups[3].Success) { $inner=New-Object System.Drawing.Rectangle([int]$m.Groups[3].Value,[int]$m.Groups[4].Value,[int]$m.Groups[5].Value,[int]$m.Groups[6].Value) }
+            [void]$list.Add([PSCustomObject]@{ Path=$fi.FullName; Time=$t; Kind=$m.Groups[2].Value; Inner=$inner })
+        }
+    } catch {}
+    return ,$list
+}
+
+function Remove-RefImages($a,[string[]]$kinds,$keep) {
+    # 種類（$kinds を省略すると全部）の登録画像を消す。$keep のファイルは残す
+    foreach($ri in (Get-RefImages $a)) {
+        if($keep -and $ri.Path -eq $keep) { continue }
+        if($kinds -and ($kinds -notcontains $ri.Kind)) { continue }
+        try { Remove-Item -LiteralPath $ri.Path -Force -ErrorAction Stop } catch {}
+    }
+}
+
+function Remove-RefImageFolder($a) {
+    try {
+        $dir=Get-RefImageFolder $a
+        if(Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
+    } catch {}
+}
+
+function Get-RefKindText($kind) {
+    switch($kind) {
+        'area'       { return 'エリアを登録した時の画面' }
+        'ok'         { return '正常として記録（比べる）' }
+        'ok_add'     { return '追加した正常（昼・夜など）' }
+        'ng'         { return '異常として記録（自動調整に使用）' }
+        'match_ng'   { return '異常の画面として記録' }
+        'match_ok'   { return '正常な画面として記録' }
+        'match_file' { return '画像ファイルから読み込んだ異常の画面' }
+        'color_ok'   { return '正常（OK）として記録（色で判定）' }
+        'color_ng'   { return '異常（NG）として記録（色で判定）' }
+    }
+    return [string]$kind
+}
+
+function Test-RefKindUsed($a,$kind) {
+    # 今の「判定のしかた」で使っている見本かどうか
+    if($kind -eq 'area') { return $true }
+    if($kind -like 'color_*') { return ($a.Mode -eq 'color') }
+    if($kind -like 'match_*') { return ($a.Mode -eq 'match') }
+    return ($a.Mode -eq 'diff')
+}
+
 function Remove-OldNGImages {
     # 30日より古いNG画像は自動で削除する（ディスクがいっぱいにならないように）
     try {
@@ -1934,6 +2086,7 @@ function Get-CurrentSettingsObject {
     $areaObjs=@()
     foreach($a in $script:areas) {
         $areaObjs += [PSCustomObject]@{
+            Id=$a.Id
             Name=$a.Name
             X=$a.Rect.X; Y=$a.Rect.Y; W=$a.Rect.Width; H=$a.Rect.Height
             ColorR=$a.Color.R; ColorG=$a.Color.G; ColorB=$a.Color.B
@@ -2077,6 +2230,7 @@ function Apply-SettingsObject($data) {
             $color=[System.Drawing.Color]::FromArgb((ClampInt $ad.ColorR 0 255 0),(ClampInt $ad.ColorG 0 255 0),(ClampInt $ad.ColorB 0 255 0))
             $areaName=$(if($ad.Name){[string]$ad.Name}else{'エリア'+$n})
             $newArea=New-MonitorArea $areaName $rect $color
+            if(([string]$ad.Id) -match '^[0-9a-f]{32}$') { $newArea.Id=[string]$ad.Id }
             $newArea.Sensitivity=ClampInt $ad.Sensitivity 0 100 $legacySensitivity
             $newArea.NGThreshold=ClampInt $ad.NGThreshold 1 100 $legacyNGThreshold
             $newArea.HueMatchMode=$(if($null -ne $ad.HueMatchMode){[bool]$ad.HueMatchMode}else{$legacyHueMode})
@@ -2730,7 +2884,8 @@ $colorLabel.Anchor=[System.Windows.Forms.AnchorStyles]::Left -bor [System.Window
 $previewBtnRow=New-Row
 $highlightBtn=New-Button '画面で位置を確認' $colorGrayBtn $null 8.5 120 30
 $eyedropBtn=New-Button 'スポイトで色を選ぶ' $colorGrayBtn $null 8.5 120 30
-Add-Controls $previewBtnRow @($highlightBtn,$eyedropBtn)
+$refImagesBtn=New-Button '登録した画像を見る' ([System.Drawing.Color]::FromArgb(30,90,140)) $null 8.5 120 30
+Add-Controls $previewBtnRow @($refImagesBtn,$highlightBtn,$eyedropBtn)
 $maskBtnRow=New-Row
 $maskBtn=New-Button '除外する場所を指定' ([System.Drawing.Color]::FromArgb(70,70,110)) $null 8.5 120 30
 $maskClearBtn=New-Button '除外を全部消す' $colorGrayBtn $null 8.5 100 30
@@ -3202,7 +3357,7 @@ function LoadAreaSettingsIntoSliders {
     $script:suppressEvents=$true
     try {
         $en=($null -ne $a)
-        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck,$schedCheck,$delayBox,$repeatBox)) { $c.Enabled=$en }
+        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck,$schedCheck,$delayBox,$repeatBox,$refImagesBtn)) { $c.Enabled=$en }
         if($en) {
             if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } elseif($a.Mode -eq 'match') { $rbModeMatch.Checked=$true } else { $rbModeColor.Checked=$true }
             if($a.Direction -eq 'disappear') { $rbDisappear.Checked=$true } else { $rbAppear.Checked=$true }
@@ -3674,7 +3829,7 @@ function Record-DiffOK($a,[switch]$Append) {
     $count=$script:okFrameCount; $interval=150; $what='正常な状態を記録中'
     if($longRecordCheck.Checked) { $count=$script:longFrameCount; $interval=200; $what='正常な状態を長めに記録中（約30秒。いつも通り動かしたままでOK）' }
     try {
-        $frames=Capture-DiffFrames $a $count $interval ($a.Name+'：'+$what)
+        $frames=Capture-DiffFrames $a $count $interval ($a.Name+'：'+$what) $(if($Append){'ok_add'}else{'ok'})
     } catch {
         [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return $false
@@ -3682,6 +3837,7 @@ function Record-DiffOK($a,[switch]$Append) {
     $ref=[NgDiff79]::BuildReference($frames,$a.Rect.Width,$a.Rect.Height)
     Reset-AreaWithLog $a 'NG解除（正常の見本を記録）'
     if(-not $Append) {
+        Remove-RefImages $a @('ok','ok_add','ng') $script:lastRefImagePath   # 置き換えた古い見本の画像
         $a.DiffRefs.Clear(); $a.DiffOkFrames=$null; $a.DiffNgMeans=$null
         # 記録し直したら、感度・しきい値も新しい判定方法の初期値に戻す
         $a.DiffSensitivity=50; $a.DiffThreshold=0.15
@@ -3714,11 +3870,12 @@ function Record-DiffNG($a) {
         return
     }
     try {
-        $frames=Capture-DiffFrames $a 3 150 ($a.Name+'：異常な状態を記録中')
+        $frames=Capture-DiffFrames $a 3 150 ($a.Name+'：異常な状態を記録中') 'ng'
     } catch {
         [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return
     }
+    Remove-RefImages $a @('ng') $script:lastRefImagePath
     $avg=[NgDiff79]::BuildReference($frames,$a.Rect.Width,$a.Rect.Height)   # 3枚の平均
     $ng=New-Object 'float[][]' 2
     $ng[0]=$avg[0]; $ng[1]=$avg[2]
@@ -3806,7 +3963,7 @@ function Record-MatchNG($a) {
         return $false
     }
     if($a.DiffFineW -le 0) { Set-AreaGrids $a }
-    try { $frames=Capture-DiffFrames $a 3 150 ($a.Name+'：異常の画面を記録中') }
+    try { $frames=Capture-DiffFrames $a 3 150 ($a.Name+'：異常の画面を記録中') 'match_ng' }
     catch { [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning)); return $false }
     Add-MatchReference $a $a.MatchNgRefs $frames -Ng
     Update-MatchTuning $a
@@ -3822,7 +3979,7 @@ function Record-MatchOK($a) {
         return
     }
     if($a.DiffFineW -le 0) { Set-AreaGrids $a }
-    try { $frames=Capture-DiffFrames $a $script:okFrameCount 150 ($a.Name+'：正常な画面を記録中') }
+    try { $frames=Capture-DiffFrames $a $script:okFrameCount 150 ($a.Name+'：正常な画面を記録中') 'match_ok' }
     catch { [void](Show-Message ('画面を撮影できませんでした。'+"`r`n"+$_.Exception.Message) ([System.Windows.Forms.MessageBoxIcon]::Warning)); return }
     Add-MatchReference $a $a.MatchOkRefs $frames
     Update-MatchTuning $a
@@ -3888,6 +4045,7 @@ function Import-MatchNGFromFile($a) {
         $smp=New-Object 'float[][][]' 1
         $smp[0]=[NgDiff79]::Sample($bmp,0,0,$a.Rect.Width,$a.Rect.Height)
         Add-MatchReference $a $a.MatchNgRefs $smp -Ng
+        [void](Save-RefImage $a 'match_file' $bmp)
         Update-MatchTuning $a
         $a.TuneText=($a.TuneText+"`r`n（読み込んだ画像："+$res[1]+'）')
         Update-TuneLabel $a
@@ -3927,6 +4085,11 @@ function Invoke-AutoTune($a) {
             $a.OkSnap.Dispose(); $a.NgSnap.Dispose()
             $a.OkSnap=$okCrop; $a.NgSnap=$ngCrop
             Set-AreaRect $a (New-Object System.Drawing.Rectangle(($a.Rect.X+$cx0),($a.Rect.Y+$cy0),$crop.Width,$crop.Height))
+            # 範囲が変わったので、登録した画像も絞り込んだ範囲で撮り直す
+            Remove-RefImages $a
+            [void](Save-RefImage $a 'area')
+            [void](Save-RefImage $a 'color_ok' $a.OkSnap)
+            [void](Save-RefImage $a 'color_ng' $a.NgSnap)
             $res2=[NgVision79]::AutoTune($a.OkSnap,$a.NgSnap,$a.Color)
             if($null -ne $res2) { $res=$res2 }
             $tightened=$true
@@ -3976,6 +4139,9 @@ function Record-ColorSample($kind) {
         if($a.NgSnap) { $a.NgSnap.Dispose() }
         $a.NgSnap=$bmp
     }
+    $rk=$(if($kind -eq 'OK'){'color_ok'}else{'color_ng'})
+    $rp=Save-RefImage $a $rk
+    if($rp) { Remove-RefImages $a @($rk) $rp }
     $a.TuneText=$null
     Update-SampleRatios $a
     if($a.OkSnap -and $a.NgSnap) {
@@ -4033,7 +4199,7 @@ function Start-AreaSetupWizard($a) {
     if($choice -eq 0) {
         Set-AreaModeFor $a 'diff'
         if(Record-DiffOK $a) {
-            SetStatusPanel $colorReady $textOnReady ($a.Name+'：設定完了！「▶ 監視スタート」で監視できます。')
+            SetStatusPanel $colorReady $textOnReady ($a.Name+'：設定完了！「▶ 監視スタート」で監視できます。（登録した画面は「登録した画像を見る」で確認できます）')
         }
     } elseif($choice -eq 1) {
         Set-AreaModeFor $a 'match'
@@ -4058,7 +4224,23 @@ $tileBoard.Add_Paint({
     }
     Draw-AddTile $g (Get-TileRect $script:areas.Count)
 })
+$tileMenu=New-Object System.Windows.Forms.ContextMenuStrip
+$tileMenuImages=$tileMenu.Items.Add('登録した画像を見る')
+$tileMenuHighlight=$tileMenu.Items.Add('画面で位置を確認')
+$tileMenuImages.Add_Click({ Show-RefImages (Get-SelectedArea) })
+$tileMenuHighlight.Add_Click({ $a=Get-SelectedArea; if($a) { Show-AreaHighlight $a.Rect } })
 $tileBoard.Add_MouseDown({
+    if($_.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+        # 右クリック：そのエリアを選んでメニューを出す
+        for($i=0;$i -lt $script:areas.Count;$i++) {
+            if((Get-TileRect $i).Contains($_.Location)) {
+                if($areaList.SelectedIndex -ne $i) { $areaList.SelectedIndex=$i; $tileBoard.Invalidate() }
+                $tileMenu.Show($tileBoard,$_.Location)
+                return
+            }
+        }
+        return
+    }
     if($_.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
     for($i=0;$i -le $script:areas.Count;$i++) {
         if((Get-TileRect $i).Contains($_.Location)) {
@@ -4219,6 +4401,7 @@ $pick.Add_Click({
             $bmp.Dispose()
             $newArea=New-MonitorArea (New-AreaName) $script:area ([System.Drawing.Color]::FromArgb($rgb[0],$rgb[1],$rgb[2]))
             Set-AreaRect $newArea $script:area
+            [void](Save-RefImage $newArea 'area')
             [void]$script:areas.Add($newArea)
             $areaList.SelectedIndex=-1
             RefreshAreaListUI
@@ -4245,6 +4428,8 @@ $repickBtn.Add_Click({
             Reset-AreaWithLog $a 'NG解除（範囲の選び直し）'
             Clear-AreaSamples $a
             Set-AreaRect $a $script:area
+            Remove-RefImages $a
+            [void](Save-RefImage $a 'area')
             RefreshAreaListUI
             Mark-SettingsDirty
             if($a.Mode -ne 'color') { Start-AreaSetupWizard $a }
@@ -4275,6 +4460,7 @@ $deleteAreaBtn.Add_Click({
     if($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     Reset-AreaWithLog $a 'NG解除（エリア削除）'
     Dispose-MonitorArea $a
+    Remove-RefImageFolder $a
     $script:areas.Remove($a)
     RefreshAreaListUI
     Mark-SettingsDirty
@@ -4377,6 +4563,205 @@ $adaptCheck.Add_CheckedChanged({
     if(-not $a.AdaptDrift) { Update-DiffRefArray $a }   # 合わせた分を捨てて、記録した見本に戻す
     Mark-SettingsDirty
 })
+function Get-AreaSummaryText($a) {
+    $modeText=$(if($a.Mode -eq 'diff'){'正常な映像と比べる'}elseif($a.Mode -eq 'match'){'異常の時だけ出る画面が出たらNG'}else{'色で判定する'})
+    $lines=@(($a.Name+'　｜　判定のしかた：'+$modeText),('位置 X='+$a.Rect.X+' Y='+$a.Rect.Y+'　大きさ '+$a.Rect.Width+'×'+$a.Rect.Height))
+    if($a.Mode -eq 'diff') {
+        $lines+=('正常の見本 '+$a.DiffRefs.Count+' 枚　｜　'+(Format-Percent $a.DiffThreshold)+' 以上違ったらNG（感度 '+$a.DiffSensitivity+'）')
+    } elseif($a.Mode -eq 'match') {
+        $lines+=('異常の画面 '+$a.MatchNgRefs.Count+' 枚・正常な画面 '+$a.MatchOkRefs.Count+' 枚　｜　一致 '+$a.MatchThreshold+'% 以上でNG')
+    } else {
+        $dir=$(if($a.Direction -eq 'disappear'){'色が消えたらNG'}else{'色が出たらNG'})
+        $lines+=('検出する色 R'+$a.Color.R+' G'+$a.Color.G+' B'+$a.Color.B+'　｜　'+$dir+'（一致率 '+$a.NGThreshold+'%）　感度 '+$a.Sensitivity+$(if($a.HueMatchMode){'・色味で判定'}else{''}))
+    }
+    $extra=@()
+    if($a.Masks.Count -gt 0 -and $a.Mode -ne 'color') { $extra+=('除外 '+$a.Masks.Count+' か所') }
+    if($a.ScheduleOn) { $extra+=('時間帯 '+(Get-ScheduleText $a)) }
+    if([int]$a.NGDelaySec -gt 0) { $extra+=((Format-Duration $a.NGDelaySec)+' 続いたら鳴らす') }
+    if($extra.Count -gt 0) { $lines+=($extra -join '　｜　') }
+    return ($lines -join "`r`n")
+}
+
+function Read-BitmapFile($path) {
+    # ファイルを開いたままにしないよう、メモリに読み込んでから複製する
+    $bytes=[System.IO.File]::ReadAllBytes($path)
+    $ms=New-Object System.IO.MemoryStream(,$bytes)
+    try {
+        $img=[System.Drawing.Image]::FromStream($ms)
+        try { return (New-Object System.Drawing.Bitmap($img)) } finally { $img.Dispose() }
+    } finally { $ms.Dispose() }
+}
+
+function Add-RefCard($bmp,$title,$sub,$path,$dim) {
+    $card=New-Object System.Windows.Forms.Panel
+    $card.Size=New-Object System.Drawing.Size((Px 292),(Px 266))
+    $card.BackColor=$cardBgDark
+    $card.Margin=New-Object System.Windows.Forms.Padding((Px 6))
+    $pb=New-Object System.Windows.Forms.PictureBox
+    $pb.Location=New-Object System.Drawing.Point((Px 6),(Px 6))
+    $pb.Size=New-Object System.Drawing.Size((Px 280),(Px 196))
+    $pb.SizeMode=[System.Windows.Forms.PictureBoxSizeMode]::Zoom
+    $pb.BackColor=[System.Drawing.Color]::FromArgb(11,17,30)
+    if($bmp) { $pb.Image=$bmp; [void]$script:rvBitmaps.Add($bmp) }
+    if($path) {
+        $pb.Tag=$path
+        $pb.Cursor=[System.Windows.Forms.Cursors]::Hand
+        $pb.Add_Click({ try { Start-Process -FilePath ([string]$this.Tag) -ErrorAction Stop } catch {} })
+    }
+    $t=New-Object System.Windows.Forms.Label
+    $t.AutoSize=$false
+    $t.Location=New-Object System.Drawing.Point((Px 6),(Px 206))
+    $t.Size=New-Object System.Drawing.Size((Px 280),(Px 22))
+    $t.Font=UIFont 9.5 -Bold
+    $t.ForeColor=$(if($dim){$textSecondary}else{$textPrimary})
+    $t.Text=$title
+    $u=New-Object System.Windows.Forms.Label
+    $u.AutoSize=$false
+    $u.Location=New-Object System.Drawing.Point((Px 6),(Px 228))
+    $u.Size=New-Object System.Drawing.Size((Px 280),(Px 34))
+    $u.Font=UIFont 8
+    $u.ForeColor=$textSecondary
+    $u.Text=$sub
+    Add-Controls $card @($pb,$t,$u)
+    [void]$script:rvFlow.Controls.Add($card)
+}
+
+function Get-MarkedCopy($bmp,$inner) {
+    # 色で判定：検出する色に一致する場所だけ色を残した複製
+    $c=New-Object System.Drawing.Bitmap($bmp)
+    if($inner) { [NgVision79]::MarkColor($c,$inner.X,$inner.Y,$inner.Width,$inner.Height,$script:rvArea.Color,[double]$script:rvArea.Sensitivity,[bool]$script:rvArea.HueMatchMode) }
+    return $c
+}
+
+function Update-RefCards {
+    $a=$script:rvArea
+    $mark=($a.Mode -eq 'color' -and $script:rvMark.Checked)
+    $script:rvFlow.SuspendLayout()
+    try {
+        foreach($c in @($script:rvFlow.Controls)) { $c.Dispose() }
+        $script:rvFlow.Controls.Clear()
+        foreach($b in $script:rvBitmaps) { try { $b.Dispose() } catch {} }
+        $script:rvBitmaps.Clear()
+        if($script:rvLive) {
+            $img=$(if($mark){Get-MarkedCopy $script:rvLive[0] $script:rvLive[1]}else{New-Object System.Drawing.Bitmap($script:rvLive[0])})
+            Add-RefCard $img '今の映像（参考）' ('赤い枠＝監視しているエリア'+$(if($mark){"`r`n色が残っている所＝検出する色に一致"}else{''})) $null $false
+        }
+        $items=@(Get-RefImages $a | Sort-Object @{Expression={ if($_.Kind -eq 'area'){0}else{1} }},Time)
+        foreach($ri in $items) {
+            try { $bmp=Read-BitmapFile $ri.Path } catch { continue }
+            if($mark -and $ri.Inner -and ($ri.Kind -eq 'area' -or $ri.Kind -like 'color_*')) {
+                $m=Get-MarkedCopy $bmp $ri.Inner; $bmp.Dispose(); $bmp=$m
+            }
+            $used=Test-RefKindUsed $a $ri.Kind
+            $sub=$ri.Time.ToString('yyyy/MM/dd HH:mm:ss')+' に記録'
+            if(-not $used) { $sub+="`r`n（今の判定のしかたでは使っていません）" } else { $sub+='　（クリックで大きく表示）' }
+            Add-RefCard $bmp (Get-RefKindText $ri.Kind) $sub $ri.Path (-not $used)
+        }
+        if($items.Count -eq 0) {
+            $l=New-Label "まだ登録した画像がありません。`r`nv83 より前に記録した見本には画像がありません。記録し直すと、ここに表示されます。" 9.5 -color $textSecondary
+            $l.Margin=New-Object System.Windows.Forms.Padding((Px 10))
+            [void]$script:rvFlow.Controls.Add($l)
+        }
+    } finally { $script:rvFlow.ResumeLayout() }
+}
+
+function Show-RefImages($a) {
+    # 登録した時の画面・色・設定を一覧で見せる
+    if(-not $a) { return }
+    $script:rvArea=$a
+    $script:rvBitmaps=New-Object System.Collections.ArrayList
+    $script:rvLive=$null
+    try { $script:rvLive=New-ContextShot $a } catch {}
+    $d=New-Object System.Windows.Forms.Form
+    $d.Text=($a.Name+' の登録内容')
+    $d.AutoScaleMode=[System.Windows.Forms.AutoScaleMode]::None
+    $d.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent
+    $d.ClientSize=New-Object System.Drawing.Size((Px 940),(Px 720))
+    $d.MinimumSize=New-Object System.Drawing.Size((Px 420),(Px 360))
+    $d.BackColor=$formBgDark
+    $d.ForeColor=$textPrimary
+    $d.Font=UIFont 9
+    $d.ShowInTaskbar=$false
+    $d.MinimizeBox=$false
+    $d.TopMost=$f.TopMost
+    $flow=New-Object System.Windows.Forms.FlowLayoutPanel
+    $flow.Dock=[System.Windows.Forms.DockStyle]::Fill
+    $flow.AutoScroll=$true
+    $flow.WrapContents=$true
+    $flow.BackColor=$formBgDark
+    $flow.Padding=New-Object System.Windows.Forms.Padding((Px 6))
+    $script:rvFlow=$flow
+    $top=New-Object System.Windows.Forms.Panel
+    $top.Dock=[System.Windows.Forms.DockStyle]::Top
+    $top.Height=Px 112
+    $top.BackColor=$cardBgDark
+    $top.Padding=New-Object System.Windows.Forms.Padding((Px 12),(Px 8),(Px 12),(Px 4))
+    $info=New-Object System.Windows.Forms.Label
+    $info.Dock=[System.Windows.Forms.DockStyle]::Fill
+    $info.Font=UIFont 9.5
+    $info.ForeColor=$textPrimary
+    $info.Text=Get-AreaSummaryText $a
+    $mark=New-Object System.Windows.Forms.CheckBox
+    $mark.Text='検出する色に一致する場所だけ色を残して表示する（目安）'
+    $mark.Dock=[System.Windows.Forms.DockStyle]::Bottom
+    $mark.Height=Px 24
+    $mark.ForeColor=$textPrimary
+    $mark.Visible=($a.Mode -eq 'color')
+    $mark.Add_CheckedChanged({ Update-RefCards })
+    $script:rvMark=$mark
+    $top.Controls.Add($info)
+    $top.Controls.Add($mark)
+    if($a.Mode -eq 'color') {
+        $sw=New-Object System.Windows.Forms.Panel
+        $sw.Dock=[System.Windows.Forms.DockStyle]::Right
+        $sw.Width=Px 110
+        $sw.BackColor=$a.Color
+        $sw.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
+        $swl=New-Object System.Windows.Forms.Label
+        $swl.Dock=[System.Windows.Forms.DockStyle]::Bottom
+        $swl.Height=Px 22
+        $swl.TextAlign=[System.Drawing.ContentAlignment]::MiddleCenter
+        $swl.Text='検出する色'
+        $swl.BackColor=[System.Drawing.Color]::FromArgb(160,0,0,0)
+        $swl.ForeColor=[System.Drawing.Color]::White
+        $sw.Controls.Add($swl)
+        $top.Controls.Add($sw)
+    }
+    $bottom=New-Object System.Windows.Forms.FlowLayoutPanel
+    $bottom.Dock=[System.Windows.Forms.DockStyle]::Bottom
+    $bottom.FlowDirection=[System.Windows.Forms.FlowDirection]::RightToLeft
+    $bottom.Height=Px 50
+    $bottom.BackColor=$headerBgDark
+    $bottom.Padding=New-Object System.Windows.Forms.Padding((Px 6))
+    $closeBtn=New-Button '閉じる' $colorGrayBtn $null 9 100 34
+    $closeBtn.Add_Click({ $this.FindForm().Close() })
+    $dirBtn=New-Button '画像のフォルダを開く' $colorGrayBtn $null 9 140 34
+    $dirBtn.Add_Click({
+        try {
+            $dir=Get-RefImageFolder $script:rvArea
+            if(-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
+            Start-Process -FilePath $dir -ErrorAction Stop
+        } catch {}
+    })
+    Add-Controls $bottom @($closeBtn,$dirBtn)
+    $d.Controls.Add($flow)
+    $d.Controls.Add($top)
+    $d.Controls.Add($bottom)
+    $d.CancelButton=$closeBtn
+    try {
+        Update-RefCards
+        [void]$d.ShowDialog($f)
+    } finally {
+        foreach($b in $script:rvBitmaps) { try { $b.Dispose() } catch {} }
+        $script:rvBitmaps.Clear()
+        if($script:rvLive) { try { $script:rvLive[0].Dispose() } catch {} }
+        $script:rvLive=$null
+        $d.Dispose()
+    }
+}
+
+$refImagesBtn.Add_Click({ Show-RefImages (Get-SelectedArea) })
+
 function Update-ScheduleEnabled {
     $on=$schedCheck.Enabled -and $schedCheck.Checked
     $schedStart.Enabled=$on; $schedEnd.Enabled=$on
@@ -4469,7 +4854,13 @@ $clearRefsBtn.Add_Click({
     $ans=Show-Message ($a.Name+' の'+$what+'をすべて消しますか？（消した後は記録し直すまで監視できません）') ([System.Windows.Forms.MessageBoxIcon]::Question) ([System.Windows.Forms.MessageBoxButtons]::YesNo)
     if($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     Reset-AreaWithLog $a 'NG解除（見本の削除）'
-    if($a.Mode -eq 'match') { Clear-MatchReference $a } else { Clear-DiffReference $a }
+    if($a.Mode -eq 'match') {
+        Clear-MatchReference $a
+        Remove-RefImages $a @('match_ng','match_ok','match_file')
+    } else {
+        Clear-DiffReference $a
+        Remove-RefImages $a @('ok','ok_add','ng')
+    }
     $a.TuneText=$null
     Update-SampleRatios $a
     LoadAreaSettingsIntoSliders
