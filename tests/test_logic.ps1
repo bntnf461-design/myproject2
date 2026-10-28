@@ -12,7 +12,7 @@ if($PSVersionTable.PSEdition -eq 'Core') {
     Add-Type -ReferencedAssemblies System.Drawing.dll -TypeDefinition $cs
 }
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$null,[ref]$null)
-$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays','Update-AreaMasks','Get-AdaptRate','Reset-TodayIfNeeded','Add-TodayEvent','Read-TodayStatsFromLog','Format-Duration','Get-TodaySummaryText','ConvertTo-Minutes','Test-AreaInSchedule','Get-ScheduleText'
+$want='New-MonitorArea','Reset-AreaRuntime','Clear-AreaSamples','Clear-DiffReference','Update-DiffRefArray','Test-AreaReady','Get-JudgeThreshold','Get-JudgeDirection','Test-RatioIsNG','Update-AreaJudgement','Update-SampleRatios','Reset-AreaWithLog','Clear-AreaBuffers','Dispose-MonitorArea','Get-CurrentSettingsObject','Save-SettingsFile','Read-SettingsData','Load-SettingsFile','ClampInt','Apply-SettingsObject','Close-OpenNGEpisodes','Write-NGLogRow','Write-NGLogHeaderIfNeeded','Write-ErrorLog','Remember-LastSettingsPath','Mark-SettingsDirty','Save-SettingsIfDirty','Set-AreaRect','Get-SafeFileName','Flush-NGLog','Save-PendingLogOnExit','New-AreaName','Set-AreaGrids','ClampDouble','Format-Percent','ConvertTo-PackedRef','ConvertFrom-PackedRef','Clear-MatchReference','ConvertTo-RefArray','Update-MatchArrays','Update-AreaMasks','Get-AdaptRate','Reset-TodayIfNeeded','Add-TodayEvent','Read-TodayStatsFromLog','Format-Duration','Get-TodaySummaryText','Update-AutoAreaNames','ConvertTo-Minutes','Test-AreaInSchedule','Get-ScheduleText'
 foreach($fd in $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)) { if($want -contains $fd.Name){ . ([scriptblock]::Create($fd.Extent.Text)) } }
 $tmp=Join-Path ([IO.Path]::GetTempPath()) ('ngt_'+[guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 $script:areas=New-Object System.Collections.ArrayList; $script:areaCounter=0; $script:monitorIntervalSec=0.2
@@ -239,5 +239,19 @@ foreach($n in 'エリア1','エリア3'){ [void]$script:areas.Add((New-MonitorAr
 $script:areaCounter=2
 $n1=New-AreaName
 T "new area name does not duplicate (got $n1)" ($n1 -eq 'エリア4')
+# --- v84：エリアを削除したら「エリアN」の番号を詰める（自分で付けた名前はそのまま） ---
+$script:areas.Clear()
+foreach($n in 'エリア1','1号機ランプ','エリア2','エリア3','エリア１'){ [void]$script:areas.Add((New-MonitorArea $n $rect ([System.Drawing.Color]::Black))) }
+$script:areaCounter=3
+$script:areas.RemoveAt(0)
+$ch=Update-AutoAreaNames
+$names=($script:areas | ForEach-Object { $_.Name }) -join ','
+T "renumbered after deleting エリア1 ($names / $($ch -join ' '))" ($names -eq '1号機ランプ,エリア1,エリア2,エリア１' -and $ch.Count -eq 2 -and $ch[0] -eq 'エリア2→エリア1')
+$n2=New-AreaName
+T "next new area continues the numbers (got $n2)" ($n2 -eq 'エリア3')
+$script:areas.Clear()
+foreach($n in 'エリア1','エリア2'){ [void]$script:areas.Add((New-MonitorArea $n $rect ([System.Drawing.Color]::Black))) }
+$script:areas.RemoveAt(1)
+T 'deleting the last one renames nothing' ((Update-AutoAreaNames).Count -eq 0 -and $script:areas[0].Name -eq 'エリア1')
 Remove-Item $tmp -Recurse -Force
 "--- failures: $fail ---"; if($fail){exit 1}

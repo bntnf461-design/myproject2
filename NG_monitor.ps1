@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v83 登録した画像を表示（どんな画面・色を登録したか、あとから確認できる）
+﻿# NG MONITOR - v84 エリアを削除したら「エリアN」の番号を詰める
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -4153,6 +4153,21 @@ function Record-ColorSample($kind) {
     }
 }
 
+function Update-AutoAreaNames {
+    # 自動で付けた名前（エリア＋数字）を、一覧の順に エリア1, エリア2… と付け直す（削除で空いた番号を詰める）。
+    # 自分で付けた名前（1号機ランプ など）はそのまま。返り値：変えた名前の一覧（'エリア3→エリア2' の形）
+    $changes=New-Object System.Collections.ArrayList
+    $n=0
+    foreach($a in $script:areas) {
+        if([string]$a.Name -cnotmatch '^エリア[0-9]+$') { continue }
+        $n++
+        $new='エリア'+$n
+        if($a.Name -ne $new) { [void]$changes.Add($a.Name+'→'+$new); $a.Name=$new }
+    }
+    $script:areaCounter=$n   # 次に追加するエリアは エリア(n+1)
+    return ,$changes
+}
+
 function New-AreaName {
     # 「エリアN」が今ある名前と重ならないようにする（エリア2を消した後などに同じ名前が2つできていた）
     do {
@@ -4462,12 +4477,15 @@ $deleteAreaBtn.Add_Click({
     Dispose-MonitorArea $a
     Remove-RefImageFolder $a
     $script:areas.Remove($a)
+    $renamed=Update-AutoAreaNames
     RefreshAreaListUI
     Mark-SettingsDirty
     if($script:areas.Count -eq 0 -and $script:running) {
         Stop-Monitoring ($a.Name+'を削除しました。監視対象が無くなったため、監視を停止しました。')
     } else {
-        SetStatusPanel $colorIdle $textOnIdle ($a.Name+'を削除しました。')
+        $msg=$a.Name+'を削除しました。'
+        if($renamed.Count -gt 0) { $msg+='番号を詰めました（'+($renamed -join '、')+'）' }
+        SetStatusPanel $colorIdle $textOnIdle $msg
     }
 })
 
