@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v85 画面を整理して分かりやすく（よく使う物だけ表示・あまり使わない設定は折りたたみ）
+﻿# NG MONITOR - v86 製品らしい見た目に（カードの見出し・ボタンの反応・アイコン・ヒント・ショートカット・はじめての案内）
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -1233,6 +1233,7 @@ $script:dirtySince = [datetime]::MinValue
 $script:autoSaveFailed = $false
 $script:pendingLogRows = New-Object System.Collections.ArrayList   # まだCSVに書けていないログの行
 $script:logWriteBlocked = $false
+$script:appVersion = 'v86'
 $script:okFrameCount = 10         # 「正常」を記録する時に撮る枚数（約1.5秒）
 $script:longFrameCount = 150      # 「長めに記録」の時に撮る枚数（約30秒。動くアーム・人の出入りなども覚える）
 $script:maxMasks = 20             # 1つのエリアに指定できる「除外する場所」の数
@@ -2636,6 +2637,18 @@ function New-Label($text,[double]$size=9,[switch]$Bold,$color) {
     return $l
 }
 
+function Get-ShiftColor($c,[int]$d) {
+    # 色を少し明るく（d>0）・暗く（d<0）する。ボタンにマウスを乗せた時・押した時の色
+    $r=[Math]::Max(0,[Math]::Min(255,[int]$c.R+$d)); $g=[Math]::Max(0,[Math]::Min(255,[int]$c.G+$d)); $b=[Math]::Max(0,[Math]::Min(255,[int]$c.B+$d))
+    return [System.Drawing.Color]::FromArgb($r,$g,$b)
+}
+
+function Set-ButtonColor($b,$bg) {
+    $b.BackColor=$bg
+    $b.FlatAppearance.MouseOverBackColor=Get-ShiftColor $bg 22
+    $b.FlatAppearance.MouseDownBackColor=Get-ShiftColor $bg -22
+}
+
 function New-Button($text,$bg,$fg,[double]$size=9,$minW=90,$h=32) {
     if($null -eq $fg) { $fg=[System.Drawing.Color]::White }
     $b=New-Object System.Windows.Forms.Button
@@ -2646,6 +2659,7 @@ function New-Button($text,$bg,$fg,[double]$size=9,$minW=90,$h=32) {
     $b.UseVisualStyleBackColor=$false
     $b.FlatStyle=[System.Windows.Forms.FlatStyle]::Flat
     $b.FlatAppearance.BorderSize=0
+    Set-ButtonColor $b $bg
     $b.AutoSize=$true
     $b.AutoSizeMode=[System.Windows.Forms.AutoSizeMode]::GrowOnly
     $b.MinimumSize=New-Object System.Drawing.Size((Px $minW),(Px $h))
@@ -2678,22 +2692,90 @@ function Add-Controls($parent,[object[]]$controls) {
     foreach($c in $controls) { [void]$parent.Controls.Add($c) }
 }
 
+$script:cardTitleFont=UIFont 11 -Bold
+$script:cardSubFont=UIFont 10 -Bold
+$script:cardBadgeFont=UIFont 9.5 -Bold
+
 function New-Group($title) {
-    $g=New-Object System.Windows.Forms.GroupBox
+    # 見出し付きのカード（角丸・番号の丸）。Text を変えると見出しも変わる。
+    # 見出しの「①」などは丸い番号に、「：」の後ろ（エリア名）は青い文字で表示する
+    $g=New-Object System.Windows.Forms.Panel
     $g.Text=$title
-    $g.Font=UIFont 9.5 -Bold
-    $g.ForeColor=$accentBlue
     $g.BackColor=$cardBgDark
     $g.AutoSize=$true
     $g.AutoSizeMode=[System.Windows.Forms.AutoSizeMode]::GrowAndShrink
-    $g.MinimumSize=New-Object System.Drawing.Size((Px 750),0)
-    $g.Padding=New-Object System.Windows.Forms.Padding((Px 10),(Px 4),(Px 10),(Px 8))
-    $g.Margin=New-Object System.Windows.Forms.Padding((Px 10),(Px 5),(Px 10),(Px 5))
+    $g.MinimumSize=New-Object System.Drawing.Size((Px 750),(Px 56))
+    $g.Padding=New-Object System.Windows.Forms.Padding((Px 14),0,(Px 14),(Px 12))
+    $g.Margin=New-Object System.Windows.Forms.Padding((Px 10),(Px 6),(Px 10),(Px 6))
     $body=New-Column
-    $body.Location=New-Object System.Drawing.Point($g.DisplayRectangle.Left,$g.DisplayRectangle.Top)
+    $body.Location=New-Object System.Drawing.Point((Px 14),(Px 48))
     [void]$g.Controls.Add($body)
+    $g.Add_Paint({ Draw-Card $_.Graphics $this })
+    $g.Add_TextChanged({ $this.Invalidate() })
+    $g.Add_Resize({ $this.Invalidate() })
     return @{ Group=$g; Body=$body }
 }
+
+function Draw-Card($g,$p) {
+    $g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.TextRenderingHint=[System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+    $g.Clear($formBgDark)
+    $r=New-Object System.Drawing.Rectangle(0,0,($p.Width-1),($p.Height-1))
+    $path=New-RoundPath $r (Px 12)
+    $br=New-Object System.Drawing.SolidBrush($cardBgDark)
+    $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(36,50,74),1)
+    try {
+        $g.FillPath($br,$path); $g.DrawPath($pen,$path)
+        $t=[string]$p.Text
+        $x=Px 16
+        $k='①②③④⑤⑥'.IndexOf($(if($t.Length -gt 0){$t.Substring(0,1)}else{' '}))
+        if($k -ge 0) {
+            $t=$t.Substring(1).Trim()
+            $d=Px 24
+            $bb=New-Object System.Drawing.SolidBrush($accentBlue)
+            $g.FillEllipse($bb,$x,(Px 12),$d,$d); $bb.Dispose()
+            $sf=New-Object System.Drawing.StringFormat
+            $sf.Alignment=[System.Drawing.StringAlignment]::Center; $sf.LineAlignment=[System.Drawing.StringAlignment]::Center
+            $g.DrawString(([string]($k+1)),$script:cardBadgeFont,[System.Drawing.Brushes]::White,(New-Object System.Drawing.RectangleF($x,(Px 12),$d,$d)),$sf)
+            $sf.Dispose()
+            $x+=$d+(Px 10)
+        }
+        $main=$t; $sub=''
+        $ci=$t.IndexOf('：')
+        if($ci -ge 0) { $main=$t.Substring(0,$ci); $sub=$t.Substring($ci+1) }
+        $tb=New-Object System.Drawing.SolidBrush($textPrimary)
+        $g.DrawString($main,$script:cardTitleFont,$tb,$x,(Px 13)); $tb.Dispose()
+        if($sub) {
+            $mw=$g.MeasureString($main,$script:cardTitleFont).Width
+            $sb=New-Object System.Drawing.SolidBrush($accentBlue)
+            $g.DrawString($sub,$script:cardSubFont,$sb,($x+$mw+(Px 8)),(Px 14)); $sb.Dispose()
+        }
+        $lp=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(30,42,62),1)
+        $g.DrawLine($lp,(Px 14),(Px 42),($p.Width-(Px 15)),(Px 42)); $lp.Dispose()
+    } finally { $br.Dispose(); $pen.Dispose(); $path.Dispose() }
+}
+
+function Set-FoldStyle($c) {
+    # 折りたたみの見出し（▸ 閉じている／▾ 開いている）
+    $c.Tag=$c.Text
+    $c.Appearance=[System.Windows.Forms.Appearance]::Button
+    $c.FlatStyle=[System.Windows.Forms.FlatStyle]::Flat
+    $c.FlatAppearance.BorderSize=0
+    $c.FlatAppearance.CheckedBackColor=$cardBgDark
+    $c.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(24,36,56)
+    $c.FlatAppearance.MouseDownBackColor=[System.Drawing.Color]::FromArgb(24,36,56)
+    $c.BackColor=$cardBgDark
+    $c.ForeColor=$accentBlue
+    $c.Cursor=[System.Windows.Forms.Cursors]::Hand
+    $c.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft
+    Update-FoldText $c
+    $c.Add_CheckedChanged({ Update-FoldText $this })
+}
+
+function Update-FoldText($c) {
+    $c.Text=$(if($c.Checked){'▾  '}else{'▸  '})+[string]$c.Tag
+}
+
 
 function New-Slider($min,$max,$value,$width) {
     $t=New-Object System.Windows.Forms.TrackBar
@@ -2739,7 +2821,7 @@ Resolve-LastSettingsPath
 $script:loadedAtStartup = LoadLastUsedSettingsIfAny
 
 $f=New-Object System.Windows.Forms.Form
-$f.Text='NG モニター（異常検知ブザー）'
+$f.Text=('NG モニター '+$script:appVersion+'（異常検知ブザー）')
 $f.AutoScaleMode=[System.Windows.Forms.AutoScaleMode]::None
 $f.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterScreen
 $f.TopMost=$true
@@ -2758,6 +2840,10 @@ $f.Controls.Add($header)
 $title=New-Label 'NG モニター' 13 -Bold ([System.Drawing.Color]::White)
 $title.Location=New-Object System.Drawing.Point((Px 14),(Px 11))
 $header.Controls.Add($title)
+$versionLabel=New-Label $script:appVersion 8 -color $textSecondary
+$header.Controls.Add($versionLabel)
+$headerState=New-Label '● 停止中' 9 -Bold $textSecondary
+$header.Controls.Add($headerState)
 
 $headerButtons=New-Row
 $miniBtn=New-Button 'ミニ表示' $colorGrayBtn $null 9 100 34
@@ -2766,6 +2852,8 @@ $saveBtn=New-Button '別名で保存' $accentBlue $null 9 110 34
 Add-Controls $headerButtons @($miniBtn,$loadBtn,$saveBtn)
 $header.Controls.Add($headerButtons)
 $header.Add_Layout({
+    $versionLabel.Location=New-Object System.Drawing.Point(($title.Right+(Px 2)),($title.Top+(Px 6)))
+    $headerState.Location=New-Object System.Drawing.Point(($versionLabel.Right+(Px 14)),($title.Top+(Px 3)))
     $ps=$headerButtons.PreferredSize
     $headerButtons.Location=New-Object System.Drawing.Point(($header.ClientSize.Width-$ps.Width-(Px 8)),[Math]::Max(0,[int](($header.ClientSize.Height-$ps.Height)/2)))
 })
@@ -2828,7 +2916,7 @@ $settingsFlow.FlowDirection=[System.Windows.Forms.FlowDirection]::TopDown
 $settingsFlow.WrapContents=$false
 $settingsFlow.AutoScroll=$true
 $settingsFlow.BackColor=$formBgDark
-$settingsFlow.Padding=New-Object System.Windows.Forms.Padding(0,0,0,(Px 10))
+$settingsFlow.Padding=New-Object System.Windows.Forms.Padding(0,(Px 4),0,(Px 10))
 $f.Controls.Add($settingsFlow)
 $settingsFlow.BringToFront()   # Fill の部品は最後に配置する（上の2つの下の残り全部を使う）
 
@@ -2868,6 +2956,10 @@ $tileBoard.Size=New-Object System.Drawing.Size((Px 720),(Px 160))
 $tileBoard.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 6),(Px 3),(Px 3))
 $tileBoard.Cursor=[System.Windows.Forms.Cursors]::Hand
 $g1.Body.Controls.Add($tileBoard)
+$welcomeLabel=New-Label ("はじめに（3ステップ）`r`n　1.「＋ エリアを追加」を押し、見張りたいランプ・画面をドラッグで囲みます`r`n　2.「今、何が映っていますか？」に答えると、見本の記録まで自動で終わります`r`n　3. 上の「▶ 監視スタート」を押します") 10 -color $textPrimary
+$welcomeLabel.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 8),(Px 3),(Px 6))
+$welcomeLabel.Visible=$false
+$g1.Body.Controls.Add($welcomeLabel)
 $script:tileW=Px 172
 $script:tileH=Px 160
 $script:tileGap=Px 8
@@ -2974,9 +3066,10 @@ $g2.Body.Controls.Add($meterRow)
 
 # 詳しい設定（ふだんは隠しておく）
 $advancedCheck=New-Object System.Windows.Forms.CheckBox
-$advancedCheck.Text='詳しい設定（感度・しきい値・除外する場所・長めに記録 など）を表示'
+$advancedCheck.Text='詳しい設定（感度・しきい値・除外する場所・長めに記録 など）'
 $advancedCheck.AutoSize=$true; $advancedCheck.Font=UIFont 9 -Bold; $advancedCheck.ForeColor=$accentBlue
 $advancedCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 10),(Px 3),(Px 2))
+Set-FoldStyle $advancedCheck
 $g2.Body.Controls.Add($advancedCheck)
 $advancedPanel=New-Column
 $advancedPanel.Visible=$false
@@ -3065,9 +3158,10 @@ $g3.Body.Controls.Add($buzzRow2)
 # 鳴らす条件（時間帯・待ち時間・鳴らし直し）
 $whenTitle=New-Label '鳴らす条件' 9.5 -Bold ([System.Drawing.Color]::FromArgb(255,210,90))
 $whenCheck=New-Object System.Windows.Forms.CheckBox
-$whenCheck.Text='鳴らす条件（時間帯・○秒続いたら・鳴らし直し）を表示'
+$whenCheck.Text='鳴らす条件（時間帯・○秒続いたら・鳴らし直し）'
 $whenCheck.AutoSize=$true; $whenCheck.Font=UIFont 9 -Bold; $whenCheck.ForeColor=$accentBlue
 $whenCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 8),(Px 3),(Px 2))
+Set-FoldStyle $whenCheck
 $g3.Body.Controls.Add($whenCheck)
 $whenPanel=New-Column
 $whenPanel.Visible=$false
@@ -3132,9 +3226,10 @@ $whenPanel.Controls.Add($repeatRow)
 $g4=New-Group '④ その他'
 $settingsFlow.Controls.Add($g4.Group)
 $otherCheck=New-Object System.Windows.Forms.CheckBox
-$otherCheck.Text='その他の設定（自動スタート・画像の保存・ログ・監視の間隔）を表示'
+$otherCheck.Text='自動スタート・画像の保存・ログ・監視の間隔'
 $otherCheck.AutoSize=$true; $otherCheck.Font=UIFont 9 -Bold; $otherCheck.ForeColor=$accentBlue
 $otherCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 3),(Px 3),(Px 2))
+Set-FoldStyle $otherCheck
 $g4.Body.Controls.Add($otherCheck)
 $otherPanel=New-Column
 $otherPanel.Visible=$false
@@ -3206,6 +3301,20 @@ $autoStartCheck.Checked=$script:autoStart
 $saveImagesCheck.Checked=$script:saveImages
 
 # ================== 画面を更新する関数 ==================
+function Update-HeaderState {
+    # 見出しの右の「● 監視中」などと、タスクトレイ・タスクバーのアイコンの色
+    $bg=$statusPanel.BackColor.ToArgb()
+    if($bg -eq $colorAlarm.ToArgb() -or $bg -eq $colorAcked.ToArgb()) { $k='ng'; $t='● NG'; $c=[System.Drawing.Color]::FromArgb(255,110,110) }
+    elseif(-not $script:running) { $k='idle'; $t='● 停止中'; $c=$textSecondary }
+    elseif($bg -eq $colorWarn.ToArgb()) { $k='warn'; $t='● 監視中（注意）'; $c=[System.Drawing.Color]::FromArgb(245,180,83) }
+    else { $k='ok'; $t='● 監視中'; $c=[System.Drawing.Color]::FromArgb(110,231,183) }
+    if($headerState.Text -ne $t) { $headerState.Text=$t; $headerState.ForeColor=$c; $header.PerformLayout() }
+    if($script:stateIcons -and $script:trayState -ne $k) {
+        $script:trayState=$k
+        try { $script:notifyIcon.Icon=$script:stateIcons[$k]; $f.Icon=$script:stateIcons[$k] } catch {}
+    }
+}
+
 function SetStatusPanel($bg,$fg,$text) {
     # 同じ内容なら書き換えない（0.2秒ごとの書き換えによるちらつき防止）
     $key=[string]$bg.ToArgb()+'|'+$text
@@ -3214,6 +3323,7 @@ function SetStatusPanel($bg,$fg,$text) {
     $statusPanel.BackColor=$bg
     $status.ForeColor=$fg
     $status.Text=$text
+    Update-HeaderState
     if($script:notifyIcon) {
         try {
             $tip='NGモニター: '+$text
@@ -3248,6 +3358,12 @@ function RefreshAreaListUI {
     }
     $hasSel=($areaList.SelectedIndex -ge 0)
     $repickBtn.Enabled=$hasSel; $renameBtn.Enabled=$hasSel; $deleteAreaBtn.Enabled=$hasSel
+    # エリアが1つも無い時は、②③を隠して「はじめに」の案内だけを見せる
+    $hasAreas=($script:areas.Count -gt 0)
+    $g2.Group.Visible=$hasAreas
+    $g3.Group.Visible=$hasAreas
+    $welcomeLabel.Visible=-not $hasAreas
+    $pickHint.Visible=$hasAreas
     LoadAreaSettingsIntoSliders
     UpdateAreaPreview
     Update-TileBoardSize
@@ -3810,7 +3926,8 @@ function Set-MiniMode($on) {
 function Update-RunButtons {
     $start.Enabled=-not $script:running
     $start.Text=$(if($script:running){'監視中…'}else{'▶  監視スタート'})
-    $start.BackColor=$(if($script:running){[System.Drawing.Color]::FromArgb(40,90,50)}else{$colorGreenBtn})
+    Set-ButtonColor $start $(if($script:running){[System.Drawing.Color]::FromArgb(40,90,50)}else{$colorGreenBtn})
+    Update-HeaderState
     $stop.Enabled=$script:running -or ($null -ne $script:buzzerProcess)
     $silence.Enabled=($null -ne $script:buzzerProcess)
 }
@@ -5232,7 +5349,33 @@ $previewTimer.Add_Tick({
 
 # ================== タスクトレイ（最小化しても監視を続ける） ==================
 $notifyIcon=New-Object System.Windows.Forms.NotifyIcon
-$notifyIcon.Icon=[System.Drawing.SystemIcons]::Application
+function New-StateIcon($color) {
+    # アプリのアイコン（丸の中に目のマーク）。状態で色を変える：緑＝監視中、赤＝NG、橙＝注意、灰＝停止中
+    $bmp=New-Object System.Drawing.Bitmap(32,32)
+    $g=[System.Drawing.Graphics]::FromImage($bmp)
+    try {
+        $g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.Clear([System.Drawing.Color]::Transparent)
+        $br=New-Object System.Drawing.SolidBrush($color)
+        $g.FillEllipse($br,1,1,30,30); $br.Dispose()
+        $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::White,2.6)
+        $g.DrawEllipse($pen,6,10,20,12); $pen.Dispose()
+        $g.FillEllipse([System.Drawing.Brushes]::White,12,12,8,8)
+    } finally { $g.Dispose() }
+    $h=$bmp.GetHicon()
+    $bmp.Dispose()
+    return [System.Drawing.Icon]::FromHandle($h)
+}
+$script:stateIcons=@{}
+try {
+    $script:stateIcons['idle']=New-StateIcon ([System.Drawing.Color]::FromArgb(71,85,105))
+    $script:stateIcons['ok']=New-StateIcon ([System.Drawing.Color]::FromArgb(22,163,74))
+    $script:stateIcons['ng']=New-StateIcon ([System.Drawing.Color]::FromArgb(220,38,38))
+    $script:stateIcons['warn']=New-StateIcon ([System.Drawing.Color]::FromArgb(217,119,6))
+} catch { $script:stateIcons=$null }
+$script:trayState=$null
+$notifyIcon.Icon=$(if($script:stateIcons){$script:stateIcons['idle']}else{[System.Drawing.SystemIcons]::Application})
+try { if($script:stateIcons) { $f.Icon=$script:stateIcons['idle'] } } catch {}
 $notifyIcon.Text='NGモニター：待機中'
 $notifyIcon.Visible=$true
 $script:notifyIcon=$notifyIcon
@@ -5316,6 +5459,38 @@ $f.Add_FormClosing({
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Warning)
     } catch {}
+})
+
+# ================== ヒントとショートカットキー ==================
+$tips=New-Object System.Windows.Forms.ToolTip
+$tips.AutoPopDelay=10000; $tips.InitialDelay=400; $tips.ReshowDelay=200
+$tipList=@(
+    @($start,'監視を始めます（F5）'),
+    @($silence,'鳴っている音だけを止めます。監視は続きます（Esc）'),
+    @($stop,'監視を止めます'),
+    @($ackBtn,'NGを確認したことを記録し、音を止めます（F8）。元に戻ると自動で解除されます'),
+    @($miniBtn,'小さな表示にして、画面のじゃまにならないようにします'),
+    @($loadBtn,'保存してある設定ファイルを読み込みます'),
+    @($saveBtn,'今の設定を別のファイルに保存します（ふだんは自動で保存されます）'),
+    @($pick,'画面の上をドラッグして、見張る場所を囲みます'),
+    @($repickBtn,'選んでいるエリアの範囲を囲み直します（見本は記録し直しになります）'),
+    @($renameBtn,'選んでいるエリアの名前を変えます'),
+    @($deleteAreaBtn,'選んでいるエリアを削除します'),
+    @($refImagesBtn,'登録した時の画面・色・設定を一覧で見ます'),
+    @($highlightBtn,'このエリアが画面のどこにあるかを表示します'),
+    @($eyedropBtn,'左の映像をクリックして、検出する色を選びます'),
+    @($tileBoard,'クリックで選択／右クリックでメニュー／ダブルクリックで画面上の位置を表示'),
+    @($modeCombo,'このエリアをどうやって判定するかを選びます'),
+    @($test,'このエリアの音を試しに鳴らします'),
+    @($areaPreviewBox,'このエリアの今の映像です。赤い部分＝正常と違うと判断した場所')
+)
+foreach($t in $tipList) { try { $tips.SetToolTip($t[0],[string]$t[1]) } catch {} }
+$f.KeyPreview=$true
+$f.Add_KeyDown({
+    $k=$_.KeyCode
+    if($k -eq [System.Windows.Forms.Keys]::F5) { if($start.Enabled) { $start.PerformClick() }; $_.Handled=$true }
+    elseif($k -eq [System.Windows.Forms.Keys]::F8) { if($ackBtn.Visible) { $ackBtn.PerformClick() }; $_.Handled=$true }
+    elseif($k -eq [System.Windows.Forms.Keys]::Escape) { if($silence.Enabled) { $silence.PerformClick(); $_.Handled=$true } }
 })
 
 # ================== 起動 ==================
