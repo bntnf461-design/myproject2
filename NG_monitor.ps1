@@ -1,4 +1,4 @@
-﻿# NG MONITOR - v84 エリアを削除したら「エリアN」の番号を詰める
+﻿# NG MONITOR - v85 画面を整理して分かりやすく（よく使う物だけ表示・あまり使わない設定は折りたたみ）
 # Windows PowerShell 5.1 / Windows 10・11 用
 try {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -2210,6 +2210,16 @@ function ClampInt($value,$min,$max,$default) {
     try { return [Math]::Max($min,[Math]::Min($max,[int]$value)) } catch { return $default }
 }
 
+# 起動時の設定の読み込み（Apply-SettingsObject）からも使うので、それより前に置く
+function Set-AreaGrids($a) {
+    $gw=0; $gh=0
+    [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::CoarseCells,[ref]$gw,[ref]$gh)
+    $a.DiffGridW=$gw; $a.DiffGridH=$gh
+    [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::FineCells,[ref]$gw,[ref]$gh)
+    $a.DiffFineW=$gw; $a.DiffFineH=$gh
+    $a.MaskReady=$false
+}
+
 function Apply-SettingsObject($data) {
     if($null -eq $data) { return }
     # 先に新しいエリア一覧を全部作ってから入れ替える（途中で失敗しても今の設定が壊れないように）
@@ -2823,7 +2833,7 @@ $f.Controls.Add($settingsFlow)
 $settingsFlow.BringToFront()   # Fill の部品は最後に配置する（上の2つの下の残り全部を使う）
 
 # ---------- ① 監視エリア ----------
-$g1=New-Group '① 監視エリア（カメラ映像の中で、見張りたい部分）'
+$g1=New-Group '① 見張る場所（エリア）'
 $settingsFlow.Controls.Add($g1.Group)
 
 $row=New-Row
@@ -2835,7 +2845,7 @@ $areaCountLabel=New-Label 'まだエリアがありません' 9 -Bold $textSecon
 Add-Controls $row @($pick,$repickBtn,$renameBtn,$deleteAreaBtn,$areaCountLabel)
 $g1.Body.Controls.Add($row)
 
-$pickHint=New-Label '「＋ エリアを追加」を押し、ランプなど見張りたい部分だけをドラッグで小さく囲みます。複数のカメラ・場所を追加できます。下のタイルをクリックすると、そのエリアの設定に切り替わります。' 8.5 -color $textSecondary
+$pickHint=New-Label '見張りたい部分だけを小さく囲むのがコツです。タイルをクリックで選択、右クリックでメニュー。' 8.5 -color $textSecondary
 $pickHint.MaximumSize=New-Object System.Drawing.Size((Px 720),0)
 $g1.Body.Controls.Add($pickHint)
 
@@ -2863,11 +2873,10 @@ $script:tileH=Px 160
 $script:tileGap=Px 8
 
 # ---------- ② 検出の設定 ----------
-$g2=New-Group '② 検出の設定'
+$g2=New-Group '② 見本と判定'
 $settingsFlow.Controls.Add($g2.Group)
 
-$areaSettingsLabel=New-Label '（①の一覧からエリアを選ぶと、ここで設定できます）' 9.5 -Bold $accentBlue
-$g2.Body.Controls.Add($areaSettingsLabel)
+$areaSettingsLabel=New-Label '' 9.5 -Bold $accentBlue   # （表示はグループの見出しで行う）
 
 $previewRow=New-Row
 $areaPreviewBox=New-Object System.Windows.Forms.PictureBox
@@ -2877,12 +2886,12 @@ $areaPreviewBox.BackColor=$inputBgDark
 $areaPreviewBox.SizeMode=[System.Windows.Forms.PictureBoxSizeMode]::Zoom
 $areaPreviewBox.Margin=New-Object System.Windows.Forms.Padding((Px 3))
 $previewCol=New-Column
-$areaPreviewInfoLabel=New-Label '一覧でエリアを選ぶと、左に今の映像が表示されます' 8.5 -color $textSecondary
+$areaPreviewInfoLabel=New-Label '①のタイルでエリアを選ぶと、左に今の映像が表示されます' 8.5 -color $textSecondary
 $areaPreviewInfoLabel.MaximumSize=New-Object System.Drawing.Size((Px 500),0)
 $colorLabel=New-Label '検出する色：－' 9 -Bold
 $colorLabel.Anchor=[System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Top
 $previewBtnRow=New-Row
-$highlightBtn=New-Button '画面で位置を確認' $colorGrayBtn $null 8.5 120 30
+$highlightBtn=New-Button '画面で位置を確認' $colorGrayBtn $null 8.5 110 30
 $eyedropBtn=New-Button 'スポイトで色を選ぶ' $colorGrayBtn $null 8.5 120 30
 $refImagesBtn=New-Button '登録した画像を見る' ([System.Drawing.Color]::FromArgb(30,90,140)) $null 8.5 120 30
 Add-Controls $previewBtnRow @($refImagesBtn,$highlightBtn,$eyedropBtn)
@@ -2890,9 +2899,9 @@ $maskBtnRow=New-Row
 $maskBtn=New-Button '除外する場所を指定' ([System.Drawing.Color]::FromArgb(70,70,110)) $null 8.5 120 30
 $maskClearBtn=New-Button '除外を全部消す' $colorGrayBtn $null 8.5 100 30
 Add-Controls $maskBtnRow @($maskBtn,$maskClearBtn)
-$maskHint=New-Label '正常でも動く場所（アーム・人の通り道・時計など）は、左の映像の上をドラッグして囲むと判定から外せます。' 8 -color $textSecondary
-$maskHint.MaximumSize=New-Object System.Drawing.Size((Px 500),0)
-Add-Controls $previewCol @($areaPreviewInfoLabel,$colorLabel,$previewBtnRow,$maskBtnRow,$maskHint)
+$maskHint=New-Label '正常でも動く場所（アーム・人の通り道・時計など）は、上の映像の上をドラッグして囲むと判定から外せます。' 8 -color $textSecondary
+$maskHint.MaximumSize=New-Object System.Drawing.Size((Px 700),0)
+Add-Controls $previewCol @($areaPreviewInfoLabel,$colorLabel,$previewBtnRow)
 Add-Controls $previewRow @($areaPreviewBox,$previewCol)
 $g2.Body.Controls.Add($previewRow)
 
@@ -2913,15 +2922,25 @@ foreach($rb in @($rbModeDiff,$rbModeMatch,$rbModeColor)) {
 $rbModeDiff.Checked=$true
 $modeChoices=New-Column
 Add-Controls $modeChoices @($rbModeDiff,$rbModeMatch,$rbModeColor)
-$modeLabel.Anchor=[System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Top
-Add-Controls $modeRow @($modeLabel,$modeChoices)
+$modeChoices.Visible=$false   # 選択は横の一覧（ComboBox）で行う（ラジオボタンは内部の状態として残す）
+$modeCombo=New-Object System.Windows.Forms.ComboBox
+$modeCombo.DropDownStyle=[System.Windows.Forms.ComboBoxStyle]::DropDownList
+$modeCombo.Font=UIFont 10
+$modeCombo.BackColor=$inputBgDark
+$modeCombo.ForeColor=$textPrimary
+$modeCombo.Width=Px 400
+$modeCombo.Anchor=[System.Windows.Forms.AnchorStyles]::Left
+$modeCombo.Enabled=$false
+[void]$modeCombo.Items.AddRange(@('正常な映像と比べる（おすすめ）','異常の時だけ出る画面が出たらNG','色で判定する'))
+$modeCombo.SelectedIndex=0
+Stop-WheelChange $modeCombo
+Add-Controls $modeRow @($modeLabel,$modeCombo,$modeChoices)
 $modeRow.Margin=New-Object System.Windows.Forms.Padding(0,(Px 8),0,(Px 2))
 $g2.Body.Controls.Add($modeRow)
 
 # 記録（かんたん設定）
 $tuneTitle=New-Label '★ かんたん設定' 10 -Bold ([System.Drawing.Color]::FromArgb(255,210,90))
 $tuneTitle.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 8),(Px 3),(Px 1))
-$g2.Body.Controls.Add($tuneTitle)
 $tuneHint=New-Label '' 8.5 -color $textSecondary
 $tuneHint.MaximumSize=New-Object System.Drawing.Size((Px 720),0)
 $g2.Body.Controls.Add($tuneHint)
@@ -2935,7 +2954,6 @@ $longRecordCheck=New-Object System.Windows.Forms.CheckBox
 $longRecordCheck.Text='長めに記録する（約30秒）… アームや人など、正常でも動くものが映る場所向け'
 $longRecordCheck.AutoSize=$true; $longRecordCheck.Font=UIFont 9; $longRecordCheck.ForeColor=$textPrimary
 $longRecordCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 2),(Px 3),(Px 2))
-$g2.Body.Controls.Add($longRecordCheck)
 $tuneResultLabel=New-Label '' 9 -color $textPrimary
 $tuneResultLabel.MaximumSize=New-Object System.Drawing.Size((Px 720),0)
 $g2.Body.Controls.Add($tuneResultLabel)
@@ -2956,7 +2974,7 @@ $g2.Body.Controls.Add($meterRow)
 
 # 詳しい設定（ふだんは隠しておく）
 $advancedCheck=New-Object System.Windows.Forms.CheckBox
-$advancedCheck.Text='詳しい設定を表示する（ふつうは不要です）'
+$advancedCheck.Text='詳しい設定（感度・しきい値・除外する場所・長めに記録 など）を表示'
 $advancedCheck.AutoSize=$true; $advancedCheck.Font=UIFont 9 -Bold; $advancedCheck.ForeColor=$accentBlue
 $advancedCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 10),(Px 3),(Px 2))
 $g2.Body.Controls.Add($advancedCheck)
@@ -3012,10 +3030,10 @@ $adaptCheck.Text='朝・夕方など、ゆっくりした明るさの変化に�
 $adaptCheck.AutoSize=$true; $adaptCheck.Font=UIFont 9; $adaptCheck.ForeColor=$textPrimary; $adaptCheck.Enabled=$false
 $adaptCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 4),(Px 3),(Px 4))
 $clearRefsBtn=New-Button '記録した正常の見本をすべて消す' ([System.Drawing.Color]::FromArgb(120,50,50)) $null 8.5 150 30
-Add-Controls $advancedPanel @($dirRow,$sensRow,$sensHint,$hueModeCheck,$ngRow,$ngHint,$confirmRow,$adaptCheck,$clearRefsBtn)
+Add-Controls $advancedPanel @($dirRow,$sensRow,$sensHint,$hueModeCheck,$ngRow,$ngHint,$confirmRow,$adaptCheck,$longRecordCheck,$maskBtnRow,$maskHint,$clearRefsBtn)
 
 # ---------- ③ ブザー ----------
-$g3=New-Group '③ ブザー（エリアごとに設定）'
+$g3=New-Group '③ 音と鳴らす条件'
 $settingsFlow.Controls.Add($g3.Group)
 $buzzRow1=New-Row
 $secLabel=New-Label '長さ：'
@@ -3046,13 +3064,19 @@ $g3.Body.Controls.Add($buzzRow2)
 
 # 鳴らす条件（時間帯・待ち時間・鳴らし直し）
 $whenTitle=New-Label '鳴らす条件' 9.5 -Bold ([System.Drawing.Color]::FromArgb(255,210,90))
-$whenTitle.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 10),(Px 3),(Px 1))
-$g3.Body.Controls.Add($whenTitle)
+$whenCheck=New-Object System.Windows.Forms.CheckBox
+$whenCheck.Text='鳴らす条件（時間帯・○秒続いたら・鳴らし直し）を表示'
+$whenCheck.AutoSize=$true; $whenCheck.Font=UIFont 9 -Bold; $whenCheck.ForeColor=$accentBlue
+$whenCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 8),(Px 3),(Px 2))
+$g3.Body.Controls.Add($whenCheck)
+$whenPanel=New-Column
+$whenPanel.Visible=$false
+$g3.Body.Controls.Add($whenPanel)
 $schedCheck=New-Object System.Windows.Forms.CheckBox
 $schedCheck.Text='決まった時間帯だけ監視する（例：20:00 を過ぎても機械の電源が入っていたら鳴らす）'
 $schedCheck.AutoSize=$true; $schedCheck.Font=UIFont 9; $schedCheck.ForeColor=$textPrimary; $schedCheck.Enabled=$false
 $schedCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 3),(Px 3),(Px 3))
-$g3.Body.Controls.Add($schedCheck)
+$whenPanel.Controls.Add($schedCheck)
 function New-TimePicker {
     $t=New-Object System.Windows.Forms.DateTimePicker
     $t.Format=[System.Windows.Forms.DateTimePickerFormat]::Custom
@@ -3073,7 +3097,7 @@ $schedTilde=New-Label '～'
 $schedEnd=New-TimePicker
 $schedNote=New-Label '（終わりが始まりより前なら翌日まで。同じ時刻なら一日中）' 8.5 -color $textSecondary
 Add-Controls $schedRow @($schedStartLabel,$schedStart,$schedTilde,$schedEnd,$schedNote)
-$g3.Body.Controls.Add($schedRow)
+$whenPanel.Controls.Add($schedRow)
 $daysRow=New-Row
 $daysLabel=New-Label '　曜日：'
 Add-Controls $daysRow @($daysLabel)
@@ -3088,25 +3112,33 @@ foreach($dn in @('日','月','火','水','木','金','土')) {
 }
 $daysNote=New-Label '（夜をまたぐ時間帯は、始まった日の曜日）' 8.5 -color $textSecondary
 [void]$daysRow.Controls.Add($daysNote)
-$g3.Body.Controls.Add($daysRow)
+$whenPanel.Controls.Add($daysRow)
 $delayRow=New-Row
 $delayLabel=New-Label 'NGの状態が'
 $delayBox=New-Number 0 86400 0 0 10 80
 $delayBox.Enabled=$false
 $delayUnit=New-Label '秒 続いたら鳴らす（0＝すぐ。ドアの開けっぱなし等は 60～300 秒など）' 8.5 -color $textSecondary
 Add-Controls $delayRow @($delayLabel,$delayBox,$delayUnit)
-$g3.Body.Controls.Add($delayRow)
+$whenPanel.Controls.Add($delayRow)
 $repeatRow=New-Row
 $repeatLabel=New-Label 'NGの間、'
 $repeatBox=New-Number 0 1440 0 0 1 70
 $repeatBox.Enabled=$false
 $repeatUnit=New-Label '分ごとに鳴らし直す（0＝1回だけ。「確認しました」を押すと止まります）' 8.5 -color $textSecondary
 Add-Controls $repeatRow @($repeatLabel,$repeatBox,$repeatUnit)
-$g3.Body.Controls.Add($repeatRow)
+$whenPanel.Controls.Add($repeatRow)
 
 # ---------- ④ その他 ----------
 $g4=New-Group '④ その他'
 $settingsFlow.Controls.Add($g4.Group)
+$otherCheck=New-Object System.Windows.Forms.CheckBox
+$otherCheck.Text='その他の設定（自動スタート・画像の保存・ログ・監視の間隔）を表示'
+$otherCheck.AutoSize=$true; $otherCheck.Font=UIFont 9 -Bold; $otherCheck.ForeColor=$accentBlue
+$otherCheck.Margin=New-Object System.Windows.Forms.Padding((Px 3),(Px 3),(Px 3),(Px 2))
+$g4.Body.Controls.Add($otherCheck)
+$otherPanel=New-Column
+$otherPanel.Visible=$false
+$g4.Body.Controls.Add($otherPanel)
 function New-Check($text) {
     $c=New-Object System.Windows.Forms.CheckBox
     $c.Text=$text
@@ -3116,31 +3148,31 @@ function New-Check($text) {
     return $c
 }
 $autoStartCheck=New-Check '起動したら自動で監視をスタートする（PCの再起動後もそのまま監視）'
-$g4.Body.Controls.Add($autoStartCheck)
+$otherPanel.Controls.Add($autoStartCheck)
 $imageRow=New-Row
 $saveImagesCheck=New-Check 'NGの時の画面を画像で保存する（30日分）'
 $saveImagesCheck.Checked=$true
 $openImagesBtn=New-Button '画像フォルダを開く' $colorGrayBtn $null 8.5 120 30
 Add-Controls $imageRow @($saveImagesCheck,$openImagesBtn)
-$g4.Body.Controls.Add($imageRow)
+$otherPanel.Controls.Add($imageRow)
 $logRow=New-Row
 $logEnabledCheck=New-Check 'NGログを記録する（発生・解除の日時をCSVに残す）'
 $logEnabledCheck.Checked=$script:loggingEnabled
 $openLogBtn=New-Button 'ログを開く' $colorGrayBtn $null 8.5 100 30
 Add-Controls $logRow @($logEnabledCheck,$openLogBtn)
-$g4.Body.Controls.Add($logRow)
+$otherPanel.Controls.Add($logRow)
 $topMostCheck=New-Check 'この画面を常に手前に表示する'
 $topMostCheck.Checked=$true
-$g4.Body.Controls.Add($topMostCheck)
+$otherPanel.Controls.Add($topMostCheck)
 $intervalRow=New-Row
 $intervalLabel=New-Label '監視の間隔：'
 $intervalBox=New-Number 0.1 5.0 ([decimal]$script:monitorIntervalSec) 1 0.1 70
 $intervalUnitLabel=New-Label '秒ごとにチェック（短いほど検知は速く、PCの負荷は上がります）' 8.5 -color $textSecondary
 Add-Controls $intervalRow @($intervalLabel,$intervalBox,$intervalUnitLabel)
-$g4.Body.Controls.Add($intervalRow)
+$otherPanel.Controls.Add($intervalRow)
 $settingsPathLabel=New-Label '' 8 -color $textSecondary
 $settingsPathLabel.MaximumSize=New-Object System.Drawing.Size((Px 720),0)
-$g4.Body.Controls.Add($settingsPathLabel)
+$otherPanel.Controls.Add($settingsPathLabel)
 
 # ---- 起動時の大きさ・位置（前回の位置を覚えておく） ----
 $f.MinimumSize=New-Object System.Drawing.Size((Px 600),(Px 150))
@@ -3321,30 +3353,30 @@ function Update-ModeUI($a) {
     $adaptCheck.Visible=$diff
     $longRecordCheck.Visible=$diff
     if($mode -eq 'match') {
-        $tuneHint.Text='異常の時だけ出る画面（警報画面・エラー表示など）が表示されている時に「① 異常の画面を記録」を押します。その画面が出ていない時は、前に撮った画像（スクリーンショットや ng_images の画像）を「＋ 画像ファイルから」で読み込めます。正常な画面も「② 正常な画面を記録」で覚えさせると、より確実になります。'
+        $tuneHint.Text='警報画面などが出ている時に「①」を押します。出ていない時は「＋ 画像ファイルから」で前に撮った画像を読み込めます。'
         $recordOkBtn.Text='① 異常の画面を記録'
-        $addOkBtn.Text='＋ 画像ファイルから読み込む'
-        $recordNgBtn.Text='② 正常な画面を記録（任意・おすすめ）'
+        $addOkBtn.Text='＋ 画像ファイルから'
+        $recordNgBtn.Text='② 正常な画面も記録（おすすめ）'
         $clearRefsBtn.Text='記録した見本（異常・正常）をすべて消す'
-        $meterTitle.Text='異常の画面との一致度（黄色い線＝しきい値、緑▼＝記録した正常、赤▼＝記録した異常）'
+        $meterTitle.Text='異常の画面との一致度（黄色い線を超えたらNG）'
         $sensLabel.Text='見分けの感度：'
         $sensHint.Text='感度を上げる → 細かな違いも「別の画面」とみなす（一致度が下がる）／ 下げる → 多少違っても同じ画面とみなす'
         $ngLabel.Text='NGにする一致度：'
     } elseif($diff) {
-        $addOkBtn.Text='＋ 別の正常も追加（昼・夜など）'
+        $addOkBtn.Text='＋ 昼・夜などを追加'
         $clearRefsBtn.Text='記録した正常の見本をすべて消す'
-        $tuneHint.Text='画面が正常な時に「① 正常な状態を記録」を押すだけで設定完了です。昼と夜で映り方が変わる場合は、夜にも「＋ 別の正常も追加」を押してください。異常を画面に出せる場合は「② 異常を記録」で、感度も自動で合わせます。'
+        $tuneHint.Text='画面が正常な時に「①」を押すだけで設定完了です。'
         $recordOkBtn.Text='① 正常な状態を記録'
-        $recordNgBtn.Text='② 異常を記録（任意）'
-        $meterTitle.Text='正常と違っている部分の割合（黄色い線＝しきい値、緑▼＝記録した正常、赤▼＝記録した異常）'
+        $recordNgBtn.Text='② 異常も記録（任意）'
+        $meterTitle.Text='正常との違い（黄色い線を超えたらNG）'
         $sensLabel.Text='違いの感度：'
         $sensHint.Text='感度を上げる → 小さな違いでもNGにする ／ 下げる → はっきりした違いだけNGにする。映像の赤い部分が「違う」と判断された場所です。'
         $ngLabel.Text='NGにする変化の割合：'
     } else {
-        $tuneHint.Text='画面に「正常」が映っている時に①を、「異常」が映っている時に②を押すだけで、色・感度・しきい値・検知の条件を自動で決めます。'
-        $recordOkBtn.Text='① 正常（OK）の状態を記録'
-        $recordNgBtn.Text='② 異常（NG）の状態を記録'
-        $meterTitle.Text='今の一致率（黄色い線＝しきい値、緑▼＝記録したOK、赤▼＝記録したNG）'
+        $tuneHint.Text='正常な時に「①」、異常な時に「②」を押すと、色・しきい値を自動で決めます。'
+        $recordOkBtn.Text='① 正常（OK）を記録'
+        $recordNgBtn.Text='② 異常（NG）を記録'
+        $meterTitle.Text='色の一致率（黄色い線がNGの境目）'
         $sensLabel.Text='検出の感度：'
         $sensHint.Text='感度を上げる → 少し違う色も「一致」とみなす（一致率が上がる）／ 下げる → ほぼ同じ色だけを「一致」とみなす'
         $ngLabel.Text='一致率のしきい値：'
@@ -3357,9 +3389,12 @@ function LoadAreaSettingsIntoSliders {
     $script:suppressEvents=$true
     try {
         $en=($null -ne $a)
-        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck,$schedCheck,$delayBox,$repeatBox,$refImagesBtn)) { $c.Enabled=$en }
+        foreach($c in @($rbModeDiff,$rbModeMatch,$rbModeColor,$rbAppear,$rbDisappear,$sensTrack,$ngTrack,$hueModeCheck,$confirmBox,$secBox,$typeCombo,$volTrack,$test,$highlightBtn,$eyedropBtn,$recordOkBtn,$addOkBtn,$recordNgBtn,$clearRefsBtn,$maskBtn,$maskClearBtn,$adaptCheck,$longRecordCheck,$schedCheck,$delayBox,$repeatBox,$refImagesBtn,$modeCombo)) { $c.Enabled=$en }
         if($en) {
             if($a.Mode -eq 'diff') { $rbModeDiff.Checked=$true } elseif($a.Mode -eq 'match') { $rbModeMatch.Checked=$true } else { $rbModeColor.Checked=$true }
+            $modeCombo.SelectedIndex=$(if($a.Mode -eq 'diff'){0}elseif($a.Mode -eq 'match'){1}else{2})
+            # 鳴らす条件を使っているエリアなら、折りたたまずに見せる
+            if($a.ScheduleOn -or [int]$a.NGDelaySec -gt 0 -or [int]$a.RepeatMin -gt 0) { $whenCheck.Checked=$true }
             if($a.Direction -eq 'disappear') { $rbDisappear.Checked=$true } else { $rbAppear.Checked=$true }
             $sens=$(if($a.Mode -eq 'diff'){$a.DiffSensitivity}elseif($a.Mode -eq 'match'){$a.MatchSensitivity}else{$a.Sensitivity})
             $thr=Get-JudgeThreshold $a
@@ -3380,8 +3415,8 @@ function LoadAreaSettingsIntoSliders {
                 $addOkBtn.Enabled=($a.DiffRefs.Count -gt 0)
                 $clearRefsBtn.Enabled=($a.DiffRefs.Count -gt 0)
             }
-            $g2.Group.Text=('② 検出の設定：'+$a.Name)
-            $g3.Group.Text=('③ ブザー：'+$a.Name)
+            $g2.Group.Text=('② 見本と判定：'+$a.Name)
+            $g3.Group.Text=('③ 音と鳴らす条件：'+$a.Name)
             $areaSettingsLabel.Text=($a.Name+' の設定を編集中')
             $schedCheck.Checked=[bool]$a.ScheduleOn
             $sm=ConvertTo-Minutes $a.ScheduleStart; if($null -eq $sm) { $sm=1200 }
@@ -3397,15 +3432,16 @@ function LoadAreaSettingsIntoSliders {
             $volPercentLabel.Text=$a.BuzzerVolume.ToString()+'%'
         } else {
             $rbModeDiff.Checked=$true
+            $modeCombo.SelectedIndex=0
             $rbAppear.Checked=$true
             $sensTrack.Value=50; $sensPercentLabel.Text='50'
             $ngTrack.Minimum=1; $ngTrack.Maximum=100
             $ngTrack.Value=15; $ngPercentLabel.Text='15%'
             $hueModeCheck.Checked=$false
             $confirmBox.Value=2
-            $g2.Group.Text='② 検出の設定'
-            $g3.Group.Text='③ ブザー（エリアごとに設定）'
-            $areaSettingsLabel.Text='（①の一覧からエリアを選ぶと、ここで設定できます）'
+            $g2.Group.Text='② 見本と判定（①でエリアを選んでください）'
+            $g3.Group.Text='③ 音と鳴らす条件'
+            $areaSettingsLabel.Text=''
             $secBox.Value=2
             $typeCombo.SelectedIndex=0
             $volTrack.Value=80; $volPercentLabel.Text='80%'
@@ -3698,7 +3734,7 @@ function UpdateAreaPreview {
     $a=Get-SelectedArea
     if(-not $a) {
         if($areaPreviewBox.Image) { $old=$areaPreviewBox.Image; $areaPreviewBox.Image=$null; $old.Dispose() }
-        $areaPreviewInfoLabel.Text='一覧でエリアを選ぶと、左に今の映像が表示されます'
+        $areaPreviewInfoLabel.Text='①のタイルでエリアを選ぶと、左に今の映像が表示されます'
         Update-MeterLabel
         $meterBox.Invalidate()
         return
@@ -3800,14 +3836,6 @@ function Set-AreaRect($a,$rect) {
     Set-AreaGrids $a
 }
 
-function Set-AreaGrids($a) {
-    $gw=0; $gh=0
-    [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::CoarseCells,[ref]$gw,[ref]$gh)
-    $a.DiffGridW=$gw; $a.DiffGridH=$gh
-    [NgDiff79]::GridFor($a.Rect.Width,$a.Rect.Height,[NgDiff79]::FineCells,[ref]$gw,[ref]$gh)
-    $a.DiffFineW=$gw; $a.DiffFineH=$gh
-    $a.MaskReady=$false
-}
 
 function Test-CanRecord($a) {
     if(-not $a) { return $false }
@@ -4185,7 +4213,7 @@ function Set-AreaMode($mode) {
     $a=Get-SelectedArea
     if(-not $a -or $a.Mode -eq $mode) { return }
     Set-AreaModeFor $a $mode
-    $msg=$(if($mode -eq 'diff'){'：「正常な映像と比べる」にしました'}elseif($mode -eq 'match'){'：「異常の時だけ出る画面が出たらNG」にしました。異常の画面を記録してください'}else{'：「色で判定する」にしました。「かんたん設定」でOK/NGを記録してください'})
+    $msg=$(if($mode -eq 'diff'){'：「正常な映像と比べる」にしました'}elseif($mode -eq 'match'){'：「異常の時だけ出る画面が出たらNG」にしました。異常の画面を記録してください'}else{'：「色で判定する」にしました。②の「① 正常（OK）を記録」「② 異常（NG）を記録」を押してください'})
     SetStatusPanel $colorReady $textOnReady ($a.Name+$msg)
 }
 
@@ -4242,6 +4270,13 @@ $tileBoard.Add_Paint({
 $tileMenu=New-Object System.Windows.Forms.ContextMenuStrip
 $tileMenuImages=$tileMenu.Items.Add('登録した画像を見る')
 $tileMenuHighlight=$tileMenu.Items.Add('画面で位置を確認')
+[void]$tileMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+$tileMenuRename=$tileMenu.Items.Add('名前を変更')
+$tileMenuRepick=$tileMenu.Items.Add('範囲を選び直す')
+$tileMenuDelete=$tileMenu.Items.Add('削除')
+$tileMenuRename.Add_Click({ $renameBtn.PerformClick() })
+$tileMenuRepick.Add_Click({ $repickBtn.PerformClick() })
+$tileMenuDelete.Add_Click({ $deleteAreaBtn.PerformClick() })
 $tileMenuImages.Add_Click({ Show-RefImages (Get-SelectedArea) })
 $tileMenuHighlight.Add_Click({ $a=Get-SelectedArea; if($a) { Show-AreaHighlight $a.Rect } })
 $tileBoard.Add_MouseDown({
@@ -4448,7 +4483,7 @@ $repickBtn.Add_Click({
             RefreshAreaListUI
             Mark-SettingsDirty
             if($a.Mode -ne 'color') { Start-AreaSetupWizard $a }
-            else { SetStatusPanel $colorReady $textOnReady ($a.Name+'の範囲を選び直しました。「かんたん設定」をやり直してください。') }
+            else { SetStatusPanel $colorReady $textOnReady ($a.Name+'の範囲を選び直しました。②で正常（OK）・異常（NG）を記録し直してください。') }
         }
     } finally {
         $script:area=$null
@@ -4899,6 +4934,13 @@ $rbModeColor.Add_CheckedChanged({
     Set-AreaMode 'color'
 })
 $advancedCheck.Add_CheckedChanged({ $advancedPanel.Visible=$advancedCheck.Checked })
+$whenCheck.Add_CheckedChanged({ $whenPanel.Visible=$whenCheck.Checked })
+$otherCheck.Add_CheckedChanged({ $otherPanel.Visible=$otherCheck.Checked })
+$modeCombo.Add_SelectedIndexChanged({
+    if($script:suppressEvents) { return }
+    $mode=@('diff','match','color')[[Math]::Max(0,$modeCombo.SelectedIndex)]
+    Set-AreaMode $mode
+})
 
 $sensTrack.Add_ValueChanged({
     $sensPercentLabel.Text=$sensTrack.Value.ToString()
@@ -5037,7 +5079,7 @@ $start.Add_Click({
     }
     $notReady=@($script:areas | Where-Object { -not (Test-AreaReady $_) } | ForEach-Object { $_.Name })
     if($notReady.Count -gt 0) {
-        [void](Show-Message (($notReady -join '、')+" は、まだ見本を記録していません。`r`n`r`n一覧でそのエリアを選び、②の「かんたん設定」で見本を記録してください。`r`n（正常な映像と比べる：正常な時に「①」／ 異常の画面が出たらNG：異常の画面が出ている時に「①」か画像ファイルから）") ([System.Windows.Forms.MessageBoxIcon]::Warning))
+        [void](Show-Message (($notReady -join '、')+" は、まだ見本を記録していません。`r`n`r`n①のタイルでそのエリアを選び、②で見本を記録してください。`r`n（正常な映像と比べる：正常な時に「①」／ 異常の画面が出たらNG：異常の画面が出ている時に「①」か画像ファイルから）") ([System.Windows.Forms.MessageBoxIcon]::Warning))
         return
     }
     Save-SettingsIfDirty -Now
@@ -5160,7 +5202,7 @@ $timer.Add_Tick({
         } elseif($offScreen.Count -gt 0) {
             SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($offScreen -join '、')+'」が画面の外にあり監視できません。モニターの接続・配置を確認し、「範囲を選び直す」をしてください。')
         } elseif($notReady.Count -gt 0) {
-            SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($notReady -join '、')+'」は見本が無いため監視できていません。②の「かんたん設定」で見本を記録してください。')
+            SetStatusPanel $colorWarn $textOnWarn ('⚠ 「'+($notReady -join '、')+'」は見本が無いため監視できていません。②で見本を記録してください。')
         } elseif($script:logWriteBlocked) {
             SetStatusPanel $colorWarn $textOnWarn '監視中（すべて正常）｜ ⚠ ログのCSVが開かれていて書き込めません。Excelを閉じると自動で書き込みます。'
         } else {
