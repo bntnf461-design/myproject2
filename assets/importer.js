@@ -75,7 +75,41 @@
     return { map: map, score: n + (map.step !== undefined ? 1 : 0) + (map.point !== undefined ? 1 : 0) };
   }
 
+  // ---------- 覚えた様式（社内フォーマット） ----------
+  // 列の対応を手で直したら「様式」として覚えておき、同じ見出しの Excel は次から自動でその対応を使う
+  function formatSig(sheet, mp) {
+    var sig = [];
+    for (var k = 0; k < mp.headerRows; k++) {
+      (sheet.rows[mp.headerRow + k] || []).forEach(function (v, c) {
+        var t = norm(v);
+        if (t) sig.push({ r: k, c: c, t: t });
+      });
+    }
+    return sig;
+  }
+  function matchFormat(sheet) {
+    var formats = (window.CATALOG && window.CATALOG.formats) || [];
+    var limit = Math.min(sheet.rows.length, 80);
+    for (var i = 0; i < formats.length; i++) {
+      var f = formats[i];
+      if (!f.sig || f.sig.length < 2) continue;
+      var need = Math.max(2, Math.ceil(f.sig.length * 0.8));
+      for (var r = 0; r < limit; r++) {
+        var hit = 0;
+        f.sig.forEach(function (x) { var row = sheet.rows[r + x.r]; if (row && norm(row[x.c]) === x.t) hit++; });
+        if (hit >= need) {
+          var mp = { headerRow: r, headerRows: f.headerRows || 1, cols: {}, format: f.name };
+          COL_ORDER.forEach(function (k) { mp.cols[k] = f.cols && f.cols[k] != null ? f.cols[k] : -1; });
+          return mp;
+        }
+      }
+    }
+    return null;
+  }
+
   function detect(sheet) {
+    var saved = matchFormat(sheet);
+    if (saved) return saved;
     var best = { row: -1, score: 0, map: {} };
     var limit = Math.min(sheet.rows.length, 80);
     for (var r = 0; r < limit; r++) {
@@ -248,6 +282,17 @@
       if (STOP_RE.test(norm(firstText))) return true;
       return row.some(function (t) { return /^(改訂|改定|変更)(内容|履歴|記録|事項|来歴)$/.test(norm(t)); });
     }
+    var hdrRow = rows[mapping.headerRow] || [];
+    function isRepeatHeader(row) {
+      var all = 0, same = 0;
+      COL_ORDER.forEach(function (k) {
+        var h = C[k] >= 0 ? norm(hdrRow[C[k]]) : "";
+        if (!h) return;
+        all++;
+        if (norm(row[C[k]]) === h) same++;
+      });
+      return all > 0 && same >= Math.min(2, all);
+    }
     var numOf = function (v) { var n = String(v || "").normalize("NFKC").trim(); return /^\d+\.?$/.test(n) ? n.replace(".", "") : ""; };
     for (var r0 = first; r0 < rows.length; r0++) if (isStop(rows[r0])) { stopAt = r0; break; }
     // No. 欄に番号が付いている形式なら、番号が変わったところで次の手順にする
@@ -260,8 +305,9 @@
       var time = cell(r, "time"), vtext = cell(r, "video");
       // 番号だけの行（図の番号など）や空の行は飛ばす
       if (!step && !detail && !point && !reason && !vtext) continue;
-      // 途中に見出しが繰り返されている行（2 ページ目など）は飛ばす
-      if (matchHeader(rows[r]).score >= 3) continue;
+      // 途中に見出しが繰り返されている行（2 ページ目など）は飛ばす。
+      // 見出しの行と同じ文字かで判断する（「ポイント」「理由」などを含む普通の行を飛ばさないように）
+      if (isRepeatHeader(rows[r])) continue;
 
       var isNew = numbered
         ? !cur || (numOf(no) !== "" && numOf(no) !== lastNo)
@@ -522,7 +568,7 @@
 
   function setup() {
     dlg = $("xl");
-    ["xlFile", "xlSheet", "xlHeader", "xlMap", "xlInfo", "xlSteps", "xlGrid", "xlMsg", "xlApply", "xlClose", "xlBody"].forEach(function (id) { els[id] = $(id); });
+    ["xlFile", "xlSheet", "xlHeader", "xlMap", "xlFormat", "xlInfo", "xlSteps", "xlGrid", "xlMsg", "xlApply", "xlClose", "xlBody"].forEach(function (id) { els[id] = $(id); });
     els.xlClose.addEventListener("click", close);
     els.xlFile.addEventListener("change", function () {
       var f = this.files && this.files[0];
@@ -532,13 +578,18 @@
     els.xlSheet.addEventListener("change", function () { loadSheet(parseInt(this.value, 10)); });
     els.xlHeader.addEventListener("change", function () {
       var v = parseInt(this.value, 10);
-      if (v >= 1) { mapping.headerRow = v - 1; refresh(); }
+      if (v >= 1) { mapping.headerRow = v - 1; mapping.headerRows = 1; mapping.edited = true; delete mapping.format; refresh(); }
     });
     els.xlMap.addEventListener("change", function (ev) {
       var k = ev.target.getAttribute("data-k");
       if (!k) return;
       mapping.cols[k] = parseInt(ev.target.value, 10);
+      mapping.edited = true;
+      delete mapping.format;
       refresh();
+    });
+    if (els.xlFormat) els.xlFormat.addEventListener("click", function (ev) {
+      if (ev.target.closest("[data-fmt]")) saveFormat();
     });
     els.xlApply.addEventListener("click", function () {
       if (!result || !result.data.steps.length) return;
@@ -562,6 +613,44 @@
     dlg.classList.remove("open");
     document.body.style.overflow = "";
   }
+  // 様式の表示（覚えた様式で読んだ／手で直したので覚えられる）
+  function formatBar() {
+    if (!els.xlFormat) return;
+    var h = "";
+    if (mapping.format) {
+      h = '<span class="fmt-tag">様式「' + esc(mapping.format) + '」で読み取りました</span>';
+    } else if (mapping.edited && result && result.data.steps.length) {
+      h = '<span class="hint">同じ様式の Excel を、次から自動でこの列の対応で読み取れます。</span>' +
+        '<button type="button" class="btn small primary" data-fmt="save">この様式を覚える</button>';
+    }
+    // 同じ内容なら描き直さない（入力欄から直接ボタンを押したとき、押す前に消えないように）
+    if (formatBar.last !== h) { els.xlFormat.innerHTML = h; formatBar.last = h; }
+    els.xlFormat.hidden = !h;
+  }
+  function saveFormat() {
+    var def = (result && result.data.docNo ? String(result.data.docNo).replace(/[\d\-_]+$/, "") : "") || fileTitle || "社内様式";
+    var name = prompt("様式の名前（例：〇〇課 作業要領書）", def);
+    if (!name) return;
+    var f = { name: name.trim(), headerRows: mapping.headerRows, cols: {}, sig: formatSig(sheet, mapping) };
+    COL_ORDER.forEach(function (k) { if (mapping.cols[k] >= 0) f.cols[k] = mapping.cols[k]; });
+    function put(c) {
+      c.formats = (c.formats || []).filter(function (x) { return x.name !== f.name; });
+      c.formats.push(f);
+    }
+    if (!window.WIFolder || !WIFolder.supported) { put(window.CATALOG); mapping.format = f.name; formatBar(); return; }
+    WIFolder.getRoot().then(function (root) {
+      return WIFolder.updateCatalog(root, function (c) { put(c); });
+    }).then(function () {
+      put(window.CATALOG);
+      mapping.format = f.name;
+      formatBar();
+      els.xlFormat.insertAdjacentHTML("beforeend", '<span class="hint">　覚えました。設定画面の「覚えた様式」で消せます。</span>');
+      formatBar.last = els.xlFormat.innerHTML;
+    }).catch(function (e) {
+      alert("様式を保存できませんでした。" + (WIFolder.errorMessage ? WIFolder.errorMessage(e) : e));
+    });
+  }
+
   function msg(html, isError) {
     els.xlMsg.className = "notice" + (isError ? " error" : "");
     els.xlMsg.innerHTML = html;
@@ -689,7 +778,8 @@
     els.xlGrid.innerHTML = g + '</tbody></table>';
 
     els.xlApply.disabled = !d.steps.length;
+    formatBar();
   }
 
-  window.WIImport = { open: open, detect: detect, build: build, photoCount: photoCount };
+  window.WIImport = { open: open, detect: detect, build: build, photoCount: photoCount, formatSig: formatSig };
 })();

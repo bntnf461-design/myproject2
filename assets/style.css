@@ -1193,3 +1193,77 @@ body.viewer { background: #e6ebf3; }
   .steps tr { page-break-inside: avoid; }
   .step-image { max-height: 160px; }
 }
+
+/* ---------- 動画を手順に分ける ---------- */
+.cut-banner {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 14px;
+  background: var(--navy-pale); border: 1px solid var(--line); border-left: 5px solid var(--navy); border-radius: var(--radius);
+}
+.cut-banner > div { flex: 1; min-width: 220px; display: grid; gap: 2px; }
+.cutter { background: var(--navy-dark); color: var(--white); }
+.cutter .player-head { gap: 10px; flex-wrap: wrap; }
+.cutter .cut-src { display: flex; align-items: center; gap: 6px; margin: 0; }
+.cutter .cut-src span { font-size: 0.8rem; opacity: 0.85; white-space: nowrap; }
+.cutter .cut-src select { max-width: 16em; color: var(--text); background: var(--white); }
+.cutter .player-head .label { min-width: 12em; }
+.cut-main > * { flex-shrink: 0; }
+.cut-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.cut-main { min-width: 0; min-height: 0; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.cut-video { position: relative; background: #000; border-radius: 8px; overflow: hidden; display: grid; place-items: center; min-height: 200px; }
+.cut-video video { display: block; width: 100%; max-height: 52vh; background: #000; }
+.cut-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; font-size: 1.05rem; background: rgba(11, 26, 54, 0.92); }
+.cut-now { font-size: 1.05rem; min-height: 1.5em; position: relative; }
+.cut-now.msg::after {
+  content: attr(data-msg); position: absolute; left: 0; right: 0; top: 0;
+  background: var(--focus); color: var(--navy-dark); font-weight: bold; padding: 2px 10px; border-radius: 4px;
+}
+.cut-line { position: relative; height: 46px; background: rgba(255, 255, 255, 0.1); border-radius: 6px; cursor: pointer; touch-action: none; user-select: none; }
+.cut-segs { position: absolute; inset: 0; }
+.cut-seg {
+  position: absolute; top: 4px; bottom: 4px; min-width: 2px;
+  background: #3d63a8; border: 1px solid #9fb6e0; border-radius: 4px;
+  display: grid; place-items: center; overflow: visible;
+}
+.cut-seg.odd { background: #2b4a85; }
+.cut-seg.cur { background: var(--focus); border-color: #fff; color: var(--navy-dark); }
+.cut-seg span { font-size: 0.8rem; font-weight: bold; pointer-events: none; overflow: hidden; }
+.cut-seg .edge { position: absolute; top: -4px; bottom: -4px; width: 12px; cursor: ew-resize; }
+.cut-seg .edge::after { content: ""; position: absolute; top: 0; bottom: 0; left: 5px; width: 3px; background: #fff; border-radius: 2px; }
+.cut-seg .edge.s { left: -7px; }
+.cut-seg .edge.e { right: -7px; }
+.cut-head { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1px; background: #ff5252; pointer-events: none; }
+.cut-time { display: flex; justify-content: space-between; font-size: 0.85rem; opacity: 0.85; margin-top: -6px; }
+.cut-ctrl, .cut-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cut-ctrl .group { display: flex; gap: 4px; margin-left: auto; }
+.cut-ctrl .play { min-width: 8em; font-weight: bold; }
+.cut-actions .btn.big { flex: 1; min-width: 260px; min-height: 58px; font-size: 1.15rem; display: grid; place-items: center; line-height: 1.25; }
+.cut-actions .btn.big small { display: block; font-size: 0.8rem; font-weight: normal; opacity: 0.9; max-width: 28em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cut-help { color: #c9d5ec; margin: 0; }
+.cut-help b { color: #fff; }
+.cut-side { min-height: 0; display: flex; flex-direction: column; background: var(--navy); border-left: 1px solid var(--navy-mid); }
+.cut-side-head { padding: 10px 14px; font-weight: bold; border-bottom: 1px solid var(--navy-mid); }
+.cut-list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
+.cut-list li { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
+.cut-list li:hover { background: rgba(255, 255, 255, 0.06); }
+.cut-list li.cur { border-color: var(--focus); background: rgba(242, 183, 5, 0.12); }
+.cut-list .no { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: bold; background: rgba(255, 255, 255, 0.15); }
+.cut-list li.has .no { background: #3d63a8; }
+.cut-list .tx { flex: 1; min-width: 0; display: grid; }
+.cut-list .tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; }
+.cut-list .tx small { opacity: 0.8; }
+@media (max-width: 900px) {
+  .cut-body { display: block; overflow-y: auto; }
+  .cut-main { overflow: visible; }
+  .cut-side { border-left: 0; border-top: 1px solid var(--navy-mid); }
+  .cut-list { overflow: visible; }
+  .cut-ctrl .group { margin-left: 0; }
+}
+
+/* ---------- 覚えた様式 ---------- */
+.fmt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding: 8px 12px; background: var(--navy-pale); border: 1px dashed var(--line); border-radius: var(--radius); }
+.fmt-tag { font-weight: bold; color: var(--navy); }
+.fmt-tag::before { content: "✓ "; }
+.fmt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fmt-list li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.fmt-list li b { flex: 1; min-width: 10em; }

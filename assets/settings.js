@@ -20,6 +20,7 @@
   while (org.length < 3) org.push("");
   var ORG_PH = ["例：○○工場", "例：○○課", "例：○○工程", "例：○○係"];
   var terms = JSON.parse(JSON.stringify(cat.terms || {})); // 見出しの名前（全体の初期値）
+  var formats = (cat.formats || []).slice(); // 覚えた Excel の様式
   var levelRows = [];   // [{ key, use, label }]（上から順に絞り込み）
   var rows = {};        // key → [{ orig, name, count }]
   var deleted = {};     // key → [元の名前]
@@ -81,6 +82,15 @@
       WI.TERM_KEYS.map(function (k) {
         return '<label class="field"><span>' + esc(WI.DEFAULT_TERMS[k]) + '</span><input type="text" data-term="' + k + '" value="' + esc(terms[k] || "") + '" placeholder="' + esc(WI.DEFAULT_TERMS[k]) + '"></label>';
       }).join("") + '</div></section>';
+
+    h += '<section class="section" id="formats"><h2>覚えた Excel の様式</h2>' +
+      '<p class="hint">Excel 取り込みで列の対応を直して「この様式を覚える」を押すと、ここに並びます。同じ様式の Excel は、1 件ずつでも、まとめて取り込みでも、自動でこの対応で読み取ります。</p>' +
+      (formats.length ? '<ul class="fmt-list">' + formats.map(function (f, i) {
+        var cols = Object.keys(f.cols || {}).length;
+        return '<li><b>' + esc(f.name) + '</b><span class="hint">見出し ' + (f.headerRows || 1) + ' 段・使う列 ' + cols + ' つ</span>' +
+          '<button type="button" class="btn small danger" data-act="fmt-del" data-i="' + i + '">削除</button></li>';
+      }).join("") + '</ul>' : '<p class="hint">（まだありません。自動で読み取れている場合は、覚える必要はありません）</p>') +
+    '</section>';
 
     h += '<section class="section"><h2>一覧で絞り込む項目</h2>' +
       '<p class="hint" style="margin-top:0">チェックした項目が、上から順に一覧の絞り込みに表示されます。表示名は自由に変えられます（例：ライン → 職場、工程 → 業務）。</p>' +
@@ -189,6 +199,10 @@
     else if (act === "add") { add(k); return; }
     else if (act === "org-add") org.push("");
     else if (act === "org-del") org.splice(i, 1);
+    else if (act === "fmt-del") {
+      if (!confirm("様式「" + formats[i].name + "」を削除しますか？（取り込み済みの要領書は変わりません）")) return;
+      formats.splice(i, 1);
+    }
     else if (act === "del") {
       var r = rows[k][i];
       if (r.count && !confirm("「" + r.orig + "」は要領書 " + r.count + " 件で使われています。\n削除すると、それらの要領書のこの欄は空（未設定）になります。削除しますか？")) return;
@@ -236,6 +250,7 @@
       labels: {},
       terms: {},
       categories: {},
+      formats: formats,
       files: base.files
     };
     levelRows.forEach(function (r) { c.labels[r.key] = r.label.trim() || DEFAULT_LABEL[r.key]; });

@@ -27,6 +27,7 @@
 
 <div class="toolbar-bottom">
   <button type="button" class="btn" id="addStep">＋ 手順を追加</button>
+  <button type="button" class="btn" id="cutVideo" title="作業を 1 本で撮った動画を、見ながら手順ごとに区切る">🎬 動画を手順に分ける</button>
   <span style="flex:1"></span>
   <span class="hint" id="draftState" title="入力中の内容は、この PC のブラウザに一時保存されています"></span>
   <span class="save-dest" id="saveDest" hidden><span class="hint"></span><button type="button" class="btn small">変更</button></span>
@@ -76,6 +77,7 @@
             <label class="field"><span>見出しの行</span><input type="number" id="xlHeader" min="1"></label>
           </div>
           <div class="form-grid" id="xlMap" style="margin-top:8px"></div>
+          <div class="fmt-bar" id="xlFormat" hidden></div>
         </section>
         <section class="section"><h2>② 読み取り結果</h2>
           <div class="xl-result">
@@ -104,6 +106,7 @@
 <script src="assets/video-check.js"></script>
 <script src="assets/folder.js"></script>
 <script src="assets/annotate.js"></script>
+<script src="assets/cutter.js"></script>
 <script src="assets/editor.js"></script>
 </body>
 </html>

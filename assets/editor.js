@@ -236,7 +236,10 @@
       field("使用部品・材料", "materials", { type: "pairs", ph: "ボルト M8 | 4本", hint: "1 行に 1 項目。数量は「|」の後ろに" }) +
     '</div></section>';
 
-    h += '<section class="section"><h2>作業手順</h2>';
+    h += '<section class="section"><h2>作業手順</h2>' +
+      '<div class="cut-banner"><div><b>動画は 1 本で撮るのがかんたんです。</b>' +
+      '<span class="hint">作業を最初から最後まで続けて撮り、見ながら手順の切れ目で「区切る」を押すだけで、全部の手順に動画が付きます。</span></div>' +
+      '<button type="button" class="btn primary" data-act="cut">🎬 動画を手順に分ける</button></div>';
     m.steps.forEach(function (s, i) {
       var b = "steps." + i;
       h += '<div class="edit-card" id="ed-step-' + i + '"><header>' +
@@ -412,6 +415,7 @@
       case "pick-image": pick("image", path); return;
       case "seg": openSeg(path); return;
       case "annotate": annotate(i); return;
+      case "cut": openCutter(); return;
       case "delete-doc": deleteDoc(); return;
       default: return;
     }
@@ -881,6 +885,53 @@
     }
   }
   document.getElementById("addStep").addEventListener("click", function () { insertStep(m.steps.length); });
+  document.getElementById("cutVideo").addEventListener("click", openCutter);
+
+  // ---------- 動画を手順に分ける ----------
+  var cutPicker = document.createElement("input");
+  cutPicker.type = "file";
+  cutPicker.accept = "video/*,.mp4,.m4v,.mov,.webm";
+  cutPicker.id = "cutFile";
+  cutPicker.hidden = true;
+  document.body.appendChild(cutPicker);
+  var cutPicked = null;
+  cutPicker.addEventListener("change", function () {
+    var f = cutPicker.files && cutPicker.files[0];
+    if (!f || !cutPicked) return;
+    var src = "videos/" + f.name;
+    if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
+    objectUrls[src] = URL.createObjectURL(f);
+    addPicked(src, f);
+    mediaChecks[src] = { level: "checking" };
+    VideoCheck.checkVideo(f).then(function (c) { if (pickedFiles[src] === f) { mediaChecks[src] = c; render(); } });
+    cutPicked(src);
+  });
+  function openCutter() {
+    var srcs = [], count = {};
+    m.steps.forEach(function (s) {
+      var v = s.video && s.video.src;
+      if (!v) return;
+      if (srcs.indexOf(v) === -1) srcs.push(v);
+      count[v] = (count[v] || 0) + 1;
+    });
+    var main = srcs.slice().sort(function (a, b) { return count[b] - count[a]; })[0] || "";
+    WICutter.open({
+      steps: m.steps, srcs: srcs, src: main,
+      url: function (s) { return objectUrls[s] || s; },
+      pick: function (cb) { cutPicked = cb; cutPicker.value = ""; cutPicker.click(); },
+      apply: function (res, src) {
+        res.forEach(function (v, i) {
+          var s = m.steps[i];
+          if (v) s.video = v;
+          else if (s.video.src === src) s.video = { src: "", start: "", end: "" };
+        });
+        render();
+        saveDraft();
+        var n = res.filter(Boolean).length;
+        notice("<b>" + n + " 手順に動画の区間を設定しました。</b>「プレビュー」で確認してから保存してください。");
+      }
+    });
+  }
 
   // ---------- Excel 取り込み ----------
   document.getElementById("importXl").addEventListener("click", function () {
