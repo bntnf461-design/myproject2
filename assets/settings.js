@@ -22,6 +22,32 @@
   var terms = JSON.parse(JSON.stringify(cat.terms || {})); // 見出しの名前（全体の初期値）
   var formats = (cat.formats || []).slice(); // 覚えた Excel の様式
   var readings = (cat.readings || []).map(function (r) { return { w: r.w, y: r.y }; }); // 読み上げの読み方
+  var speech = JSON.parse(JSON.stringify(cat.speech || {})); // 読み上げの声
+  if (!speech.voice) speech.voice = {};
+  var SAMPLE = { ja: "手順 1。ブラケットを治具にセットする。急所。基準ピンに当たるまで奥へ押す。", id: "Langkah 1. Pasang braket pada jig. Poin kunci: dorong sampai menyentuh pin acuan." };
+  if (window.speechSynthesis && speechSynthesis.addEventListener) {
+    speechSynthesis.addEventListener("voiceschanged", function () { if (render.done) render(); });
+  }
+  function voiceSection() {
+    var langs = [["ja", "日本語"], ["id", "インドネシア語"]];
+    var h = '<div class="voice-box">' +
+      '<label class="set-check"><input type="checkbox" data-sp="natural"' + (speech.natural ? " checked" : "") + '> ' +
+        '<b>インターネットにつながっているときは、自然な声を使う</b></label>' +
+      '<p class="hint" style="margin:4px 0 10px">Edge の「自然な声（Natural）」は、人に近い抑揚で読みます。インターネットが必要なため、つながっていないときは自動で PC に入っている声に戻ります。Chrome では自然な声が無いため、PC に入っている声で読みます。</p>';
+    langs.forEach(function (L) {
+      var vs = WI.voices(L[0]);
+      var cur = WI.pickVoice(L[0], { natural: speech.natural, voice: speech.voice });
+      h += '<div class="voice-row"><span class="voice-lang">' + L[1] + '</span>' +
+        (vs.length ? '<select data-sv="' + L[0] + '"><option value="">おまかせ</option>' + vs.map(function (v) {
+          var kind = v.localService ? "PC の声" : (WI.isNatural(v) ? "自然な声・要インターネット" : "要インターネット");
+          return '<option value="' + esc(v.name) + '"' + (speech.voice[L[0]] === v.name ? " selected" : "") + '>' + esc(v.name) + '（' + kind + '）</option>';
+        }).join("") + '</select>' : '<span class="hint">この PC には声がありません' + (L[0] === "id" ? "（Windows の設定 → 時刻と言語 → 音声 で追加できます）" : "") + '</span>') +
+        (vs.length ? '<button type="button" class="btn small" data-act="sp-test" data-k="' + L[0] + '">▶ 声を試す</button>' : '') +
+        (cur ? '<span class="hint">今の声：' + esc(cur.name) + '</span>' : '') +
+      '</div>';
+    });
+    return h + '</div>';
+  }
   var READ_STARTER = [["急所", "きゅうしょ"], ["仮締め", "かりじめ"], ["本締め", "ほんじめ"], ["治具", "じぐ"], ["治工具", "じこうぐ"],
     ["品番", "ひんばん"], ["段取り", "だんどり"], ["締付け", "しめつけ"], ["外観", "がいかん"], ["員数", "いんずう"]];
   var levelRows = [];   // [{ key, use, label }]（上から順に絞り込み）
@@ -95,7 +121,8 @@
       }).join("") + '</ul>' : '<p class="hint">（まだありません。自動で読み取れている場合は、覚える必要はありません）</p>') +
     '</section>';
 
-    h += '<section class="section" id="readings"><h2>読み上げの読み方</h2>' +
+    h += '<section class="section" id="readings"><h2>読み上げ</h2>' + voiceSection() +
+      '<h3 class="sub-h">読み方の辞書</h3>' +
       '<p class="hint">作業者の画面の「🔈 読み上げ」で、読み間違える言葉の読み方を、ひらがなで登録します（例：仮締め → かりじめ）。</p>' +
       '<div class="read-list">' + readings.map(function (r, i) {
         return '<div class="g-row"><input type="text" data-rw="' + i + '" value="' + esc(r.w) + '" placeholder="言葉（例：仮締め）">' +
@@ -176,6 +203,8 @@
     else if (t.hasAttribute("data-label")) levelRows[+t.getAttribute("data-label")].label = t.value;
     else if (t.hasAttribute("data-use")) levelRows[+t.getAttribute("data-use")].use = t.checked;
     else if (t.hasAttribute("data-name")) rows[t.getAttribute("data-name")][+t.getAttribute("data-i")].name = t.value;
+    else if (t.getAttribute("data-sp") === "natural") { speech.natural = t.checked; touch(); render(); return; }
+    else if (t.hasAttribute("data-sv")) { speech.voice[t.getAttribute("data-sv")] = t.value; touch(); render(); return; }
     else if (t.hasAttribute("data-rw")) readings[+t.getAttribute("data-rw")].w = t.value;
     else if (t.hasAttribute("data-ry")) readings[+t.getAttribute("data-ry")].y = t.value;
     else return;
@@ -215,6 +244,17 @@
     else if (act === "add") { add(k); return; }
     else if (act === "org-add") org.push("");
     else if (act === "org-del") org.splice(i, 1);
+    else if (act === "sp-test") {
+      var v = WI.pickVoice(k, { natural: speech.natural, voice: speech.voice });
+      if (!v || !window.speechSynthesis) return;
+      speechSynthesis.cancel();
+      var text = SAMPLE[k];
+      if (k === "ja") readings.forEach(function (r) { if (r.w && r.y) text = text.split(r.w).join(r.y); });
+      var u = new SpeechSynthesisUtterance(text);
+      u.voice = v; u.lang = v.lang;
+      speechSynthesis.speak(u);
+      return;
+    }
     else if (act === "rd-add") readings.push({ w: "", y: "" });
     else if (act === "rd-del") readings.splice(i, 1);
     else if (act === "rd-starter") READ_STARTER.forEach(function (p) { if (!readings.some(function (r) { return r.w === p[0]; })) readings.push({ w: p[0], y: p[1] }); });
@@ -270,6 +310,7 @@
       terms: {},
       categories: {},
       formats: formats,
+      speech: { natural: !!speech.natural, voice: Object.keys(speech.voice).reduce(function (o, k) { if (speech.voice[k]) o[k] = speech.voice[k]; return o; }, {}) },
       readings: readings.map(function (r) { return { w: r.w.trim(), y: r.y.trim() }; }).filter(function (r) { return r.w && r.y; }),
       files: base.files
     };

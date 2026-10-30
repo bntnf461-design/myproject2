@@ -1356,3 +1356,8 @@ mark.rev-mark { background: #fff1a8; color: inherit; padding: 0 2px; border-radi
 }
 .tp-toast.show { display: block; }
 .read-list { display: grid; gap: 6px; max-width: 640px; }
+.voice-box { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--navy-pale); margin-bottom: 14px; }
+.voice-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.voice-row select { max-width: 100%; min-width: 0; font: inherit; padding: 4px 6px; }
+.voice-lang { font-weight: bold; min-width: 8em; }
+.sub-h { font-size: 1rem; margin: 6px 0; }

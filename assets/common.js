@@ -259,7 +259,38 @@
       texts: textFields(m).map(function (f) { return f.ja; }) };
   }
 
+  // ---------- 読み上げの声 ----------
+  // catalog.js の speech: { natural: true, voice: { ja: "声の名前", id: "…" } }
+  // natural: インターネットにつながっているときは、自然な声（Edge の「Natural」）を使う
+  function voices(code) {
+    var s = window.speechSynthesis;
+    if (!s) return [];
+    return s.getVoices().filter(function (v) { return v.lang && v.lang.replace("_", "-").toLowerCase().indexOf(code) === 0; });
+  }
+  function isNatural(v) { return !v.localService && /natural/i.test(v.name); }
+  function pickVoice(code, opt) {
+    opt = opt || {};
+    var vs = voices(code);
+    var online = navigator.onLine !== false;
+    var named = opt.voice && opt.voice[code];
+    if (named) {
+      var v = vs.filter(function (x) { return x.name === named; })[0];
+      if (v && (v.localService || (opt.natural && online))) return v;
+    }
+    if (opt.natural && online) {
+      var nat = vs.filter(isNatural)[0];
+      if (nat) return nat;
+    }
+    // インターネットが要らない声（PC に入っている声）
+    return vs.filter(function (x) { return x.localService; })[0] || vs[0] || null;
+  }
+  function speechConfig() { return (window.CATALOG && window.CATALOG.speech) || {}; }
+
   window.WI = {
+    voices: voices,
+    isNatural: isNatural,
+    pickVoice: pickVoice,
+    speechConfig: speechConfig,
     trLookup: trLookup,
     textFields: textFields,
     revChanges: revChanges,

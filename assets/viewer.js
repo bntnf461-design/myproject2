@@ -490,10 +490,10 @@
   var pSpeak = document.getElementById("pSpeak");
   try { speakOn = localStorage.getItem("wi.speak") === "1"; } catch (e) {}
   if (!synth) pSpeak.hidden = true;
+  var naturalFailed = false; // 自然な声が使えなかった（インターネットにつながっていない など）
   function voiceFor(code) {
-    var vs = synth.getVoices().filter(function (v) { return v.lang && v.lang.replace("_", "-").toLowerCase().indexOf(code) === 0; });
-    // インターネットが要らない音声（PC に入っている音声）を優先
-    return vs.filter(function (v) { return v.localService; })[0] || vs[0] || null;
+    var cfg = WI.speechConfig();
+    return WI.pickVoice(code, { natural: cfg.natural && !naturalFailed, voice: cfg.voice });
   }
   // 読み方の辞書（設定画面の「読み上げの読み方」）で、読み間違いやすい言葉を直す
   function reading(text) {
@@ -502,10 +502,10 @@
     list.forEach(function (r) { text = text.split(r.w).join(r.y); });
     return text;
   }
-  function speechText(item) {
+  function speechText(item, forceJa) {
     var step = manual.steps[item.step];
     var point = item.point >= 0 ? step.points[item.point] : null;
-    var id = lang === "id";
+    var id = lang === "id" && !forceJa;
     var parts = [], T = WI.terms(manual, window.CATALOG);
     var t = function (key, ja) { var e = id && WI.trLookup(manual, "id", key, ja); return e ? e.t : ja; };
     var pb = "steps." + item.step + ".points.";
@@ -531,9 +531,11 @@
     stopSpeak();
     var s = speechText(item);
     var v = voiceFor(s.code);
+    // インターネットが必要な声しか無く、つながっていない場合は使えない
+    if (v && !v.localService && (naturalFailed || navigator.onLine === false)) v = null;
     if (!v && s.code === "id") {
       toast("Suara bahasa Indonesia tidak tersedia di PC ini. / この PC にインドネシア語の音声が入っていません（Windows の設定 → 時刻と言語 → 音声 で追加できます）。日本語で読み上げます。");
-      s = { text: s.text, code: "ja" };
+      s = speechText(item, true); // 日本語の文を日本語の声で
       v = voiceFor("ja");
     }
     if (!v) { toast("この PC に読み上げの音声が見つかりません。"); return; }
@@ -544,7 +546,18 @@
     // 読み上げ中は動画の音を消す（声が聞き取れるように）
     var wasMuted = video.muted;
     video.muted = true;
-    u.onend = u.onerror = function () { video.muted = wasMuted; };
+    u.onend = function () { video.muted = wasMuted; };
+    u.onerror = function (ev) {
+      video.muted = wasMuted;
+      // 自然な声（インターネットが必要）で読めなかったときは、PC に入っている声で読み直す
+      if (!v.localService && ev && ev.error !== "interrupted" && ev.error !== "canceled" && !naturalFailed) {
+        naturalFailed = true;
+        toast(lang === "id" ? "Tidak ada internet: memakai suara PC. / インターネットにつながらないため、PC の声で読み上げます。"
+          : "インターネットにつながらないため、PC に入っている声で読み上げます。");
+        speak(item);
+      }
+    };
+    pSpeak.title = "声：" + v.name;
     synth.speak(u);
   }
   function stopSpeak() { if (synth && (synth.speaking || synth.pending)) synth.cancel(); }
