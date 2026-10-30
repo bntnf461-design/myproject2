@@ -286,7 +286,36 @@
   }
   function speechConfig() { return (window.CATALOG && window.CATALOG.speech) || {}; }
 
+  // ---------- 写真を軽くする（スティック PC など、力の弱い PC でも速く表示するため） ----------
+  // 長い辺が limit（写真 1600px・画面のコピー 1920px）より大きい画像だけ縮める。HEIC など表示できない画像はそのまま
+  var IMG_LIMIT = { photo: 1600, screen: 1920 };
+  function shrinkImage(blob) {
+    var isPng = /png$/i.test(blob.type || "") || /\.png$/i.test(blob.name || "");
+    var limit = isPng ? IMG_LIMIT.screen : IMG_LIMIT.photo;
+    if (!window.createImageBitmap || !/^image\/(jpeg|png|webp|bmp|gif)$/i.test(blob.type || "")) return Promise.resolve(blob);
+    return createImageBitmap(blob).then(function (bmp) {
+      var w = bmp.width, h = bmp.height, k = limit / Math.max(w, h);
+      if (k >= 1 && blob.size < 1.5e6) { if (bmp.close) bmp.close(); return blob; }
+      k = Math.min(1, k);
+      var c = document.createElement("canvas");
+      c.width = Math.round(w * k);
+      c.height = Math.round(h * k);
+      var g = c.getContext("2d");
+      g.imageSmoothingQuality = "high";
+      g.drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      return new Promise(function (resolve) {
+        c.toBlob(function (out) {
+          // 小さくならなかったら元のまま
+          resolve(out && out.size < blob.size ? out : blob);
+        }, isPng ? "image/png" : "image/jpeg", 0.85);
+      });
+    }).catch(function () { return blob; });
+  }
+
   window.WI = {
+    shrinkImage: shrinkImage,
+    IMG_LIMIT: IMG_LIMIT,
     voices: voices,
     isNatural: isNatural,
     pickVoice: pickVoice,

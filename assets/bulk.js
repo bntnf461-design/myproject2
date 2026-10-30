@@ -316,8 +316,8 @@
           });
           return imgs.reduce(function (pr, im) {
             return pr.then(function () {
-              return root.getDirectoryHandle("images", { create: true }).then(function (dir) {
-                return WIFolder.writeFile(dir, im.src.split("/").pop(), new Blob([im.bytes], { type: im.type }));
+              return Promise.all([root.getDirectoryHandle("images", { create: true }), WI.shrinkImage(new Blob([im.bytes], { type: im.type }))]).then(function (r) {
+                return WIFolder.writeFile(r[0], im.src.split("/").pop(), r[1]); // 大きな写真は縮めて保存
               });
             });
           }, Promise.resolve());

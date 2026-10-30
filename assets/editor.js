@@ -625,6 +625,12 @@
 
   // path: "steps.0.image"。name を指定しない場合は元のファイル名
   function setImage(path, f, name) {
+    // 大きな写真（スマホの写真など）は、力の弱い PC でも速く出るように縮めてから使う
+    WI.shrinkImage(f).then(function (b) {
+      setImageNow(path, b === f ? f : new File([b], name || f.name, { type: b.type }), name);
+    });
+  }
+  function setImageNow(path, f, name) {
     var src = "images/" + (name || f.name);
     if (objectUrls[src]) URL.revokeObjectURL(objectUrls[src]);
     objectUrls[src] = URL.createObjectURL(f);
@@ -1128,6 +1134,10 @@
         var f = new File([im.bytes], im.src.split("/").pop(), { type: im.type });
         addPicked(im.src, f);
         objectUrls[im.src] = URL.createObjectURL(f); // エディタの縮小表示用
+        // 大きな写真は縮めたものに置き換える（保存するのは縮めたもの）
+        WI.shrinkImage(f).then(function (b) {
+          if (b !== f && pickedFiles[im.src] === f) pickedFiles[im.src] = new File([b], f.name, { type: b.type });
+        });
       });
       history.replaceState(null, "", "editor.html");
       render();

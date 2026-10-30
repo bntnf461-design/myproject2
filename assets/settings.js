@@ -133,6 +133,14 @@
       '<button type="button" class="btn small" data-act="rd-starter">読み間違えやすい言葉を追加</button></div>' +
     '</section>';
 
+    h += '<section class="section" id="light"><h2>力の弱い PC（スティック PC など）で速くする</h2>' +
+      '<p class="hint" style="margin-top:0">スマホで撮った写真は大きく（4000×3000 など）、力の弱い PC では表示が遅くなります。' +
+      'これから入れる写真は自動で小さくしますが、すでに images フォルダにある写真は、下のボタンでまとめて小さくできます（長い辺 1600px。画面のコピーは 1920px）。' +
+      '元の写真は <b>images/_original</b> に残します。</p>' +
+      '<button type="button" class="btn primary" data-act="shrink">images フォルダの写真を軽くする</button>' +
+      '<div class="hint" id="shrinkMsg" style="margin-top:8px"></div>' +
+    '</section>';
+
     h += '<section class="section" id="levels"><h2>一覧・かんたん画面で選ぶ項目</h2>' +
       '<p class="hint" style="margin-top:0">チェックした項目が、上から順に一覧の絞り込みに表示されます。<b>作業者用のかんたん画面でも、この順番で大きなボタンを選んでいきます</b>（例：ライン → 工程 → 作業）。表示名は自由に変えられます（例：ライン → 職場、工程 → 業務）。ボタンの並び順は、下の「カテゴリーの名前」の順番になります。</p>' +
       levelRows.map(function (r, i) {
@@ -183,6 +191,55 @@
       if (target) { target.scrollIntoView(); var inp = target.querySelector("input"); if (inp) inp.focus(); }
     }
     render.done = true;
+  }
+
+  // images フォルダの大きな写真をまとめて小さくする（元の写真は images/_original に残す）
+  function shrinkAll(btn) {
+    var msgEl = document.getElementById("shrinkMsg");
+    if (!WIFolder.supported) { msgEl.textContent = "このブラウザでは使えません。Chrome か Edge で開いてください。"; return; }
+    btn.disabled = true;
+    var done = 0, skipped = 0, before = 0, after = 0;
+    WIFolder.getRoot().then(function (root) {
+      return root.getDirectoryHandle("images", { create: true }).then(function (dir) {
+        var names = [];
+        var it = dir.entries();
+        function collect() {
+          return it.next().then(function (r) {
+            if (r.done) return;
+            if (r.value[1].kind === "file" && /\.(jpe?g|png|webp)$/i.test(r.value[0])) names.push(r.value[0]);
+            return collect();
+          });
+        }
+        return collect().then(function () {
+          return dir.getDirectoryHandle("_original", { create: true }).then(function (orig) {
+            return names.reduce(function (pr, name, i) {
+              return pr.then(function () {
+                msgEl.textContent = "確認中… " + (i + 1) + " / " + names.length + "　" + name;
+                return dir.getFileHandle(name).then(function (fh) { return fh.getFile(); }).then(function (f) {
+                  return WI.shrinkImage(f).then(function (b) {
+                    if (b === f) { skipped++; return; }
+                    // 元の写真を残してから書き換える（すでに残してあれば上書きしない）
+                    return orig.getFileHandle(name).then(function () {}, function () { return WIFolder.writeFile(orig, name, f); })
+                      .then(function () { return WIFolder.writeFile(dir, name, b); })
+                      .then(function () { done++; before += f.size; after += b.size; });
+                  });
+                });
+              });
+            }, Promise.resolve()).then(function () { return names.length; });
+          });
+        });
+      });
+    }).then(function (n) {
+      btn.disabled = false;
+      var mb = function (x) { return (x / 1048576).toFixed(1) + " MB"; };
+      msgEl.innerHTML = done
+        ? "<b>" + done + " 枚の写真を軽くしました</b>（" + mb(before) + " → " + mb(after) + "）。元の写真は images/_original にあります。"
+        : "写真 " + n + " 枚を確認しました。軽くする必要のある写真はありませんでした。";
+    }).catch(function (e) {
+      btn.disabled = false;
+      if (e && e.name === "AbortError") { msgEl.textContent = ""; return; }
+      msgEl.textContent = "できませんでした：" + WIFolder.errorMessage(e);
+    });
   }
 
   function notice(html, isError) {
@@ -255,6 +312,7 @@
       speechSynthesis.speak(u);
       return;
     }
+    else if (act === "shrink") { shrinkAll(b); return; }
     else if (act === "rd-add") readings.push({ w: "", y: "" });
     else if (act === "rd-del") readings.splice(i, 1);
     else if (act === "rd-starter") READ_STARTER.forEach(function (p) { if (!readings.some(function (r) { return r.w === p[0]; })) readings.push({ w: p[0], y: p[1] }); });
