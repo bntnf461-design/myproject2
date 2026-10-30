@@ -104,6 +104,50 @@
 
   // ---------- ブック全体 ----------
   // 戻り値: Promise<{ sheets: [{name, path}], load(i) → Promise<sheet> }>
+  // ---------- 図形・画像の位置（セルの行・列。小数で表す） ----------
+  // 行の高さ・列の幅はファイルごとに違うため、標準の大きさ（行 15pt・列 約 64px）で近似する
+  var ROW_EMU = 190500, COL_EMU = 609600;
+  function num(el, local) { var e = first(el, local); return e ? parseFloat(e.textContent) || 0 : 0; }
+  function anchorBox(an) {
+    var from = first(an, "from"), to = first(an, "to"), ext = null;
+    Array.prototype.forEach.call(an.children, function (c) { if (c.localName === "ext") ext = c; });
+    var r1 = 0, c1 = 0;
+    if (from) { r1 = num(from, "row") + num(from, "rowOff") / ROW_EMU; c1 = num(from, "col") + num(from, "colOff") / COL_EMU; }
+    else {
+      var pos = null;
+      Array.prototype.forEach.call(an.children, function (c) { if (c.localName === "pos") pos = c; });
+      if (pos) { r1 = (parseFloat(pos.getAttribute("y")) || 0) / ROW_EMU; c1 = (parseFloat(pos.getAttribute("x")) || 0) / COL_EMU; }
+    }
+    if (to) return { r1: r1, c1: c1, r2: num(to, "row") + num(to, "rowOff") / ROW_EMU, c2: num(to, "col") + num(to, "colOff") / COL_EMU };
+    var cy = ext ? parseFloat(ext.getAttribute("cy")) || 0 : 0, cx = ext ? parseFloat(ext.getAttribute("cx")) || 0 : 0;
+    return { r1: r1, c1: c1, r2: r1 + (cy ? cy / ROW_EMU : 1), c2: c1 + (cx ? cx / COL_EMU : 1) };
+  }
+  // グループの座標（子の位置を、グループ全体の枠に対する割合で求めるため）
+  function xfrmOf(el) {
+    var x = null;
+    Array.prototype.forEach.call(el.children, function (c) {
+      if (/^(spPr|grpSpPr)$/.test(c.localName)) x = first(c, "xfrm");
+    });
+    if (!x) return null;
+    var o = first(x, "off"), e = first(x, "ext"), co = first(x, "chOff"), ce = first(x, "chExt");
+    var v = function (n, a) { return n ? parseFloat(n.getAttribute(a)) || 0 : 0; };
+    return { x: v(o, "x"), y: v(o, "y"), w: v(e, "cx"), h: v(e, "cy"), cx: v(co, "x"), cy: v(co, "y"), cw: v(ce, "cx"), ch: v(ce, "cy") };
+  }
+  function groupXfrm(an) {
+    var g = null;
+    Array.prototype.forEach.call(an.children, function (c) { if (c.localName === "grpSp") g = c; });
+    var x = g && xfrmOf(g);
+    return x && x.cw && x.ch ? x : null;
+  }
+  function childBox(el, box, grp) {
+    var x = grp && xfrmOf(el);
+    if (!x || !x.w || !x.h) return box;
+    var fx1 = (x.x - grp.cx) / grp.cw, fy1 = (x.y - grp.cy) / grp.ch;
+    var fx2 = (x.x + x.w - grp.cx) / grp.cw, fy2 = (x.y + x.h - grp.cy) / grp.ch;
+    var H = box.r2 - box.r1, W = box.c2 - box.c1;
+    return { r1: box.r1 + fy1 * H, c1: box.c1 + fx1 * W, r2: box.r1 + fy2 * H, c2: box.c1 + fx2 * W };
+  }
+
   function openWorkbook(arrayBuffer) {
     var z;
     try { z = readZip(arrayBuffer); } catch (e) { return Promise.reject(e); }
@@ -271,43 +315,45 @@
               Array.prototype.slice.call(tags(ddoc, "absoluteAnchor"))
             );
             var list = [];
-            anchors.forEach(function (an) {
-              var fromEl = first(an, "from");
-              var aRow = fromEl ? parseInt((first(fromEl, "row") || {}).textContent || "0", 10) : 0;
-              var aCol = fromEl ? parseInt((first(fromEl, "col") || {}).textContent || "0", 10) : 0;
-              // 右下の位置（無ければ左上と同じ）。判子など、どのセルの上に置いてあるかの判断に使う
-              var toEl = first(an, "to");
-              var tRow = toEl ? parseInt((first(toEl, "row") || {}).textContent || "0", 10) : aRow;
-              var tCol = toEl ? parseInt((first(toEl, "col") || {}).textContent || "0", 10) : aCol;
-              var g = anchors.indexOf(an);
+            anchors.forEach(function (an, g) {
+              var box = anchorBox(an);
+              var aRow = Math.floor(box.r1), aCol = Math.floor(box.c1);
+              // 右下の位置。判子など、どのセルの上に置いてあるかの判断に使う
+              var tRow = Math.floor(box.r2), tCol = Math.floor(box.c2);
+              var grp = groupXfrm(an);
               Array.prototype.forEach.call(tags(an, "sp"), function (sp) {
-                var g = first(sp, "prstGeom");
+                var geom = first(sp, "prstGeom");
                 shapes.push({
-                  row: aRow, col: aCol, toRow: tRow, toCol: tCol, group: g,
-                  prst: g ? g.getAttribute("prst") : "",
+                  row: aRow, col: aCol, toRow: tRow, toCol: tCol, group: g, box: childBox(sp, box, grp),
+                  prst: geom ? geom.getAttribute("prst") : "",
                   // 段落ごとに改行を入れる（判子の「部署／日付／名前」などを分けて読めるように）
                   text: Array.prototype.map.call(tags(sp, "p"), function (pa) {
                     return Array.prototype.map.call(tags(pa, "t"), function (x) { return x.textContent; }).join("");
                   }).join("\n").trim()
                 });
               });
-              var blip = first(an, "blip");
-              var from = first(an, "from");
-              if (!blip || !from) return;
-              var rel = drels[attrNS(blip, "embed")];
-              if (!rel) return;
-              var path = resolve(dPath, rel.target);
-              list.push({ row: aRow, col: aCol, toRow: tRow, toCol: tCol, path: path });
+              // 画像（グループの中に複数あれば、それぞれの位置で）
+              Array.prototype.forEach.call(tags(an, "blip"), function (blip, k) {
+                var rel = drels[attrNS(blip, "embed")];
+                if (!rel) return;
+                var owner = blip.parentNode;
+                while (owner && owner !== an && owner.localName !== "pic" && owner.localName !== "sp") owner = owner.parentNode;
+                var b = owner && owner !== an ? childBox(owner, box, grp) : box;
+                // 手順の写真の割り当ては、これまでどおり図形の左上のセルで判断する
+                list.push({ row: k ? Math.floor(b.r1) : aRow, col: k ? Math.floor(b.c1) : aCol, toRow: Math.floor(b.r2), toCol: Math.floor(b.c2),
+                  box: b, path: resolve(dPath, rel.target), inGroup: k > 0 });
+              });
             });
             return Promise.all(list.map(function (im) {
               return get(im.path).then(function (bytes) {
                 im.bytes = bytes;
                 im.ext = (im.path.split(".").pop() || "png").toLowerCase();
+                // EMF・WMF などブラウザで表示できない形式は、判子の案内のためだけに残す
+                im.unsupported = !/^(png|jpe?g|gif|bmp|webp)$/.test(im.ext);
                 return im;
               });
             })).then(function (arr) {
-              // ブラウザで表示できる形式だけ
-              return arr.filter(function (im) { return im.bytes && /^(png|jpe?g|gif|bmp|webp)$/.test(im.ext); });
+              return arr.filter(function (im) { return im.bytes; });
             });
           });
         }
@@ -318,7 +364,8 @@
             if (!path) return null;
             return get(path).then(function (bytes) {
               var ext = (path.split(".").pop() || "png").toLowerCase();
-              return bytes && /^(png|jpe?g|gif|bmp|webp)$/.test(ext) ? { row: vc.row, col: vc.col, toRow: vc.row, toCol: vc.col, path: path, bytes: bytes, ext: ext } : null;
+              return bytes ? { row: vc.row, col: vc.col, toRow: vc.row, toCol: vc.col, box: { r1: vc.row, c1: vc.col, r2: vc.row + 1, c2: vc.col + 1 },
+                path: path, bytes: bytes, ext: ext, unsupported: !/^(png|jpe?g|gif|bmp|webp)$/.test(ext) } : null;
             });
           })).then(function (arr) { return arr.filter(Boolean); });
         });

@@ -364,7 +364,7 @@
     var base = String(d.docNo || "").normalize("NFKC").replace(/[^\w\-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "");
     if (!/\d/.test(base)) base = "xl" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     var extra = 0;
-    sheet.images.slice().sort(function (a, b) { return a.row - b.row || a.col - b.col; }).forEach(function (im) {
+    sheet.images.filter(function (im) { return !im.unsupported && !im.inGroup; }).sort(function (a, b) { return a.row - b.row || a.col - b.col; }).forEach(function (im) {
       var idx = stepAt(im.row);
       if (idx < 0) return;
       var s = d.steps[idx];
@@ -374,7 +374,7 @@
       images.push({ src: s.image, bytes: im.bytes, type: ext === "jpg" ? "image/jpeg" : "image/" + ext });
     });
 
-    readStamps(sheet, info, d, base, images);
+    var stampNotes = readStamps(sheet, info, d, base, images);
 
     // 区間の「開始」が空で、前の手順と同じ動画なら、前の「終了」から始める
     d.steps.forEach(function (s, i) {
@@ -382,16 +382,18 @@
       if (p && s.video.src && s.video.src === p.video.src && !s.video.start && p.video.end) s.video.start = p.video.end;
     });
 
-    return { data: d, images: images, info: info, starts: starts, extraImages: extra };
+    return { data: d, images: images, info: info, starts: starts, extraImages: extra, stampNotes: stampNotes };
   }
 
   // ---------- 判子（承認・点検・確認・作成の欄に押した印） ----------
   // 項目名の下の欄に置いてある画像は、判子の画像として取り込む。
   // 図形（〇と文字）で作った判子は、その文字を名前にする
   var STAMP_KEYS = ["approver", "inspector", "checker", "author"];
+  var STAMP_LABEL = { approver: "承認", inspector: "点検", checker: "確認", author: "作成" };
   function photoCount(res) { return res.images.filter(function (im) { return !im.stamp; }).length; }
   function readStamps(sheet, info, d, base, images) {
     var pos = info._pos || {};
+    var notes = [];
     function mergeAt(r, c) {
       for (var i = 0; i < sheet.merges.length; i++) {
         var m = sheet.merges[i];
@@ -399,33 +401,45 @@
       }
       return { r1: r, c1: c, r2: r, c2: c };
     }
-    // 画像・図形の中心が欄の中にあるか
-    function inside(o, a) {
-      var cr = (o.row + o.toRow + 1) / 2, cc = (o.col + o.toCol + 1) / 2;
-      return cr >= a.r1 && cr <= a.r2 + 1 && cc >= a.c1 && cc <= a.c2 + 1;
+    // 画像・図形が欄にどれだけ重なっているか（0〜1）。少しはみ出して置いてあっても欄のものとみなす
+    function overlap(o, a) {
+      var b = o.box || { r1: o.row, c1: o.col, r2: o.toRow + 1, c2: o.toCol + 1 };
+      var h = Math.min(b.r2, a.r2 + 1) - Math.max(b.r1, a.r1);
+      var w = Math.min(b.c2, a.c2 + 1) - Math.max(b.c1, a.c1);
+      if (h <= 0 || w <= 0) return 0;
+      var area = Math.max((b.r2 - b.r1) * (b.c2 - b.c1), 1e-6);
+      return h * w / area;
+    }
+    function best(list, a) {
+      var top = null, score = 0.3;
+      list.forEach(function (x) { var v = overlap(x, a); if (v > score) { score = v; top = x; } });
+      return top;
     }
     var pics = (sheet.images || []).concat(sheet.cellImages || []);
-    var used = [];
     STAMP_KEYS.forEach(function (key) {
       var p = pos[key];
       if (!p) return;
       var lab = mergeAt(p.r, p.c);
       var box = mergeAt(lab.r2 + 1, lab.c1);
       var area = { r1: lab.r2 + 1, r2: box.r2, c1: lab.c1, c2: Math.max(lab.c2, box.c2) };
-      var im = pics.filter(function (x) { return used.indexOf(x) === -1 && inside(x, area); })[0];
+      var im = best(pics, area);
       if (im) {
-        used.push(im);
-        var ext = im.ext === "jpeg" ? "jpg" : im.ext;
-        var src = "images/" + base + "_stamp_" + key + "." + ext;
-        (d.stamps || (d.stamps = {}))[key] = src;
-        images.push({ src: src, bytes: im.bytes, type: ext === "jpg" ? "image/jpeg" : "image/" + ext, stamp: key });
+        pics = pics.filter(function (x) { return x !== im; });
+        if (im.unsupported) {
+          notes.push(STAMP_LABEL[key] + "の判子は " + im.ext.toUpperCase() + " 形式の画像のため、画像として取り込めませんでした");
+        } else {
+          var ext = im.ext === "jpeg" ? "jpg" : im.ext;
+          var src = "images/" + base + "_stamp_" + key + "." + ext;
+          (d.stamps || (d.stamps = {}))[key] = src;
+          images.push({ src: src, bytes: im.bytes, type: ext === "jpg" ? "image/jpeg" : "image/" + ext, stamp: key });
+        }
       }
       if (!d[key]) {
         // 図形の判子：同じまとまり（グループ）の文字を読む。
         // 日付の行は除き、1 文字ずつの行（縦書きの「長／坂」）はつなげ、それ以外は最後の行（日付印の名前）を使う
         var text = {};
         (sheet.shapes || []).forEach(function (sp) {
-          if (sp.text && inside(sp, area)) text[sp.group] = (text[sp.group] ? text[sp.group] + "\n" : "") + sp.text;
+          if (sp.text && overlap(sp, area) > 0.3) text[sp.group] = (text[sp.group] ? text[sp.group] + "\n" : "") + sp.text;
         });
         var name = Object.keys(text).map(function (g) {
           var lines = text[g].split("\n").map(function (x) { return x.replace(/[\s　]+/g, ""); }).filter(function (x) {
@@ -437,6 +451,7 @@
         if (name && name.length <= 10) d[key] = name;
       }
     });
+    return notes;
   }
 
   var KIND_ORDER = ["safety", "quality", "ease"];
@@ -616,6 +631,7 @@
         (photoCount(result) ? "・写真 " + photoCount(result) + " 枚" : "") +
         (d.stamps ? "・判子 " + Object.keys(d.stamps).length + " 個" : "") +
         "。内容が違う場合は、見出しの行や列を選び直してください。" +
+        (result.stampNotes && result.stampNotes.length ? "<br><small>" + result.stampNotes.join("。<br>") + "。名前を文字で入れるか、エディタの「判子の画像」で png・jpg の画像を付けてください。</small>" : "") +
         (result.extraImages ? "<br><small>1 つの手順に写真が複数ある場合は、最初の 1 枚だけを取り込みます（" + result.extraImages + " 枚は取り込みません）。</small>" : ""));
     }
 

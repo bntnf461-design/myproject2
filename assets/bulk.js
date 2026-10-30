@@ -93,7 +93,7 @@
             found++;
             var it = {
               file: f.name, sheet: sheets.length > 1 ? x.s.name : "",
-              data: res.data, images: res.images,
+              data: res.data, images: res.images, stampNotes: res.stampNotes || [],
               status: res.data.steps.length ? "ok" : "empty", checked: !!res.data.steps.length
             };
             markExisting(it);
@@ -129,7 +129,9 @@
         '<td>' + (d ? esc(d.docNo) : '') + '</td>' +
         '<td><b>' + (d ? esc(d.title) : '') + '</b></td>' +
         '<td>' + (d ? esc([d.process, d.line].filter(Boolean).join(" ／ ")) : '') + '</td>' +
-        '<td>' + (d ? d.steps.length + " 件" + (kinds ? '<br><small>印 ' + kinds + ' 件</small>' : '') : '') + '</td>' +
+        '<td>' + (d ? d.steps.length + " 件" + (kinds ? '<br><small>印 ' + kinds + ' 件</small>' : '') +
+          (d.stamps ? '<br><small>判子 ' + Object.keys(d.stamps).length + ' 個</small>' : '') +
+          ((it.stampNotes || []).length ? '<br><small class="warn-text" title="' + esc(it.stampNotes.join("\n")) + '">判子 ' + it.stampNotes.length + ' 個は画像にできません</small>' : '') : '') + '</td>' +
         '<td>' + st + '</td>' +
         '<td>' + (d && d.steps.length ? '<button type="button" class="btn small" data-show="' + i + '">' + (it.open ? "閉じる" : "内容") + '</button>' : '') + '</td>' +
       '</tr>' +
