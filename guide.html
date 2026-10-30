@@ -35,6 +35,7 @@
     <a class="btn" href="#phone">スマホで撮る</a>
     <a class="btn" href="#pc">PC 作業を画面録画する</a>
     <a class="btn" href="#transfer">スマホの動画を PC に移す</a>
+    <a class="btn" href="#light">動画を軽くする</a>
     <a class="btn" href="#desktop">デスクトップから 1 回で開く</a>
   </nav>
 
@@ -47,7 +48,8 @@
     <h2>おすすめの設定</h2>
     <table class="rec"><tbody>
       <tr><th>形式</th><td><b>H.264</b>（「互換性優先」「高効率 オフ」など）</td></tr>
-      <tr><th>解像度</th><td><b>1080p（FHD・1920×1080）</b>　※低スペック PC が多い場合は 720p でも十分です</td></tr>
+      <tr><th>解像度</th><td><b>720p（HD・1280×720）</b>　共有フォルダが軽く、作業の手元を映すなら十分です<br>
+        <small>目盛り・小さな文字・細かい部品をはっきり見せたい作業だけ 1080p（FHD）にします</small></td></tr>
       <tr><th>コマ数</th><td><b>30 fps</b></td></tr>
       <tr><th>HDR</th><td><b>オフ</b></td></tr>
     </tbody></table>
@@ -67,7 +69,7 @@
       <h3>② 解像度とコマ数</h3>
       <ol>
         <li><span class="path">設定</span> → <span class="path">カメラ</span> → <span class="path">ビデオ撮影</span></li>
-        <li>「<span class="on">1080p HD/30 fps</span>」を選ぶ</li>
+        <li>「<span class="on">720p HD/30 fps</span>」を選ぶ（細かいところを見せたい作業は「1080p HD/30 fps」）</li>
       </ol>
 
       <h3>③ HDR をオフ</h3>
@@ -90,7 +92,7 @@
 
       <h3>② 解像度とコマ数</h3>
       <ol>
-        <li>「動画サイズ」「解像度」で「<span class="on">FHD</span>」または「<span class="on">1080p</span>」を選ぶ</li>
+        <li>「動画サイズ」「解像度」で「<span class="on">HD</span>」または「<span class="on">720p</span>」を選ぶ（細かいところを見せたい作業は「FHD」「1080p」）</li>
         <li>コマ数（fps）は「<span class="on">30</span>」を選ぶ</li>
       </ol>
       <p class="hint">機種によっては、撮影画面の上部にある「FHD」「4K」「30」「60」などの表示をタップして切り替えます。</p>
@@ -102,8 +104,8 @@
 
       <h3>機種別の例</h3>
       <ul>
-        <li><b>Galaxy</b>：カメラの設定 → 「詳細な動画オプション」の中に「高効率動画」「HDR10+ 動画」があります。解像度は撮影画面上部の「FHD」の表示で選びます。</li>
-        <li><b>Pixel</b>：動画モードで設定を開き、解像度「1080p」・「30 FPS」を選びます。「10 ビット HDR」がある場合はオフにします。</li>
+        <li><b>Galaxy</b>：カメラの設定 → 「詳細な動画オプション」の中に「高効率動画」「HDR10+ 動画」があります。解像度は撮影画面上部の「FHD」などの表示を押して「HD」を選びます。</li>
+        <li><b>Pixel</b>：動画モードで設定を開き、解像度「720p」（無い機種は「1080p」）・「30 FPS」を選びます。「10 ビット HDR」がある場合はオフにします。</li>
         <li><b>その他（AQUOS・Xperia・arrows など）</b>：カメラの設定の「動画」「ビデオ」の欄で、上の ①〜③ と同じ名前の項目を探してください。</li>
       </ul>
       <p class="hint">表示名はバージョンによって変わることがあります。</p>
@@ -120,6 +122,17 @@
       <li>手順の切れ目で<b>1〜2 秒手を止める</b>と、あとで区切りやすくなります</li>
       <li><b>スティック PC など力の弱い PC で見る場合</b>は、動画がカクつくときに「<b>720p・30fps</b>」で撮ると軽くなります（作業の手元なら 720p でも十分見えます）</li>
     </ul>
+  </section>
+
+  <section class="section" id="light" style="margin-top:28px">
+    <h2>共有フォルダに入れる動画を軽くする</h2>
+    <table class="rec"><tbody>
+      <tr><th>撮るとき</th><td>上の設定で <b>720p・30fps</b> にする（1080p の約半分の大きさ）</td></tr>
+      <tr><th>入れる前</th><td>エディタの「🎬 動画を手順に分ける」で区切ったあと、「<b>📦 使う区間だけの軽い動画に作り直す</b>」にチェックして反映する。<br>
+        手順の間の使わない部分を除いて、720p・軽い設定で作り直します（スマホで撮ったままの <b>約 5 分の 1</b> の大きさ。例：1080p 40 秒 16MB → 30 秒分 3MB）。元の動画は共有フォルダにはコピーしません</td></tr>
+      <tr><th>かかる時間</th><td>動画を再生しながら作るので、<b>使う区間の長さと同じくらい</b>（10 分なら約 10 分）。終わるまでその画面のままにしてください</td></tr>
+    </tbody></table>
+    <p class="hint">動画を「別の動画を選ぶ」で選んだときに使えます。すでに videos フォルダにある動画を軽くしたいときは、「別の動画を選ぶ」でその動画を選び直してください。</p>
   </section>
 
   <section class="section" id="transfer" style="margin-top:28px">

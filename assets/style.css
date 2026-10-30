@@ -1565,3 +1565,11 @@ html.printing .col-step::after { content: ""; display: block; clear: both; }
 .paper, .edit-card, .ez-page, .easy-doc, .easy-tile, .manual-card, .tp-info, .tr-row, .home-table, .cut-list { overflow-wrap: anywhere; }
 .steps { table-layout: auto; }
 .steps td { overflow-wrap: anywhere; word-break: normal; }
+.cut-thumb input:disabled + span { opacity: 0.6; }
+.cut-enc { position: fixed; inset: 0; z-index: 130; background: rgba(11, 26, 54, 0.85); display: grid; place-items: center; padding: 16px; }
+.cut-enc[hidden] { display: none; }
+.cut-enc-box { background: var(--white); color: var(--navy); border-radius: 12px; padding: 20px 24px; width: min(460px, 100%); display: grid; gap: 10px; justify-items: center; text-align: center; }
+.cut-enc-box h2 { margin: 0; font-size: 1.2rem; }
+.cut-enc-box canvas { width: 320px; max-width: 100%; height: auto; background: #000; border-radius: 6px; }
+.cut-enc-box .tr-bar { width: 100%; max-width: none; }
+#cutEncBar { background: var(--navy); }

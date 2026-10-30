@@ -66,10 +66,21 @@
         '<span class="seg-info" id="cutSum"></span>' +
         '<span class="spacer"></span>' +
         '<label class="cut-thumb"><input type="checkbox" id="cutThumb" checked> 写真の無い手順に、動画の場面を写真として付ける</label>' +
+        '<label class="cut-thumb" id="cutLightBox"><input type="checkbox" id="cutLight"> <span id="cutLightTxt">📦 使う区間だけの軽い動画に作り直す（720p）</span></label>' +
         '<button type="button" class="btn primary-inv" id="cutApply">この区切りで反映する</button>' +
-      '</div>';
+      '</div>' +
+      // 軽い動画を作っている間の表示
+      '<div class="cut-enc" id="cutEnc" hidden><div class="cut-enc-box">' +
+        '<h2>軽い動画を作っています</h2>' +
+        '<canvas id="cutEncView" width="320" height="180"></canvas>' +
+        '<div class="tr-bar"><i id="cutEncBar"></i></div>' +
+        '<p id="cutEncTxt"></p>' +
+        '<p class="hint">動画を再生しながら作るので、使う区間の長さと同じくらいの時間がかかります。<b>終わるまでこの画面のままにしてください</b>（ほかの画面に切り替えると止まることがあります）。</p>' +
+        '<button type="button" class="btn" id="cutEncStop">やめる</button>' +
+      '</div></div>';
     document.body.appendChild(el);
     video = el.querySelector("#cutPlayer");
+    el.querySelector("#cutLight").disabled = true; // 動画を選ぶまでは使えない
 
     video.addEventListener("loadedmetadata", function () {
       duration = video.duration || 0;
@@ -299,6 +310,16 @@
         (s ? '<button type="button" class="tbtn" data-a="play" title="この区間を再生">▶</button><button type="button" class="tbtn" data-a="clear" title="この手順の区切りを消す">✕</button>' : '') +
       '</li>';
     }).join("");
+    // 軽い動画に作り直せるか（「別の動画を選ぶ」で選んだ動画のとき）と、かかる時間の目安
+    var lb = el.querySelector("#cutLight"), lt = el.querySelector("#cutLightTxt");
+    if (src && duration) {
+      var ok = canLight();
+      lb.disabled = !ok;
+      if (!ok) lb.checked = false;
+      var tot = lightPlan().total;
+      lt.textContent = ok ? "📦 使う区間だけの軽い動画に作り直す（720p・約 " + Math.max(1, Math.ceil(tot / 60)) + " 分かかります）"
+        : "📦 軽い動画に作り直す（「別の動画を選ぶ」で選んだ動画のときに使えます）";
+    }
     var need = steps.filter(function (st) { return !st.noVideo; }).length;
     el.querySelector("#cutSum").textContent = count + " / " + need + " 手順に区間を設定";
     var curLi = el.querySelector("#cutList li.cur");
@@ -342,9 +363,10 @@
       if (end != null && duration && end >= duration - 0.3) end = null; // 最後まで
       return { src: src, start: s.start ? fmt(s.start) : "", end: end == null ? "" : fmt(end) };
     });
+    var light = el.querySelector("#cutLight").checked;
     var want = el.querySelector("#cutThumb").checked;
     var todo = want ? segs.map(function (s, i) { return s && s.start != null && !opt.steps[i].image ? i : -1; }).filter(function (i) { return i >= 0; }) : [];
-    if (!todo.length) { opt.apply(result, src, {}); close(); return; }
+    if (!todo.length) { finish(result, {}, 0, light); return; }
     // 各手順の始まり（少し後）の場面を写真にする
     var btn = el.querySelector("#cutApply");
     btn.disabled = true;
@@ -358,8 +380,160 @@
       });
     }, Promise.resolve()).then(function () {
       btn.disabled = false;
-      opt.apply(result, src, thumbs, failed);
+      finish(result, thumbs, failed, light);
+    });
+  }
+  function finish(result, thumbs, failed, light) {
+    if (!light) { opt.apply(result, src, thumbs, failed); close(); return; }
+    makeLight(result).then(function (r) {
+      if (!r) { opt.apply(result, src, thumbs, failed); close(); return; } // やめた・作れなかった：区切りだけ反映
+      opt.apply(r.result, r.src, thumbs, failed, r);
       close();
+    });
+  }
+
+  // ---------- 使う区間だけの軽い動画を作る ----------
+  // 動画を再生しながら 720p・軽い設定で録り直す（MediaRecorder）。手順の区間は新しい動画に合わせて付け直す
+  var LIGHT = { short: 720, video: 1500000, audio: 64000 };
+  function lightType() {
+    var types = ["video/mp4;codecs=avc1.42E01F,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2", "video/mp4", "video/webm;codecs=vp8,opus", "video/webm"];
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+    for (var i = 0; i < types.length; i++) if (MediaRecorder.isTypeSupported(types[i])) return types[i];
+    return "";
+  }
+  function canLight() {
+    return !!lightType() && !!HTMLCanvasElement.prototype.captureStream && /^blob:/.test(opt.url(src) || "");
+  }
+  function lightPlan() {
+    // 手順の区間（end が無いものは最後まで）を、重なり・すき間 0.3 秒未満はまとめた「録る範囲」にする
+    var used = [];
+    segs.forEach(function (s, i) {
+      if (!s || s.start == null) return;
+      used.push({ i: i, s: s.start, e: s.end == null ? duration : s.end });
+    });
+    var blocks = used.slice().sort(function (a, b) { return a.s - b.s; }).reduce(function (bl, u) {
+      var last = bl[bl.length - 1];
+      if (last && u.s <= last.e + 0.3) last.e = Math.max(last.e, u.e);
+      else bl.push({ s: u.s, e: u.e });
+      return bl;
+    }, []);
+    var total = blocks.reduce(function (t, b) { return t + (b.e - b.s); }, 0);
+    return { used: used, blocks: blocks, total: total };
+  }
+  function makeLight(result) {
+    var plan = lightPlan();
+    if (!plan.blocks.length) return Promise.resolve(null);
+    var type = lightType();
+    var box = el.querySelector("#cutEnc"), bar = el.querySelector("#cutEncBar"), txt = el.querySelector("#cutEncTxt");
+    var view = el.querySelector("#cutEncView"), vg = view.getContext("2d");
+    var stopped = false;
+    el.querySelector("#cutEncStop").onclick = function () { if (confirm("軽い動画を作るのをやめますか？（区切りはそのまま反映します）")) stopped = true; };
+    box.hidden = false;
+    video.pause();
+
+    var enc = document.createElement("video");
+    enc.src = opt.url(src);
+    enc.playsInline = true;
+    enc.preload = "auto";
+    var ac = null, rec = null, drawing = true;
+    var cleanup = function () {
+      drawing = false;
+      try { enc.pause(); enc.removeAttribute("src"); enc.load(); } catch (e) {}
+      if (ac && ac.close) ac.close();
+      box.hidden = true;
+    };
+    return new Promise(function (resolve, reject) {
+      enc.onloadedmetadata = function () { resolve(); };
+      enc.onerror = function () { reject(new Error("動画を開けません")); };
+    }).then(function () {
+      var vw = enc.videoWidth || 1280, vh = enc.videoHeight || 720;
+      var k = Math.min(1, LIGHT.short / Math.min(vw, vh));
+      var c = document.createElement("canvas");
+      c.width = Math.round(vw * k / 2) * 2;
+      c.height = Math.round(vh * k / 2) * 2;
+      view.height = Math.round(view.width * c.height / c.width);
+      var g = c.getContext("2d");
+      var stream = c.captureStream(30);
+      // 音は Web Audio を通して録る（スピーカーからは鳴らさない）
+      try {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        var dest = ac.createMediaStreamDestination();
+        ac.createMediaElementSource(enc).connect(dest);
+        dest.stream.getAudioTracks().forEach(function (t) { stream.addTrack(t); });
+      } catch (e) { /* 音が録れなくても映像は作る */ }
+      rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: LIGHT.video, audioBitsPerSecond: LIGHT.audio });
+      var chunks = [];
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+      var draw = function () {
+        if (!drawing) return;
+        g.drawImage(enc, 0, 0, c.width, c.height);
+        vg.drawImage(c, 0, 0, view.width, view.height);
+        if (enc.requestVideoFrameCallback) enc.requestVideoFrameCallback(draw); else requestAnimationFrame(draw);
+      };
+      var doneSec = 0, offsets = [];
+      var seek = function (t) {
+        return new Promise(function (r) { enc.onseeked = function () { enc.onseeked = null; r(); }; enc.currentTime = t; });
+      };
+      return plan.blocks.reduce(function (pr, b, bi) {
+        return pr.then(function () {
+          if (stopped) return;
+          return seek(b.s).then(function () {
+            g.drawImage(enc, 0, 0, c.width, c.height);
+            if (rec.state === "inactive") rec.start(1000); else rec.resume();
+            offsets[bi] = doneSec;
+            return enc.play();
+          }).then(function () {
+            if (enc.requestVideoFrameCallback) enc.requestVideoFrameCallback(draw); else draw();
+            return new Promise(function (r) {
+              var watch = function () {
+                var t = enc.currentTime;
+                var cur = doneSec + Math.max(0, t - b.s);
+                bar.style.width = Math.min(100, cur / plan.total * 100) + "%";
+                txt.textContent = fmt(cur) + " / " + fmt(plan.total) + "（" + (bi + 1) + " / " + plan.blocks.length + " 区間）";
+                if (stopped || t >= b.e - 0.02 || enc.ended) {
+                  enc.pause();
+                  if (rec.state === "recording") rec.pause();
+                  b.len = Math.max(0, Math.min(t, b.e) - b.s);
+                  doneSec += b.len;
+                  r();
+                } else setTimeout(watch, 40);
+              };
+              watch();
+            });
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        return new Promise(function (r) {
+          rec.onstop = function () { r(new Blob(chunks, { type: rec.mimeType || type })); };
+          if (rec.state !== "inactive") rec.stop(); else r(null);
+        });
+      }).then(function (blob) {
+        cleanup();
+        if (stopped || !blob || !blob.size) return null;
+        // 手順の区間を、新しい動画の時間に付け直す
+        var ext = /mp4/.test(blob.type) ? "mp4" : "webm";
+        var stem = src.split("/").pop().replace(/\.[^.]+$/, "");
+        var nsrc = "videos/" + stem + "_light." + ext;
+        var res = result.map(function (v, i) {
+          if (!v) return v;
+          var s = segs[i], e = s.end == null ? duration : s.end;
+          for (var bi = 0; bi < plan.blocks.length; bi++) {
+            var b = plan.blocks[bi];
+            if (s.start >= b.s - 0.01 && s.start <= b.e) {
+              var ns = offsets[bi] + (s.start - b.s);
+              var ne = offsets[bi] + Math.min(e, b.s + b.len) - b.s;
+              // 区間の終わりは必ず入れる（作り直した動画は長さが正しく分からないことがあるため）
+              return { src: nsrc, start: ns > 0.05 ? fmt(ns) : "", end: fmt(ne) };
+            }
+          }
+          return v;
+        });
+        return { result: res, src: nsrc, file: new File([blob], nsrc.split("/").pop(), { type: blob.type }), before: (opt.size ? opt.size(src) : 0), after: blob.size, seconds: doneSec };
+      });
+    }).catch(function (e) {
+      cleanup();
+      alert("軽い動画を作れませんでした（" + (e && e.message || e) + "）。区切りだけを反映します。");
+      return null;
     });
   }
   // 今の動画の t 秒の場面を JPEG にする（幅は最大 960px：軽くするため）

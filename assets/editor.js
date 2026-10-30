@@ -1128,8 +1128,15 @@
     WICutter.open({
       steps: m.steps, srcs: srcs, src: main,
       url: function (s) { return objectUrls[s] || s; },
+      size: function (s) { return pickedFiles[s] ? pickedFiles[s].size : 0; },
       pick: function (cb) { cutPicked = cb; cutPicker.value = ""; cutPicker.click(); },
-      apply: function (res, src, thumbs, failed) {
+      apply: function (res, src, thumbs, failed, light) {
+        // 軽く作り直した動画（保存のときに videos フォルダへ書き出す。元の動画はコピーしない）
+        if (light) {
+          if (objectUrls[light.src]) URL.revokeObjectURL(objectUrls[light.src]);
+          objectUrls[light.src] = URL.createObjectURL(light.file);
+          addPicked(light.src, light.file);
+        }
         var stem = src.split("/").pop().replace(/\.[^.]+$/, "").normalize("NFKC").replace(/[^\w\-]+/g, "_") || "video";
         var pics = 0;
         res.forEach(function (v, i) {
@@ -1152,7 +1159,11 @@
         render();
         saveDraft();
         var n = res.filter(Boolean).length;
+        var mb = function (x) { return (x / 1048576).toFixed(1) + " MB"; };
         notice("<b>" + n + " 手順に動画の区間を設定しました。</b>" +
+          (light ? "<br>📦 使う区間だけの軽い動画（" + esc(light.src.split("/").pop()) + "）を作りました：" +
+            (light.before ? mb(light.before) + " → <b>" + mb(light.after) + "</b>" : "<b>" + mb(light.after) + "</b>") +
+            "（" + WI.formatTime(light.seconds) + "）。保存すると videos フォルダに入ります。元の動画は共有フォルダにコピーしません。<br>" : "") +
           (pics ? "写真の無かった " + pics + " 手順に、動画の場面を写真として付けました。" : "") +
           (failed ? "<br><small>動画の場面を写真にできなかった手順があります（" + failed + " 件）。「別の動画を選ぶ」で動画を選び直すと作れます。</small>" : "") +
           "「プレビュー」で確認してから保存してください。");
