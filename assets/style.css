@@ -1495,3 +1495,6 @@ body.easy { background: var(--bg); min-height: 100vh; display: flex; flex-direct
 .mock-menu .sub { margin-left: 24px; border-left: 3px solid #3d7be0; background: #fff; }
 .topbar { flex-wrap: wrap; }
 .topbar h1 { min-width: min(7em, 40vw); }
+.ez-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 14px; }
+.ez-head h2 { margin: 0; }
+.ez-tools { display: flex; gap: 6px; flex-wrap: wrap; }

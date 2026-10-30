@@ -102,6 +102,9 @@
   try { editMode = localStorage.getItem("wi.editMode") || "easy"; } catch (e) {}
   var ep = 0;
   var ezWantPhoto = {}; // 「写真」を選んだが、まだ写真を選んでいない手順
+  // 開いたとき（または最後に保存したとき）のファイルの中身。保存の前に比べて、別の人が保存していないかを確かめる
+  var baseText = "";
+  function canon(d) { var c = JSON.parse(JSON.stringify(d)); delete c._file; return JSON.stringify(c); }
 
   // ---------- 起動 ----------
   var paramFile = WI.getParam("file");
@@ -109,6 +112,7 @@
     WI.loadManualFile(paramFile, function (data, err) {
       if (!data) { formEl.innerHTML = '<div class="notice error">' + esc(err) + '</div>'; return; }
       fileName = paramFile;
+      baseText = canon(data);
       m = normalize(JSON.parse(JSON.stringify(data)));
       render();
       notice("「" + paramFile + "」を開きました。");
@@ -119,6 +123,7 @@
     if (draft) {
       m = normalize(draft.data);
       fileName = draft.file || "";
+      baseText = draft.base || "";
       dirty = draft.dirty !== false;
       render();
       draftState.textContent = dirty ? "● 未保存" : "保存済み";
@@ -147,7 +152,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty }));
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty, base: baseText }));
         draftState.textContent = dirty ? "● 未保存" : "保存済み";
       } catch (e) {
         draftState.textContent = "自動保存できません";
@@ -248,7 +253,12 @@
       '</section>';
     } else if (ep <= N) {
       var i = ep - 1, s = m.steps[i], b = "steps." + i, md = mediaOf(s, i);
-      h += '<section class="ez-page edit-card" id="ed-step-' + i + '"><h2>② 手順 ' + (i + 1) + ' <small>／ 全 ' + N + '</small></h2>' +
+      h += '<section class="ez-page edit-card" id="ed-step-' + i + '"><div class="ez-head"><h2>② 手順 ' + (i + 1) + ' <small>／ 全 ' + N + '</small></h2>' +
+        '<span class="ez-tools">' +
+          '<button type="button" class="btn small" data-act="step-up" data-i="' + i + '"' + (i === 0 ? " disabled" : "") + ' title="この手順を 1 つ前にする">↑ 前へ移す</button>' +
+          '<button type="button" class="btn small" data-act="step-down" data-i="' + i + '"' + (i === N - 1 ? " disabled" : "") + ' title="この手順を 1 つ後にする">↓ 後へ移す</button>' +
+          '<button type="button" class="btn small danger" data-act="step-del" data-i="' + i + '">この手順を消す</button>' +
+        '</span></div>' +
         field(esc(T.step) + "（短く 1 行で）", b + ".title", { wide: true, ph: "例：ボルトを仮締めする" }) +
         '<div class="ez-points"><b>' + esc(T.point) + '</b><span class="hint">　うまくやるコツ・間違えやすいところ（無ければ空のままで OK）</span>';
       s.points.forEach(function (p, j) {
@@ -490,14 +500,15 @@
     var path = b.getAttribute("data-path");
     var st = m.steps;
     switch (act) {
-      case "step-up": swap(st, i, i - 1); break;
-      case "step-down": swap(st, i, i + 1); break;
+      case "step-up": swap(st, i, i - 1); if (editMode === "easy" && i > 0) ep = i; break;
+      case "step-down": swap(st, i, i + 1); if (editMode === "easy" && i < st.length - 1) ep = i + 2; break;
       case "step-ins": insertStep(i + 1); return;
       case "step-dup": st.splice(i + 1, 0, JSON.parse(JSON.stringify(st[i]))); break;
       case "step-del":
         if (!confirm("手順 " + (i + 1) + " を削除しますか？")) return;
         st.splice(i, 1);
         if (!st.length) st.push(blankStep());
+        if (editMode === "easy") ep = Math.min(ep, st.length);
         break;
       case "point-add": st[i].points.push(blankPoint()); break;
       case "point-del": st[i].points.splice(j, 1); break;
@@ -862,7 +873,7 @@
   function markSaved(name) {
     fileName = name;
     dirty = false;
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: false })); } catch (e) {}
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: false, base: baseText })); } catch (e) {}
     draftState.textContent = "保存済み";
   }
 
@@ -986,9 +997,22 @@
       // 新しい要領書なのに同じ名前のファイルがある場合は、上書きせずに「_2」などを付ける
       return (fileName ? Promise.resolve(name) : uniqueName(md, name)).then(function (n) { name = n; return md; });
     }).then(function (md) {
-      return WIFolder.backup(md, name, "_backup").then(function () {
+      // 開いた後で、別の PC（別の人）がこの要領書を保存していないか
+      var check = fileName && baseText ? WIFolder.readText(md, name).then(function (t) {
+        var now = "";
+        try { now = canon(WIFolder.parseManual(t)); } catch (e) { return; }
+        if (now === baseText) return;
+        if (!confirm("この要領書は、あなたが開いた後に、別の PC（または別の画面）で保存されています。\n\n" +
+          "このまま保存すると、その内容はあなたの内容で上書きされます（上書きされる内容はバックアップ manuals/_backup に残ります）。\n\n" +
+          "上書きして保存しますか？\n（「キャンセル」を押すと保存しません。一覧から開き直して、相手の内容を確かめてください）")) {
+          var err = new Error("conflict");
+          err.name = "ConflictAbort";
+          throw err;
+        }
+      }, function () {}) : Promise.resolve();
+      return check.then(function () { return WIFolder.backup(md, name, "_backup"); }).then(function () {
         return WIFolder.writeFile(md, name, toFileText(d));
-      });
+      }).then(function () { baseText = canon(d); });
     }).then(function () {
       // 新しい要領書なら一覧（目録）に追加
       return WIFolder.updateCatalog(root, function (c) {
@@ -1009,6 +1033,10 @@
       window.scrollTo(0, 0);
     }).catch(function (e) {
       if (e && e.name === "AbortError") return; // フォルダ選択をキャンセル
+      if (e && e.name === "ConflictAbort") {
+        notice("<b>保存をやめました。</b>別の PC で保存された内容があります。入力中の内容はこの PC に残っているので、相手の内容を確かめてから、もう一度保存してください。", true);
+        return;
+      }
       notice("<b>保存できませんでした。</b>" + esc(WIFolder.errorMessage(e)) +
         "<br><small>うまくいかない場合は「ファイルに書き出す」で保存し、manuals フォルダに入れてください。</small>", true);
       window.scrollTo(0, 0);
@@ -1020,7 +1048,7 @@
   document.getElementById("preview").addEventListener("click", function () {
     try {
       localStorage.setItem("wi.preview", JSON.stringify(cleaned()));
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ data: m, file: fileName, dirty: dirty, base: baseText }));
     } catch (e) {
       notice("プレビューを作成できませんでした（ブラウザの保存領域が使えません）。", true);
       return;
@@ -1193,6 +1221,7 @@
       var a = text.indexOf("("), b = text.lastIndexOf(")");
       var json = /^\s*registerManual\s*\(/.test(text) ? text.slice(a + 1, b) : text;
       try {
+        baseText = canon(JSON.parse(json));
         m = normalize(JSON.parse(json)); ep = 0;
         render();
         markSaved(f.name);

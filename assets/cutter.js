@@ -267,7 +267,9 @@
     el.querySelector("#cutMark").disabled = done || !duration;
     el.querySelector("#cutStart").disabled = done || !duration;
     el.querySelector("#cutUndo").disabled = !history.length;
-    el.querySelector("#cutNow").innerHTML = done ? "<b>すべての手順を区切りました</b>"
+    var anyVideo = steps.some(function (st) { return !st.noVideo; });
+    el.querySelector("#cutNow").innerHTML = !anyVideo ? "<b>動画を使う手順がありません</b>（すべての手順が「写真」か「文字だけ」になっています）"
+      : done ? "<b>すべての手順を区切りました</b>"
       : "いま区切っている手順：<b>手順 " + (cur + 1) + "</b>　" + esc(steps[cur].title || "");
 
     // タイムライン
