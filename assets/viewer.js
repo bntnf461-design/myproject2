@@ -564,7 +564,7 @@
   function updateSpeak() {
     pSpeak.setAttribute("aria-pressed", speakOn ? "true" : "false");
     pSpeak.classList.toggle("on", speakOn);
-    pSpeak.textContent = speakOn ? (lang === "id" ? "🔊 Baca: ON" : "🔊 読み上げ中") : (lang === "id" ? "🔈 Bacakan" : "🔈 読み上げ");
+    pSpeak.textContent = speakOn ? (lang === "id" ? "🔊 Suara: ON" : "🔊 読み上げ：オン") : (lang === "id" ? "🔈 Suara: OFF" : "🔈 読み上げ：オフ");
   }
   pSpeak.addEventListener("click", function () {
     speakOn = !speakOn;
