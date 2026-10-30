@@ -211,8 +211,7 @@
   }
 
   function card(m) {
-    var steps = (m.steps || []).length;
-    var videos = (m.steps || []).filter(function (s) { return s.video && s.video.src; }).length;
+    var vs = WI.videoStats(m), steps = vs.all, videos = vs.done;
     var meta = levels.filter(function (k) { return m[k]; }).map(function (k) { return esc(m[k]); }).join(" ／ ");
     var thumb = (m.steps || []).filter(function (s) { return s.image; })[0];
     return '<li><a class="manual-card' + (thumb ? ' with-thumb' : '') + '" href="manual.html?file=' + encodeURIComponent(m._file) + '">' +

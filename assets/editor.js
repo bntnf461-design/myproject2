@@ -97,6 +97,12 @@
     });
   }
 
+  // 入力のしかた（かんたん入力／すべての項目）。起動時の表示より前に決めておく
+  var editMode = "easy";
+  try { editMode = localStorage.getItem("wi.editMode") || "easy"; } catch (e) {}
+  var ep = 0;
+  var ezWantPhoto = {}; // 「写真」を選んだが、まだ写真を選んでいない手順
+
   // ---------- 起動 ----------
   var paramFile = WI.getParam("file");
   if (paramFile) {
@@ -205,12 +211,103 @@
     '</div>';
   }
 
+  // ---------- かんたん入力（1 画面に 1 つずつ） ----------
+  // 0 = 作業の名前、1〜N = 手順、N+1 = 仕上げ。入力欄は「すべての項目」と同じ仕組み（data-path）で m を書き換える
+  function modeSwitch() {
+    return '<div class="mode-switch" role="group" aria-label="入力のしかた">' +
+      '<button type="button" data-act="mode" data-v="easy" class="' + (editMode === "easy" ? "on" : "") + '">かんたん入力<small>1 つずつ順番に</small></button>' +
+      '<button type="button" data-act="mode" data-v="full" class="' + (editMode === "full" ? "on" : "") + '">すべての項目<small>1 画面で全部</small></button>' +
+    '</div>';
+  }
+  function mediaOf(s, i) { return s.noVideo ? (s.image || ezWantPhoto[i] ? "photo" : "none") : "video"; }
+  function renderEasy() {
+    var T = WI.terms(m, window.CATALOG);
+    var N = m.steps.length;
+    if (ep > N + 1) ep = N + 1;
+    var h = '<div id="msgArea"></div>' + modeSwitch();
+    // 進み具合（押すとその画面へ）
+    h += '<ol class="ez-steps">' +
+      '<li class="' + (ep === 0 ? "now" : "") + '"><button type="button" data-act="ez-go" data-i="0">① 作業の名前</button></li>' +
+      m.steps.map(function (s, i) {
+        return '<li class="' + (ep === i + 1 ? "now" : "") + (s.title ? " done" : "") + '"><button type="button" data-act="ez-go" data-i="' + (i + 1) + '" title="' + esc(s.title) + '">' + (i + 1) + '</button></li>';
+      }).join("") +
+      '<li class="' + (ep === N + 1 ? "now" : "") + '"><button type="button" data-act="ez-go" data-i="' + (N + 1) + '">③ 仕上げ</button></li>' +
+    '</ol>';
+
+    if (ep === 0) {
+      h += '<section class="ez-page"><h2>① 作業の名前と場所</h2>' +
+        '<div class="form-grid">' +
+          field(esc(T.title) + "＊", "title", { wide: true, ph: "例：ボルト締付け作業" }) +
+          field(esc(catConf.labels.line), "line", { list: "line", ph: "例：Aライン" }) +
+          field(esc(catConf.labels.product), "product", { list: "product", ph: "例：BR-1024 ブラケット" }) +
+          field(esc(catConf.labels.process), "process", { list: "process", ph: "例：第2組立工程" }) +
+          field(esc(T.docNo), "docNo", { ph: "例：WI-A-001" }) +
+          field("作成", "author", { ph: "あなたの名前" }) +
+        '</div>' +
+        '<p class="hint">保護具・安全上の注意・判子などは、上の「すべての項目」で入力できます。</p>' +
+      '</section>';
+    } else if (ep <= N) {
+      var i = ep - 1, s = m.steps[i], b = "steps." + i, md = mediaOf(s, i);
+      h += '<section class="ez-page edit-card" id="ed-step-' + i + '"><h2>② 手順 ' + (i + 1) + ' <small>／ 全 ' + N + '</small></h2>' +
+        field(esc(T.step) + "（短く 1 行で）", b + ".title", { wide: true, ph: "例：ボルトを仮締めする" }) +
+        '<div class="ez-points"><b>' + esc(T.point) + '</b><span class="hint">　うまくやるコツ・間違えやすいところ（無ければ空のままで OK）</span>';
+      s.points.forEach(function (p, j) {
+        h += '<div class="ez-point">' +
+          field("", b + ".points." + j + ".text", { ph: "例：対角の順番で締める" }) +
+          field("", b + ".points." + j + ".reason", { ph: "理由（例：片締めを防ぐため）" }) +
+          '<button type="button" class="btn small danger" data-act="point-del" data-i="' + i + '" data-j="' + j + '" title="この急所を消す">✕</button></div>';
+      });
+      h += '<button type="button" class="btn small" data-act="point-add" data-i="' + i + '">＋ 急所を追加</button></div>' +
+        '<div class="ez-kinds">' + ["safety", "quality"].map(function (k) {
+          return '<label class="set-check"><input type="checkbox" data-kinds="' + i + '" value="' + k + '"' + ((s.kinds || []).indexOf(k) !== -1 ? " checked" : "") + '> ' + WI.kindBadge(k) + '</label>';
+        }).join("") + '</div>' +
+        '<div class="ez-media"><b>この手順の見せ方</b>' +
+          '<div class="ez-choice" role="radiogroup">' +
+            [["video", "🎬", "動画", "動きが大事な作業"], ["photo", "🖼", "写真", "場所・向き・見た目が大事"], ["none", "📝", "文字だけ", "見なくても分かる"]].map(function (c) {
+              return '<button type="button" role="radio" aria-checked="' + (md === c[0]) + '" class="' + (md === c[0] ? "on" : "") + '" data-act="ez-media" data-i="' + i + '" data-v="' + c[0] + '">' +
+                '<span class="ic">' + c[1] + '</span><b>' + c[2] + '</b><small>' + c[3] + '</small></button>';
+            }).join("") +
+          '</div>' +
+          (md === "video" ? '<p class="hint">動画は、全部の手順を入れた後に「③ 仕上げ」の「🎬 動画を手順に分ける」で、1 本の動画からまとめて付けるのがかんたんです。</p>' +
+            (s.video.src ? '<p class="ez-ok">✓ 動画：' + esc(s.video.src.split("/").pop()) + (s.video.start || s.video.end ? "（" + esc(s.video.start || "0:00") + "〜" + esc(s.video.end || "最後") + "）" : "") + '</p>' : '') : '') +
+          (md === "photo" ? '<div class="ez-photo">' +
+            (s.image ? '<img class="thumb" src="' + esc(objectUrls[s.image] || s.image) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
+            '<div><button type="button" class="btn primary" data-act="pick-image" data-path="' + b + '.image">' + (s.image ? "写真を変える" : "写真を選ぶ") + '</button>' +
+            (s.image ? ' <button type="button" class="btn" data-act="annotate" data-i="' + i + '">✎ 丸・矢印を書き込む</button>' : '') +
+            '<p class="hint">画面のコピー（Win＋Shift＋S）は、ここで Ctrl＋V でも貼り付けられます。</p></div></div>' : '') +
+        '</div>' +
+      '</section>';
+    } else {
+      var vs = WI.videoStats(m);
+      h += '<section class="ez-page"><h2>③ 仕上げ</h2>' +
+        '<ol class="ez-sum">' + m.steps.map(function (s, k) {
+          var md2 = mediaOf(s);
+          var st = md2 === "video" ? (s.video.src ? '<span class="ok">🎬 動画あり</span>' : '<span class="warn-text">🎬 動画がまだ</span>') :
+            md2 === "photo" ? '<span class="ok">🖼 写真</span>' : '<span>📝 文字だけ</span>';
+          return '<li><button type="button" class="linkish" data-act="ez-go" data-i="' + (k + 1) + '">' + esc(s.title || "（手順の名前がまだ）") + '</button>' + st + '</li>';
+        }).join("") + '</ol>' +
+        (vs.all > vs.done ? '<div class="cut-banner"><div><b>動画がまだの手順が ' + (vs.all - vs.done) + ' つあります。</b><span class="hint">作業を最初から最後まで 1 本で撮った動画から、見ながら区切るだけで付けられます。</span></div>' +
+          '<button type="button" class="btn primary" data-act="cut">🎬 動画を手順に分ける</button></div>' : '<p class="ez-ok">✓ 動画が必要な手順には、すべて動画が付いています。</p>') +
+        '<p>下の「<b>プレビュー</b>」で作業者の画面を確認して、「<b>フォルダに保存</b>」を押してください。</p>' +
+      '</section>';
+    }
+    // 前へ・次へ
+    h += '<div class="ez-nav">' +
+      (ep > 0 ? '<button type="button" class="btn big" data-act="ez-go" data-i="' + (ep - 1) + '">◀ 前へ</button>' : '<span></span>') +
+      (ep >= 1 && ep <= N ? '<button type="button" class="btn big" data-act="ez-add" data-i="' + ep + '">＋ この後に手順を追加</button>' : '<span></span>') +
+      (ep <= N ? '<button type="button" class="btn primary big" data-act="ez-go" data-i="' + (ep + 1) + '">' + (ep === N ? "仕上げへ ▶" : ep === 0 ? "手順の入力へ ▶" : "次の手順へ ▶") + '</button>' : '<span></span>') +
+    '</div>';
+    formEl.innerHTML = h;
+    if (transBtn) transLabel();
+  }
+
   function render() {
+    if (editMode === "easy") { renderEasy(); return; }
     var y = window.scrollY;
     var h = "";
     var T = WI.terms(m, window.CATALOG);
 
-    h += '<div id="msgArea"></div>';
+    h += '<div id="msgArea"></div>' + modeSwitch();
 
     h += '<section class="section"><h2>文書情報</h2><div class="form-grid">' +
       field(esc(T.title) + "＊", "title", { wide: true, ph: "例：ボルト締付け作業" }) +
@@ -266,7 +363,9 @@
             '<button type="button" class="btn small primary" data-act="annotate" data-i="' + i + '" style="align-self:flex-start;margin-top:4px">✎ 書き込み（丸・矢印・番号）</button>' : '') +
           '<span class="hint">画面のコピー（Win＋Shift＋S）をこの手順で Ctrl＋V でも貼り付けられます</span>' +
           checkBox(s.image) + '</div>' +
-        '<div class="field wide"><span>この手順の動画</span>' + videoFields(b + ".video") + '</div>' +
+        '<div class="field wide"><span>この手順の動画</span>' +
+          '<label class="set-check novideo"><input type="checkbox" data-novideo="' + i + '"' + (s.noVideo ? " checked" : "") + '> この手順は動画を使わない（写真や文字の方が分かりやすい）</label>' +
+          (s.noVideo ? '<span class="hint">作業者の画面では、写真（無ければ文字）を大きく表示します。「動画がまだ」には数えません。</span>' : videoFields(b + ".video")) + '</div>' +
       '</div>' +
       '<div class="sub-list"><b>' + esc(T.point) + '</b>';
       s.points.forEach(function (p, j) {
@@ -354,6 +453,13 @@
       saveDraft();
       return;
     }
+    if (el.hasAttribute("data-novideo")) {
+      var st = m.steps[+el.getAttribute("data-novideo")];
+      if (el.checked) st.noVideo = true; else delete st.noVideo;
+      saveDraft();
+      render();
+      return;
+    }
     var path = el.getAttribute("data-path");
     if (!path || el.tagName === "BUTTON") return;
     var type = el.getAttribute("data-type");
@@ -427,6 +533,44 @@
       case "seg": openSeg(path); return;
       case "annotate": annotate(i); return;
       case "cut": openCutter(); return;
+      case "mode":
+        editMode = b.getAttribute("data-v");
+        try { localStorage.setItem("wi.editMode", editMode); } catch (e) {}
+        render();
+        window.scrollTo(0, 0);
+        return;
+      case "ez-go":
+        ep = Math.max(0, Math.min(m.steps.length + 1, i));
+        // 最後の手順の「次へ」で、手順の名前が入っていれば新しい手順を足さずに仕上げへ
+        render();
+        window.scrollTo(0, 0);
+        var first = formEl.querySelector(".ez-page input, .ez-page textarea");
+        if (first && !first.value) first.focus();
+        return;
+      case "ez-add":
+        var at = i; // ep（1 始まり）の後ろ = 配列の at 番目
+        var ns = blankStep();
+        var pv = m.steps[at - 1];
+        if (pv && pv.video.src) { ns.video.src = pv.video.src; ns.video.start = pv.video.end || ""; }
+        m.steps.splice(at, 0, ns);
+        ep = at + 1;
+        saveDraft();
+        render();
+        window.scrollTo(0, 0);
+        var ti = formEl.querySelector('[data-path="steps.' + at + '.title"]');
+        if (ti) ti.focus();
+        return;
+      case "ez-media":
+        var sm = m.steps[i], v = b.getAttribute("data-v");
+        if (v === "video") delete sm.noVideo; else sm.noVideo = true;
+        ezWantPhoto[i] = v === "photo";
+        if (v === "none" && sm.image) {
+          if (!confirm("この手順の写真を外して、文字だけにしますか？")) return;
+          sm.image = "";
+          delete sm.marks;
+        }
+        if (v === "photo" && !sm.image) { saveDraft(); render(); pick("image", "steps." + i + ".image"); return; }
+        break;
       case "delete-doc": deleteDoc(); return;
       default: return;
     }
@@ -671,10 +815,10 @@
   // 動画がまだ付いていない手順（保存はできるが、知らせておく）
   function missingVideoNote(d) {
     var no = [];
-    d.steps.forEach(function (s, i) { if (!(s.video && s.video.src)) no.push(i + 1); });
+    d.steps.forEach(function (s, i) { if (!s.noVideo && !(s.video && s.video.src)) no.push(i + 1); });
     if (!no.length) return "";
     return '<br><span class="warn-text">動画がまだの手順：' + (no.length === d.steps.length ? "すべて" : no.join("、")) + '</span>' +
-      '<small>（手順の「選ぶ」から動画を付けられます。動画が無い手順は、作業者の画面では文字が大きく表示されます）</small>';
+      '<small>（手順の「選ぶ」から動画を付けられます。動画より写真や文字の方が分かりやすい手順は「この手順は動画を使わない」にチェックしてください）</small>';
   }
 
   // 文書番号からファイル名を作る。無い場合は日時を付けて、他の要領書を上書きしないようにする
@@ -887,6 +1031,7 @@
       s.video.start = prev.video.end || "";
     }
     m.steps.splice(at, 0, s);
+    if (editMode === "easy") ep = at + 1;
     render();
     saveDraft();
     var el = document.getElementById("ed-step-" + at);
@@ -976,7 +1121,7 @@
   document.getElementById("importXl").addEventListener("click", function () {
     WIImport.open(function (res) {
       if (dirty && !confirm("入力中の内容を、取り込んだ内容に置き換えますか？")) return;
-      m = normalize(res.data);
+      m = normalize(res.data); ep = 0;
       fileName = "";
       // Excel に貼ってあった写真は、フォルダ保存のときに images フォルダへ書き出す
       res.images.forEach(function (im) {
@@ -987,7 +1132,7 @@
       history.replaceState(null, "", "editor.html");
       render();
       saveDraft();
-      var noVideo = m.steps.filter(function (s) { return !s.video.src; }).length;
+      var noVideo = m.steps.filter(function (s) { return !s.noVideo && !s.video.src; }).length;
       notice("<b>Excel から取り込みました（手順 " + m.steps.length + " 件）。</b><br>" +
         "内容を確認し、" + (noVideo ? "動画を「選ぶ」→「区間を設定」で付けてから、" : "") + "保存してください。" +
         (res.images.length ? "<br>Excel の" + (WIImport.photoCount(res) ? "写真 " + WIImport.photoCount(res) + " 枚" : "") +
@@ -1020,7 +1165,7 @@
 
   document.getElementById("newDoc").addEventListener("click", function () {
     if (!confirm("入力中の内容を破棄して、新しい要領書を作りますか？")) return;
-    m = blankManual();
+    m = blankManual(); ep = 0;
     fileName = "";
     try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
     history.replaceState(null, "", "editor.html");
@@ -1038,7 +1183,7 @@
       var a = text.indexOf("("), b = text.lastIndexOf(")");
       var json = /^\s*registerManual\s*\(/.test(text) ? text.slice(a + 1, b) : text;
       try {
-        m = normalize(JSON.parse(json));
+        m = normalize(JSON.parse(json)); ep = 0;
         render();
         markSaved(f.name);
         notice("「" + esc(f.name) + "」を開きました。");

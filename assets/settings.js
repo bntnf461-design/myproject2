@@ -133,8 +133,8 @@
       '<button type="button" class="btn small" data-act="rd-starter">読み間違えやすい言葉を追加</button></div>' +
     '</section>';
 
-    h += '<section class="section"><h2>一覧で絞り込む項目</h2>' +
-      '<p class="hint" style="margin-top:0">チェックした項目が、上から順に一覧の絞り込みに表示されます。表示名は自由に変えられます（例：ライン → 職場、工程 → 業務）。</p>' +
+    h += '<section class="section" id="levels"><h2>一覧・かんたん画面で選ぶ項目</h2>' +
+      '<p class="hint" style="margin-top:0">チェックした項目が、上から順に一覧の絞り込みに表示されます。<b>作業者用のかんたん画面でも、この順番で大きなボタンを選んでいきます</b>（例：ライン → 工程 → 作業）。表示名は自由に変えられます（例：ライン → 職場、工程 → 業務）。ボタンの並び順は、下の「カテゴリーの名前」の順番になります。</p>' +
       levelRows.map(function (r, i) {
         return '<div class="set-row">' +
           '<label class="set-check"><input type="checkbox" data-use="' + i + '"' + (r.use ? " checked" : "") + '> 使う</label>' +

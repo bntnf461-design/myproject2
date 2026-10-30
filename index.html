@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>作業要領書 ホーム</title>
 <link rel="stylesheet" href="assets/style.css">
+<script>
+  // 作業者用にした PC は、かんたん画面を開く（管理者の画面へは ?admin=1 で）
+  try { if (localStorage.getItem("wi.mode") === "worker" && !/[?&]admin=1/.test(location.search)) location.replace("easy.html"); } catch (e) {}
+</script>
 </head>
 <body>
 <header class="topbar">
@@ -31,6 +35,19 @@
     <span class="go">開く ▶</span>
   </a>
   <div class="recent" id="recent"></div>
+
+  <div class="worker-banner" id="workerBanner" hidden>
+    <b>この PC は「作業者用」になっています。</b><span style="flex:1"></span>
+    <a class="btn" href="guide.html#desktop">デスクトップにアイコンを作る</a>
+    <a class="btn primary" href="easy.html">作業者の画面に戻る</a>
+    <button type="button" class="btn" id="workerOff">作業者用をやめる</button>
+  </div>
+  <div class="easy-panel" id="easyPanel">
+    <div class="txt"><b>作業者用のかんたん画面</b><br><span class="hint">大きなボタンを押していくだけ（例：ライン → 工程 → 作業）で要領書が開きます。PC が苦手な方向け。</span></div>
+    <a class="btn" href="easy.html">かんたん画面を見る</a>
+    <a class="btn" href="guide.html#desktop">デスクトップにアイコンを作る</a>
+    <button type="button" class="btn primary" id="workerOn">この PC を作業者用にする</button>
+  </div>
 
   <!-- 状況 -->
   <div class="kpis" id="kpis">
@@ -61,5 +78,6 @@
 <script src="manuals/catalog.js"></script>
 <script src="assets/shell.js"></script>
 <script src="assets/menu.js"></script>
+<script src="assets/help.js"></script>
 </body>
 </html>

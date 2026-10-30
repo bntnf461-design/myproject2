@@ -123,6 +123,7 @@
         save();
         segs[i] = null;
       } else {
+        if (opt.steps[i].noVideo) return;
         cur = i;
         if (segs[i]) seek(segs[i].start);
       }
@@ -209,12 +210,13 @@
     if (t <= startT + 0.2) { flash("もう少し先まで再生してから押してください"); return; }
     save();
     segs[cur] = { start: startT, end: t };
-    if (cur + 1 < segs.length) {
+    var nx = skip(cur + 1);
+    if (nx < segs.length) {
       // 次の手順は、ここから始まる（「ここから開始」で後から変えられる）
-      var n = segs[cur + 1];
-      if (!n || n.start < t) segs[cur + 1] = { start: t, end: n && n.end > t ? n.end : null };
+      var n = segs[nx];
+      if (!n || n.start < t) segs[nx] = { start: t, end: n && n.end > t ? n.end : null };
     }
-    cur++;
+    cur = nx;
     render();
     if (cur >= segs.length) {
       // 最後の手順の終わりは動画の最後まで
@@ -229,6 +231,11 @@
     var s = segs[cur];
     segs[cur] = { start: t, end: s && s.end > t ? s.end : null };
     render();
+  }
+  // 「動画を使わない」手順は飛ばす
+  function skip(i) {
+    while (i < segs.length && opt.steps[i].noVideo) i++;
+    return i;
   }
   function prevEnd(i) {
     for (var k = i - 1; k >= 0; k--) if (segs[k] && segs[k].end != null) return segs[k].end;
@@ -279,6 +286,10 @@
       var s = segs[i];
       if (s && s.start != null) count++;
       var e = s ? (s.end == null ? duration : s.end) : null;
+      if (st.noVideo) {
+        return '<li data-i="' + i + '" class="skip"><div class="no">' + (i + 1) + '</div><div class="tx"><b>' + esc(st.title || "（名前なし）") + '</b>' +
+          '<small>動画を使わない手順（写真・文字で説明）</small></div></li>';
+      }
       return '<li data-i="' + i + '" class="' + (i === cur ? "cur" : "") + (s ? " has" : "") + '">' +
         '<div class="no">' + (i + 1) + '</div>' +
         '<div class="tx"><b>' + esc(st.title || "（名前なし）") + '</b>' +
@@ -286,7 +297,8 @@
         (s ? '<button type="button" class="tbtn" data-a="play" title="この区間を再生">▶</button><button type="button" class="tbtn" data-a="clear" title="この手順の区切りを消す">✕</button>' : '') +
       '</li>';
     }).join("");
-    el.querySelector("#cutSum").textContent = count + " / " + steps.length + " 手順に区間を設定";
+    var need = steps.filter(function (st) { return !st.noVideo; }).length;
+    el.querySelector("#cutSum").textContent = count + " / " + need + " 手順に区間を設定";
     var curLi = el.querySelector("#cutList li.cur");
     if (curLi && curLi.scrollIntoView) curLi.scrollIntoView({ block: "nearest" });
   }
@@ -309,9 +321,10 @@
       return { start: WI.parseTime(v.start) || 0, end: WI.parseTime(v.end) };
     });
     history = [];
-    cur = 0;
-    while (cur < segs.length && segs[cur]) cur++;
-    if (cur >= segs.length) cur = 0;
+    segs = segs.map(function (x, i) { return opt.steps[i].noVideo ? null : x; });
+    cur = skip(0);
+    while (cur < segs.length && segs[cur]) cur = skip(cur + 1);
+    if (cur >= segs.length) cur = skip(0);
     el.querySelector("#cutEmpty").hidden = false;
     el.querySelector("#cutEmpty").textContent = "動画を読み込み中…";
     video.src = opt.url(s);

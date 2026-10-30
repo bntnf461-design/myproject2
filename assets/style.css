@@ -1361,3 +1361,137 @@ mark.rev-mark { background: #fff1a8; color: inherit; padding: 0 2px; border-radi
 .voice-row select { max-width: 100%; min-width: 0; font: inherit; padding: 4px 6px; }
 .voice-lang { font-weight: bold; min-width: 8em; }
 .sub-h { font-size: 1rem; margin: 6px 0; }
+.cut-list li.skip { opacity: 0.55; cursor: default; }
+.set-check.novideo { margin-bottom: 6px; }
+
+/* ---------- 作業者用のかんたん画面 ---------- */
+body.easy { background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; }
+.easy-top { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: var(--navy); color: var(--white); }
+.easy-org { flex: 1; min-width: 0; font-size: 1.3rem; font-weight: bold; }
+.easy-org .org-sep { margin: 0 8px; opacity: 0.6; }
+.easy-lang { min-height: 52px; padding: 0 18px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.7); background: transparent; color: var(--white); font: bold 1.05rem var(--font); cursor: pointer; }
+.easy-main { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 18px 20px 30px; }
+.easy-nav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 60px; }
+.easy-back {
+  min-height: 60px; padding: 0 26px; border-radius: 14px; border: 3px solid var(--navy);
+  background: var(--white); color: var(--navy); font: bold 1.35rem var(--font); cursor: pointer;
+}
+.easy-back:hover { background: var(--navy-pale); }
+.easy-path { font-size: 1.15rem; font-weight: bold; color: var(--muted); }
+.easy-path i { font-style: normal; margin: 0 8px; opacity: 0.6; }
+.easy-q { font-size: 2rem; margin: 14px 0 16px; }
+.easy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.easy-tile {
+  min-height: 130px; padding: 16px; border-radius: 16px; border: 3px solid var(--navy);
+  background: var(--white); color: var(--navy); cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-family: var(--font);
+}
+.easy-tile:hover, .easy-tile:focus-visible { background: var(--navy); color: var(--white); outline: none; }
+.easy-tile .t { font-size: 1.7rem; font-weight: bold; line-height: 1.25; word-break: break-word; }
+.easy-tile .n { font-size: 1rem; opacity: 0.75; }
+.easy-grid.docs { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.easy-doc {
+  display: grid; grid-template-rows: 150px auto auto; border-radius: 16px; border: 3px solid var(--navy); overflow: hidden;
+  background: var(--white); color: var(--navy); text-decoration: none;
+}
+.easy-doc:hover, .easy-doc:focus-visible { box-shadow: 0 0 0 4px var(--focus); outline: none; }
+.easy-doc img, .easy-doc .noimg { width: 100%; height: 150px; object-fit: cover; background: var(--navy-pale); }
+.easy-doc .noimg { display: grid; place-items: center; font-size: 3rem; color: var(--navy-mid); }
+.easy-doc .t { padding: 12px 14px 2px; font-size: 1.45rem; font-weight: bold; line-height: 1.3; }
+.easy-doc .t small { display: block; font-size: 0.9rem; font-weight: normal; color: var(--muted); }
+.easy-doc .no { padding: 0 14px 12px; color: var(--muted); }
+.easy-grid.docs.small { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.easy-grid.docs.small .easy-doc { grid-template-rows: 100px auto auto; }
+.easy-grid.docs.small img, .easy-grid.docs.small .noimg { height: 100px; }
+.easy-grid.docs.small .t { font-size: 1.15rem; }
+.easy-recent h2 { font-size: 1.2rem; margin: 30px 0 10px; color: var(--muted); }
+.easy-foot { text-align: center; padding: 16px; }
+.easy-foot a { color: var(--muted); font-size: 0.9rem; }
+@media (max-width: 600px) {
+  .easy-q { font-size: 1.5rem; }
+  .easy-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .easy-grid.docs { grid-template-columns: 1fr; }
+  .easy-tile { min-height: 100px; }
+  .easy-tile .t { font-size: 1.25rem; }
+}
+.worker-banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; background: #fffbe0; border: 1px solid #e0b400; border-radius: var(--radius); }
+.easy-panel { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 14px 18px; margin: 14px 0; border: 2px dashed var(--navy-mid); border-radius: var(--radius); background: var(--white); }
+.easy-panel .txt { flex: 1; min-width: 220px; }
+.topbar .big-back { font-size: 1.15rem; padding-left: 20px; padding-right: 20px; }
+
+/* ---------- かんたん入力 ---------- */
+.mode-switch { display: inline-flex; border: 2px solid var(--navy); border-radius: 10px; overflow: hidden; margin: 0 0 14px; }
+.mode-switch button { border: 0; background: var(--white); color: var(--navy); padding: 8px 18px; font: bold 1rem var(--font); cursor: pointer; display: grid; text-align: center; }
+.mode-switch button small { font-weight: normal; font-size: 0.75rem; opacity: 0.8; }
+.mode-switch button.on { background: var(--navy); color: var(--white); }
+.ez-steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; padding: 0; }
+.ez-steps button { min-width: 44px; min-height: 40px; padding: 4px 12px; border-radius: 20px; border: 2px solid var(--line); background: var(--white); color: var(--muted); font: bold 0.95rem var(--font); cursor: pointer; }
+.ez-steps li.done button { border-color: var(--navy-mid); color: var(--navy); }
+.ez-steps li.now button { background: var(--navy); border-color: var(--navy); color: var(--white); }
+.ez-page { background: var(--white); border: 2px solid var(--navy); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+.ez-page.edit-card { padding: 18px 20px; }
+.ez-page h2 { margin: 0 0 14px; font-size: 1.4rem; }
+.ez-page h2 small { font-size: 0.9rem; color: var(--muted); font-weight: normal; }
+.ez-page .field input, .ez-page .field textarea { font-size: 1.15rem; padding: 10px 12px; }
+.ez-points { margin: 16px 0; padding: 12px 14px; background: var(--navy-pale); border-radius: 8px; }
+.ez-point { display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 8px; align-items: end; margin: 8px 0; }
+.ez-point .field > span:first-child:empty { display: none; }
+.ez-kinds { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 14px; }
+.ez-media > b { display: block; margin-bottom: 8px; }
+.ez-choice { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ez-choice button {
+  display: grid; justify-items: center; gap: 2px; padding: 12px 8px; border-radius: 12px; border: 3px solid var(--line);
+  background: var(--white); color: var(--navy); font-family: var(--font); cursor: pointer;
+}
+.ez-choice button .ic { font-size: 2rem; line-height: 1.1; }
+.ez-choice button b { font-size: 1.15rem; }
+.ez-choice button small { color: var(--muted); font-size: 0.8rem; }
+.ez-choice button.on { border-color: var(--navy); background: var(--navy-light); box-shadow: inset 0 0 0 2px var(--navy); }
+.ez-photo { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-top: 12px; }
+.ez-photo .thumb { max-width: 280px; max-height: 200px; border-radius: 6px; border: 1px solid var(--line); }
+.ez-ok { color: var(--navy); font-weight: bold; }
+.ez-nav { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; margin: 4px 0 20px; }
+.ez-nav > :first-child { justify-self: start; }
+.ez-nav > :last-child { justify-self: end; }
+.ez-nav .btn.big { min-height: 56px; padding: 0 26px; font-size: 1.15rem; }
+.ez-sum { padding-left: 1.6em; display: grid; gap: 6px; margin: 0 0 16px; }
+.ez-sum li { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.ez-sum .ok { color: var(--navy); font-weight: bold; }
+.linkish { border: 0; background: none; padding: 0; color: var(--navy); font: bold 1.05rem var(--font); text-decoration: underline; cursor: pointer; text-align: left; }
+@media (max-width: 700px) {
+  .ez-point { grid-template-columns: 1fr auto; }
+  .ez-point .field:nth-child(2) { grid-column: 1; }
+  .ez-choice { grid-template-columns: 1fr; }
+  .ez-nav { grid-template-columns: 1fr 1fr; }
+  .ez-nav > :nth-child(2) { grid-column: 1 / -1; order: 3; justify-self: stretch; }
+}
+
+/* ---------- 困ったとき ---------- */
+.help-btn {
+  min-height: 40px; padding: 0 14px; border-radius: var(--radius); border: 2px solid var(--focus);
+  background: var(--focus); color: var(--navy-dark); font: bold 0.95rem var(--font); cursor: pointer; white-space: nowrap;
+}
+.help-btn:hover { background: #ffd23f; }
+.easy-top .help-btn { min-height: 52px; font-size: 1.05rem; border-radius: 12px; }
+.help-panel { position: fixed; inset: 0; z-index: 200; background: rgba(11, 26, 54, 0.45); display: none; justify-content: flex-end; }
+.help-panel.open { display: flex; }
+.help-box { width: min(520px, 100%); height: 100%; overflow-y: auto; background: var(--white); padding: 18px 20px; box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2); }
+.help-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.help-head b { font-size: 1.3rem; }
+.help-box details { border: 2px solid var(--line); border-radius: 8px; margin: 8px 0; background: var(--white); }
+.help-box details[open] { border-color: var(--navy); }
+.help-box summary { padding: 12px 14px; font-weight: bold; font-size: 1.05rem; cursor: pointer; }
+.help-box summary::marker { color: var(--navy-mid); }
+.help-a { padding: 0 14px 12px; line-height: 1.7; }
+.help-a ol { margin: 0; padding-left: 1.4em; }
+@media print { .help-btn, .help-panel { display: none !important; } }
+.topbar > .help-btn { margin-left: auto; }
+.desk-steps { padding-left: 1.6em; display: grid; gap: 12px; }
+.desk-steps li > b { display: block; font-size: 1.05rem; }
+.desk-steps li > span { display: block; color: var(--text); }
+.mock-menu { display: inline-grid; margin-top: 6px; border: 1px solid #c8c8c8; border-radius: 6px; background: #fbfbfb; box-shadow: 0 2px 6px rgba(0,0,0,0.12); font-size: 0.9rem; min-width: 260px; }
+.mock-menu div { padding: 6px 14px; }
+.mock-menu .hl { background: #dbe8fb; font-weight: bold; }
+.mock-menu .sub { margin-left: 24px; border-left: 3px solid #3d7be0; background: #fff; }
+.topbar { flex-wrap: wrap; }
+.topbar h1 { min-width: min(7em, 40vw); }

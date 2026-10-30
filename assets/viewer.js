@@ -40,7 +40,7 @@
     "作業前の準備": "Persiapan sebelum kerja", "安全上の注意": "Perhatian keselamatan", "保護具": "APD (alat pelindung diri)",
     "使用する設備・治工具": "Peralatan & alat bantu", "使用部品・材料": "Komponen & bahan", "目的": "Tujuan",
     "手順": "Langkah kerja", "急所": "Poin kunci", "理由": "Alasan", "標準時間": "Waktu standar", "動画": "Video", "秒": "detik",
-    "動画なし": "Tanpa video", "改訂履歴": "Riwayat revisi", "改訂": "Revisi",
+    "動画なし": "Tanpa video", "写真で説明": "Dengan foto", "文字で説明": "Dengan teks", "改訂履歴": "Riwayat revisi", "改訂": "Revisi",
     "▶ 動画を再生": "▶ Putar video", "❚❚ 一時停止": "❚❚ Jeda", "◀ 前へ": "◀ Sebelumnya", "次へ ▶": "Berikutnya ▶",
     "✕ 閉じる": "✕ Tutup", "⟲ 最初から": "⟲ Ulangi", "ゆっくり": "Lambat", "標準": "Normal", "↻ 繰り返し": "↻ Ulang",
     "⏭ 続けて再生": "⏭ Putar terus", "▶ 順に見る": "▶ Lihat berurutan", "◀ 一覧": "◀ Daftar",
@@ -110,6 +110,16 @@
     manual = data;
     document.title = (data.docNo ? data.docNo + " " : "") + (data.title || "作業要領書");
     document.getElementById("barTitle").innerHTML = WI.orgHtml(window.CATALOG) + '<span class="org-sep">＞</span><b>' + esc(data.title || "作業要領書") + '</b>';
+    // かんたん画面から来たとき・作業者用の PC では、「もどる」でかんたん画面へ。編集のボタンは出さない
+    var worker = false;
+    try { worker = localStorage.getItem("wi.mode") === "worker"; } catch (e) {}
+    if (!isPreview && (WI.getParam("from") === "easy" || worker)) {
+      var bl = document.getElementById("backLink");
+      bl.href = "easy.html";
+      bl.textContent = lang === "id" ? "◀ Kembali" : "◀ もどる";
+      bl.classList.add("big-back");
+      if (worker) document.getElementById("editLink").style.display = "none";
+    }
     if (!isPreview && data._file) {
       document.getElementById("editLink").href = "editor.html?file=" + encodeURIComponent(data._file);
       // 一覧の「最近見た要領書」用に記録（この PC のブラウザ内だけ）
@@ -208,8 +218,10 @@
     steps.forEach(function (s, si) {
       var stepPl = -1;
       var stepIdx = playlist.length;
-      playlist.push({ step: si, point: -1, video: hasVideo(s.video) ? s.video : null });
-      if (hasVideo(s.video)) stepPl = stepIdx;
+      // 「動画を使わない」手順は、動画があっても写真・文字で見せる
+      var sv = !s.noVideo && hasVideo(s.video) ? s.video : null;
+      playlist.push({ step: si, point: -1, video: sv });
+      if (sv) stepPl = stepIdx;
 
       var points = (s.points || []).map(function (p, pi) {
         var pv = "";
@@ -239,7 +251,7 @@
           (stepPl >= 0
             ? '<button type="button" class="round-btn" data-pl="' + stepPl + '" title="動画を再生"><span>▶</span></button><span class="print-only">動画あり</span>' +
               (s.video.end != null && s.video.end !== "" ? '<small class="seg">' + segLabel(s.video) + '</small>' : '')
-            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">' + L("動画なし") + '</small><span class="print-only">－</span>') +
+            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">' + L(s.noVideo ? (s.image ? "写真で説明" : "文字で説明") : "動画なし") + '</small><span class="print-only">－</span>') +
         '</td>' +
       '</tr>';
     });

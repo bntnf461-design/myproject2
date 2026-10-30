@@ -197,9 +197,9 @@
     return p.map(function (x) { return '<span class="org-part">' + esc(x) + '</span>'; }).join('<span class="org-sep">＞</span>');
   }
 
-  // 手順のうち動画が付いている数
+  // 手順のうち動画が付いている数。「動画を使わない」と決めた手順（写真・文字で説明）は数えない
   function videoStats(m) {
-    var steps = (m && m.steps) || [];
+    var steps = ((m && m.steps) || []).filter(function (s) { return !s.noVideo; });
     return { done: steps.filter(function (s) { return s.video && s.video.src; }).length, all: steps.length };
   }
   // 見直しの時期（最後の改訂・制定から 1 年以上たっている）

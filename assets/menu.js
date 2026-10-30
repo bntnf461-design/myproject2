@@ -11,16 +11,28 @@
   document.getElementById("siteName").innerHTML = WI.orgHtml(cat);
   document.title = WI.orgName(cat) + " 作業要領書";
 
+  // 作業者用（かんたん画面を最初に開く PC）の切り替え
+  var worker = false;
+  try { worker = localStorage.getItem("wi.mode") === "worker"; } catch (e) {}
+  document.getElementById("workerBanner").hidden = !worker;
+  document.getElementById("easyPanel").hidden = worker;
+  document.getElementById("workerOn").addEventListener("click", function () {
+    if (!confirm("この PC を作業者用にしますか？\n次からは、最初に「かんたん画面」が開きます。\n（作る・管理する画面へは、かんたん画面の下の「リーダー・管理者の方へ」から戻れます）")) return;
+    try { localStorage.setItem("wi.mode", "worker"); } catch (e) {}
+    location.href = "easy.html";
+  });
+  document.getElementById("workerOff").addEventListener("click", function () {
+    try { localStorage.removeItem("wi.mode"); } catch (e) {}
+    location.href = "index.html";
+  });
+
   var recentFiles = [];
   try { recentFiles = JSON.parse(localStorage.getItem("wi.recent") || "[]"); } catch (e) {}
 
   var today = new Date();
   var ym = today.getFullYear() + "-" + ("0" + (today.getMonth() + 1)).slice(-2);
 
-  function videoCount(m) {
-    var steps = m.steps || [];
-    return { done: steps.filter(function (s) { return s.video && s.video.src; }).length, all: steps.length };
-  }
+  var videoCount = WI.videoStats;
 
   WI.loadManualFiles(cat.files || [], function (results) {
     var list = results.filter(function (r) { return r.data; }).map(function (r) { return r.data; });

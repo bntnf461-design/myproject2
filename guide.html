@@ -34,6 +34,7 @@
   <nav class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <a class="btn" href="#phone">スマホで撮る</a>
     <a class="btn" href="#pc">PC 作業を画面録画する</a>
+    <a class="btn" href="#desktop">デスクトップから 1 回で開く</a>
   </nav>
 
   <div class="notice" id="phone" style="margin-bottom:16px">
@@ -119,6 +120,26 @@
     </ul>
   </section>
 
+  <section class="section" id="desktop" style="margin-top:28px">
+    <h2>デスクトップから 1 回で開けるようにする（Windows）</h2>
+    <p>作業者の PC のデスクトップに「作業要領書」のアイコンを作っておくと、<b>ダブルクリックするだけ</b>で開けます。フォルダの場所を覚えなくて大丈夫です。</p>
+    <ol class="desk-steps">
+      <li><b>このテンプレートのフォルダを開く</b><span>エクスプローラー（黄色いフォルダの印）で、index.html が入っているフォルダ（sagyo-youryousho など）を開きます。</span></li>
+      <li><b>開く画面のファイルを右クリック</b><span>作業者の PC は <code>easy.html</code>（かんたん画面）、リーダーの PC は <code>index.html</code> を右クリックします。</span>
+        <div class="mock-menu" aria-hidden="true"><div>開く</div><div class="hl">その他のオプションを確認　▸</div></div></li>
+      <li><b>「送る」→「デスクトップ（ショートカットを作成）」</b><span>Windows 11 では、先に「その他のオプションを確認」を押すと「送る」が出ます。</span>
+        <div class="mock-menu" aria-hidden="true"><div class="hl">送る　▸</div><div class="sub">デスクトップ（ショートカットを作成）</div></div></li>
+      <li><b>アイコンの名前を変える</b><span>デスクトップにできたアイコンを右クリック →「名前の変更」で「<b>作業要領書</b>」にします。</span></li>
+      <li><b>ダブルクリックで開く</b><span>Chrome・Edge 以外（Internet Explorer など）で開いてしまうときは、easy.html を右クリック →「プログラムから開く」→「別のプログラムを選択」→ <b>Chrome または Edge</b> を選び、「常にこのアプリを使う」にチェックします。</span></li>
+    </ol>
+    <h3>もっと楽にする方法</h3>
+    <ul>
+      <li><b>ブラウザを開いたら自動で出す</b>：かんたん画面を開いた状態で、Chrome は「設定 → 起動時 → 特定のページを開く → 現在のページを使用」、Edge は「設定 → [スタート]、[ホーム]、および [新規] タブ → これらのページを開く → 開いているすべてのタブを使用」。</li>
+      <li><b>画面いっぱいに表示</b>：キーボードの <b>F11</b>。もう一度 F11 で元に戻ります。</li>
+      <li><b>作業者用にする</b>：ホームの「この PC を作業者用にする」を押すと、index.html から開いても、かんたん画面が出ます。</li>
+    </ul>
+  </section>
+
   <section class="section" id="pc" style="margin-top:28px">
     <h2>PC 作業を画面録画する（Windows）</h2>
     <p style="margin-top:0">PC の作業は、カメラで撮らずに<b>画面そのものを録画</b>します。Windows に最初から入っている機能で、追加のソフトやインターネットは不要です。</p>
@@ -191,5 +212,6 @@
 <script src="assets/common.js"></script>
 <script src="manuals/catalog.js"></script>
 <script src="assets/shell.js"></script>
+<script src="assets/help.js"></script>
 </body>
 </html>
