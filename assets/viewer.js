@@ -20,12 +20,16 @@
   try { lang = localStorage.getItem("wi.lang") === "id" ? "id" : "ja"; } catch (e) {}
   var langBtn = document.getElementById("langBtn");
   // 本文: 訳があれば訳（確認前は ※）＋日本語
+  var rev = { keys: {}, steps: {}, count: 0 }; // 改訂で変わった箇所
   function tx(key, ja) {
-    if (lang !== "id") return esc(ja);
-    var e = WI.trLookup(manual, "id", key, ja);
-    if (!e) return esc(ja);
-    return '<span class="t-id">' + esc(e.t) + (e.ok ? '' : '<sup class="t-un" title="日本語での確認がまだの訳です（belum dicek）">※</sup>') + '</span>' +
-      '<span class="t-ja">' + esc(ja) + '</span>';
+    var h = esc(ja);
+    if (lang === "id") {
+      var e = WI.trLookup(manual, "id", key, ja);
+      if (e) h = '<span class="t-id">' + esc(e.t) + (e.ok ? '' : '<sup class="t-un" title="日本語での確認がまだの訳です（belum dicek）">※</sup>') + '</span>' +
+        '<span class="t-ja">' + esc(ja) + '</span>';
+    }
+    // 改訂で変わった文に印
+    return rev.keys[key] ? '<mark class="rev-mark" title="第 ' + esc(manual.revision) + ' 版で改訂">' + h + '</mark>' : h;
   }
   function txt(key, ja) { // 文字だけ（title 属性など）
     var e = lang === "id" && WI.trLookup(manual, "id", key, ja);
@@ -36,7 +40,7 @@
     "作業前の準備": "Persiapan sebelum kerja", "安全上の注意": "Perhatian keselamatan", "保護具": "APD (alat pelindung diri)",
     "使用する設備・治工具": "Peralatan & alat bantu", "使用部品・材料": "Komponen & bahan", "目的": "Tujuan",
     "手順": "Langkah kerja", "急所": "Poin kunci", "理由": "Alasan", "標準時間": "Waktu standar", "動画": "Video", "秒": "detik",
-    "動画なし": "Tanpa video", "改訂履歴": "Riwayat revisi",
+    "動画なし": "Tanpa video", "改訂履歴": "Riwayat revisi", "改訂": "Revisi",
     "▶ 動画を再生": "▶ Putar video", "❚❚ 一時停止": "❚❚ Jeda", "◀ 前へ": "◀ Sebelumnya", "次へ ▶": "Berikutnya ▶",
     "✕ 閉じる": "✕ Tutup", "⟲ 最初から": "⟲ Ulangi", "ゆっくり": "Lambat", "標準": "Normal", "↻ 繰り返し": "↻ Ulang",
     "⏭ 続けて再生": "⏭ Putar terus", "▶ 順に見る": "▶ Lihat berurutan", "◀ 一覧": "◀ Daftar",
@@ -70,6 +74,7 @@
     lang = lang === "id" ? "ja" : "id";
     try { localStorage.setItem("wi.lang", lang); } catch (e) {}
     applyLang();
+    updateSpeak();
     render();
     if (cur >= 0) openPlayer(cur);
   });
@@ -144,6 +149,7 @@
     var html = "";
 
     var T = WI.terms(m, window.CATALOG);
+    rev = WI.revChanges(m);
 
     // ---------- 帳票のヘッダ（社内フォーマットと同じ形） ----------
     var cell = function (k, v, cls, key, kh) {
@@ -164,6 +170,19 @@
         '<div class="fh-sub">' + sub.join("") + '</div>' +
         (m.purpose ? '<div class="fh-sub">' + cell("目的", m.purpose, "full", "purpose", LH("目的")) + '</div>' : '') +
       '</section>';
+
+    // 改訂したところのお知らせ
+    if (rev.count) {
+      var where = Object.keys(rev.steps).map(function (i) { return +i + 1; });
+      var parts = [];
+      if (rev.keys.title || rev.keys.purpose) parts.push(lang === "id" ? "Judul/Tujuan" : "作業名・目的");
+      if (rev.prep) parts.push(lang === "id" ? ID["作業前の準備"] : "作業前の準備");
+      if (where.length) parts.push((lang === "id" ? "Langkah " : "手順 ") + where.join("・"));
+      html += '<div class="rev-banner"><b>' + (lang === "id" ? "Bagian yang direvisi (revisi ke-" + esc(m.revision) + ")" : "第 " + esc(m.revision) + " 版で改訂したところ") + '</b>' +
+        '<span>' + esc(parts.join("、")) + '</span>' +
+        '<span class="hint">' + (lang === "id" ? "Bagian yang diubah ditandai kuning." : "変わったところに<mark class=\"rev-mark\">黄色の印</mark>が付いています。") +
+        (rev.removed ? (lang === "id" ? " " + rev.removed + " langkah dihapus." : "（削除した手順 " + rev.removed + " 件）") : "") + '</span></div>';
+    }
 
     // 準備（保護具・道具・注意）
     var prep = "";
@@ -207,7 +226,7 @@
 
       // 行のどこをタップしても開く（動画があれば再生、無ければ手順を大きく表示）
       html += '<tr class="step-row' + (stepPl >= 0 ? ' has-video' : ' still') + '" id="step-' + si + '" data-pl="' + stepIdx + '">' +
-        '<td class="col-no">' + (si + 1) + '</td>' +
+        '<td class="col-no">' + (si + 1) + (rev.steps[si] ? '<span class="rev-badge">' + L("改訂") + '</span>' : '') + '</td>' +
         '<td class="col-step" data-label="' + esc(T.step) + '">' +
           '<div class="step-title">' + tx("steps." + si + ".title", s.title) + '</div>' +
           (s.detail ? '<div class="step-detail">' + tx("steps." + si + ".detail", s.detail) + '</div>' : '') +
@@ -355,7 +374,9 @@
     pNo.textContent = point ? lp + (lang === "id" ? "（Langkah " + (item.step + 1) + "）" : "（手順 " + (item.step + 1) + "）") : (lang === "id" ? ID["手順"] : T.step.replace(/[（(].*$/, ""));
     pName.innerHTML = point ? tx("steps." + item.step + ".points." + item.point + ".text", point.text) : tx("steps." + item.step + ".title", step.title);
     document.getElementById("pTitle").innerHTML = tx("title", manual.title || "");
-    pMarks.innerHTML = (step.kinds || []).map(kb).join("");
+    var pk = "steps." + item.step + ".points." + item.point;
+    var changedHere = point ? (rev.keys[pk + ".text"] || rev.keys[pk + ".reason"]) : rev.steps[item.step];
+    pMarks.innerHTML = (changedHere ? '<span class="rev-badge">' + L("改訂") + ' 第' + esc(manual.revision) + '版</span>' : '') + (step.kinds || []).map(kb).join("");
     var pts = point ? [] : (step.points || []);
     var pb = "steps." + item.step + ".points.";
     pPoints.innerHTML = pts.map(function (p, pi) {
@@ -367,6 +388,7 @@
 
     pPrev.disabled = idx === 0;
     pNext.disabled = idx === playlist.length - 1;
+    if (speakOn) speak(item); else stopSpeak();
 
     hideMsg();
 
@@ -424,6 +446,7 @@
 
   function closePlayer() {
     if (cur === -1) return;
+    stopSpeak();
     video.pause();
     // デコーダとメモリを解放する
     video.removeAttribute("src");
@@ -459,6 +482,93 @@
   function restart() {
     video.currentTime = segStart;
     play();
+  }
+
+  // ---------- 読み上げ（PC に入っている音声を使う。インターネット不要） ----------
+  var synth = window.speechSynthesis;
+  var speakOn = false;
+  var pSpeak = document.getElementById("pSpeak");
+  try { speakOn = localStorage.getItem("wi.speak") === "1"; } catch (e) {}
+  if (!synth) pSpeak.hidden = true;
+  function voiceFor(code) {
+    var vs = synth.getVoices().filter(function (v) { return v.lang && v.lang.replace("_", "-").toLowerCase().indexOf(code) === 0; });
+    // インターネットが要らない音声（PC に入っている音声）を優先
+    return vs.filter(function (v) { return v.localService; })[0] || vs[0] || null;
+  }
+  // 読み方の辞書（設定画面の「読み上げの読み方」）で、読み間違いやすい言葉を直す
+  function reading(text) {
+    var list = ((window.CATALOG && window.CATALOG.readings) || []).filter(function (r) { return r.w && r.y; })
+      .sort(function (a, b) { return b.w.length - a.w.length; });
+    list.forEach(function (r) { text = text.split(r.w).join(r.y); });
+    return text;
+  }
+  function speechText(item) {
+    var step = manual.steps[item.step];
+    var point = item.point >= 0 ? step.points[item.point] : null;
+    var id = lang === "id";
+    var parts = [], T = WI.terms(manual, window.CATALOG);
+    var t = function (key, ja) { var e = id && WI.trLookup(manual, "id", key, ja); return e ? e.t : ja; };
+    var pb = "steps." + item.step + ".points.";
+    var lp = id ? "Poin kunci" : T.point.replace(/[（(].*$/, ""), lr = id ? "Alasan" : T.reason;
+    if (point) {
+      parts.push(t(pb + item.point + ".text", point.text));
+      if (point.reason) parts.push(lr + "。" + t(pb + item.point + ".reason", point.reason));
+    } else {
+      parts.push((id ? "Langkah " : "手順 ") + (item.step + 1) + "。" + t("steps." + item.step + ".title", step.title));
+      if (step.detail) parts.push(t("steps." + item.step + ".detail", step.detail));
+      (step.points || []).forEach(function (p, j) {
+        if (!p.text) return;
+        parts.push(lp + "。" + t(pb + j + ".text", p.text));
+        if (p.reason) parts.push(lr + "。" + t(pb + j + ".reason", p.reason));
+      });
+    }
+    // 訳が無い文は日本語のまま → 日本語の声で読む
+    var allId = id && parts.every(function (x) { return !/[\u3040-\u30ff\u4e00-\u9fff]/.test(x); });
+    return { text: parts.join("\n"), code: allId ? "id" : "ja" };
+  }
+  function speak(item) {
+    if (!synth) return;
+    stopSpeak();
+    var s = speechText(item);
+    var v = voiceFor(s.code);
+    if (!v && s.code === "id") {
+      toast("Suara bahasa Indonesia tidak tersedia di PC ini. / この PC にインドネシア語の音声が入っていません（Windows の設定 → 時刻と言語 → 音声 で追加できます）。日本語で読み上げます。");
+      s = { text: s.text, code: "ja" };
+      v = voiceFor("ja");
+    }
+    if (!v) { toast("この PC に読み上げの音声が見つかりません。"); return; }
+    var u = new SpeechSynthesisUtterance(s.code === "ja" ? reading(s.text) : s.text);
+    u.voice = v;
+    u.lang = v.lang;
+    u.rate = s.code === "ja" ? 1.0 : 0.95;
+    // 読み上げ中は動画の音を消す（声が聞き取れるように）
+    var wasMuted = video.muted;
+    video.muted = true;
+    u.onend = u.onerror = function () { video.muted = wasMuted; };
+    synth.speak(u);
+  }
+  function stopSpeak() { if (synth && (synth.speaking || synth.pending)) synth.cancel(); }
+  function updateSpeak() {
+    pSpeak.setAttribute("aria-pressed", speakOn ? "true" : "false");
+    pSpeak.classList.toggle("on", speakOn);
+    pSpeak.textContent = speakOn ? (lang === "id" ? "🔊 Baca: ON" : "🔊 読み上げ中") : (lang === "id" ? "🔈 Bacakan" : "🔈 読み上げ");
+  }
+  pSpeak.addEventListener("click", function () {
+    speakOn = !speakOn;
+    try { localStorage.setItem("wi.speak", speakOn ? "1" : "0"); } catch (e) {}
+    updateSpeak();
+    if (speakOn && cur >= 0) speak(playlist[cur]); else stopSpeak();
+  });
+  if (synth && synth.addEventListener) synth.addEventListener("voiceschanged", function () {});
+  updateSpeak();
+  var toastTimer = null;
+  function toast(text) {
+    var t = document.getElementById("pToast");
+    if (!t) { t = document.createElement("div"); t.id = "pToast"; t.className = "tp-toast"; player.appendChild(t); }
+    t.textContent = text;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); }, 6000);
   }
 
   function showMsg(html) { pMsg.innerHTML = html; pMsg.classList.add("show"); }
@@ -551,6 +661,7 @@
       case "ArrowLeft": case "PageUp": if (cur > 0) openPlayer(cur - 1); break;
       case "Home": if (!still) restart(); break;
       case "r": case "R": pRepeat.click(); break;
+      case "v": case "V": pSpeak.click(); break;
       case "a": case "A": pAuto.click(); break;
       default: return;
     }

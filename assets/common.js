@@ -219,8 +219,51 @@
     return null;
   }
 
+  // 要領書の文（場所のキーと日本語）。翻訳・改訂箇所の比較に使う
+  function textFields(m) {
+    var out = [];
+    function add(key, ja, step) { if (ja && String(ja).trim()) out.push({ key: key, ja: String(ja), step: step }); }
+    add("title", m.title, -1);
+    add("purpose", m.purpose, -1);
+    ["cautions", "ppe", "tools", "materials"].forEach(function (k) {
+      (m[k] || []).forEach(function (x, i) { add(k + "." + i, typeof x === "object" ? x && x.name : x, -1); });
+    });
+    (m.steps || []).forEach(function (s, i) {
+      add("steps." + i + ".title", s.title, i);
+      add("steps." + i + ".detail", s.detail, i);
+      (s.points || []).forEach(function (p, j) {
+        add("steps." + i + ".points." + j + ".text", p.text, i);
+        add("steps." + i + ".points." + j + ".reason", p.reason, i);
+      });
+    });
+    return out;
+  }
+  // 改訂で変わった箇所（「改訂する」を押す前の文 m.prevRev.texts に無い文）。並べ替えただけの文は変更としない
+  function revChanges(m) {
+    var res = { keys: {}, steps: {}, prep: false, count: 0, rev: m && m.revision, from: m && m.prevRev && m.prevRev.rev };
+    if (!m || !m.prevRev || !m.prevRev.texts) return res;
+    var before = {};
+    m.prevRev.texts.forEach(function (t) { before[t] = true; });
+    textFields(m).forEach(function (f) {
+      if (before[f.ja]) return;
+      res.keys[f.key] = true;
+      res.count++;
+      if (f.step >= 0) res.steps[f.step] = true;
+      else if (f.key !== "title" && f.key !== "purpose") res.prep = true;
+    });
+    res.removed = Math.max(0, (m.prevRev.steps || 0) - (m.steps || []).length);
+    return res;
+  }
+  function revSnapshot(m) {
+    return { rev: m.revision || "", date: m.updated || m.issued || "", steps: (m.steps || []).length,
+      texts: textFields(m).map(function (f) { return f.ja; }) };
+  }
+
   window.WI = {
     trLookup: trLookup,
+    textFields: textFields,
+    revChanges: revChanges,
+    revSnapshot: revSnapshot,
     loadManualFile: loadManualFile,
     loadManualFiles: loadManualFiles,
     esc: esc,

@@ -21,6 +21,9 @@
   var ORG_PH = ["例：○○工場", "例：○○課", "例：○○工程", "例：○○係"];
   var terms = JSON.parse(JSON.stringify(cat.terms || {})); // 見出しの名前（全体の初期値）
   var formats = (cat.formats || []).slice(); // 覚えた Excel の様式
+  var readings = (cat.readings || []).map(function (r) { return { w: r.w, y: r.y }; }); // 読み上げの読み方
+  var READ_STARTER = [["急所", "きゅうしょ"], ["仮締め", "かりじめ"], ["本締め", "ほんじめ"], ["治具", "じぐ"], ["治工具", "じこうぐ"],
+    ["品番", "ひんばん"], ["段取り", "だんどり"], ["締付け", "しめつけ"], ["外観", "がいかん"], ["員数", "いんずう"]];
   var levelRows = [];   // [{ key, use, label }]（上から順に絞り込み）
   var rows = {};        // key → [{ orig, name, count }]
   var deleted = {};     // key → [元の名前]
@@ -90,6 +93,17 @@
         return '<li><b>' + esc(f.name) + '</b><span class="hint">見出し ' + (f.headerRows || 1) + ' 段・使う列 ' + cols + ' つ</span>' +
           '<button type="button" class="btn small danger" data-act="fmt-del" data-i="' + i + '">削除</button></li>';
       }).join("") + '</ul>' : '<p class="hint">（まだありません。自動で読み取れている場合は、覚える必要はありません）</p>') +
+    '</section>';
+
+    h += '<section class="section" id="readings"><h2>読み上げの読み方</h2>' +
+      '<p class="hint">作業者の画面の「🔈 読み上げ」で、読み間違える言葉の読み方を、ひらがなで登録します（例：仮締め → かりじめ）。</p>' +
+      '<div class="read-list">' + readings.map(function (r, i) {
+        return '<div class="g-row"><input type="text" data-rw="' + i + '" value="' + esc(r.w) + '" placeholder="言葉（例：仮締め）">' +
+          '<input type="text" data-ry="' + i + '" value="' + esc(r.y) + '" placeholder="読み方（例：かりじめ）">' +
+          '<button type="button" class="btn small danger" data-act="rd-del" data-i="' + i + '">削除</button></div>';
+      }).join("") + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn small" data-act="rd-add">＋ 追加</button>' +
+      '<button type="button" class="btn small" data-act="rd-starter">読み間違えやすい言葉を追加</button></div>' +
     '</section>';
 
     h += '<section class="section"><h2>一覧で絞り込む項目</h2>' +
@@ -162,6 +176,8 @@
     else if (t.hasAttribute("data-label")) levelRows[+t.getAttribute("data-label")].label = t.value;
     else if (t.hasAttribute("data-use")) levelRows[+t.getAttribute("data-use")].use = t.checked;
     else if (t.hasAttribute("data-name")) rows[t.getAttribute("data-name")][+t.getAttribute("data-i")].name = t.value;
+    else if (t.hasAttribute("data-rw")) readings[+t.getAttribute("data-rw")].w = t.value;
+    else if (t.hasAttribute("data-ry")) readings[+t.getAttribute("data-ry")].y = t.value;
     else return;
     touch();
   });
@@ -199,6 +215,9 @@
     else if (act === "add") { add(k); return; }
     else if (act === "org-add") org.push("");
     else if (act === "org-del") org.splice(i, 1);
+    else if (act === "rd-add") readings.push({ w: "", y: "" });
+    else if (act === "rd-del") readings.splice(i, 1);
+    else if (act === "rd-starter") READ_STARTER.forEach(function (p) { if (!readings.some(function (r) { return r.w === p[0]; })) readings.push({ w: p[0], y: p[1] }); });
     else if (act === "fmt-del") {
       if (!confirm("様式「" + formats[i].name + "」を削除しますか？（取り込み済みの要領書は変わりません）")) return;
       formats.splice(i, 1);
@@ -251,6 +270,7 @@
       terms: {},
       categories: {},
       formats: formats,
+      readings: readings.map(function (r) { return { w: r.w.trim(), y: r.y.trim() }; }).filter(function (r) { return r.w && r.y; }),
       files: base.files
     };
     levelRows.forEach(function (r) { c.labels[r.key] = r.label.trim() || DEFAULT_LABEL[r.key]; });

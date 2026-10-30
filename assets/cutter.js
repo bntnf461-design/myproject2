@@ -65,6 +65,7 @@
       '<div class="player-ctrl">' +
         '<span class="seg-info" id="cutSum"></span>' +
         '<span class="spacer"></span>' +
+        '<label class="cut-thumb"><input type="checkbox" id="cutThumb" checked> 写真の無い手順に、動画の場面を写真として付ける</label>' +
         '<button type="button" class="btn primary-inv" id="cutApply">この区切りで反映する</button>' +
       '</div>';
     document.body.appendChild(el);
@@ -326,8 +327,51 @@
       if (end != null && duration && end >= duration - 0.3) end = null; // 最後まで
       return { src: src, start: s.start ? fmt(s.start) : "", end: end == null ? "" : fmt(end) };
     });
-    opt.apply(result, src);
-    close();
+    var want = el.querySelector("#cutThumb").checked;
+    var todo = want ? segs.map(function (s, i) { return s && s.start != null && !opt.steps[i].image ? i : -1; }).filter(function (i) { return i >= 0; }) : [];
+    if (!todo.length) { opt.apply(result, src, {}); close(); return; }
+    // 各手順の始まり（少し後）の場面を写真にする
+    var btn = el.querySelector("#cutApply");
+    btn.disabled = true;
+    video.pause();
+    var thumbs = {}, failed = 0, n = 0;
+    todo.reduce(function (pr, i) {
+      return pr.then(function () {
+        el.querySelector("#cutSum").textContent = "手順の写真を作成中… " + (++n) + " / " + todo.length;
+        var s = segs[i], e = s.end == null ? duration : s.end;
+        return grab(Math.min(s.start + 0.5, (s.start + e) / 2)).then(function (b) { if (b) thumbs[i] = b; else failed++; });
+      });
+    }, Promise.resolve()).then(function () {
+      btn.disabled = false;
+      opt.apply(result, src, thumbs, failed);
+      close();
+    });
+  }
+  // 今の動画の t 秒の場面を JPEG にする（幅は最大 960px：軽くするため）
+  function grab(t) {
+    return new Promise(function (resolve) {
+      var done = false;
+      function shot() {
+        if (done) return;
+        done = true;
+        video.removeEventListener("seeked", shot);
+        try {
+          var w = video.videoWidth, h = video.videoHeight;
+          if (!w || !h) { resolve(null); return; }
+          var k = Math.min(1, 960 / w);
+          var c = document.createElement("canvas");
+          c.width = Math.round(w * k);
+          c.height = Math.round(h * k);
+          c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+          c.toBlob(function (b) { resolve(b); }, "image/jpeg", 0.82);
+        } catch (e) {
+          resolve(null); // ファイルを直接開いた動画は、ブラウザの決まりで写真にできない場合がある
+        }
+      }
+      video.addEventListener("seeked", shot);
+      setTimeout(shot, 3000);
+      video.currentTime = t;
+    });
   }
 
   function open(o) {

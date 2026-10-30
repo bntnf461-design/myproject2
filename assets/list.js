@@ -214,7 +214,9 @@
     var steps = (m.steps || []).length;
     var videos = (m.steps || []).filter(function (s) { return s.video && s.video.src; }).length;
     var meta = levels.filter(function (k) { return m[k]; }).map(function (k) { return esc(m[k]); }).join(" ／ ");
-    return '<li><a class="manual-card" href="manual.html?file=' + encodeURIComponent(m._file) + '">' +
+    var thumb = (m.steps || []).filter(function (s) { return s.image; })[0];
+    return '<li><a class="manual-card' + (thumb ? ' with-thumb' : '') + '" href="manual.html?file=' + encodeURIComponent(m._file) + '">' +
+      (thumb ? '<img class="card-thumb" loading="lazy" decoding="async" src="' + esc(thumb.image) + '" alt="" onerror="this.remove()">' : '') +
       '<div class="no">' + esc(m.docNo) + (m.revision ? "　改訂 " + esc(m.revision) : "") + badge(m) + '</div>' +
       '<div class="title">' + esc(m.title) + '</div>' +
       '<div class="meta">' +

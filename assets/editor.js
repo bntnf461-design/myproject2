@@ -236,6 +236,7 @@
       field("使用部品・材料", "materials", { type: "pairs", ph: "ボルト M8 | 4本", hint: "1 行に 1 項目。数量は「|」の後ろに" }) +
     '</div></section>';
 
+    var revCh = WI.revChanges(m);
     h += '<section class="section"><h2>作業手順</h2>' +
       '<div class="cut-banner"><div><b>動画は 1 本で撮るのがかんたんです。</b>' +
       '<span class="hint">作業を最初から最後まで続けて撮り、見ながら手順の切れ目で「区切る」を押すだけで、全部の手順に動画が付きます。</span></div>' +
@@ -243,7 +244,7 @@
     m.steps.forEach(function (s, i) {
       var b = "steps." + i;
       h += '<div class="edit-card" id="ed-step-' + i + '"><header>' +
-        '<span class="ttl">手順 ' + (i + 1) + '</span>' +
+        '<span class="ttl">手順 ' + (i + 1) + (revCh.steps[i] ? '<span class="rev-badge" title="前の版から変わった手順（作業者の画面に印が付きます）">改訂</span>' : '') + '</span>' +
         '<button type="button" class="btn on-navy small" data-act="step-up" data-i="' + i + '"' + (i === 0 ? " disabled" : "") + '>↑ 上へ</button>' +
         '<button type="button" class="btn on-navy small" data-act="step-down" data-i="' + i + '"' + (i === m.steps.length - 1 ? " disabled" : "") + '>↓ 下へ</button>' +
         '<button type="button" class="btn on-navy small" data-act="step-ins" data-i="' + i + '">＋ 下に追加</button>' +
@@ -399,6 +400,15 @@
         var cur = /^\d+$/.test(String(m.revision)) ? Number(m.revision) : 0;
         m.revisions.forEach(function (r) { if (/^\d+$/.test(String(r.rev))) cur = Math.max(cur, Number(r.rev)); });
         var today = isoToday();
+        // 改訂する前の文を覚えておく（作業者の画面で、変わったところに印を付けるため）
+        m.prevRev = WI.revSnapshot(m);
+        // 承認し直す場合は判子を外す
+        if ((m.stamps && Object.keys(m.stamps).length) || m.approver || m.inspector || m.checker) {
+          if (confirm("改訂したので、承認・点検・確認の判子（名前）を外しますか？\n（改訂後に承認し直す場合は「OK」。そのまま残す場合は「キャンセル」）")) {
+            ["approver", "inspector", "checker"].forEach(function (k) { m[k] = ""; if (m.stamps) delete m.stamps[k]; });
+            if (m.stamps && !Object.keys(m.stamps).length) delete m.stamps;
+          }
+        }
         m.revision = String(cur + 1);
         m.updated = today;
         m.revisions.push({ rev: m.revision, date: today, content: "", by: m.author || "" });
@@ -931,16 +941,33 @@
       steps: m.steps, srcs: srcs, src: main,
       url: function (s) { return objectUrls[s] || s; },
       pick: function (cb) { cutPicked = cb; cutPicker.value = ""; cutPicker.click(); },
-      apply: function (res, src) {
+      apply: function (res, src, thumbs, failed) {
+        var stem = src.split("/").pop().replace(/\.[^.]+$/, "").normalize("NFKC").replace(/[^\w\-]+/g, "_") || "video";
+        var pics = 0;
         res.forEach(function (v, i) {
           var s = m.steps[i];
           if (v) s.video = v;
           else if (s.video.src === src) s.video = { src: "", start: "", end: "" };
+          // 動画の場面から作った写真（写真の無い手順だけ）
+          var b = thumbs && thumbs[i];
+          if (b && v && !s.image) {
+            var name = stem + "_" + Math.round((WI.parseTime(v.start) || 0) * 10) + ".jpg";
+            var f = new File([b], name, { type: "image/jpeg" });
+            var isrc = "images/" + name;
+            if (objectUrls[isrc]) URL.revokeObjectURL(objectUrls[isrc]);
+            objectUrls[isrc] = URL.createObjectURL(f);
+            addPicked(isrc, f);
+            s.image = isrc;
+            pics++;
+          }
         });
         render();
         saveDraft();
         var n = res.filter(Boolean).length;
-        notice("<b>" + n + " 手順に動画の区間を設定しました。</b>「プレビュー」で確認してから保存してください。");
+        notice("<b>" + n + " 手順に動画の区間を設定しました。</b>" +
+          (pics ? "写真の無かった " + pics + " 手順に、動画の場面を写真として付けました。" : "") +
+          (failed ? "<br><small>動画の場面を写真にできなかった手順があります（" + failed + " 件）。「別の動画を選ぶ」で動画を選び直すと作れます。</small>" : "") +
+          "「プレビュー」で確認してから保存してください。");
       }
     });
   }
