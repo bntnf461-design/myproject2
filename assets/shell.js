@@ -41,7 +41,7 @@
       if (n.sec) return '<li class="sec">' + n.sec + '</li>';
       return '<li><a href="' + n.href + '"' + (isOn(n) ? ' class="on" aria-current="page"' : '') + '>' + icon(n.icon) + '<span>' + n.label + '</span></a></li>';
     }).join("") + '</ul>' +
-    '<div class="side-foot">インターネット不要で動作</div>';
+    '<div class="side-foot">インターネット不要で動作<br>版 ' + WI.VERSION + '</div>';
 
   var tabs = document.createElement("nav");
   tabs.className = "tabs";

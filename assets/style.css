@@ -1498,3 +1498,56 @@ body.easy { background: var(--bg); min-height: 100vh; display: flex; flex-direct
 .ez-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 14px; }
 .ez-head h2 { margin: 0; }
 .ez-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- 印刷の形（html.printing：印刷する直前に付ける。画面で高さを測るときにも使う） ---------- */
+html.printing body.viewer { background: #fff; }
+html.printing .page { padding: 0; max-width: none; margin: 0; }
+html.printing .paper { width: var(--print-w); max-width: none; margin: 0; padding: 0; border: 0; box-shadow: none; font-size: 12.5px; line-height: 1.45; }
+html.printing .paper .no-print, html.printing .round-btn, html.printing .steps .seg, html.printing .legend { display: none !important; }
+html.printing .print-only { display: inline; font-size: 0.9em; }
+html.printing .form-head { margin-bottom: 8px; }
+html.printing .fh-title { font-size: 1.35rem; padding: 6px; }
+html.printing .cell { padding: 3px 8px; }
+html.printing .cell .k { font-size: 0.75em; }
+html.printing .fh-stamps .label { padding: 2px 0; }
+html.printing .fh-stamps .who { min-height: 2.8em; padding: 2px; }
+html.printing .fh-stamps .who img { max-height: 2.6em; }
+html.printing .form-sec { margin: 0 0 8px; }
+html.printing .form-sec h2 { font-size: 0.95rem; margin: 0 0 4px; padding: 3px 8px; }
+html.printing .prep { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+html.printing .prep .box { padding: 4px 8px; }
+html.printing .prep .box h3 { font-size: 0.85rem; margin: 0 0 2px; }
+html.printing .prep ul { margin: 0; padding-left: 1.2em; }
+html.printing .steps th, html.printing .steps td { padding: 4px 6px; }
+html.printing .steps .step-title { font-size: 1.05em; }
+html.printing .steps .step-detail { font-size: 0.92em; }
+html.printing .steps .points li { margin: 1px 0; }
+html.printing .steps .col-video { width: 4.5em; }
+html.printing .step-image { max-height: 34mm; max-width: 62mm; width: auto; margin-top: 4px; }
+html.printing.print-nophoto .step-image { display: none; }
+html.printing.print-nomark mark.rev-mark { background: none; box-shadow: none; padding: 0; }
+html.printing.print-nomark .rev-badge, html.printing.print-nomark .rev-banner { display: none; }
+html.printing .rev-banner { margin: 0 0 6px; padding: 4px 10px; }
+html.printing .rev-table th, html.printing .rev-table td { padding: 2px 6px; font-size: 0.9em; }
+html.printing .steps tr { break-inside: avoid; }
+@media print {
+  .print-dlg, .tp-toast { display: none !important; }
+}
+/* 印刷の設定 */
+.print-dlg { position: fixed; inset: 0; z-index: 150; background: rgba(11, 26, 54, 0.5); display: none; place-items: center; padding: 16px; }
+.print-dlg.open { display: grid; }
+.print-box { background: var(--white); border-radius: 12px; padding: 18px 22px; width: min(480px, 100%); display: grid; gap: 10px; }
+.print-box h2 { margin: 0; font-size: 1.3rem; }
+.print-row { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.print-row label, .print-chk { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.print-row input, .print-chk input { width: 18px; height: 18px; }
+.print-info { margin: 4px 0; padding: 8px 12px; background: var(--navy-pale); border-radius: 6px; min-height: 1.5em; }
+.print-btns { display: flex; justify-content: flex-end; gap: 8px; }
+/* 印刷では、写真を手順の文の右に置いて高さを抑える */
+html.printing .col-step .step-image { float: right; max-height: 30mm; max-width: 45%; margin: 0 0 2px 8px; }
+html.printing .col-step::after { content: ""; display: block; clear: both; }
+.up-step .btn.big { min-height: 52px; padding: 0 28px; font-size: 1.1rem; margin-top: 6px; }
+.up-result { margin-top: 10px; }
+.update .notice { margin-bottom: 16px; }
+.up-ok { color: var(--navy); font-size: 1.05rem; }
+.up-list { margin: 6px 0 10px; padding-left: 1.2em; line-height: 1.8; }

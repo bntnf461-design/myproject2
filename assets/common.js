@@ -313,7 +313,11 @@
     }).catch(function () { return blob; });
   }
 
+  // この版（新しい版に入れ替えるときに比べる）
+  var VERSION = "2026.10.30";
+
   window.WI = {
+    VERSION: VERSION,
     shrinkImage: shrinkImage,
     IMG_LIMIT: IMG_LIMIT,
     voices: voices,

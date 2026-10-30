@@ -133,6 +133,12 @@
       '<button type="button" class="btn small" data-act="rd-starter">読み間違えやすい言葉を追加</button></div>' +
     '</section>';
 
+    h += '<section class="section" id="version"><h2>この版・新しい版への入れ替え</h2>' +
+      '<p style="margin-top:0">今の版：<b>' + esc(WI.VERSION) + '</b></p>' +
+      '<p class="hint">新しい版の ZIP を受け取ったら、展開して「新しい版に入れ替える」画面で 2 つのフォルダを選ぶだけで入れ替えられます。要領書・写真・動画・設定はそのままです。</p>' +
+      '<a class="btn" href="update.html">新しい版に入れ替える</a>' +
+    '</section>';
+
     h += '<section class="section" id="light"><h2>力の弱い PC（スティック PC など）で速くする</h2>' +
       '<p class="hint" style="margin-top:0">スマホで撮った写真は大きく（4000×3000 など）、力の弱い PC では表示が遅くなります。' +
       'これから入れる写真は自動で小さくしますが、すでに images フォルダにある写真は、下のボタンでまとめて小さくできます（長い辺 1600px。画面のコピーは 1920px）。' +

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新しい版に入れ替える</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="btn on-navy" href="index.html?admin=1">≡ メニュー</a>
+  <h1>新しい版に入れ替える</h1>
+</header>
+
+<main class="page update">
+  <div class="notice" id="msg">
+    新しい版の ZIP を展開したら、この画面で <b>2 つのフォルダ</b>を選ぶだけで入れ替えられます。<br>
+    <b>要領書・写真・動画・設定（manuals・images・videos フォルダ）はそのまま</b>で、画面の仕組み（html・assets など）だけを新しくします。
+    入れ替える前の画面の仕組みは <b>_old_version</b> フォルダに残すので、元に戻すこともできます。
+  </div>
+
+  <section class="section up-step" id="s1">
+    <h2>① 今使っているフォルダを選ぶ</h2>
+    <p class="hint">要領書が入っている、いつも開いているフォルダです（index.html と manuals フォルダがあるフォルダ）。</p>
+    <button type="button" class="btn primary" id="pickOld">今使っているフォルダを選ぶ</button>
+    <div class="up-result" id="oldInfo"></div>
+  </section>
+
+  <section class="section up-step" id="s2">
+    <h2>② 新しい版のフォルダを選ぶ</h2>
+    <p class="hint">新しくダウンロードした ZIP を展開したフォルダです。</p>
+    <button type="button" class="btn primary" id="pickNew">新しい版のフォルダを選ぶ</button>
+    <div class="up-result" id="newInfo"></div>
+  </section>
+
+  <section class="section up-step" id="s3">
+    <h2>③ 入れ替える</h2>
+    <div class="up-result" id="plan"><span class="hint">①と②を選ぶと、ここに入れ替える内容が出ます。</span></div>
+    <button type="button" class="btn primary big" id="run" disabled>入れ替える</button>
+    <div class="up-result" id="progress"></div>
+  </section>
+</main>
+
+<script src="assets/common.js"></script>
+<script src="assets/folder.js"></script>
+<script src="assets/update.js"></script>
+<script src="assets/help.js"></script>
+</body>
+</html>
