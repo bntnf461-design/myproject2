@@ -110,7 +110,16 @@
   var paramFile = WI.getParam("file");
   if (paramFile) {
     WI.loadManualFile(paramFile, function (data, err) {
-      if (!data) { formEl.innerHTML = '<div class="notice error">' + esc(err) + '</div>'; return; }
+      if (!data) {
+        // 読み込めないファイル：空の要領書を出し、どのボタンを押しても壊れないようにする（元のファイルには触らない）
+        m = blankManual();
+        fileName = "";
+        history.replaceState(null, "", "editor.html");
+        render();
+        notice("<b>「" + esc(paramFile) + "」を読み込めませんでした。</b>" + esc(err) +
+          "<br><small>ファイルが壊れている可能性があります。manuals/_backup に前の内容が残っていれば、そちらを「ファイルを開く」で開いてください。いまは新しい要領書の画面になっています。</small>", true);
+        return;
+      }
       fileName = paramFile;
       baseText = canon(data);
       m = normalize(JSON.parse(JSON.stringify(data)));

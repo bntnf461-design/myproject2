@@ -73,7 +73,8 @@
   var btn = document.createElement("button");
   btn.type = "button";
   btn.className = "help-btn";
-  btn.textContent = "？ 困ったとき";
+  btn.innerHTML = '？<span class="help-t"> 困ったとき</span>';
+  btn.title = "困ったとき";
   btn.setAttribute("aria-haspopup", "dialog");
   var host = document.querySelector(".topbar .actions") || document.querySelector(".topbar") || document.querySelector(".easy-top");
   if (!host) return;

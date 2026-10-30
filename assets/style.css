@@ -1551,3 +1551,17 @@ html.printing .col-step::after { content: ""; display: block; clear: both; }
 .update .notice { margin-bottom: 16px; }
 .up-ok { color: var(--navy); font-size: 1.05rem; }
 .up-list { margin: 6px 0 10px; padding-left: 1.2em; line-height: 1.8; }
+/* 狭い画面・文字 大でも、上のボタンや作業名がはみ出さないように */
+.topbar .actions { min-width: 0; max-width: 100%; }
+.topbar h1, .topbar .crumb-title { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .topbar h1 { min-width: 0; flex: 1 1 100%; } }
+.topbar > .btn, .topbar > a.btn { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .help-btn { padding: 0 12px; }
+  .help-btn .help-t { display: none; }
+  .viewer .topbar .actions { flex-wrap: wrap; }
+}
+/* とても長い品番・記号などが続いても、画面がはみ出さないように折り返す */
+.paper, .edit-card, .ez-page, .easy-doc, .easy-tile, .manual-card, .tp-info, .tr-row, .home-table, .cut-list { overflow-wrap: anywhere; }
+.steps { table-layout: auto; }
+.steps td { overflow-wrap: anywhere; word-break: normal; }
