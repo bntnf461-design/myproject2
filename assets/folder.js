@@ -238,6 +238,7 @@
       "   - labels     : 項目の表示名\n" +
       "   - categories : カテゴリーの名前と並び順（エディタの候補にも出ます）\n" +
       "   - terms      : 要領書の見出しの名前（社内フォーマットに合わせる。空なら標準の名前）\n" +
+      "   - glossary   : 翻訳の用語集（日本語 ja → インドネシア語 id の決まった訳語）\n" +
       "   - formats    : 覚えた Excel の様式（取り込みで列の対応を直して「この様式を覚える」を押したもの）\n" +
       "   - files      : manuals フォルダに置いた要領書ファイル名\n" +      "   - folderId   : このフォルダの目印（自動で付きます。変更しないでください）\n" +
       "   ========================================================= */\n" +
@@ -249,6 +250,7 @@
       "  labels: " + j(c.labels || {}) + ",\n" +
       "  terms: " + j(c.terms || {}) + ",\n" +
       (c.formats && c.formats.length ? "  formats: " + j(c.formats) + ",\n" : "") +
+      (c.glossary && c.glossary.length ? "  glossary: " + j(c.glossary) + ",\n" : "") +
       "  categories: {\n" + cats.join(",\n") + (cats.length ? "\n" : "") + "  },\n" +
       "  files: [\n" + (c.files || []).map(function (f) { return "    " + j(f); }).join(",\n") + "\n  ]\n" +
       "};\n";

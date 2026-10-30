@@ -311,6 +311,7 @@
     }
 
     formEl.innerHTML = h;
+    if (transBtn) transLabel();
     window.scrollTo(0, y);
   }
 
@@ -651,6 +652,7 @@
     if (d.terms && !Object.keys(d.terms).length) delete d.terms;
     // 何も入力していない手順は保存しない
     d.steps = d.steps.filter(function (s) { return s.title || s.detail || s.points.length || s.video.src || s.image; });
+    WITrans.prune(d); // 今の文に対応しない古い訳は保存しない
     return d;
   }
 
@@ -886,6 +888,16 @@
   }
   document.getElementById("addStep").addEventListener("click", function () { insertStep(m.steps.length); });
   document.getElementById("cutVideo").addEventListener("click", openCutter);
+
+  // ---------- インドネシア語 ----------
+  var transBtn = document.getElementById("transBtn");
+  function transLabel() {
+    var s = WITrans.stats(m);
+    transBtn.textContent = "🌐 インドネシア語" + (s.ok + s.mt + s.stale ? "（確認 " + s.ok + "/" + s.all + "）" : "");
+  }
+  transBtn.addEventListener("click", function () {
+    WITrans.open({ manual: m, onChange: saveDraft, onClose: transLabel });
+  });
 
   // ---------- 動画を手順に分ける ----------
   var cutPicker = document.createElement("input");

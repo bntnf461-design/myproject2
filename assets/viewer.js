@@ -14,6 +14,66 @@
   var manual = null;
   var playlist = []; // 表示順の項目（すべての手順 ＋ 急所の動画）。動画の無い手順は写真・説明を大きく表示
 
+  // ---------- 表示する言語（日本語／インドネシア語） ----------
+  // インドネシア語では、訳文の下に日本語も小さく出す（リーダー・日本人の指導者も同じ画面で分かるように）
+  var lang = "ja";
+  try { lang = localStorage.getItem("wi.lang") === "id" ? "id" : "ja"; } catch (e) {}
+  var langBtn = document.getElementById("langBtn");
+  // 本文: 訳があれば訳（確認前は ※）＋日本語
+  function tx(key, ja) {
+    if (lang !== "id") return esc(ja);
+    var e = WI.trLookup(manual, "id", key, ja);
+    if (!e) return esc(ja);
+    return '<span class="t-id">' + esc(e.t) + (e.ok ? '' : '<sup class="t-un" title="日本語での確認がまだの訳です（belum dicek）">※</sup>') + '</span>' +
+      '<span class="t-ja">' + esc(ja) + '</span>';
+  }
+  function txt(key, ja) { // 文字だけ（title 属性など）
+    var e = lang === "id" && WI.trLookup(manual, "id", key, ja);
+    return e ? e.t : ja;
+  }
+  // 画面の決まった言葉
+  var ID = {
+    "作業前の準備": "Persiapan sebelum kerja", "安全上の注意": "Perhatian keselamatan", "保護具": "APD (alat pelindung diri)",
+    "使用する設備・治工具": "Peralatan & alat bantu", "使用部品・材料": "Komponen & bahan", "目的": "Tujuan",
+    "手順": "Langkah kerja", "急所": "Poin kunci", "理由": "Alasan", "標準時間": "Waktu standar", "動画": "Video", "秒": "detik",
+    "動画なし": "Tanpa video", "改訂履歴": "Riwayat revisi",
+    "▶ 動画を再生": "▶ Putar video", "❚❚ 一時停止": "❚❚ Jeda", "◀ 前へ": "◀ Sebelumnya", "次へ ▶": "Berikutnya ▶",
+    "✕ 閉じる": "✕ Tutup", "⟲ 最初から": "⟲ Ulangi", "ゆっくり": "Lambat", "標準": "Normal", "↻ 繰り返し": "↻ Ulang",
+    "⏭ 続けて再生": "⏭ Putar terus", "▶ 順に見る": "▶ Lihat berurutan", "◀ 一覧": "◀ Daftar",
+    "手順の行のどこをタップしても、動画の再生（動画が無い手順は大きく表示）ができます": "Ketuk baris langkah untuk memutar video (langkah tanpa video ditampilkan besar)"
+  };
+  var KIND_ID = { safety: "Keselamatan", quality: "Kualitas", ease: "Kemudahan" };
+  function kb(k) { // ✚ 安全・◆ 品質 の印
+    var h = WI.kindBadge(k);
+    return lang === "id" && KIND_ID[k] ? h.replace(WI.KIND_LABEL[k], KIND_ID[k]) : h;
+  }
+  function L(ja) { return lang === "id" && ID[ja] ? ID[ja] : ja; }
+  function LH(ja) { // 見出し: インドネシア語＋日本語（小さく）
+    return lang === "id" && ID[ja] ? esc(ID[ja]) + '<span class="t-ja-s">' + esc(ja) + '</span>' : esc(ja);
+  }
+  function applyLang() {
+    document.documentElement.classList.toggle("lang-id", lang === "id");
+    document.documentElement.lang = lang === "id" ? "id" : "ja";
+    langBtn.textContent = lang === "id" ? "🌐 日本語" : "🌐 Bahasa Indonesia";
+    langBtn.setAttribute("aria-pressed", lang === "id" ? "true" : "false");
+    // プレーヤー・上のボタンの言葉
+    [["pClose", "✕ 閉じる"], ["pRestart", "⟲ 最初から"], ["pRepeat", "↻ 繰り返し"], ["pAuto", "⏭ 続けて再生"], ["pPrev", "◀ 前へ"], ["pNext", "次へ ▶"], ["stepMode", "▶ 順に見る"]].forEach(function (x) {
+      var b = document.getElementById(x[0]);
+      if (b) b.textContent = L(x[1]);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-rate]"), function (b) {
+      var j = { "0.5": "0.5倍", "0.75": "ゆっくり", "1": "標準" }[b.getAttribute("data-rate")];
+      b.textContent = j === "0.5倍" ? (lang === "id" ? "0.5x" : j) : L(j);
+    });
+  }
+  langBtn.addEventListener("click", function () {
+    lang = lang === "id" ? "ja" : "id";
+    try { localStorage.setItem("wi.lang", lang); } catch (e) {}
+    applyLang();
+    render();
+    if (cur >= 0) openPlayer(cur);
+  });
+
   // ---------- データ読み込み ----------
   var file = WI.getParam("file");
   if (WI.getParam("preview") === "1") {
@@ -54,17 +114,21 @@
         localStorage.setItem("wi.recent", JSON.stringify(recent.slice(0, 6)));
       } catch (e) {}
     }
+    // 訳がある要領書だけ、言語の切り替えを出す
+    langBtn.hidden = !(data.tr && data.tr.id && Object.keys(data.tr.id).length);
+    if (langBtn.hidden) lang = "ja";
+    applyLang();
     render();
   }
 
-  function list(arr) {
+  function list(arr, key) {
     arr = (arr || []).filter(function (x) { return x !== "" && x != null; });
     if (!arr.length) return "";
-    return "<ul>" + arr.map(function (x) {
+    return "<ul>" + arr.map(function (x, i) {
       if (typeof x === "object") {
-        return "<li>" + esc(x.name) + (x.qty ? "　<b>" + esc(x.qty) + "</b>" : "") + "</li>";
+        return "<li>" + tx(key + "." + i, x.name) + (x.qty ? "　<b>" + esc(x.qty) + "</b>" : "") + "</li>";
       }
-      return "<li>" + esc(x) + "</li>";
+      return "<li>" + tx(key + "." + i, x) + "</li>";
     }).join("") + "</ul>";
   }
 
@@ -82,13 +146,13 @@
     var T = WI.terms(m, window.CATALOG);
 
     // ---------- 帳票のヘッダ（社内フォーマットと同じ形） ----------
-    var cell = function (k, v, cls) {
-      return '<div class="cell' + (cls ? " " + cls : "") + '"><div class="k">' + esc(k) + '</div><div class="v">' + (v ? esc(v) : "&nbsp;") + '</div></div>';
+    var cell = function (k, v, cls, key, kh) {
+      return '<div class="cell' + (cls ? " " + cls : "") + '"><div class="k">' + (kh || esc(k)) + '</div><div class="v">' + (v ? (key ? tx(key, v) : esc(v)) : "&nbsp;") + '</div></div>';
     };
     var catLabel = WI.catConfig(window.CATALOG).labels.category;
     var mid = cell(T.docNo, m.docNo) +
       (m.revision || m.updated ? cell("改訂", [m.revision ? "第 " + m.revision + " 版" : "", m.updated].filter(Boolean).join("　")) : cell("制定日", m.issued));
-    var sub = [cell(T.process, m.process, "wide"), cell(T.title, m.title, "wide2")];
+    var sub = [cell(T.process, m.process, "wide"), cell(T.title, m.title, "wide2", "title")];
     if (m.line) sub.push(cell(T.line, m.line));
     if (m.product) sub.push(cell(T.product, m.product));
     if (m.category) sub.push(cell(catLabel, m.category));
@@ -98,16 +162,16 @@
         '<div class="fh-mid">' + mid + '</div>' +
         '<div class="fh-stamps">' + stamp("承認", m, "approver") + stamp("点検", m, "inspector") + stamp("確認", m, "checker") + stamp("作成", m, "author") + '</div>' +
         '<div class="fh-sub">' + sub.join("") + '</div>' +
-        (m.purpose ? '<div class="fh-sub">' + cell("目的", m.purpose, "full") + '</div>' : '') +
+        (m.purpose ? '<div class="fh-sub">' + cell("目的", m.purpose, "full", "purpose", LH("目的")) + '</div>' : '') +
       '</section>';
 
     // 準備（保護具・道具・注意）
     var prep = "";
-    if ((m.cautions || []).length) prep += '<div class="box safety"><h3>⚠ 安全上の注意</h3>' + list(m.cautions) + '</div>';
-    if ((m.ppe || []).length) prep += '<div class="box"><h3>保護具</h3>' + list(m.ppe) + '</div>';
-    if ((m.tools || []).length) prep += '<div class="box"><h3>使用する設備・治工具</h3>' + list(m.tools) + '</div>';
-    if ((m.materials || []).length) prep += '<div class="box"><h3>使用部品・材料</h3>' + list(m.materials) + '</div>';
-    if (prep) html += '<section class="form-sec"><h2>作業前の準備</h2><div class="prep">' + prep + '</div></section>';
+    if ((m.cautions || []).length) prep += '<div class="box safety"><h3>⚠ ' + LH("安全上の注意") + '</h3>' + list(m.cautions, "cautions") + '</div>';
+    if ((m.ppe || []).length) prep += '<div class="box"><h3>' + LH("保護具") + '</h3>' + list(m.ppe, "ppe") + '</div>';
+    if ((m.tools || []).length) prep += '<div class="box"><h3>' + LH("使用する設備・治工具") + '</h3>' + list(m.tools, "tools") + '</div>';
+    if ((m.materials || []).length) prep += '<div class="box"><h3>' + LH("使用部品・材料") + '</h3>' + list(m.materials, "materials") + '</div>';
+    if (prep) html += '<section class="form-sec"><h2>' + LH("作業前の準備") + '</h2><div class="prep">' + prep + '</div></section>';
 
     // ---------- 作業手順の表 ----------
     var hasReason = steps.some(function (s) { return (s.points || []).some(function (p) { return p.reason; }); });
@@ -115,11 +179,11 @@
     var hasKinds = steps.some(function (s) { return (s.kinds || []).length; });
     html += '<section class="form-sec">' +
       '<table class="steps"><thead><tr>' +
-        '<th class="col-no">NO.</th><th>' + esc(T.step) + '</th>' +
+        '<th class="col-no">NO.</th><th>' + (lang === "id" ? LH("手順") : esc(T.step)) + '</th>' +
         (hasKinds ? '<th class="col-kinds" title="✚ 安全ポイント ／ ◆ 品質ポイント">✚ ◆</th>' : '') +
-        '<th>' + esc(T.point) + (hasReason ? '／' + esc(T.reason) : '') + '</th>' +
-        (showTime ? '<th class="col-time">標準時間</th>' : '') +
-        '<th class="col-video">動画</th>' +
+        '<th>' + (lang === "id" ? esc(ID["急所"] + (hasReason ? " / " + ID["理由"] : "")) + '<span class="t-ja-s">' + esc(T.point) + '</span>' : esc(T.point) + (hasReason ? '／' + esc(T.reason) : '')) + '</th>' +
+        (showTime ? '<th class="col-time">' + LH("標準時間") + '</th>' : '') +
+        '<th class="col-video">' + LH("動画") + '</th>' +
       '</tr></thead><tbody>';
 
     steps.forEach(function (s, si) {
@@ -135,9 +199,9 @@
           playlist.push({ step: si, point: pi, video: p.video });
         }
         return '<li' + pv + '>' +
-          (p.kind && WI.KIND_LABEL[p.kind] ? '<span class="kind ' + esc(p.kind) + '">' + WI.KIND_LABEL[p.kind] + '</span>' : '') +
-          esc(p.text) + (hasVideo(p.video) ? ' ▶' : '') +
-          (p.reason ? '<span class="reason">' + esc(T.reason) + '：' + esc(p.reason) + '</span>' : '') +
+          (p.kind && WI.KIND_LABEL[p.kind] ? '<span class="kind ' + esc(p.kind) + '">' + (lang === "id" ? KIND_ID[p.kind] : WI.KIND_LABEL[p.kind]) + '</span>' : '') +
+          tx("steps." + si + ".points." + pi + ".text", p.text) + (hasVideo(p.video) ? ' ▶' : '') +
+          (p.reason ? '<span class="reason">' + esc(lang === "id" ? ID["理由"] : T.reason) + '：' + tx("steps." + si + ".points." + pi + ".reason", p.reason) + '</span>' : '') +
         '</li>';
       }).join("");
 
@@ -145,30 +209,30 @@
       html += '<tr class="step-row' + (stepPl >= 0 ? ' has-video' : ' still') + '" id="step-' + si + '" data-pl="' + stepIdx + '">' +
         '<td class="col-no">' + (si + 1) + '</td>' +
         '<td class="col-step" data-label="' + esc(T.step) + '">' +
-          '<div class="step-title">' + esc(s.title) + '</div>' +
-          (s.detail ? '<div class="step-detail">' + esc(s.detail) + '</div>' : '') +
+          '<div class="step-title">' + tx("steps." + si + ".title", s.title) + '</div>' +
+          (s.detail ? '<div class="step-detail">' + tx("steps." + si + ".detail", s.detail) + '</div>' : '') +
           (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="写真（タップで拡大）" title="タップで拡大" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
-        (hasKinds ? '<td class="col-kinds' + ((s.kinds || []).length ? '' : ' empty') + '" data-label="安全・品質ポイント">' + (s.kinds || []).map(WI.kindBadge).join("") + '</td>' : '') +
+        (hasKinds ? '<td class="col-kinds' + ((s.kinds || []).length ? '' : ' empty') + '" data-label="安全・品質ポイント">' + (s.kinds || []).map(kb).join("") + '</td>' : '') +
         '<td class="col-point' + (points ? '' : ' empty') + '" data-label="' + esc(T.point) + '">' + (points ? '<ul class="points">' + points + '</ul>' : '') + '</td>' +
-        (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' 秒' : '') + '</td>' : '') +
+        (showTime ? '<td class="col-time" data-label="標準時間">' + (s.time ? esc(s.time) + ' ' + L("秒") : '') + '</td>' : '') +
         '<td class="col-video">' +
           (stepPl >= 0
             ? '<button type="button" class="round-btn" data-pl="' + stepPl + '" title="動画を再生"><span>▶</span></button><span class="print-only">動画あり</span>' +
               (s.video.end != null && s.video.end !== "" ? '<small class="seg">' + segLabel(s.video) + '</small>' : '')
-            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">動画なし</small><span class="print-only">－</span>') +
+            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">' + L("動画なし") + '</small><span class="print-only">－</span>') +
         '</td>' +
       '</tr>';
     });
     html += '</tbody></table>' +
       '<div class="legend no-print">' +
         (hasKinds ? WI.kindBadge("safety") + ' 安全ポイント　' + WI.kindBadge("quality") + ' 品質ポイント　' : '') +
-        '<span>手順の行のどこをタップしても、動画の再生（動画が無い手順は大きく表示）ができます</span></div>' +
+        '<span>' + esc(L("手順の行のどこをタップしても、動画の再生（動画が無い手順は大きく表示）ができます")) + '</span></div>' +
     '</section>';
 
     // 改訂履歴
     if ((m.revisions || []).length) {
-      html += '<section class="form-sec"><h2>改訂履歴</h2><table class="rev-table"><thead><tr>' +
+      html += '<section class="form-sec"><h2>' + LH("改訂履歴") + '</h2><table class="rev-table"><thead><tr>' +
         '<th>改訂</th><th>日付</th><th>内容</th><th>担当</th></tr></thead><tbody>' +
         m.revisions.map(function (r) {
           return '<tr><td>' + esc(r.rev) + '</td><td>' + esc(r.date) + '</td><td>' + esc(r.content) + '</td><td>' + esc(r.by) + '</td></tr>';
@@ -287,16 +351,19 @@
     for (var k = 0; k < n; k++) bars += '<i class="' + (k < item.step ? "done" : k === item.step ? "now" : "") + '"></i>';
     pProg.innerHTML = bars;
     // 右：手順の文・印・急所
-    pNo.textContent = point ? T.point.replace(/[（(].*$/, "") + "（手順 " + (item.step + 1) + "）" : T.step.replace(/[（(].*$/, "");
-    pName.textContent = point ? point.text : step.title;
-    pMarks.innerHTML = (step.kinds || []).map(WI.kindBadge).join("");
+    var lp = lang === "id" ? ID["急所"] : T.point.replace(/[（(].*$/, "");
+    pNo.textContent = point ? lp + (lang === "id" ? "（Langkah " + (item.step + 1) + "）" : "（手順 " + (item.step + 1) + "）") : (lang === "id" ? ID["手順"] : T.step.replace(/[（(].*$/, ""));
+    pName.innerHTML = point ? tx("steps." + item.step + ".points." + item.point + ".text", point.text) : tx("steps." + item.step + ".title", step.title);
+    document.getElementById("pTitle").innerHTML = tx("title", manual.title || "");
+    pMarks.innerHTML = (step.kinds || []).map(kb).join("");
     var pts = point ? [] : (step.points || []);
-    pPoints.innerHTML = pts.map(function (p) {
-      return '<div class="tp-point' + (p.kind ? " " + esc(p.kind) : "") + '"><div class="lbl">' + esc(T.point.replace(/[（(].*$/, "")) + '</div>' +
-        '<div class="txt">' + (p.kind && WI.KIND_LABEL[p.kind] ? WI.kindBadge(p.kind) + ' ' : '') + esc(p.text) + '</div>' +
-        (p.reason ? '<div class="why">' + esc(T.reason) + '：' + esc(p.reason) + '</div>' : '') + '</div>';
+    var pb = "steps." + item.step + ".points.";
+    pPoints.innerHTML = pts.map(function (p, pi) {
+      return '<div class="tp-point' + (p.kind ? " " + esc(p.kind) : "") + '"><div class="lbl">' + esc(lp) + '</div>' +
+        '<div class="txt">' + (p.kind && WI.KIND_LABEL[p.kind] ? kb(p.kind) + ' ' : '') + tx(pb + pi + ".text", p.text) + '</div>' +
+        (p.reason ? '<div class="why">' + esc(lang === "id" ? ID["理由"] : T.reason) + '：' + tx(pb + pi + ".reason", p.reason) + '</div>' : '') + '</div>';
     }).join("");
-    if (step.detail && !point) pPoints.innerHTML = '<div class="tp-detail">' + esc(step.detail) + '</div>' + pPoints.innerHTML;
+    if (step.detail && !point) pPoints.innerHTML = '<div class="tp-detail">' + tx("steps." + item.step + ".detail", step.detail) + '</div>' + pPoints.innerHTML;
 
     pPrev.disabled = idx === 0;
     pNext.disabled = idx === playlist.length - 1;
@@ -322,7 +389,7 @@
       pBody.classList.add("still"); // 再生の操作ボタンは出さない
       pTime.textContent = "";
       pPlay.disabled = true;
-      pPlay.textContent = "動画なし";
+      pPlay.textContent = L("動画なし");
       document.getElementById("pRestart").disabled = true;
       (pNext.disabled ? pClose : pNext).focus(); // → キー・Enter で次へ
       return;
@@ -333,7 +400,7 @@
     pBody.classList.remove("no-media");
     pBody.classList.remove("still");
     pPlay.disabled = false;
-    pPlay.textContent = video.paused ? "▶ 動画を再生" : "❚❚ 一時停止";
+    pPlay.textContent = L(video.paused ? "▶ 動画を再生" : "❚❚ 一時停止");
     document.getElementById("pRestart").disabled = false;
     segStart = WI.parseTime(item.video.start) || 0;
     segEnd = WI.parseTime(item.video.end);
@@ -438,8 +505,8 @@
   });
 
   video.addEventListener("ended", segmentDone);
-  video.addEventListener("play", function () { pPlay.textContent = "❚❚ 一時停止"; hideMsg(); });
-  video.addEventListener("pause", function () { if (!pPlay.disabled) pPlay.textContent = "▶ 動画を再生"; });
+  video.addEventListener("play", function () { pPlay.textContent = L("❚❚ 一時停止"); hideMsg(); });
+  video.addEventListener("pause", function () { if (!pPlay.disabled) pPlay.textContent = L("▶ 動画を再生"); });
 
   video.addEventListener("error", function () {
     if (!video.getAttribute("src")) return; // 閉じた時の解放によるもの

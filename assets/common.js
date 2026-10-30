@@ -209,7 +209,18 @@
     return !isNaN(d) && (Date.now() - d) / 86400000 > REVIEW_DAYS;
   }
 
+  // 翻訳（manual.tr[lang][場所] = { t, src, ok }）。日本語が変わった訳は使わない
+  function trLookup(m, lang, key, ja) {
+    var tr = m && m.tr && m.tr[lang];
+    if (!tr || !ja) return null;
+    var e = tr[key];
+    if (e && e.t && e.src === ja) return e;
+    for (var k in tr) if (tr[k] && tr[k].t && tr[k].src === ja) return tr[k]; // 手順の並べ替えなどで場所が変わった
+    return null;
+  }
+
   window.WI = {
+    trLookup: trLookup,
     loadManualFile: loadManualFile,
     loadManualFiles: loadManualFiles,
     esc: esc,
