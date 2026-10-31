@@ -1,5 +1,6 @@
 node_modules
-frames2/
+frames/
+fr/
 .v48/
 .audio.wav
 dur.json
