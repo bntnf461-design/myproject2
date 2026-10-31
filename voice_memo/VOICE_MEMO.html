@@ -15,55 +15,57 @@
   --accent: #1d5c8f;
   --accent-ink: #ffffff;
   --accent-soft: #e2edf6;
-  --caution: #a8650a;
-  --caution-soft: #fdf1dc;
-  --ok: #2c7a4b;
+  --safety: #b4410f;
+  --safety-soft: #fbe9df;
+  --quality: #23704a;
+  --quality-soft: #e1f2e8;
   --font: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
-  --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
   --r: 10px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #12171d; --paper: #1b222b; --ink: #e6ebf0; --muted: #9aa8b6; --line: #2e3945;
     --accent: #6aaee6; --accent-ink: #0d1a26; --accent-soft: #1f3245;
-    --caution: #f0b35a; --caution-soft: #3a2c16; --ok: #6fcf97; color-scheme: dark;
+    --safety: #f19a6c; --safety-soft: #3b2418; --quality: #74d3a0; --quality-soft: #17321f; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #12171d; --paper: #1b222b; --ink: #e6ebf0; --muted: #9aa8b6; --line: #2e3945;
   --accent: #6aaee6; --accent-ink: #0d1a26; --accent-soft: #1f3245;
-  --caution: #f0b35a; --caution-soft: #3a2c16; --ok: #6fcf97; color-scheme: dark;
+  --safety: #f19a6c; --safety-soft: #3b2418; --quality: #74d3a0; --quality-soft: #17321f; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
-  background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.6;
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.6;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 20px 40px;
 }
-.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 18px; }
 header { display: grid; gap: 6px; }
 h1 { font-size: 1.45rem; margin: 0; text-wrap: balance; letter-spacing: .02em; }
-.lead { margin: 0; color: var(--muted); max-width: 68ch; }
+.lead { margin: 0; color: var(--muted); max-width: 72ch; }
 .flow { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 4px 0 0; padding: 0; list-style: none; font-size: .86rem; color: var(--muted); }
 .flow li { display: flex; align-items: center; gap: 6px; }
 .flow b { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .8rem; }
 .cols { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 900px) { .cols { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; } }
+@media (min-width: 960px) { .cols { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); align-items: start; } }
+.stack { display: grid; gap: 18px; min-width: 0; }
 .panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 12px; min-width: 0; }
 .panel h2 { font-size: 1.02rem; margin: 0; display: flex; align-items: center; gap: 8px; }
-.panel h2 .n { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: .85rem; }
+.panel h2 .n { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: .85rem; flex: none; }
 .hint { font-size: .84rem; color: var(--muted); margin: 0; }
 label.field { display: grid; gap: 4px; font-size: .86rem; color: var(--muted); }
 textarea, input[type=text], select {
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%;
 }
-textarea { min-height: 190px; resize: vertical; line-height: 1.7; }
+textarea { min-height: 170px; resize: vertical; line-height: 1.7; }
+textarea.short { min-height: 110px; }
 textarea.drop { outline: 2px dashed var(--accent); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .opts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .88rem; }
 .opts label { display: flex; align-items: center; gap: 6px; }
-button, .btn {
+button {
   font: inherit; font-size: .92rem; border-radius: 8px; padding: 8px 14px; cursor: pointer;
   border: 1px solid var(--line); background: var(--paper); color: var(--ink);
 }
@@ -72,6 +74,12 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 button.small { padding: 4px 9px; font-size: .82rem; }
 button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, [draggable]:focus-visible, [contenteditable]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button[disabled] { opacity: .5; cursor: default; }
+.tag { display: inline-block; font-size: .74rem; font-weight: 700; border-radius: 4px; padding: 0 6px; line-height: 1.6; white-space: nowrap; }
+.tag.s { background: var(--safety-soft); color: var(--safety); }
+.tag.q { background: var(--quality-soft); color: var(--quality); }
+.status { font-size: .86rem; color: var(--muted); margin: 0; min-height: 1.2em; }
+.status.err { color: var(--safety); }
+.status.ok { color: var(--quality); }
 
 /* drag chips: the things you pull into Word / Excel */
 .chips { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
@@ -85,29 +93,41 @@ button[disabled] { opacity: .5; cursor: default; }
 .chip strong { font-size: .95rem; }
 .chip span { font-size: .8rem; color: var(--muted); }
 
-table.steps { width: 100%; border-collapse: collapse; font-size: .95rem; }
-.tablebox { overflow-x: auto; }
-.steps th { text-align: left; font-size: .78rem; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-.steps td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.steps tr.dragging { opacity: .4; }
-.steps tr.over td { box-shadow: inset 0 2px 0 var(--accent); }
-.steps .no { width: 3.2em; font-variant-numeric: tabular-nums; }
+/* step sheet: a table on wide screens, stacked cards on phones */
+.sheet { display: grid; }
+.sh-head, .step { display: grid; gap: 6px 12px; grid-template-columns: 3em minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1.4fr) auto; align-items: start; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.sh-head { font-size: .78rem; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding-top: 0; }
+.step.dragging { opacity: .4; }
+.step.over { box-shadow: inset 0 2px 0 var(--accent); }
+.step.common { background: var(--bg); border-radius: 8px; border-bottom: 0; margin-bottom: 6px; }
 .handle {
   display: inline-grid; place-items: center; min-width: 2.4em; height: 2em; border-radius: 6px;
-  background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: grab; user-select: none; -webkit-user-select: none;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: grab; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums;
 }
-.txt { min-width: 12em; outline: none; border-radius: 4px; padding: 1px 3px; }
-.txt:hover { background: var(--bg); }
-.note { margin-top: 4px; font-size: .86rem; color: var(--caution); background: var(--caution-soft); border-radius: 4px; padding: 2px 6px; }
-.note:empty { display: none; }
-.ops { white-space: nowrap; text-align: right; width: 1%; }
+.common .handle { background: var(--muted); font-size: .78rem; cursor: default; }
+.cell { min-width: 0; display: grid; gap: 2px; }
+.cell .lbl { display: none; }
+.ed { outline: none; border-radius: 4px; padding: 1px 4px; min-height: 1.6em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ed:hover { background: var(--bg); }
+.ed:empty::before { content: attr(data-ph); color: var(--muted); opacity: .6; }
+.ed.s { color: var(--safety); }
+.ed.q { color: var(--quality); }
+.ops { display: flex; gap: 4px; }
 .ops button { padding: 2px 7px; font-size: .8rem; }
 .empty { color: var(--muted); padding: 18px 8px; text-align: center; }
+@media (max-width: 720px) {
+  .sh-head { display: none; }
+  .step { grid-template-columns: auto minmax(0, 1fr); }
+  .step > .handle-wrap { grid-row: span 3; }
+  .step .ops { grid-column: 2; justify-content: flex-end; }
+  .cell .lbl { display: inline-block; justify-self: start; }
+}
 
 details { border-top: 1px solid var(--line); padding-top: 10px; }
 summary { cursor: pointer; font-weight: 700; font-size: .92rem; }
-details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: grid; gap: 4px; }
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 20px; font-size: .9rem; opacity: 0; pointer-events: none; transition: opacity .2s; }
+details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: grid; gap: 4px; }
+.ai[hidden] { display: none; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 20px; font-size: .9rem; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px); }
 .toast.show { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -117,78 +137,118 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
 <div class="wrap">
   <header>
     <h1>作業要領書 音声メモ</h1>
-    <p class="lead">スマホのレコーダーで話した作業手順を、番号付きの手順に整えて、Word や Excel にそのままドラッグ＆ドロップできます。</p>
+    <p class="lead">スマホのレコーダーで話した作業手順を番号付きの手順に整え、安全・品質のポイントを合う手順に割り振って、Word や Excel にそのままドラッグ＆ドロップできます。</p>
     <ol class="flow">
       <li><b>1</b>レコーダーで録音・文字起こし</li>
-      <li><b>2</b>文章をここに貼り付け</li>
+      <li><b>2</b>文章とポイントを貼り付け</li>
       <li><b>3</b>手順をつかんで Word・Excel へ</li>
     </ol>
   </header>
 
   <div class="cols">
-    <section class="panel" aria-labelledby="h-in">
-      <h2 id="h-in"><span class="n">1</span>文字起こしを貼り付け</h2>
-      <p class="hint">レコーダーの文字起こしをコピーして貼り付けるか、.txt ファイルをこの枠へドロップします。キーボードのマイクで直接話しても入力できます。</p>
-      <label class="field" for="title">作業名（Excel の見出しになります）
-        <input type="text" id="title" placeholder="例：ポンプのフィルター交換">
-      </label>
-      <textarea id="src" aria-label="文字起こしの文章"></textarea>
-      <div class="opts" role="group" aria-label="整え方">
-        <label><input type="checkbox" id="optFiller" checked>「えー」「あのー」を消す</label>
-        <label><input type="checkbox" id="optMarker" checked>「次に」「それから」で区切る</label>
-        <label><input type="checkbox" id="optNote" checked>「注意」「ポイント」を注意点に</label>
-      </div>
-      <div class="row">
-        <button class="primary" id="btnMake">手順に整える</button>
-        <button id="btnFile">.txt を開く</button>
-        <button id="btnClear">消す</button>
-        <input type="file" id="file" class="hidden-input" accept=".txt,text/plain" tabindex="-1">
-      </div>
+    <div class="stack">
+      <section class="panel" aria-labelledby="h-in">
+        <h2 id="h-in"><span class="n">1</span>文字起こしを貼り付け</h2>
+        <p class="hint">レコーダーの文字起こしをコピーして貼り付けるか、.txt ファイルをこの枠へドロップします。</p>
+        <label class="field" for="title">作業名（見出しになります）
+          <input type="text" id="title" placeholder="例：ポンプのフィルター交換">
+        </label>
+        <textarea id="src" aria-label="文字起こしの文章"></textarea>
+        <label class="field" for="pts">安全・品質のポイント（1行に1つ）
+          <textarea id="pts" class="short" placeholder="例：安全　電源を切ってから作業する"></textarea>
+        </label>
+        <p class="hint">合う手順に自動で割り振ります。行の先頭に「安全」「品質」と書くと、その種類になります。書かなければ言葉から判断します。</p>
+        <div class="opts" role="group" aria-label="整え方">
+          <label><input type="checkbox" id="optFiller" checked>「えー」「あのー」を消す</label>
+          <label><input type="checkbox" id="optMarker" checked>「次に」「それから」で区切る</label>
+        </div>
+        <div class="row">
+          <button class="primary" id="btnMake">手順に整える</button>
+          <button id="btnFile">.txt を開く</button>
+          <button id="btnClear">消す</button>
+          <input type="file" id="file" class="hidden-input" accept=".txt,text/plain" tabindex="-1">
+        </div>
+      </section>
 
+      <section class="panel" aria-labelledby="h-ai">
+        <h2 id="h-ai"><span class="n">✦</span>Claude で要約・割り振り（使える人だけ）</h2>
+        <p class="hint">話し言葉を作業要領書らしい短い文に直し、ポイントを合う手順に割り振ってもらいます。使わなくても上の「手順に整える」だけで作れます。</p>
+        <div class="opts" role="group" aria-label="Claude への頼み方">
+          <label>文の終わり
+            <select id="optStyle" style="width:auto;padding:4px 8px">
+              <option value="plain">〜する。</option>
+              <option value="polite">〜します。</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="optSuggest">足りないポイントも提案してもらう</label>
+        </div>
 
-      <details>
-        <summary>スマホのレコーダーで文字起こしする方法</summary>
-        <ul>
-          <li><b>iPhone（ボイスメモ）</b>：録音を開き、文字起こしの吹き出しボタンで表示 →「…」から文字起こしをコピー。（iOS 18 以降。日本語に対応した機種）</li>
-          <li><b>Android（Pixel のレコーダー）</b>：録音を開き「文字起こし」タブ → 共有 →「テキスト」でコピー、または .txt で保存。</li>
-          <li><b>Android（Galaxy のボイスレコーダー）</b>：録音を開き「文字起こし」→ 表示された文章を長押ししてコピー。</li>
-          <li><b>レコーダーに文字起こしが無い時</b>：キーボードのマイク🎤を押して、この枠に直接話してください。</li>
-          <li>メニュー名は機種・バージョンで少し違うことがあります。</li>
-        </ul>
-      </details>
-      <details>
-        <summary>スマホの文章をパソコンへ送る方法</summary>
-        <ul>
-          <li><b>会社のメール</b>：文字起こしを自分の会社アドレスに送り、パソコンで本文をコピーして貼り付け。</li>
-          <li><b>Teams</b>：自分とのチャットに貼り付けて送り、パソコンでコピー。</li>
-          <li><b>.txt ファイル</b>：Android のレコーダーで .txt に保存し、メール添付や共有フォルダーでパソコンへ。この枠へドロップすると読み込みます。</li>
-          <li>どの方法が使えるかは会社のルールに従ってください。</li>
-        </ul>
-      </details>
-    </section>
+        <div class="ai" id="aiDirect" hidden>
+          <div class="row">
+            <button class="primary" id="btnAi">Claude で整える</button>
+            <button id="btnAiStop" hidden>やめる</button>
+          </div>
+          <p class="status" id="aiStatus" role="status"></p>
+        </div>
+
+        <div class="ai" id="aiManual">
+          <ol>
+            <li>「頼む文をコピー」を押す</li>
+            <li>Claude（claude.ai やアプリ）に貼り付けて送る</li>
+            <li>返ってきた答えを全部コピーして、下の枠に貼り付ける</li>
+          </ol>
+          <div class="row">
+            <button id="btnPrompt">頼む文をコピー</button>
+          </div>
+          <textarea id="aiAnswer" class="short" aria-label="Claude の答え" placeholder="ここに Claude の答えを貼り付け"></textarea>
+          <div class="row">
+            <button class="primary" id="btnAnswer">答えを読み込む</button>
+          </div>
+          <p class="status" id="manualStatus" role="status"></p>
+          <p class="hint">会社のルールで社外のサービスに入れてはいけない情報は、Claude に貼り付けないでください。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <details>
+          <summary>スマホのレコーダーで文字起こしする方法</summary>
+          <ul>
+            <li><b>iPhone（ボイスメモ）</b>：録音を開き、文字起こしを表示 →「…」から文字起こしをコピー。（iOS 18 以降。日本語に対応した機種）</li>
+            <li><b>Android（Pixel のレコーダー）</b>：録音を開き「文字起こし」タブ → 共有 →「テキスト」でコピー、または .txt で保存。</li>
+            <li><b>Android（Galaxy のボイスレコーダー）</b>：録音を開き「文字起こし」→ 文章を長押ししてコピー。</li>
+            <li><b>レコーダーに文字起こしが無い時</b>：スマホのキーボードのマイク、またはパソコンの Windows キー＋H で、話して入力できます。</li>
+            <li>メニュー名は機種・バージョンで少し違うことがあります。</li>
+          </ul>
+        </details>
+        <details>
+          <summary>スマホの文章をパソコンへ送る方法</summary>
+          <ul>
+            <li><b>会社のメール</b>：文字起こしを自分の会社アドレスに送り、パソコンで本文をコピーして貼り付け。</li>
+            <li><b>Teams</b>：自分とのチャットに貼り付けて送り、パソコンでコピー。</li>
+            <li><b>.txt ファイル</b>：Android のレコーダーで .txt に保存し、メール添付や共有フォルダーでパソコンへ。上の枠へドロップすると読み込みます。</li>
+            <li>どの方法が使えるかは会社のルールに従ってください。</li>
+          </ul>
+        </details>
+      </section>
+    </div>
 
     <section class="panel" aria-labelledby="h-out">
       <h2 id="h-out"><span class="n">2</span>Word・Excel へドラッグ</h2>
       <div class="chips">
         <div class="chip" draggable="true" id="dragWord" tabindex="0" aria-label="すべての手順を Word 用にドラッグ">
-          <span class="grip" aria-hidden="true">⠿</span><strong>Word へ（番号付き文章）</strong><span>つかんで Word の本文に落とす</span>
+          <span class="grip" aria-hidden="true">⠿</span><strong>Word へ（番号付き文章）</strong><span>安全・品質ポイントも手順の下に入る</span>
         </div>
         <div class="chip" draggable="true" id="dragExcel" tabindex="0" aria-label="すべての手順を Excel 用にドラッグ">
-          <span class="grip" aria-hidden="true">⠿</span><strong>Excel へ（表）</strong><span>No・作業内容・注意点 が1行ずつ入る</span>
+          <span class="grip" aria-hidden="true">⠿</span><strong>Excel へ（表）</strong><span>No・作業内容・安全・品質 が1行ずつ入る</span>
         </div>
       </div>
-      <p class="hint">1つの手順だけ入れたい時は、表の番号（<span class="handle" style="height:1.5em;min-width:2em;font-size:.8rem">1</span>）をつかんでドラッグします。文章は表の中でそのまま直せます。番号のドラッグで並べ替えもできます。</p>
+      <p class="hint">1つの手順だけ入れたい時は、番号（<span class="handle" style="height:1.5em;min-width:2em;font-size:.8rem">1</span>）をつかんでドラッグします。文章やポイントはクリックしてそのまま直せます。番号のドラッグで並べ替えもできます。</p>
       <div class="row">
         <button id="copyWord">Word 用にコピー</button>
         <button id="copyExcel">Excel 用にコピー</button>
         <button id="btnAdd">手順を追加</button>
       </div>
-      <div class="tablebox">
-        <table class="steps" aria-label="手順">
-          <thead><tr><th>No</th><th>作業内容</th><th class="ops"><span class="hidden-input">操作</span></th></tr></thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
+      <div class="sheet" id="sheet" aria-label="手順"></div>
     </section>
   </div>
 </div>
@@ -197,149 +257,250 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const SAMPLE = "（例）えーと、まずポンプの電源を切って、ブレーカーを落とします。次に、あのー、吸い込み側と吐き出し側のバルブを閉めます。注意、配管の中に圧が残っているので、ドレンを開けて圧を抜いてから作業してください。それから、フィルターケースのボルト4本を外します。続いて、古いフィルターを取り出して、新しいフィルターに交換します。ポイント、パッキンも新品に替えること。最後に、バルブを開けて電源を入れ、漏れがないか確認します。";
+  const SAMPLE = "（例）えーと、まずポンプの電源を切って、ブレーカーを落とします。次に、あのー、吸い込み側と吐き出し側のバルブを閉めます。それから、フィルターケースのボルト4本を外します。続いて、古いフィルターを取り出して、新しいフィルターに交換します。最後に、ボルトを締めてバルブを開け、電源を入れて漏れがないか確認します。";
+  const SAMPLE_PTS = "安全　ブレーカーに「作業中」の札を掛け、他の人が入れないようにする\n配管内に圧が残っているので、ドレンを開けて圧を抜いてからケースを外す\nパッキンも必ず新品に替える\nボルトは対角の順でトルク 25N・m で締める\n保護メガネと手袋を着用する";
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
 
-  let steps = []; // {text, note}
+  let steps = [];                       // {text, safety, quality}
+  let common = { safety: "", quality: "" }; // points that fit no single step
 
   // ---------- text → steps ----------
   const FILLER = /(^|[、。,\s「])(?:えーっと|えーと|えっと|ええと|えー+|あのー+|あの(?=[、,])|あー+|うーん|うー+ん|んー+|まあ(?=[、,])|そのー+)[、,\s]*/g;
   const MARKER = /(?:^|(?<=[、。,\s]))(まず(?:最初に|はじめに)?|最初に|はじめに|次に|つぎに|それから|続いて|つづいて|その後|そのあと|そして|最後に|さいごに)[、,\s]*/g;
-  const NOTE = /^(?:注意(?:点)?|ポイント|危険|禁止|重要)(?:は|です)?[：:、,\s]*/;
+  const POINT_HEAD = /^(?:(安全|品質)(?:ポイント|上の注意|面)?|注意(?:点)?|ポイント|危険|禁止|重要)(?:は|です)?[：:、,\s　]*/;
 
-  function cleanSentence(s) {
-    return s.replace(/^[、。,\s]+/, "").replace(/[、,\s]+$/, "").trim();
+  const SAFETY_WORDS = ["安全","危険","けが","怪我","ケガ","挟","巻き込","巻込","感電","火傷","やけど","高温","熱い","転倒","転落","墜落","落下","飛来","切創","刃","保護","手袋","メガネ","めがね","ゴーグル","ヘルメット","安全帯","マスク","耳栓","電源","ブレーカー","通電","停止","ロックアウト","札","表示","立入","立ち入り","指差","呼称","合図","残圧","圧を抜","圧が残","火気","引火","換気","酸欠","有機溶剤","薬品","重量物","腰","二人","2人","回転","可動","非常停止","禁止"];
+  const QUALITY_WORDS = ["品質","寸法","公差","トルク","N・m","Nm","締め付","締付","締め忘","規定","規格","基準","測定","計測","ゲージ","ノギス","検査","確認","記録","チェック","外観","傷","キズ","打痕","汚れ","異物","ゴミ","バリ","錆","さび","変形","向き","表裏","取り違","異品","間違","新品","交換","パッキン","Oリング","漏れ","にじみ","順番","順序","対角","清掃","グリス","塗布","乾燥","温度管理","時間管理","合格","不良","ロット","識別"];
+
+  function cleanSentence(s) { return s.replace(/^[、。,\s　]+/, "").replace(/[、,\s　]+$/, "").trim(); }
+  function endPeriod(s) { return s && !/[。．！？!?」)）]$/.test(s) ? s + "。" : s; }
+  function hits(t, words) { let n = 0; for (const w of words) if (t.includes(w)) n++; return n; }
+
+  // decide safety or quality for one point sentence
+  function kindOf(raw) {
+    const m = raw.match(POINT_HEAD);
+    if (m && m[1] === "安全") return "safety";
+    if (m && m[1] === "品質") return "quality";
+    const t = raw.replace(POINT_HEAD, "");
+    const s = hits(t, SAFETY_WORDS), q = hits(t, QUALITY_WORDS);
+    if (s !== q) return s > q ? "safety" : "quality";
+    if (m && /注意|危険|禁止/.test(m[0])) return "safety";
+    return /[しせ]ない|ないこと|禁止|注意/.test(t) ? "safety" : "quality";
   }
-  function endPeriod(s) {
-    return s && !/[。．！？!?」)）]$/.test(s) ? s + "。" : s;
+
+  // pieces of text that carry meaning: 2-char runs that hold kanji / katakana / letters / digits
+  // same meaning, different words → one form, so "新品に替える" meets "新しいフィルターに交換"
+  const SAME = [[/新しい/g, "新品"], [/(?:取り)?(?:替|換)え|取替|取り替え/g, "交換"], [/締め付け|締付け?|締め/g, "締付"], [/取り外し?|外し|外す/g, "取外"], [/取り付け|取付け?/g, "取付"], [/ねじ|ネジ/g, "ボルト"]];
+  function grams(t) {
+    const out = new Set();
+    let s = t.replace(/[\s　、。,.「」（）()]/g, "");
+    for (const [re, to] of SAME) s = s.replace(re, to);
+    for (let i = 0; i < s.length - 1; i++) {
+      const g = s.slice(i, i + 2);
+      if (/[一-鿿゠-ヿA-Za-z0-9０-９]/.test(g) && !/^[぀-ゟ]+$/.test(g)) out.add(g);
+    }
+    return out;
   }
-  function toSteps(src, o) {
+  // which step does a point belong to? -1 = none fits (goes to "common")
+  function bestStep(point, list) {
+    const pg = grams(point);
+    if (!pg.size) return -1;
+    let best = -1, bestScore = 0;
+    list.forEach((s, i) => {
+      const sg = grams(s.text);
+      let n = 0; for (const g of pg) if (sg.has(g)) n++;
+      const score = n / Math.sqrt(pg.size * Math.max(sg.size, 1));
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+    return bestScore >= 0.08 ? best : -1;
+  }
+  function addPoint(target, kind, text) {
+    text = endPeriod(cleanSentence(text));
+    if (!text) return;
+    target[kind] = target[kind] ? target[kind] + "\n" + text : text;
+  }
+
+  function toSteps(src, ptsSrc, o) {
     let t = src.replace(/\r/g, "").replace(/^（例）/, "");
-    // drop recorder timestamps like "00:12" or "[0:03:21]" and speaker labels like "話者 1"
     t = t.replace(/\[?\b\d{1,2}:\d{2}(?::\d{2})?\]?/g, " ").replace(/^\s*(?:話者|スピーカー|Speaker)\s*\d+\s*[:：]?/gim, "");
     if (o.filler) t = t.replace(FILLER, "$1");
-    let parts = [];
+    const parts = [];
     for (const line of t.split(/\n+/)) {
-      let chunks = [line];
-      if (o.marker) chunks = line.replace(MARKER, "\u0001").split("\u0001");
+      const chunks = o.marker ? line.replace(MARKER, "\u0001").split("\u0001") : [line];
       for (const c of chunks) for (const s of c.split(/(?<=[。！？!?])/)) {
         const x = cleanSentence(s.replace(/^\s*(?:\d+[.)．、]|[①-⑳]|[・\-*])\s*/, ""));
         if (x) parts.push(x);
       }
     }
-    const out = [];
+    const list = [], cm = { safety: "", quality: "" };
+    const loose = [];
     for (const p of parts) {
-      if (o.note && NOTE.test(p) && out.length) {
-        const n = endPeriod(cleanSentence(p.replace(NOTE, "")));
-        const last = out[out.length - 1];
-        last.note = last.note ? last.note + " " + n : n;
-      } else {
-        out.push({ text: endPeriod(p), note: "" });
-      }
+      if (POINT_HEAD.test(p)) {
+        // spoken point ("注意、…" "品質ポイント、…") belongs to the step just before it
+        if (list.length) addPoint(list[list.length - 1], kindOf(p), p.replace(POINT_HEAD, ""));
+        else loose.push(p);
+      } else list.push({ text: endPeriod(p), safety: "", quality: "" });
     }
-    return out;
+    const ptsLines = (ptsSrc || "").replace(/\r/g, "").split(/\n+/).map((l) => l.replace(/^\s*(?:\d+[.)．、]|[①-⑳]|[・\-*●■□◆※])\s*/, "").trim()).filter(Boolean);
+    for (const p of [...loose, ...ptsLines]) {
+      const kind = kindOf(p);
+      const body = p.replace(POINT_HEAD, "");
+      const i = bestStep(body, list);
+      addPoint(i >= 0 ? list[i] : cm, kind, body);
+    }
+    return { list, cm };
   }
 
   // ---------- output formats ----------
-  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const br = (s) => esc(s).replace(/\n/g, "<br>");
   const title = () => $("title").value.trim();
-  function wordPlain(list) {
-    return list.map((s, i) => `${i + 1}. ${s.text}` + (s.note ? `\n   ※注意：${s.note}` : "")).join("\n");
+  const SC = "#b4410f", QC = "#23704a";
+  const hasCommon = () => !!(common.safety || common.quality);
+  function wordPlain() {
+    const out = [];
+    if (title()) out.push(title(), "");
+    if (common.safety) out.push("【共通の安全ポイント】" + common.safety.replace(/\n/g, " "));
+    if (common.quality) out.push("【共通の品質ポイント】" + common.quality.replace(/\n/g, " "));
+    if (hasCommon()) out.push("");
+    steps.forEach((s, i) => {
+      out.push(`${i + 1}. ${s.text}`);
+      if (s.safety) out.push(`   【安全】${s.safety.replace(/\n/g, " ")}`);
+      if (s.quality) out.push(`   【品質】${s.quality.replace(/\n/g, " ")}`);
+    });
+    return out.join("\n");
   }
-  function wordHtml(list) {
-    const li = list.map((s) => `<li>${esc(s.text)}${s.note ? `<br><span style="color:#a8650a">※注意：${esc(s.note)}</span>` : ""}</li>`).join("");
-    return `<meta charset="utf-8">${title() ? `<p><b>${esc(title())}</b></p>` : ""}<ol>${li}</ol>`;
+  function wordHtml() {
+    let h = '<meta charset="utf-8">';
+    if (title()) h += `<p><b>${esc(title())}</b></p>`;
+    if (common.safety) h += `<p><span style="color:${SC}"><b>【共通の安全ポイント】</b>${br(common.safety)}</span></p>`;
+    if (common.quality) h += `<p><span style="color:${QC}"><b>【共通の品質ポイント】</b>${br(common.quality)}</span></p>`;
+    h += "<ol>" + steps.map((s) =>
+      `<li>${esc(s.text)}` +
+      (s.safety ? `<br><span style="color:${SC}"><b>【安全】</b>${br(s.safety)}</span>` : "") +
+      (s.quality ? `<br><span style="color:${QC}"><b>【品質】</b>${br(s.quality)}</span>` : "") +
+      "</li>").join("") + "</ol>";
+    return h;
   }
-  function excelPlain(list) {
-    const cell = (s) => /[\t\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    const head = ["No", "作業内容", "注意点"].join("\t");
-    return [head, ...list.map((s, i) => [i + 1, cell(s.text), cell(s.note)].join("\t"))].join("\n");
+  function excelPlain() {
+    const cell = (s) => /[\t\n"]/.test(s || "") ? `"${String(s).replace(/"/g, '""')}"` : (s || "");
+    const rows = [["No", "作業内容", "安全ポイント", "品質ポイント"].join("\t")];
+    if (hasCommon()) rows.push(["共通", "", cell(common.safety), cell(common.quality)].join("\t"));
+    steps.forEach((s, i) => rows.push([i + 1, cell(s.text), cell(s.safety), cell(s.quality)].join("\t")));
+    return rows.join("\n");
   }
-  function excelHtml(list) {
-    const td = "border:1px solid #999;padding:2px 6px;vertical-align:top";
-    const rows = list.map((s, i) => `<tr><td style="${td};text-align:center">${i + 1}</td><td style="${td}">${esc(s.text)}</td><td style="${td}">${esc(s.note)}</td></tr>`).join("");
-    const cap = title() ? `<tr><td colspan="3" style="font-weight:bold">${esc(title())}</td></tr>` : "";
-    return `<meta charset="utf-8"><table style="border-collapse:collapse">${cap}<tr><th style="${td};background:#dde6ee">No</th><th style="${td};background:#dde6ee">作業内容</th><th style="${td};background:#dde6ee">注意点</th></tr>${rows}</table>`;
+  function excelHtml() {
+    const td = "border:1px solid #999;padding:2px 6px;vertical-align:top;white-space:normal";
+    const th = td + ";background:#dde6ee;font-weight:bold";
+    const r = (no, a, b, c) => `<tr><td style="${td};text-align:center">${no}</td><td style="${td}">${br(a)}</td><td style="${td};color:${SC}">${br(b)}</td><td style="${td};color:${QC}">${br(c)}</td></tr>`;
+    let h = '<meta charset="utf-8"><table style="border-collapse:collapse">';
+    if (title()) h += `<tr><td colspan="4" style="font-weight:bold">${esc(title())}</td></tr>`;
+    h += `<tr><th style="${th}">No</th><th style="${th}">作業内容</th><th style="${th}">安全ポイント</th><th style="${th}">品質ポイント</th></tr>`;
+    if (hasCommon()) h += r("共通", "", common.safety, common.quality);
+    h += steps.map((s, i) => r(i + 1, s.text, s.safety, s.quality)).join("") + "</table>";
+    return h;
   }
-  function oneStepPlain(s) { return s.text + (s.note ? `（注意：${s.note}）` : ""); }
+  function onePlain(s) {
+    return s.text + (s.safety ? `\n【安全】${s.safety.replace(/\n/g, " ")}` : "") + (s.quality ? `\n【品質】${s.quality.replace(/\n/g, " ")}` : "");
+  }
+  function oneHtml(s) {
+    return `<meta charset="utf-8">${esc(s.text)}` +
+      (s.safety ? `<br><span style="color:${SC}">【安全】${br(s.safety)}</span>` : "") +
+      (s.quality ? `<br><span style="color:${QC}">【品質】${br(s.quality)}</span>` : "");
+  }
 
   // ---------- render ----------
+  function editable(obj, key, cls, ph, aria) {
+    const d = document.createElement("div");
+    d.className = "ed" + (cls ? " " + cls : "");
+    d.contentEditable = "plaintext-only";
+    if (d.contentEditable !== "plaintext-only") d.contentEditable = "true";
+    d.textContent = obj[key] || "";
+    d.dataset.ph = ph;
+    d.setAttribute("aria-label", aria);
+    d.addEventListener("input", () => { obj[key] = d.innerText.replace(/\n+$/, "").trim(); saveDraft(); });
+    return d;
+  }
+  function cell(lblCls, lblText, ed) {
+    const c = document.createElement("div"); c.className = "cell";
+    if (lblCls) { const l = document.createElement("span"); l.className = "lbl tag " + lblCls; l.textContent = lblText; c.appendChild(l); }
+    c.appendChild(ed);
+    return c;
+  }
   function render() {
-    const tb = $("rows");
-    tb.textContent = "";
+    const sh = $("sheet");
+    sh.textContent = "";
+    const head = document.createElement("div"); head.className = "sh-head";
+    head.innerHTML = '<span>No</span><span>作業内容</span><span><span class="tag s">安全</span> ポイント</span><span><span class="tag q">品質</span> ポイント</span><span></span>';
+    sh.appendChild(head);
+    if (hasCommon()) {
+      const r = document.createElement("div"); r.className = "step common";
+      const hw = document.createElement("div"); hw.className = "handle-wrap";
+      const h = document.createElement("span"); h.className = "handle"; h.textContent = "共通"; hw.appendChild(h);
+      const note = document.createElement("div"); note.className = "cell"; note.innerHTML = '<span class="hint">どの手順にも当てはまらなかったポイント。手順の欄へ移すか、このまま「共通」として使えます。</span>';
+      const ops = document.createElement("div"); ops.className = "ops";
+      r.append(hw, note,
+        cell("s", "安全", editable(common, "safety", "s", "—", "共通の安全ポイント")),
+        cell("q", "品質", editable(common, "quality", "q", "—", "共通の品質ポイント")), ops);
+      sh.appendChild(r);
+    }
     if (!steps.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="3" class="empty">左に文章を貼り付けて「手順に整える」を押すと、ここに手順が並びます。</td>`;
-      tb.appendChild(tr);
+      const e = document.createElement("div"); e.className = "empty";
+      e.textContent = "左に文章を貼り付けて「手順に整える」を押すと、ここに手順が並びます。";
+      sh.appendChild(e);
     }
     steps.forEach((s, i) => {
-      const tr = document.createElement("tr");
-      tr.dataset.i = i;
-      const no = document.createElement("td"); no.className = "no";
+      const r = document.createElement("div"); r.className = "step";
+      const hw = document.createElement("div"); hw.className = "handle-wrap";
       const h = document.createElement("span"); h.className = "handle"; h.textContent = i + 1;
-      h.draggable = true; h.tabIndex = 0; h.title = "つかんで Word・Excel へ（表の中では並べ替え）";
+      h.draggable = true; h.tabIndex = 0; h.title = "つかんで Word・Excel へ（ここでは並べ替え）";
       h.setAttribute("aria-label", `手順${i + 1}をドラッグ`);
-      no.appendChild(h);
-      const body = document.createElement("td");
-      const tx = document.createElement("div"); tx.className = "txt"; tx.contentEditable = "plaintext-only";
-      if (tx.contentEditable !== "plaintext-only") tx.contentEditable = "true";
-      tx.textContent = s.text; tx.setAttribute("aria-label", `手順${i + 1}の作業内容`);
-      tx.addEventListener("input", () => { s.text = tx.textContent.trim(); saveDraft(); });
-      const nt = document.createElement("div"); nt.className = "note"; nt.textContent = s.note ? "※注意：" + s.note : "";
-      body.append(tx, nt);
-      const ops = document.createElement("td"); ops.className = "ops";
+      hw.appendChild(h);
+      const ops = document.createElement("div"); ops.className = "ops";
       const mk = (label, aria, fn) => { const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-label", aria); b.onclick = fn; return b; };
       ops.append(
         mk("↑", `手順${i + 1}を上へ`, () => move(i, i - 1)),
         mk("↓", `手順${i + 1}を下へ`, () => move(i, i + 1)),
-        mk(s.note ? "注意を外す" : "注意に", s.note ? "注意点を手順に戻す" : "前の手順の注意点にする", () => toggleNote(i)),
         mk("×", `手順${i + 1}を削除`, () => { steps.splice(i, 1); render(); saveDraft(); }),
       );
-      tr.append(no, body, ops);
-      wireRowDrag(tr, h, i);
-      tb.appendChild(tr);
+      r.append(hw,
+        cell("", "", editable(s, "text", "", "作業内容", `手順${i + 1}の作業内容`)),
+        cell("s", "安全", editable(s, "safety", "s", "—", `手順${i + 1}の安全ポイント`)),
+        cell("q", "品質", editable(s, "quality", "q", "—", `手順${i + 1}の品質ポイント`)), ops);
+      wireRowDrag(r, h, i);
+      sh.appendChild(r);
     });
-    const none = !steps.length;
-    ["copyWord", "copyExcel"].forEach((id) => $(id).disabled = none);
+    ["copyWord", "copyExcel"].forEach((id) => $(id).disabled = !steps.length);
   }
   function move(a, b) {
     if (b < 0 || b >= steps.length || a === b) return;
     const [x] = steps.splice(a, 1); steps.splice(b, 0, x); render(); saveDraft();
   }
-  function toggleNote(i) {
-    const s = steps[i];
-    if (s.note) { steps.splice(i + 1, 0, { text: s.note, note: "" }); s.note = ""; }
-    else if (i > 0) { const p = steps[i - 1]; p.note = p.note ? p.note + " " + s.text : s.text; steps.splice(i, 1); }
-    else { toast("1番目の手順は注意点にできません"); return; }
-    render(); saveDraft();
-  }
 
   // ---------- drag & drop ----------
   let dragFrom = -1;
-  function wireRowDrag(tr, handle, i) {
+  function wireRowDrag(r, handle, i) {
     handle.addEventListener("dragstart", (e) => {
       dragFrom = i;
-      const s = steps[i];
       e.dataTransfer.effectAllowed = "copyMove";
-      e.dataTransfer.setData("text/plain", oneStepPlain(s));
-      e.dataTransfer.setData("text/html", `<meta charset="utf-8">${esc(s.text)}${s.note ? `（注意：${esc(s.note)}）` : ""}`);
-      e.dataTransfer.setData("application/x-step", String(i));
-      tr.classList.add("dragging");
+      e.dataTransfer.setData("text/plain", onePlain(steps[i]));
+      e.dataTransfer.setData("text/html", oneHtml(steps[i]));
+      r.classList.add("dragging");
     });
-    handle.addEventListener("dragend", () => { tr.classList.remove("dragging"); dragFrom = -1; clearOver(); });
-    tr.addEventListener("dragover", (e) => { if (dragFrom < 0) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; clearOver(); tr.classList.add("over"); });
-    tr.addEventListener("drop", (e) => { if (dragFrom < 0) return; e.preventDefault(); const from = dragFrom; dragFrom = -1; clearOver(); move(from, i); });
+    handle.addEventListener("dragend", () => { r.classList.remove("dragging"); dragFrom = -1; clearOver(); });
+    r.addEventListener("dragover", (e) => { if (dragFrom < 0) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; clearOver(); r.classList.add("over"); });
+    r.addEventListener("drop", (e) => { if (dragFrom < 0) return; e.preventDefault(); const from = dragFrom; dragFrom = -1; clearOver(); move(from, i); });
   }
-  function clearOver() { document.querySelectorAll(".steps tr.over").forEach((r) => r.classList.remove("over")); }
+  function clearOver() { document.querySelectorAll(".step.over").forEach((x) => x.classList.remove("over")); }
   function wireChip(el, plain, html) {
     el.addEventListener("dragstart", (e) => {
       if (!steps.length) { e.preventDefault(); toast("先に「手順に整える」を押してください"); return; }
       e.dataTransfer.effectAllowed = "copy";
-      e.dataTransfer.setData("text/plain", plain(steps));
-      e.dataTransfer.setData("text/html", html(steps));
+      e.dataTransfer.setData("text/plain", plain());
+      e.dataTransfer.setData("text/html", html());
     });
   }
   wireChip($("dragWord"), wordPlain, wordHtml);
@@ -348,42 +509,43 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
   // ---------- copy ----------
   async function copy(plain, html, what) {
     try {
-      if (window.ClipboardItem && navigator.clipboard?.write) {
+      if (html && window.ClipboardItem && navigator.clipboard?.write) {
         await navigator.clipboard.write([new ClipboardItem({
           "text/plain": new Blob([plain], { type: "text/plain" }),
           "text/html": new Blob([html], { type: "text/html" }),
         })]);
-      } else {
-        await navigator.clipboard.writeText(plain);
-      }
-      toast(`${what}にコピーしました。貼り付けてください`);
+      } else await navigator.clipboard.writeText(plain);
+      toast(`${what}をコピーしました。貼り付けてください`);
     } catch {
-      try { await navigator.clipboard.writeText(plain); toast(`${what}にコピーしました`); }
+      try { await navigator.clipboard.writeText(plain); toast(`${what}をコピーしました`); }
       catch { fallbackCopy(plain); }
     }
   }
   function fallbackCopy(text) {
-    const ta = $("src"); const keep = ta.value;
-    ta.value = text; ta.select();
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
     let ok = false; try { ok = document.execCommand("copy"); } catch {}
-    ta.value = keep;
+    ta.remove();
     toast(ok ? "コピーしました" : "コピーできませんでした。ドラッグを使ってください");
   }
-  $("copyWord").onclick = () => copy(wordPlain(steps), wordHtml(steps), "Word 用");
-  $("copyExcel").onclick = () => copy(excelPlain(steps), excelHtml(steps), "Excel 用");
+  $("copyWord").onclick = () => copy(wordPlain(), wordHtml(), "Word 用");
+  $("copyExcel").onclick = () => copy(excelPlain(), excelHtml(), "Excel 用");
 
   // ---------- input ----------
-  const opts = () => ({ filler: $("optFiller").checked, marker: $("optMarker").checked, note: $("optNote").checked });
+  const opts = () => ({ filler: $("optFiller").checked, marker: $("optMarker").checked });
   function make() {
     const v = $("src").value.trim();
     if (!v) { toast("文字起こしの文章を貼り付けてください"); $("src").focus(); return; }
-    steps = toSteps(v, opts());
+    const r = toSteps(v, $("pts").value, opts());
+    steps = r.list; common = r.cm;
     render(); saveDraft();
-    toast(`${steps.length} 個の手順にしました`);
+    const n = steps.reduce((a, s) => a + (s.safety ? s.safety.split("\n").length : 0) + (s.quality ? s.quality.split("\n").length : 0), 0);
+    toast(`${steps.length} 個の手順にし、ポイントを ${n} 個割り振りました`);
   }
   $("btnMake").onclick = make;
-  $("btnAdd").onclick = () => { steps.push({ text: "新しい手順。", note: "" }); render(); saveDraft(); const t = document.querySelectorAll(".txt"); t[t.length - 1]?.focus(); };
-  $("btnClear").onclick = () => { $("src").value = ""; $("title").value = ""; steps = []; render(); saveDraft(); $("src").focus(); };
+  $("btnAdd").onclick = () => { steps.push({ text: "", safety: "", quality: "" }); render(); saveDraft(); const t = document.querySelectorAll(".step:not(.common) .cell:first-of-type .ed"); t[t.length - 1]?.focus(); };
+  $("btnClear").onclick = () => { $("src").value = ""; $("pts").value = ""; $("title").value = ""; $("aiAnswer").value = ""; steps = []; common = { safety: "", quality: "" }; render(); saveDraft(); $("src").focus(); };
   $("btnFile").onclick = () => $("file").click();
   $("file").onchange = (e) => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; };
   function readFile(f) {
@@ -398,36 +560,134 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
   const src = $("src");
   src.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); src.classList.add("drop"); } });
   src.addEventListener("dragleave", () => src.classList.remove("drop"));
-  src.addEventListener("drop", (e) => {
-    src.classList.remove("drop");
-    const f = e.dataTransfer.files?.[0];
-    if (f) { e.preventDefault(); readFile(f); }
-  });
-  src.addEventListener("input", saveDraft);
-  $("title").addEventListener("input", saveDraft);
+  src.addEventListener("drop", (e) => { src.classList.remove("drop"); const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); readFile(f); } });
+  ["src", "pts", "title"].forEach((id) => $(id).addEventListener("input", saveDraft));
+
+  // ---------- Claude ----------
+  function buildPrompt() {
+    const style = $("optStyle").value === "polite" ? "「〜します。」の です・ます調" : "「〜する。」の言い切り（常体）";
+    const suggest = $("optSuggest").checked;
+    return [
+      "あなたは製造現場の作業要領書（作業標準書）を作る担当者です。",
+      "下の「文字起こし」は、作業者がスマホのレコーダーに話した作業手順を自動で文字にしたものです。言い間違い・言いよどみ・聞き間違いが含まれます。",
+      "",
+      "やること:",
+      "1. 文字起こしを、作業の順番どおりの手順に分ける。1つの手順は1つの動作にする。",
+      `2. 各手順を、作業要領書に書く短く分かりやすい文に要約する。文の終わりは${style}にそろえる。数値・部品名・工具名は変えない。`,
+      "3. 「安全・品質のポイント」の各行と、文字起こしの中で話された注意・ポイントを、安全か品質かに分け、いちばん関係する手順に割り振る。どの手順にも合わないものは common に入れる。行の先頭に「安全」「品質」とあればその種類に従う。",
+      suggest
+        ? "4. 作業内容から見て足りない安全・品質のポイントがあれば、先頭に【提案】と付けて追加してよい。それ以外は、入力に無い内容を足さない。"
+        : "4. 入力に無い内容は足さない。",
+      "",
+      "答えは次の JSON だけを出力する（説明文は不要）。1つの欄に複数のポイントがある時は改行（\\n）で区切る。",
+      '{"title":"作業名","steps":[{"text":"作業内容","safety":"安全ポイント","quality":"品質ポイント"}],"common":{"safety":"","quality":""}}',
+      "",
+      "作業名: " + (title() || "（文字起こしから付けてください）"),
+      "",
+      "文字起こし:",
+      '"""',
+      $("src").value.replace(/^（例）/, "").trim(),
+      '"""',
+      "",
+      "安全・品質のポイント:",
+      '"""',
+      $("pts").value.trim() || "（なし）",
+      '"""',
+    ].join("\n");
+  }
+  function applyAnswer(obj) {
+    if (typeof obj === "string") {
+      const a = obj.indexOf("{"), b = obj.lastIndexOf("}");
+      if (a < 0 || b <= a) throw new Error("答えの中に { } で囲まれた部分が見つかりません。答えを全部コピーしたか確かめてください。");
+      obj = JSON.parse(obj.slice(a, b + 1));
+    }
+    if (!obj || !Array.isArray(obj.steps) || !obj.steps.length) throw new Error("答えに手順（steps）がありません。");
+    const str = (v) => Array.isArray(v) ? v.map(String).join("\n") : (v == null ? "" : String(v)).trim();
+    steps = obj.steps.map((s) => typeof s === "string" ? { text: s, safety: "", quality: "" } : { text: str(s.text), safety: str(s.safety), quality: str(s.quality) }).filter((s) => s.text || s.safety || s.quality);
+    common = { safety: str(obj.common?.safety), quality: str(obj.common?.quality) };
+    if (obj.title && !title()) $("title").value = str(obj.title);
+    render(); saveDraft();
+    return steps.length;
+  }
+  $("btnPrompt").onclick = () => {
+    if (!$("src").value.trim()) { toast("先に文字起こしを貼り付けてください"); return; }
+    copy(buildPrompt(), null, "Claude に頼む文");
+    $("manualStatus").textContent = "コピーしました。Claude に貼り付けて送り、答えを下の枠に貼ってください。";
+    $("manualStatus").className = "status";
+  };
+  $("btnAnswer").onclick = () => {
+    const st = $("manualStatus");
+    try {
+      const n = applyAnswer($("aiAnswer").value);
+      st.textContent = `Claude の答えを読み込みました（手順 ${n} 個）。内容を確かめてから使ってください。`; st.className = "status ok";
+    } catch (e) {
+      st.textContent = e instanceof SyntaxError ? "答えの形が崩れていて読めません。Claude の答えを最初から最後まで全部コピーしてください。" : e.message;
+      st.className = "status err";
+    }
+  };
+
+  // direct call when this page runs inside claude.ai
+  (async () => {
+    if (!window.claude?.use) return;
+    const sample = await window.claude.use("sample");
+    if (!sample) return;
+    $("aiDirect").hidden = false;
+    $("aiManual").hidden = true;
+    let ctrl = null;
+    const st = $("aiStatus");
+    $("btnAi").onclick = async () => {
+      if (!$("src").value.trim()) { toast("先に文字起こしを貼り付けてください"); return; }
+      ctrl = new AbortController();
+      $("btnAi").disabled = true; $("btnAiStop").hidden = false;
+      st.textContent = "Claude が整えています…"; st.className = "status";
+      try {
+        const res = await sample.json(buildPrompt(), { signal: ctrl.signal, modelTier: "default" });
+        const n = applyAnswer(res);
+        st.textContent = `Claude が手順 ${n} 個に整えました。内容を確かめてから使ってください。`; st.className = "status ok";
+      } catch (e) {
+        const code = e?.code;
+        st.className = "status err";
+        st.textContent =
+          code === "cancelled" ? "やめました。" :
+          code === "not_granted" ? "Claude を使う許可がありません。ページの許可設定を確かめてください。" :
+          code === "rate_limited" ? "今は Claude が混み合っているか、使える量の上限です。少し待ってから押してください。" :
+          (e?.message && !code) ? e.message : "Claude の答えを受け取れませんでした。もう一度押してください。";
+      } finally {
+        $("btnAi").disabled = false; $("btnAiStop").hidden = true; ctrl = null;
+      }
+    };
+    $("btnAiStop").onclick = () => ctrl?.abort();
+  })();
 
   // ---------- draft (this browser only) ----------
   let draftTimer;
   function saveDraft() {
     clearTimeout(draftTimer);
-    draftTimer = setTimeout(() => store.set("vm-draft", JSON.stringify({ src: $("src").value, title: $("title").value, steps })), 300);
+    draftTimer = setTimeout(() => store.set("vm-draft2", JSON.stringify({ src: $("src").value, pts: $("pts").value, title: $("title").value, steps, common })), 300);
   }
   function loadDraft() {
     try {
-      const d = JSON.parse(store.get("vm-draft") || "null");
-      if (d && (d.src || d.steps?.length)) { $("src").value = d.src || ""; $("title").value = d.title || ""; steps = d.steps || []; return true; }
+      const d = JSON.parse(store.get("vm-draft2") || "null");
+      if (d && (d.src || d.steps?.length)) {
+        $("src").value = d.src || ""; $("pts").value = d.pts || ""; $("title").value = d.title || "";
+        steps = (d.steps || []).map((s) => ({ text: s.text || "", safety: s.safety || "", quality: s.quality || "" }));
+        common = { safety: d.common?.safety || "", quality: d.common?.quality || "" };
+        return true;
+      }
     } catch {}
     return false;
   }
 
   // ---------- toast ----------
   let tt;
-  function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2400); }
+  function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2600); }
 
   // ---------- start ----------
-  if (!loadDraft()) { $("src").value = SAMPLE; $("title").value = "（例）ポンプのフィルター交換"; steps = toSteps(SAMPLE, opts()); }
+  if (!loadDraft()) {
+    $("src").value = SAMPLE; $("pts").value = SAMPLE_PTS; $("title").value = "（例）ポンプのフィルター交換";
+    const r = toSteps(SAMPLE, SAMPLE_PTS, opts()); steps = r.list; common = r.cm;
+  }
   render();
-
 })();
 </script>
 </body>
