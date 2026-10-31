@@ -1,8 +1,9 @@
+<!doctype html>
+<html lang="ja">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>作業要領書 音声メモ</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
 <style>
 /* Layout: phone = one column (input → steps); wide screen = input left, draggable step sheet right */
 :root {
@@ -103,13 +104,6 @@ table.steps { width: 100%; border-collapse: collapse; font-size: .95rem; }
 .ops button { padding: 2px 7px; font-size: .8rem; }
 .empty { color: var(--muted); padding: 18px 8px; text-align: center; }
 
-.sync .list { display: grid; gap: 6px; }
-.memo { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-.memo .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.memo .d { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.status { font-size: .84rem; color: var(--muted); min-height: 1.3em; margin: 0; }
-.status.ok { color: var(--ok); }
-.status.warn { color: var(--caution); }
 details { border-top: 1px solid var(--line); padding-top: 10px; }
 summary { cursor: pointer; font-weight: 700; font-size: .92rem; }
 details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: grid; gap: 4px; }
@@ -118,7 +112,8 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 </style>
-
+</head>
+<body>
 <div class="wrap">
   <header>
     <h1>作業要領書 音声メモ</h1>
@@ -150,17 +145,6 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
         <input type="file" id="file" class="hidden-input" accept=".txt,text/plain" tabindex="-1">
       </div>
 
-      <div class="sync" id="sync" hidden>
-        <details open>
-          <summary>スマホ ⇄ パソコンで受け渡し</summary>
-          <p class="hint" style="margin-top:8px">同じアカウントでこのページを開くと、保存したメモが両方に出ます。スマホで「保存」→ パソコンで開いてドラッグ。</p>
-          <div class="row" style="margin-top:8px">
-            <button id="btnSave">このメモを保存</button>
-          </div>
-          <p class="status" id="syncStatus"></p>
-          <div class="list" id="memoList"></div>
-        </details>
-      </div>
 
       <details>
         <summary>スマホのレコーダーで文字起こしする方法</summary>
@@ -175,10 +159,10 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
       <details>
         <summary>スマホの文章をパソコンへ送る方法</summary>
         <ul>
-          <li>このページの「このメモを保存」（Claude のアカウントで開いている時）。</li>
-          <li>Windows の「スマートフォン連携」でクリップボードを共有（Android）。</li>
-          <li>自分宛てのメール・LINE の Keep・OneDrive などに貼って送る。</li>
-          <li>Android は .txt を保存して、パソコンでこの枠へドロップ。</li>
+          <li><b>会社のメール</b>：文字起こしを自分の会社アドレスに送り、パソコンで本文をコピーして貼り付け。</li>
+          <li><b>Teams</b>：自分とのチャットに貼り付けて送り、パソコンでコピー。</li>
+          <li><b>.txt ファイル</b>：Android のレコーダーで .txt に保存し、メール添付や共有フォルダーでパソコンへ。この枠へドロップすると読み込みます。</li>
+          <li>どの方法が使えるかは会社のルールに従ってください。</li>
         </ul>
       </details>
     </section>
@@ -444,60 +428,7 @@ details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: g
   if (!loadDraft()) { $("src").value = SAMPLE; $("title").value = "（例）ポンプのフィルター交換"; steps = toSteps(SAMPLE, opts()); }
   render();
 
-  // ---------- phone ⇄ PC sync (only when opened as a claude.ai artifact) ----------
-  (async () => {
-    if (!window.claude?.use) return;
-    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
-    if (!db || !user) return;
-    const uid = await user.id();
-    if (!uid) return;
-    $("sync").hidden = false;
-    const st = $("syncStatus");
-    const say = (m, cls = "") => { st.textContent = m; st.className = "status " + cls; };
-    const memos = db.doc("data/users/" + uid + "/voice").collection("memos");
-    say("読み込み中…");
-    const timer = setTimeout(() => say("保存したメモにまだつながりません。電波を確認してください。", "warn"), 10000);
-    memos.orderBy("savedAt", "desc").limit(30).onSnapshot((snap) => {
-      if (!snap.metadata.fromCache) { clearTimeout(timer); if (st.textContent === "読み込み中…") say(""); }
-      const box = $("memoList"); box.textContent = "";
-      if (snap.empty) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "保存したメモはまだありません。"; box.appendChild(p); return; }
-      for (const d of snap.docs) {
-        const m = d.data();
-        const row = document.createElement("div"); row.className = "memo";
-        const info = document.createElement("div"); info.style.minWidth = "0";
-        const t = document.createElement("div"); t.className = "t"; t.textContent = m.title || (m.src || "").slice(0, 30) || "（無題）";
-        const dt = document.createElement("div"); dt.className = "d";
-        const when = new Date(m.savedAt);
-        dt.textContent = `${when.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}・手順 ${(m.steps || []).length}`;
-        info.append(t, dt);
-        const btns = document.createElement("div"); btns.className = "row";
-        const open = document.createElement("button"); open.className = "small"; open.textContent = "開く";
-        open.onclick = () => { $("src").value = m.src || ""; $("title").value = m.title || ""; steps = (m.steps || []).map((s) => ({ text: s.text || "", note: s.note || "" })); render(); saveDraft(); toast("メモを開きました"); };
-        const del = document.createElement("button"); del.className = "small"; del.textContent = "削除";
-        let armed = false;
-        del.onclick = async () => {
-          if (!armed) { armed = true; del.textContent = "本当に削除"; setTimeout(() => { armed = false; del.textContent = "削除"; }, 3000); return; }
-          try { await memos.doc(d.id).delete(); toast("削除しました"); } catch { say("削除できませんでした。", "warn"); }
-        };
-        btns.append(open, del);
-        row.append(info, btns);
-        box.appendChild(row);
-      }
-    }, () => { clearTimeout(timer); say("保存したメモを読めませんでした。", "warn"); });
-
-    let saving = false;
-    $("btnSave").onclick = async () => {
-      if (saving) return;
-      if (!steps.length && !$("src").value.trim()) { toast("保存する文章がありません"); return; }
-      saving = true; $("btnSave").disabled = true;
-      const id = "m" + Date.now().toString(36);
-      try {
-        await memos.doc(id).set({ title: title(), src: $("src").value.slice(0, 50000), steps: steps.map((s) => ({ text: s.text, note: s.note })), savedAt: Date.now() });
-        say("保存しました。パソコンでこのページを開くと一覧に出ます。", "ok");
-      } catch (e) {
-        say(e?.code === "quota_exceeded" ? "保存できる数がいっぱいです。古いメモを削除してください。" : "保存できませんでした。電波を確認して、もう一度押してください。", "warn");
-      } finally { saving = false; $("btnSave").disabled = false; }
-    };
-  })();
 })();
 </script>
+</body>
+</html>
