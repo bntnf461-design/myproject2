@@ -1,0 +1,503 @@
+<meta charset="utf-8">
+<title>作業要領書 音声メモ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<style>
+/* Layout: phone = one column (input → steps); wide screen = input left, draggable step sheet right */
+:root {
+  --bg: #eef1f4;
+  --paper: #ffffff;
+  --ink: #1c2530;
+  --muted: #5d6b79;
+  --line: #d3dae2;
+  --accent: #1d5c8f;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2edf6;
+  --caution: #a8650a;
+  --caution-soft: #fdf1dc;
+  --ok: #2c7a4b;
+  --font: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171d; --paper: #1b222b; --ink: #e6ebf0; --muted: #9aa8b6; --line: #2e3945;
+    --accent: #6aaee6; --accent-ink: #0d1a26; --accent-soft: #1f3245;
+    --caution: #f0b35a; --caution-soft: #3a2c16; --ok: #6fcf97; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171d; --paper: #1b222b; --ink: #e6ebf0; --muted: #9aa8b6; --line: #2e3945;
+  --accent: #6aaee6; --accent-ink: #0d1a26; --accent-soft: #1f3245;
+  --caution: #f0b35a; --caution-soft: #3a2c16; --ok: #6fcf97; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: grid; gap: 6px; }
+h1 { font-size: 1.45rem; margin: 0; text-wrap: balance; letter-spacing: .02em; }
+.lead { margin: 0; color: var(--muted); max-width: 68ch; }
+.flow { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 4px 0 0; padding: 0; list-style: none; font-size: .86rem; color: var(--muted); }
+.flow li { display: flex; align-items: center; gap: 6px; }
+.flow b { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .8rem; }
+.cols { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .cols { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; } }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel h2 { font-size: 1.02rem; margin: 0; display: flex; align-items: center; gap: 8px; }
+.panel h2 .n { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: .85rem; }
+.hint { font-size: .84rem; color: var(--muted); margin: 0; }
+label.field { display: grid; gap: 4px; font-size: .86rem; color: var(--muted); }
+textarea, input[type=text], select {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%;
+}
+textarea { min-height: 190px; resize: vertical; line-height: 1.7; }
+textarea.drop { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.opts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .88rem; }
+.opts label { display: flex; align-items: center; gap: 6px; }
+button, .btn {
+  font: inherit; font-size: .92rem; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+button.small { padding: 4px 9px; font-size: .82rem; }
+button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, [draggable]:focus-visible, [contenteditable]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[disabled] { opacity: .5; cursor: default; }
+
+/* drag chips: the things you pull into Word / Excel */
+.chips { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.chip {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
+  border: 1.5px dashed var(--accent); background: var(--accent-soft); color: var(--ink);
+  border-radius: var(--r); padding: 10px 12px; cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.chip:active { cursor: grabbing; }
+.chip .grip { grid-row: span 2; font-size: 1.3rem; color: var(--accent); line-height: 1; }
+.chip strong { font-size: .95rem; }
+.chip span { font-size: .8rem; color: var(--muted); }
+
+table.steps { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.tablebox { overflow-x: auto; }
+.steps th { text-align: left; font-size: .78rem; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.steps td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.steps tr.dragging { opacity: .4; }
+.steps tr.over td { box-shadow: inset 0 2px 0 var(--accent); }
+.steps .no { width: 3.2em; font-variant-numeric: tabular-nums; }
+.handle {
+  display: inline-grid; place-items: center; min-width: 2.4em; height: 2em; border-radius: 6px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.txt { min-width: 12em; outline: none; border-radius: 4px; padding: 1px 3px; }
+.txt:hover { background: var(--bg); }
+.note { margin-top: 4px; font-size: .86rem; color: var(--caution); background: var(--caution-soft); border-radius: 4px; padding: 2px 6px; }
+.note:empty { display: none; }
+.ops { white-space: nowrap; text-align: right; width: 1%; }
+.ops button { padding: 2px 7px; font-size: .8rem; }
+.empty { color: var(--muted); padding: 18px 8px; text-align: center; }
+
+.sync .list { display: grid; gap: 6px; }
+.memo { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.memo .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memo .d { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.status { font-size: .84rem; color: var(--muted); min-height: 1.3em; margin: 0; }
+.status.ok { color: var(--ok); }
+.status.warn { color: var(--caution); }
+details { border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; font-weight: 700; font-size: .92rem; }
+details ul { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; display: grid; gap: 4px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 20px; font-size: .9rem; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+.hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>作業要領書 音声メモ</h1>
+    <p class="lead">スマホのレコーダーで話した作業手順を、番号付きの手順に整えて、Word や Excel にそのままドラッグ＆ドロップできます。</p>
+    <ol class="flow">
+      <li><b>1</b>レコーダーで録音・文字起こし</li>
+      <li><b>2</b>文章をここに貼り付け</li>
+      <li><b>3</b>手順をつかんで Word・Excel へ</li>
+    </ol>
+  </header>
+
+  <div class="cols">
+    <section class="panel" aria-labelledby="h-in">
+      <h2 id="h-in"><span class="n">1</span>文字起こしを貼り付け</h2>
+      <p class="hint">レコーダーの文字起こしをコピーして貼り付けるか、.txt ファイルをこの枠へドロップします。キーボードのマイクで直接話しても入力できます。</p>
+      <label class="field" for="title">作業名（Excel の見出しになります）
+        <input type="text" id="title" placeholder="例：ポンプのフィルター交換">
+      </label>
+      <textarea id="src" aria-label="文字起こしの文章"></textarea>
+      <div class="opts" role="group" aria-label="整え方">
+        <label><input type="checkbox" id="optFiller" checked>「えー」「あのー」を消す</label>
+        <label><input type="checkbox" id="optMarker" checked>「次に」「それから」で区切る</label>
+        <label><input type="checkbox" id="optNote" checked>「注意」「ポイント」を注意点に</label>
+      </div>
+      <div class="row">
+        <button class="primary" id="btnMake">手順に整える</button>
+        <button id="btnFile">.txt を開く</button>
+        <button id="btnClear">消す</button>
+        <input type="file" id="file" class="hidden-input" accept=".txt,text/plain" tabindex="-1">
+      </div>
+
+      <div class="sync" id="sync" hidden>
+        <details open>
+          <summary>スマホ ⇄ パソコンで受け渡し</summary>
+          <p class="hint" style="margin-top:8px">同じアカウントでこのページを開くと、保存したメモが両方に出ます。スマホで「保存」→ パソコンで開いてドラッグ。</p>
+          <div class="row" style="margin-top:8px">
+            <button id="btnSave">このメモを保存</button>
+          </div>
+          <p class="status" id="syncStatus"></p>
+          <div class="list" id="memoList"></div>
+        </details>
+      </div>
+
+      <details>
+        <summary>スマホのレコーダーで文字起こしする方法</summary>
+        <ul>
+          <li><b>iPhone（ボイスメモ）</b>：録音を開き、文字起こしの吹き出しボタンで表示 →「…」から文字起こしをコピー。（iOS 18 以降。日本語に対応した機種）</li>
+          <li><b>Android（Pixel のレコーダー）</b>：録音を開き「文字起こし」タブ → 共有 →「テキスト」でコピー、または .txt で保存。</li>
+          <li><b>Android（Galaxy のボイスレコーダー）</b>：録音を開き「文字起こし」→ 表示された文章を長押ししてコピー。</li>
+          <li><b>レコーダーに文字起こしが無い時</b>：キーボードのマイク🎤を押して、この枠に直接話してください。</li>
+          <li>メニュー名は機種・バージョンで少し違うことがあります。</li>
+        </ul>
+      </details>
+      <details>
+        <summary>スマホの文章をパソコンへ送る方法</summary>
+        <ul>
+          <li>このページの「このメモを保存」（Claude のアカウントで開いている時）。</li>
+          <li>Windows の「スマートフォン連携」でクリップボードを共有（Android）。</li>
+          <li>自分宛てのメール・LINE の Keep・OneDrive などに貼って送る。</li>
+          <li>Android は .txt を保存して、パソコンでこの枠へドロップ。</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="h-out">
+      <h2 id="h-out"><span class="n">2</span>Word・Excel へドラッグ</h2>
+      <div class="chips">
+        <div class="chip" draggable="true" id="dragWord" tabindex="0" aria-label="すべての手順を Word 用にドラッグ">
+          <span class="grip" aria-hidden="true">⠿</span><strong>Word へ（番号付き文章）</strong><span>つかんで Word の本文に落とす</span>
+        </div>
+        <div class="chip" draggable="true" id="dragExcel" tabindex="0" aria-label="すべての手順を Excel 用にドラッグ">
+          <span class="grip" aria-hidden="true">⠿</span><strong>Excel へ（表）</strong><span>No・作業内容・注意点 が1行ずつ入る</span>
+        </div>
+      </div>
+      <p class="hint">1つの手順だけ入れたい時は、表の番号（<span class="handle" style="height:1.5em;min-width:2em;font-size:.8rem">1</span>）をつかんでドラッグします。文章は表の中でそのまま直せます。番号のドラッグで並べ替えもできます。</p>
+      <div class="row">
+        <button id="copyWord">Word 用にコピー</button>
+        <button id="copyExcel">Excel 用にコピー</button>
+        <button id="btnAdd">手順を追加</button>
+      </div>
+      <div class="tablebox">
+        <table class="steps" aria-label="手順">
+          <thead><tr><th>No</th><th>作業内容</th><th class="ops"><span class="hidden-input">操作</span></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SAMPLE = "（例）えーと、まずポンプの電源を切って、ブレーカーを落とします。次に、あのー、吸い込み側と吐き出し側のバルブを閉めます。注意、配管の中に圧が残っているので、ドレンを開けて圧を抜いてから作業してください。それから、フィルターケースのボルト4本を外します。続いて、古いフィルターを取り出して、新しいフィルターに交換します。ポイント、パッキンも新品に替えること。最後に、バルブを開けて電源を入れ、漏れがないか確認します。";
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+
+  let steps = []; // {text, note}
+
+  // ---------- text → steps ----------
+  const FILLER = /(^|[、。,\s「])(?:えーっと|えーと|えっと|ええと|えー+|あのー+|あの(?=[、,])|あー+|うーん|うー+ん|んー+|まあ(?=[、,])|そのー+)[、,\s]*/g;
+  const MARKER = /(?:^|(?<=[、。,\s]))(まず(?:最初に|はじめに)?|最初に|はじめに|次に|つぎに|それから|続いて|つづいて|その後|そのあと|そして|最後に|さいごに)[、,\s]*/g;
+  const NOTE = /^(?:注意(?:点)?|ポイント|危険|禁止|重要)(?:は|です)?[：:、,\s]*/;
+
+  function cleanSentence(s) {
+    return s.replace(/^[、。,\s]+/, "").replace(/[、,\s]+$/, "").trim();
+  }
+  function endPeriod(s) {
+    return s && !/[。．！？!?」)）]$/.test(s) ? s + "。" : s;
+  }
+  function toSteps(src, o) {
+    let t = src.replace(/\r/g, "").replace(/^（例）/, "");
+    // drop recorder timestamps like "00:12" or "[0:03:21]" and speaker labels like "話者 1"
+    t = t.replace(/\[?\b\d{1,2}:\d{2}(?::\d{2})?\]?/g, " ").replace(/^\s*(?:話者|スピーカー|Speaker)\s*\d+\s*[:：]?/gim, "");
+    if (o.filler) t = t.replace(FILLER, "$1");
+    let parts = [];
+    for (const line of t.split(/\n+/)) {
+      let chunks = [line];
+      if (o.marker) chunks = line.replace(MARKER, "\u0001").split("\u0001");
+      for (const c of chunks) for (const s of c.split(/(?<=[。！？!?])/)) {
+        const x = cleanSentence(s.replace(/^\s*(?:\d+[.)．、]|[①-⑳]|[・\-*])\s*/, ""));
+        if (x) parts.push(x);
+      }
+    }
+    const out = [];
+    for (const p of parts) {
+      if (o.note && NOTE.test(p) && out.length) {
+        const n = endPeriod(cleanSentence(p.replace(NOTE, "")));
+        const last = out[out.length - 1];
+        last.note = last.note ? last.note + " " + n : n;
+      } else {
+        out.push({ text: endPeriod(p), note: "" });
+      }
+    }
+    return out;
+  }
+
+  // ---------- output formats ----------
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const title = () => $("title").value.trim();
+  function wordPlain(list) {
+    return list.map((s, i) => `${i + 1}. ${s.text}` + (s.note ? `\n   ※注意：${s.note}` : "")).join("\n");
+  }
+  function wordHtml(list) {
+    const li = list.map((s) => `<li>${esc(s.text)}${s.note ? `<br><span style="color:#a8650a">※注意：${esc(s.note)}</span>` : ""}</li>`).join("");
+    return `<meta charset="utf-8">${title() ? `<p><b>${esc(title())}</b></p>` : ""}<ol>${li}</ol>`;
+  }
+  function excelPlain(list) {
+    const cell = (s) => /[\t\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const head = ["No", "作業内容", "注意点"].join("\t");
+    return [head, ...list.map((s, i) => [i + 1, cell(s.text), cell(s.note)].join("\t"))].join("\n");
+  }
+  function excelHtml(list) {
+    const td = "border:1px solid #999;padding:2px 6px;vertical-align:top";
+    const rows = list.map((s, i) => `<tr><td style="${td};text-align:center">${i + 1}</td><td style="${td}">${esc(s.text)}</td><td style="${td}">${esc(s.note)}</td></tr>`).join("");
+    const cap = title() ? `<tr><td colspan="3" style="font-weight:bold">${esc(title())}</td></tr>` : "";
+    return `<meta charset="utf-8"><table style="border-collapse:collapse">${cap}<tr><th style="${td};background:#dde6ee">No</th><th style="${td};background:#dde6ee">作業内容</th><th style="${td};background:#dde6ee">注意点</th></tr>${rows}</table>`;
+  }
+  function oneStepPlain(s) { return s.text + (s.note ? `（注意：${s.note}）` : ""); }
+
+  // ---------- render ----------
+  function render() {
+    const tb = $("rows");
+    tb.textContent = "";
+    if (!steps.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="3" class="empty">左に文章を貼り付けて「手順に整える」を押すと、ここに手順が並びます。</td>`;
+      tb.appendChild(tr);
+    }
+    steps.forEach((s, i) => {
+      const tr = document.createElement("tr");
+      tr.dataset.i = i;
+      const no = document.createElement("td"); no.className = "no";
+      const h = document.createElement("span"); h.className = "handle"; h.textContent = i + 1;
+      h.draggable = true; h.tabIndex = 0; h.title = "つかんで Word・Excel へ（表の中では並べ替え）";
+      h.setAttribute("aria-label", `手順${i + 1}をドラッグ`);
+      no.appendChild(h);
+      const body = document.createElement("td");
+      const tx = document.createElement("div"); tx.className = "txt"; tx.contentEditable = "plaintext-only";
+      if (tx.contentEditable !== "plaintext-only") tx.contentEditable = "true";
+      tx.textContent = s.text; tx.setAttribute("aria-label", `手順${i + 1}の作業内容`);
+      tx.addEventListener("input", () => { s.text = tx.textContent.trim(); saveDraft(); });
+      const nt = document.createElement("div"); nt.className = "note"; nt.textContent = s.note ? "※注意：" + s.note : "";
+      body.append(tx, nt);
+      const ops = document.createElement("td"); ops.className = "ops";
+      const mk = (label, aria, fn) => { const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-label", aria); b.onclick = fn; return b; };
+      ops.append(
+        mk("↑", `手順${i + 1}を上へ`, () => move(i, i - 1)),
+        mk("↓", `手順${i + 1}を下へ`, () => move(i, i + 1)),
+        mk(s.note ? "注意を外す" : "注意に", s.note ? "注意点を手順に戻す" : "前の手順の注意点にする", () => toggleNote(i)),
+        mk("×", `手順${i + 1}を削除`, () => { steps.splice(i, 1); render(); saveDraft(); }),
+      );
+      tr.append(no, body, ops);
+      wireRowDrag(tr, h, i);
+      tb.appendChild(tr);
+    });
+    const none = !steps.length;
+    ["copyWord", "copyExcel"].forEach((id) => $(id).disabled = none);
+  }
+  function move(a, b) {
+    if (b < 0 || b >= steps.length || a === b) return;
+    const [x] = steps.splice(a, 1); steps.splice(b, 0, x); render(); saveDraft();
+  }
+  function toggleNote(i) {
+    const s = steps[i];
+    if (s.note) { steps.splice(i + 1, 0, { text: s.note, note: "" }); s.note = ""; }
+    else if (i > 0) { const p = steps[i - 1]; p.note = p.note ? p.note + " " + s.text : s.text; steps.splice(i, 1); }
+    else { toast("1番目の手順は注意点にできません"); return; }
+    render(); saveDraft();
+  }
+
+  // ---------- drag & drop ----------
+  let dragFrom = -1;
+  function wireRowDrag(tr, handle, i) {
+    handle.addEventListener("dragstart", (e) => {
+      dragFrom = i;
+      const s = steps[i];
+      e.dataTransfer.effectAllowed = "copyMove";
+      e.dataTransfer.setData("text/plain", oneStepPlain(s));
+      e.dataTransfer.setData("text/html", `<meta charset="utf-8">${esc(s.text)}${s.note ? `（注意：${esc(s.note)}）` : ""}`);
+      e.dataTransfer.setData("application/x-step", String(i));
+      tr.classList.add("dragging");
+    });
+    handle.addEventListener("dragend", () => { tr.classList.remove("dragging"); dragFrom = -1; clearOver(); });
+    tr.addEventListener("dragover", (e) => { if (dragFrom < 0) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; clearOver(); tr.classList.add("over"); });
+    tr.addEventListener("drop", (e) => { if (dragFrom < 0) return; e.preventDefault(); const from = dragFrom; dragFrom = -1; clearOver(); move(from, i); });
+  }
+  function clearOver() { document.querySelectorAll(".steps tr.over").forEach((r) => r.classList.remove("over")); }
+  function wireChip(el, plain, html) {
+    el.addEventListener("dragstart", (e) => {
+      if (!steps.length) { e.preventDefault(); toast("先に「手順に整える」を押してください"); return; }
+      e.dataTransfer.effectAllowed = "copy";
+      e.dataTransfer.setData("text/plain", plain(steps));
+      e.dataTransfer.setData("text/html", html(steps));
+    });
+  }
+  wireChip($("dragWord"), wordPlain, wordHtml);
+  wireChip($("dragExcel"), excelPlain, excelHtml);
+
+  // ---------- copy ----------
+  async function copy(plain, html, what) {
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(plain);
+      }
+      toast(`${what}にコピーしました。貼り付けてください`);
+    } catch {
+      try { await navigator.clipboard.writeText(plain); toast(`${what}にコピーしました`); }
+      catch { fallbackCopy(plain); }
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = $("src"); const keep = ta.value;
+    ta.value = text; ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {}
+    ta.value = keep;
+    toast(ok ? "コピーしました" : "コピーできませんでした。ドラッグを使ってください");
+  }
+  $("copyWord").onclick = () => copy(wordPlain(steps), wordHtml(steps), "Word 用");
+  $("copyExcel").onclick = () => copy(excelPlain(steps), excelHtml(steps), "Excel 用");
+
+  // ---------- input ----------
+  const opts = () => ({ filler: $("optFiller").checked, marker: $("optMarker").checked, note: $("optNote").checked });
+  function make() {
+    const v = $("src").value.trim();
+    if (!v) { toast("文字起こしの文章を貼り付けてください"); $("src").focus(); return; }
+    steps = toSteps(v, opts());
+    render(); saveDraft();
+    toast(`${steps.length} 個の手順にしました`);
+  }
+  $("btnMake").onclick = make;
+  $("btnAdd").onclick = () => { steps.push({ text: "新しい手順。", note: "" }); render(); saveDraft(); const t = document.querySelectorAll(".txt"); t[t.length - 1]?.focus(); };
+  $("btnClear").onclick = () => { $("src").value = ""; $("title").value = ""; steps = []; render(); saveDraft(); $("src").focus(); };
+  $("btnFile").onclick = () => $("file").click();
+  $("file").onchange = (e) => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; };
+  function readFile(f) {
+    const r = new FileReader();
+    r.onload = () => {
+      $("src").value = String(r.result);
+      if (!$("title").value.trim()) $("title").value = f.name.replace(/\.[^.]+$/, "");
+      make();
+    };
+    r.readAsText(f, "utf-8");
+  }
+  const src = $("src");
+  src.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); src.classList.add("drop"); } });
+  src.addEventListener("dragleave", () => src.classList.remove("drop"));
+  src.addEventListener("drop", (e) => {
+    src.classList.remove("drop");
+    const f = e.dataTransfer.files?.[0];
+    if (f) { e.preventDefault(); readFile(f); }
+  });
+  src.addEventListener("input", saveDraft);
+  $("title").addEventListener("input", saveDraft);
+
+  // ---------- draft (this browser only) ----------
+  let draftTimer;
+  function saveDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => store.set("vm-draft", JSON.stringify({ src: $("src").value, title: $("title").value, steps })), 300);
+  }
+  function loadDraft() {
+    try {
+      const d = JSON.parse(store.get("vm-draft") || "null");
+      if (d && (d.src || d.steps?.length)) { $("src").value = d.src || ""; $("title").value = d.title || ""; steps = d.steps || []; return true; }
+    } catch {}
+    return false;
+  }
+
+  // ---------- toast ----------
+  let tt;
+  function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2400); }
+
+  // ---------- start ----------
+  if (!loadDraft()) { $("src").value = SAMPLE; $("title").value = "（例）ポンプのフィルター交換"; steps = toSteps(SAMPLE, opts()); }
+  render();
+
+  // ---------- phone ⇄ PC sync (only when opened as a claude.ai artifact) ----------
+  (async () => {
+    if (!window.claude?.use) return;
+    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db || !user) return;
+    const uid = await user.id();
+    if (!uid) return;
+    $("sync").hidden = false;
+    const st = $("syncStatus");
+    const say = (m, cls = "") => { st.textContent = m; st.className = "status " + cls; };
+    const memos = db.doc("data/users/" + uid + "/voice").collection("memos");
+    say("読み込み中…");
+    const timer = setTimeout(() => say("保存したメモにまだつながりません。電波を確認してください。", "warn"), 10000);
+    memos.orderBy("savedAt", "desc").limit(30).onSnapshot((snap) => {
+      if (!snap.metadata.fromCache) { clearTimeout(timer); if (st.textContent === "読み込み中…") say(""); }
+      const box = $("memoList"); box.textContent = "";
+      if (snap.empty) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "保存したメモはまだありません。"; box.appendChild(p); return; }
+      for (const d of snap.docs) {
+        const m = d.data();
+        const row = document.createElement("div"); row.className = "memo";
+        const info = document.createElement("div"); info.style.minWidth = "0";
+        const t = document.createElement("div"); t.className = "t"; t.textContent = m.title || (m.src || "").slice(0, 30) || "（無題）";
+        const dt = document.createElement("div"); dt.className = "d";
+        const when = new Date(m.savedAt);
+        dt.textContent = `${when.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}・手順 ${(m.steps || []).length}`;
+        info.append(t, dt);
+        const btns = document.createElement("div"); btns.className = "row";
+        const open = document.createElement("button"); open.className = "small"; open.textContent = "開く";
+        open.onclick = () => { $("src").value = m.src || ""; $("title").value = m.title || ""; steps = (m.steps || []).map((s) => ({ text: s.text || "", note: s.note || "" })); render(); saveDraft(); toast("メモを開きました"); };
+        const del = document.createElement("button"); del.className = "small"; del.textContent = "削除";
+        let armed = false;
+        del.onclick = async () => {
+          if (!armed) { armed = true; del.textContent = "本当に削除"; setTimeout(() => { armed = false; del.textContent = "削除"; }, 3000); return; }
+          try { await memos.doc(d.id).delete(); toast("削除しました"); } catch { say("削除できませんでした。", "warn"); }
+        };
+        btns.append(open, del);
+        row.append(info, btns);
+        box.appendChild(row);
+      }
+    }, () => { clearTimeout(timer); say("保存したメモを読めませんでした。", "warn"); });
+
+    let saving = false;
+    $("btnSave").onclick = async () => {
+      if (saving) return;
+      if (!steps.length && !$("src").value.trim()) { toast("保存する文章がありません"); return; }
+      saving = true; $("btnSave").disabled = true;
+      const id = "m" + Date.now().toString(36);
+      try {
+        await memos.doc(id).set({ title: title(), src: $("src").value.slice(0, 50000), steps: steps.map((s) => ({ text: s.text, note: s.note })), savedAt: Date.now() });
+        say("保存しました。パソコンでこのページを開くと一覧に出ます。", "ok");
+      } catch (e) {
+        say(e?.code === "quota_exceeded" ? "保存できる数がいっぱいです。古いメモを削除してください。" : "保存できませんでした。電波を確認して、もう一度押してください。", "warn");
+      } finally { saving = false; $("btnSave").disabled = false; }
+    };
+  })();
+})();
+</script>
