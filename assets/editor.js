@@ -209,6 +209,7 @@
       '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
         '<button type="button" class="btn small" data-act="pick-video" data-path="' + base + '">選ぶ</button>' +
         '<button type="button" class="btn small" data-act="seg" data-path="' + base + '">区間を設定</button>' +
+        (getPath(base + ".src") ? '<button type="button" class="btn small" data-act="seg" data-shot="1" data-path="' + base + '" title="動画を止めた場面を、手順の写真にしたり、画像として保存したりします">📷 場面を写真に</button>' : '') +
       '</div></div>' + checkBox(getPath(base + ".src"));
   }
 
@@ -293,6 +294,7 @@
             (s.image ? '<img class="thumb" src="' + esc(objectUrls[s.image] || s.image) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
             '<div><button type="button" class="btn primary" data-act="pick-image" data-path="' + b + '.image">' + (s.image ? "写真を変える" : "写真を選ぶ") + '</button>' +
             (s.image ? ' <button type="button" class="btn" data-act="annotate" data-i="' + i + '">✎ 丸・矢印を書き込む</button>' : '') +
+            (s.video.src ? ' <button type="button" class="btn" data-act="seg" data-shot="1" data-path="' + b + '.video">📷 動画の場面から写真を作る</button>' : '') +
             '<p class="hint">画面のコピー（Win＋Shift＋S）は、ここで Ctrl＋V でも貼り付けられます。</p></div></div>' : '') +
         '</div>' +
       '</section>';
@@ -550,7 +552,7 @@
         break;
       case "pick-video": pick("video", path); return;
       case "pick-image": pick("image", path); return;
-      case "seg": openSeg(path); return;
+      case "seg": openSeg(path, b.hasAttribute("data-shot")); return;
       case "annotate": annotate(i); return;
       case "cut": openCutter(); return;
       case "mode":
@@ -690,10 +692,11 @@
   }
 
   // 書き込み用に写真を読む。保存済みの写真は、ファイルを直接開いた画面では書き込めない（ブラウザの制限）ため、フォルダから読み込む
-  function imageUrl(src) {
+  function imageUrl(src) { return mediaUrl(src, "写真"); }
+  function mediaUrl(src, kind) {
     if (objectUrls[src]) return Promise.resolve(objectUrls[src]);
     if (location.protocol !== "file:") return Promise.resolve(src);
-    if (!WIFolder.supported) return Promise.reject(new Error("写真を「選ぶ」から選び直してから、書き込んでください。"));
+    if (!WIFolder.supported) return Promise.reject(new Error(kind + "を「選ぶ」から選び直してから、もう一度やってください。"));
     return WIFolder.getRoot().then(function (root) {
       var parts = src.split("/");
       return root.getDirectoryHandle(parts[0]).then(function (d) { return d.getFileHandle(parts[1]); });
@@ -703,7 +706,7 @@
       return objectUrls[src];
     }, function (e) {
       if (e && e.name === "AbortError") throw new Error("フォルダが選ばれませんでした。");
-      throw new Error("写真「" + src + "」がフォルダに見つかりません。「選ぶ」から選び直してください。");
+      throw new Error(kind + "「" + src + "」がフォルダに見つかりません。「選ぶ」から選び直してください。");
     });
   }
 
@@ -754,10 +757,14 @@
   var segBase = "";
   var segStopAt = null;
 
-  function openSeg(base) {
+  function openSeg(base, shot) {
     var src = getPath(base + ".src");
     if (!src) { alert("先に動画ファイルを選んでください。"); return; }
     segBase = base;
+    var stepNo = /^steps\.(\d+)\.video$/.exec(base);
+    document.getElementById("segTitle").textContent = shot ? "動画を止めて、場面を写真にする" : "再生区間の設定";
+    segNoVideo.checked = false;
+    document.getElementById("segNoVideoWrap").hidden = !stepNo || m.steps[+stepNo[1]].noVideo;
     segStopAt = null;
     segMsg.classList.remove("show");
     document.getElementById("segSrc").textContent = src;
@@ -780,6 +787,88 @@
     var s = getPath(segBase + ".start"), e = getPath(segBase + ".end");
     segInfo.textContent = "開始 " + (s || "0:00") + " ／ 終了 " + (e || "最後まで");
   }
+  // ---------- 動画の場面を写真にする・画像として保存する ----------
+  var segNoVideo = document.getElementById("segNoVideo");
+  // 動画を止めた場面を JPEG にする。ファイルを直接開いた動画はブラウザの決まりで写真にできないため、
+  // そのときはフォルダから動画を読み直して、同じ位置でもう一度写す
+  function segFrame() {
+    var t = segVideo.currentTime;
+    var draw = function () {
+      var w = segVideo.videoWidth, h = segVideo.videoHeight;
+      if (!w || !h) return Promise.reject(new Error("動画がまだ読み込まれていません。少し待ってから、もう一度押してください。"));
+      var k = Math.min(1, 1920 / Math.max(w, h));
+      var c = document.createElement("canvas");
+      c.width = Math.round(w * k);
+      c.height = Math.round(h * k);
+      c.getContext("2d").drawImage(segVideo, 0, 0, c.width, c.height);
+      return new Promise(function (resolve, reject) {
+        try {
+          c.toBlob(function (b) { b ? resolve(b) : reject(new Error("場面を写真にできませんでした。")); }, "image/jpeg", 0.9);
+        } catch (e) { reject(e); }
+      });
+    };
+    segVideo.pause();
+    return draw().catch(function (e) {
+      if (!e || e.name !== "SecurityError") throw e;
+      var src = getPath(segBase + ".src");
+      return mediaUrl(src, "動画").then(function (url) {
+        return new Promise(function (resolve) {
+          var go = function () { segVideo.removeEventListener("loadeddata", go); segVideo.onseeked = function () { segVideo.onseeked = null; resolve(); }; segVideo.currentTime = t; };
+          segVideo.addEventListener("loadeddata", go);
+          segVideo.onloadedmetadata = null;
+          segVideo.src = url;
+          segVideo.load();
+        });
+      }).then(draw);
+    });
+  }
+  function segFrameName() {
+    var src = getPath(segBase + ".src");
+    var stem = src.split("/").pop().replace(/\.[^.]+$/, "").normalize("NFKC").replace(/[^\w\-]+/g, "_") || "video";
+    return stem + "_" + Math.round(segVideo.currentTime * 10) + ".jpg";
+  }
+  function segError(e) {
+    segMsg.innerHTML = esc((e && e.message) || String(e));
+    segMsg.classList.add("show");
+    setTimeout(function () { segMsg.classList.remove("show"); }, 5000);
+  }
+  function segToast(html) {
+    segMsg.innerHTML = html;
+    segMsg.classList.add("show");
+    setTimeout(function () { segMsg.classList.remove("show"); }, 2500);
+  }
+  document.getElementById("segShot").addEventListener("click", function () {
+    var mt = /^steps\.(\d+)\./.exec(segBase);
+    if (!mt) return;
+    var i = +mt[1], s = m.steps[i];
+    var name = segFrameName();
+    segFrame().then(function (b) {
+      if (s.image && !confirm("この手順にはもう写真があります。今の場面の写真に入れ替えますか？")) return;
+      if (s.marks) delete s.marks;
+      if (segNoVideo.checked) { s.noVideo = true; ezWantPhoto[i] = true; }
+      var nv = segNoVideo.checked;
+      return WI.shrinkImage(new File([b], name, { type: "image/jpeg" })).then(function (sb) {
+        setImageNow("steps." + i + ".image", new File([sb], name, { type: "image/jpeg" }), name);
+        saveDraft();
+        if (nv) { closeSeg(); notice("手順 " + (i + 1) + " は、動画をやめて写真（" + esc(name) + "）で見せるようにしました。保存すると images フォルダに入ります。"); return; }
+        segToast("✓ 手順 " + (i + 1) + " の写真にしました（" + esc(name) + "）。保存すると images フォルダに入ります");
+      });
+    }).catch(segError);
+  });
+  document.getElementById("segSaveImg").addEventListener("click", function () {
+    var name = segFrameName();
+    segFrame().then(function (b) {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+      segToast("💾 画像「" + esc(name) + "」を保存しました（ふつうは「ダウンロード」フォルダに入ります）");
+    }).catch(segError);
+  });
+
   segVideo.addEventListener("timeupdate", function () {
     if (segStopAt != null && segVideo.currentTime >= segStopAt) { segVideo.pause(); segStopAt = null; }
   });
