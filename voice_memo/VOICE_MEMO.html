@@ -294,6 +294,9 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         </div>
         <div class="pgrid" id="pgrid" aria-label="図解の写真"></div>
       </div>
+      <div class="opts">
+        <label><input type="checkbox" id="optPrint" checked>印刷範囲を全体に直して、1ページに収める</label>
+      </div>
       <div class="row">
         <button class="primary" id="btnXlsx">要領書の Excel を作る</button>
       </div>
@@ -888,6 +891,16 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
       }
       frames.sort((a, b) => a.n - b.n);
       return {
+        extent: (() => {
+          let r = 1, c = 1;
+          for (const m of merges) { r = Math.max(r, m.r2); c = Math.max(c, m.c2); }
+          for (const cell of sheet.getElementsByTagNameNS(NS_M, "c")) {
+            if (!cell.getElementsByTagNameNS(NS_M, "v").length && !cell.getElementsByTagNameNS(NS_M, "is").length) continue;
+            const p = parseRef(cell.getAttribute("r")); r = Math.max(r, p.r); c = Math.max(c, p.c);
+          }
+          for (const f of frames) { r = Math.max(r, f.r2); c = Math.max(c, f.c2); }
+          return { r, c };
+        })(),
         frames, colPx, rowPx, colsPx: (a, b) => sum(a, b, colPx), rowsPx: (a, b) => sum(a, b, rowPx),
         slots, noCol, textCol: found.head.c, pointCol, figCol,
         textCap: Math.max(8, Math.floor(colW(headM.c1, headM.c2) / 2.45)),
@@ -1026,7 +1039,37 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     }
 
     // --- build the workbook ---
-    async function build(templateBuf, { list, cm, kotei, sagyo, photos = [] }) {
+    // print the whole form (table, photo frames, revision rows) on one page per sheet
+    function fixPrintArea(wb, sheetName, ext) {
+      const NS = NS_M;
+      let defs = wb.getElementsByTagNameNS(NS, "definedNames")[0];
+      if (!defs) {
+        defs = wb.createElementNS(NS, "definedNames");
+        const next = [...wb.documentElement.children].find((x) => ["calcPr", "oleSize", "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes", "webPublishing", "fileRecoveryPr", "webPublishObjects", "extLst"].includes(x.localName));
+        wb.documentElement.insertBefore(defs, next || null);
+      }
+      let d = [...defs.getElementsByTagNameNS(NS, "definedName")].find((x) => x.getAttribute("name") === "_xlnm.Print_Area" && x.getAttribute("localSheetId") === "0");
+      let c1 = 1, r1 = 1, c2 = ext.c, r2 = ext.r;
+      if (d) {
+        const m = /\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*$/.exec(d.textContent);
+        if (m) { c1 = colNum(m[1]); r1 = +m[2]; c2 = Math.max(c2, colNum(m[3])); r2 = Math.max(r2, +m[4]); }
+      } else {
+        d = wb.createElementNS(NS, "definedName"); d.setAttribute("name", "_xlnm.Print_Area"); d.setAttribute("localSheetId", "0"); defs.appendChild(d);
+      }
+      d.textContent = `'${sheetName.replace(/'/g, "''")}'!$${colName(c1)}$${r1}:$${colName(c2)}$${r2}`;
+    }
+    function fitOnePage(sh) {
+      const root = sh.documentElement;
+      let pr = sh.getElementsByTagNameNS(NS_M, "sheetPr")[0];
+      if (!pr) { pr = sh.createElementNS(NS_M, "sheetPr"); root.insertBefore(pr, root.firstElementChild); }
+      let pp = pr.getElementsByTagNameNS(NS_M, "pageSetUpPr")[0];
+      if (!pp) { pp = sh.createElementNS(NS_M, "pageSetUpPr"); pr.appendChild(pp); }
+      pp.setAttribute("fitToPage", "1");
+      const ps = sh.getElementsByTagNameNS(NS_M, "pageSetup")[0];
+      if (ps) { ps.setAttribute("fitToWidth", "1"); ps.setAttribute("fitToHeight", "1"); }
+    }
+
+    async function build(templateBuf, { list, cm, kotei, sagyo, photos = [], fixPrint = true }) {
       const files = readZip(templateBuf);
       const text = async (name) => { const f = files.get(name); if (!f) throw new Error("ひな形に " + name + " がありません。"); return new TextDecoder().decode(await unpack(f)); };
       const put = (name, str) => files.set(name, stored(new TextEncoder().encode(str)));
@@ -1104,6 +1147,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         if (form.koteiRef) setCell(sh, form.koteiRef, kotei);
         if (form.sagyoRef) setCell(sh, form.sagyoRef, sagyo);
         if (form.pageRef) setCell(sh, form.pageRef, `${page + 1}/${pages}`);
+        if (fixPrint) fitOnePage(sh);
         let dr = null, drRels = null;
         if (drawTxt) {
           dr = parse(drawTxt); drRels = parse(dRelsTxt);
@@ -1129,6 +1173,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         return { sh, dr, drRels };
       };
 
+      if (fixPrint) fixPrintArea(wb, sheetEl.getAttribute("name"), form.extent);
       const p0 = fill(0);
       put(sheetPath, ser(p0.sh));
       if (sRelTxt) put(sRelPath, sRelTxt);
@@ -1187,9 +1232,9 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
             defNames.appendChild(c);
           }
         }
-        put("xl/workbook.xml", ser(wb));
         put("xl/_rels/workbook.xml.rels", ser(wbRels));
       }
+      put("xl/workbook.xml", ser(wb));
       put("[Content_Types].xml", ser(ct));
       files.delete("xl/calcChain.xml");
       return { blob: writeZip(files), pages };
@@ -1229,7 +1274,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
       const sagyo = $("xlTitle").value.trim() || title().replace(/^（例）/, "");
       const tpl = $("tplOwn").checked ? ownTpl : b64ToBytes($("tplData").textContent);
       const ph = photos.map((p) => ({ w: p.w, h: p.h, bytes: b64ToBytes(p.url.split(",")[1]), step: steps.find((s) => s.k === p.step) || null }));
-      const r = await XL.build(tpl, { list: steps, cm: common, kotei: $("kotei").value.trim(), sagyo, photos: ph });
+      const r = await XL.build(tpl, { list: steps, cm: common, kotei: $("kotei").value.trim(), sagyo, photos: ph, fixPrint: $("optPrint").checked });
       const fname = "作業要領書_" + (sagyo || "無題").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) + ".xlsx";
       await saveBlob(fname, r.blob);
       xlSay(`「${fname}」を作りました（${r.pages} ページ）。ダウンロードしたファイルを開いてください。`, "ok");
