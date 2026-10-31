@@ -19,6 +19,7 @@
   --safety-soft: #fbe9df;
   --quality: #23704a;
   --quality-soft: #e1f2e8;
+  --caution-soft: #fdf1dc;
   --font: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --r: 10px;
 }
@@ -26,13 +27,13 @@
   :root:not([data-theme="light"]) {
     --bg: #12171d; --paper: #1b222b; --ink: #e6ebf0; --muted: #9aa8b6; --line: #2e3945;
     --accent: #6aaee6; --accent-ink: #0d1a26; --accent-soft: #1f3245;
-    --safety: #f19a6c; --safety-soft: #3b2418; --quality: #74d3a0; --quality-soft: #17321f; color-scheme: dark;
+    --safety: #f19a6c; --safety-soft: #3b2418; --quality: #74d3a0; --quality-soft: #17321f; --caution-soft: #3a2c16; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #12171d; --paper: #1b222b; --ink: #e6ebf0; --muted: #9aa8b6; --line: #2e3945;
   --accent: #6aaee6; --accent-ink: #0d1a26; --accent-soft: #1f3245;
-  --safety: #f19a6c; --safety-soft: #3b2418; --quality: #74d3a0; --quality-soft: #17321f; color-scheme: dark;
+  --safety: #f19a6c; --safety-soft: #3b2418; --quality: #74d3a0; --quality-soft: #17321f; --caution-soft: #3a2c16; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -110,6 +111,10 @@ button[disabled] { opacity: .5; cursor: default; }
 .cell .lbl { display: none; }
 .ed { outline: none; border-radius: 4px; padding: 1px 4px; min-height: 1.6em; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ed:hover { background: var(--bg); }
+.step.check { background: var(--caution-soft); border-radius: 8px; }
+.chk { display: block; margin-top: 3px; font-size: .7rem; font-weight: 700; color: var(--safety); text-align: center; white-space: nowrap; }
+.gloss-help { margin: 0; padding-left: 1.2em; font-size: .86rem; display: grid; gap: 4px; color: var(--muted); }
+.summary.warn { color: var(--safety); }
 .ed:empty::before { content: attr(data-ph); color: var(--muted); opacity: .6; }
 .ed.s { color: var(--safety); }
 .ed.q { color: var(--quality); }
@@ -220,6 +225,20 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
         </ol>
         <p class="example"><span class="tag">見本</span>工程、Ｎライン。作業名、ポンプのフィルター交換。まず、ポンプの電源を切ってブレーカーを落とす。安全ポイント、ブレーカーに作業中の札を掛ける。次に、フィルターケースのボルト4本を外す。安全ポイント、配管の圧を抜いてから外す。次に、新しいフィルターに交換する。品質ポイント、パッキンも新品に替える。最後に、ボルトを締めて漏れがないか確認する。品質ポイント、トルクは25ニュートンメートル。</p>
         <p class="hint">写真は、手順の順番に撮っておくと、その順に手順へ割り当てます。</p>
+      </div>
+    </details>
+
+    <details id="glossBox">
+      <summary>用語集（よく聞き間違える言葉・社内の言葉）</summary>
+      <div class="more">
+        <p class="hint">1行に1つ書きます。この欄は「新しく作る」を押しても消えません。</p>
+        <ul class="gloss-help">
+          <li><b>「間違い → 正しい言葉」</b>と書くと、貼り付けた時に自動で直します（Claude を使わなくても直ります）。</li>
+          <li><b>言葉だけ</b>書くと、Claude で整える時にその言葉に合わせて直します。</li>
+          <li>短い言葉は別の言葉の中まで直してしまいます（例：「取る → トルク」だと「受け取る」も変わる）。「トルクを取る → トルクを測る」のように前後も含めて書くと安全です。</li>
+        </ul>
+        <textarea id="gloss" class="short" aria-label="用語集" placeholder="例：&#10;上酢 → ウエス&#10;ドレイン → ドレン&#10;N ライン → Ｎライン&#10;フィルターケース&#10;GK-1234"></textarea>
+        <div class="opts"><label><input type="checkbox" id="optGloss" checked>用語集で言葉を直す</label></div>
       </div>
     </details>
 
@@ -552,6 +571,7 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
     d.dataset.ph = ph;
     d.setAttribute("aria-label", aria);
     d.addEventListener("input", () => { obj[key] = d.innerText.replace(/\n+$/, "").trim(); saveDraft(); });
+    d.addEventListener("blur", () => { const row = d.closest(".step"); if (row && !row.classList.contains("common") && row.classList.contains("check") !== needsCheck(obj)) render(); });
     return d;
   }
   function cell(lblCls, lblText, ed) {
@@ -583,7 +603,7 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
       sh.appendChild(e);
     }
     steps.forEach((s, i) => {
-      const r = document.createElement("div"); r.className = "step";
+      const r = document.createElement("div"); r.className = "step" + (needsCheck(s) ? " check" : "");
       const hw = document.createElement("div"); hw.className = "handle-wrap";
       const h = document.createElement("span"); h.className = "handle"; h.textContent = i + 1;
       h.draggable = true; h.tabIndex = 0; h.title = "つかんで Word・Excel へ（ここでは並べ替え）";
@@ -591,6 +611,7 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
       hw.appendChild(h);
       const figNos = photos.map((p, n) => p.step === s.k ? CIRC[n] : "").filter(Boolean).join("");
       if (figNos) { const f = document.createElement("span"); f.className = "figs"; f.textContent = "図" + figNos; hw.appendChild(f); }
+      if (needsCheck(s)) { const c = document.createElement("span"); c.className = "chk"; c.textContent = "要確認"; hw.appendChild(c); }
       const ops = document.createElement("div"); ops.className = "ops";
       const mk = (label, aria, fn) => { const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-label", aria); b.onclick = fn; return b; };
       ops.append(
@@ -667,8 +688,38 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
 
   // ---------- input ----------
   const opts = () => ({ filler: $("optFiller").checked, marker: $("optMarker").checked });
+  // ---------- 用語集 ----------
+  // "間違い → 正しい" lines are replaced in the transcript; plain words are passed to Claude as the right spelling
+  function glossary() {
+    const rules = [], terms = [];
+    for (const raw of $("gloss").value.replace(/\r/g, "").split("\n")) {
+      const l = raw.trim(); if (!l) continue;
+      const m = /^(.+?)\s*(?:→|->|⇒|＝|=|＞|>)\s*(.+)$/.exec(l);
+      if (m && m[1].trim() && m[2].trim()) { rules.push({ from: m[1].trim(), to: m[2].trim() }); terms.push(m[2].trim()); }
+      else terms.push(l);
+    }
+    rules.sort((a, b) => b.from.length - a.from.length); // longer phrases first
+    return { rules, terms: [...new Set(terms)] };
+  }
+  function applyGloss(text) {
+    if (!$("optGloss").checked) return { text, count: 0 };
+    let count = 0;
+    for (const { from, to } of glossary().rules) {
+      if (from === to) continue;
+      const parts = text.split(from);
+      if (parts.length > 1) { count += parts.length - 1; text = parts.join(to); }
+    }
+    return { text, count };
+  }
+  try { $("gloss").value = localStorage.getItem("vm-gloss") || ""; } catch {}
+  $("gloss").addEventListener("input", () => { try { localStorage.setItem("vm-gloss", $("gloss").value); } catch {} });
+  let glossFixed = 0;
+  const CHECK = "【要確認】";
+  const needsCheck = (s) => [s.text, s.safety, s.quality].some((x) => (x || "").includes(CHECK));
+  const checkCount = () => [...steps, common].reduce((a, s) => a + [s.text, s.safety, s.quality].join("\n").split(CHECK).length - 1, 0);
+
   let madeSig = "";
-  const sig = () => JSON.stringify([$("src").value, $("pts").value, opts()]);
+  const sig = () => JSON.stringify([$("src").value, $("pts").value, opts(), $("gloss").value, $("optGloss").checked]);
   // fill a field from the recording unless the person already typed something else there
   function autoFill(id, v) {
     const el = $(id);
@@ -677,12 +728,16 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
   }
   function countPoints() { return steps.reduce((a, s) => a + (s.safety ? s.safety.split("\n").length : 0) + (s.quality ? s.quality.split("\n").length : 0), 0) + (common.safety ? common.safety.split("\n").length : 0) + (common.quality ? common.quality.split("\n").length : 0); }
   function showMade() {
-    $("madeInfo").textContent = steps.length ? `✓ 手順 ${steps.length} 個・ポイント ${countPoints()} 個・写真 ${photos.length} 枚 になりました。「次へ」で確かめてください。` : "";
+    $("madeInfo").textContent = steps.length ? `✓ 手順 ${steps.length} 個・ポイント ${countPoints()} 個・写真 ${photos.length} 枚 になりました${glossFixed ? `（用語集で ${glossFixed} か所直しました）` : ""}。「次へ」で確かめてください。` : "";
   }
   function make() {
     const v = $("src").value.trim();
     if (!v) return false;
-    const r = toSteps(v, $("pts").value, opts());
+    // the example's leftovers must not leak into a real procedure
+    if (!v.startsWith("（例）") && $("pts").value === SAMPLE_PTS) $("pts").value = "";
+    const a = applyGloss(v), b = applyGloss($("pts").value);
+    glossFixed = a.count + b.count;
+    const r = toSteps(a.text, b.text, opts());
     const old = steps.map((s) => s.k);
     steps = keyed(r.list); common = r.cm; relinkPhotos(old);
     autoFill("title", r.title); autoFill("kotei", r.kotei);
@@ -703,7 +758,9 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
     [1, 2, 3].forEach((i) => { $("v" + i).hidden = i !== n; const b = $("nav" + i); b.classList.toggle("on", i === n); b.classList.toggle("done", i < n); if (i === n) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); });
     if (n === 3) {
       $("xlTitle").placeholder = title().replace(/^（例）/, "") || "作業名が入ります";
-      $("xlSummary").textContent = `手順 ${steps.length} 個・ポイント ${countPoints()} 個・写真 ${photos.length} 枚を書き込みます。`;
+      const nc = checkCount();
+      $("xlSummary").textContent = `手順 ${steps.length} 個・ポイント ${countPoints()} 個・写真 ${photos.length} 枚を書き込みます。` + (nc ? `「${CHECK}」が ${nc} か所残っています。②で確かめて直してから作ってください。` : "");
+      $("xlSummary").classList.toggle("warn", nc > 0);
     }
     window.scrollTo({ top: 0 });
   }
@@ -756,31 +813,37 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
   function buildPrompt() {
     const style = $("optStyle").value === "polite" ? "「〜します。」の です・ます調" : "「〜する。」の言い切り（常体）";
     const suggest = $("optSuggest").checked;
+    const g = glossary();
     return [
       "あなたは製造現場の作業要領書（作業標準書）を作る担当者です。",
       "下の「文字起こし」は、作業者がスマホのレコーダーに話した作業手順を自動で文字にしたものです。言い間違い・言いよどみ・聞き間違いが含まれます。",
       "",
       "やること:",
       "1. 文字起こしを、作業の順番どおりの手順に分ける。1つの手順は1つの動作にする。",
-      `2. 各手順を、作業要領書に書く短く分かりやすい文に要約する。文の終わりは${style}にそろえる。数値・部品名・工具名は変えない。`,
-      "3. 「安全・品質のポイント」の各行と、文字起こしの中で話された注意・ポイントを、安全か品質かに分け、いちばん関係する手順に割り振る。どの手順にも合わないものは common に入れる。行の先頭に「安全」「品質」とあればその種類に従う。",
+      `2. 各手順を、作業要領書に書く短く分かりやすい文に要約する。文の終わりは${style}にそろえる。`,
+      "3. 聞き間違い・言い間違い（音が似た別の言葉、変な漢字、途中で切れた言葉）は、前後の作業内容や用語集から正しい言葉が明らかな時だけ直す。用語集にある言葉は、その書き方に合わせる。",
+      `4. どう直せばよいか自信が無い言葉や数値は、推測で決めずにそのまま残し、すぐ後ろに${CHECK}と付ける。数値・単位・部品番号は、聞き間違いが明らかな時以外は変えない。`,
+      "5. 「安全・品質のポイント」の各行と、文字起こしの中で話された注意・ポイントを、安全か品質かに分け、いちばん関係する手順に割り振る。どの手順にも合わないものは common に入れる。行の先頭に「安全」「品質」とあればその種類に従う。",
       suggest
-        ? "4. 作業内容から見て足りない安全・品質のポイントがあれば、先頭に【提案】と付けて追加してよい。それ以外は、入力に無い内容を足さない。"
-        : "4. 入力に無い内容は足さない。",
+        ? "6. 作業内容から見て足りない安全・品質のポイントがあれば、先頭に【提案】と付けて追加してよい。それ以外は、入力に無い内容を足さない。"
+        : "6. 入力に無い内容は足さない。",
       "",
       "答えは次の JSON だけを出力する（説明文は不要）。1つの欄に複数のポイントがある時は改行（\\n）で区切る。",
       '{"title":"作業名","steps":[{"text":"作業内容","safety":"安全ポイント","quality":"品質ポイント"}],"common":{"safety":"","quality":""}}',
       "",
       "作業名: " + (title() || "（文字起こしから付けてください）"),
       "",
+      "用語集（この職場で使う正しい言葉）:",
+      g.terms.length ? g.terms.map((t) => "・" + t).join("\n") : "（なし）",
+      "",
       "文字起こし:",
       '"""',
-      $("src").value.replace(/^（例）/, "").trim(),
+      applyGloss($("src").value.replace(/^（例）/, "").trim()).text,
       '"""',
       "",
       "安全・品質のポイント:",
       '"""',
-      $("pts").value.trim() || "（なし）",
+      applyGloss($("pts").value.trim()).text || "（なし）",
       '"""',
     ].join("\n");
   }
@@ -1513,7 +1576,7 @@ button.big { font-size: 1.05rem; padding: 12px 22px; border-radius: 10px; }
 
   // ---------- start ----------
   if (!loadDraft()) {
-    $("src").value = SAMPLE; $("pts").value = SAMPLE_PTS; $("title").value = "（例）ポンプのフィルター交換";
+    $("src").value = SAMPLE; $("pts").value = SAMPLE_PTS; $("title").value = "（例）ポンプのフィルター交換"; $("title").dataset.auto = $("title").value;
     const r = toSteps(SAMPLE, SAMPLE_PTS, opts()); steps = keyed(r.list); common = r.cm;
     autoFill("kotei", r.kotei);
   }
