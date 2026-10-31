@@ -1,0 +1,9 @@
+node_modules/
+frames2/
+.v48/
+.audio.wav
+dur.json
+timing.json
+grain*.png
+voice*/
+*.mp4
