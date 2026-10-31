@@ -130,6 +130,18 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 20px; font-size: .9rem; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px); }
 .toast.show { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+.photos { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
+.photos h3 { font-size: .95rem; margin: 0; }
+.pgrid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); min-height: 64px; border-radius: 8px; }
+.pgrid.drop { outline: 2px dashed var(--accent); outline-offset: 4px; }
+.pgrid .none { grid-column: 1 / -1; color: var(--muted); font-size: .86rem; border: 1.5px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; }
+.pcard { border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: grid; gap: 6px; background: var(--paper); min-width: 0; }
+.pcard .ph { position: relative; aspect-ratio: 4 / 3; background: var(--bg); border-radius: 4px; overflow: hidden; display: grid; place-items: center; }
+.pcard img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.pcard .no { position: absolute; left: 4px; top: 4px; background: var(--accent); color: var(--accent-ink); border-radius: 6px; padding: 0 7px; font-weight: 700; }
+.pcard select { padding: 4px 6px; font-size: .82rem; }
+.pcard .ops { justify-content: space-between; }
+.figs { display: block; font-size: .72rem; color: var(--muted); margin-top: 3px; text-align: center; white-space: nowrap; }
 .xl-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 </style>
@@ -272,11 +284,21 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         <span class="hint" id="tplName">まだ選んでいません</span>
         <input type="file" id="tplFile" class="hidden-input" accept=".xlsx" tabindex="-1">
       </div>
+      <div class="photos">
+        <h3>図解の写真</h3>
+        <p class="hint">写真ごとに、どの手順の図解かを選びます。番号（①②…）の順に図解の枠へ入り、その手順の「図解Ｎｏ．」に番号が入ります。写真は枠に合わせて縮めます（縦横の比率はそのまま）。</p>
+        <div class="row">
+          <button id="btnPhoto">写真を追加</button>
+          <span class="hint">ここへドロップ、または Ctrl＋V で貼り付けもできます。スマホではその場で撮れます。</span>
+          <input type="file" id="photoFile" class="hidden-input" accept="image/*" multiple tabindex="-1">
+        </div>
+        <div class="pgrid" id="pgrid" aria-label="図解の写真"></div>
+      </div>
       <div class="row">
         <button class="primary" id="btnXlsx">要領書の Excel を作る</button>
       </div>
       <p class="status" id="xlStatus" role="status"></p>
-      <p class="hint">図解（写真）は、できた Excel を開いてから貼ってください。1枚に入りきらない時は、シート（ページ）が増えます。長い文は次の行に続けて書きます。</p>
+      <p class="hint">1枚に入りきらない時は、シート（ページ）が増えます（手順は10行、写真は7枚で1ページ）。長い文は次の行に続けて書きます。</p>
     </section>
     </div>
   </div>
@@ -294,7 +316,16 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
 
-  let steps = [];                       // {text, safety, quality}
+  let steps = [];                       // {k, text, safety, quality}
+  let photos = [];                      // {id, url (jpeg data URL), w, h, step: step key or null}
+  let keyN = 0;
+  const newKey = () => "s" + Date.now().toString(36) + (keyN++).toString(36);
+  const keyed = (list) => { list.forEach((s) => { if (!s.k) s.k = newKey(); }); return list; };
+  // steps were rebuilt (re-split, Claude): keep each photo on the step at the same position
+  function relinkPhotos(oldKeys) {
+    photos.forEach((p) => { const i = oldKeys.indexOf(p.step); p.step = i >= 0 && steps[i] ? steps[i].k : null; });
+    savePhotos();
+  }
   let common = { safety: "", quality: "" }; // points that fit no single step
 
   // ---------- text → steps ----------
@@ -489,12 +520,14 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
       h.draggable = true; h.tabIndex = 0; h.title = "つかんで Word・Excel へ（ここでは並べ替え）";
       h.setAttribute("aria-label", `手順${i + 1}をドラッグ`);
       hw.appendChild(h);
+      const figNos = photos.map((p, n) => p.step === s.k ? CIRC[n] : "").filter(Boolean).join("");
+      if (figNos) { const f = document.createElement("span"); f.className = "figs"; f.textContent = "図" + figNos; hw.appendChild(f); }
       const ops = document.createElement("div"); ops.className = "ops";
       const mk = (label, aria, fn) => { const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-label", aria); b.onclick = fn; return b; };
       ops.append(
         mk("↑", `手順${i + 1}を上へ`, () => move(i, i - 1)),
         mk("↓", `手順${i + 1}を下へ`, () => move(i, i + 1)),
-        mk("×", `手順${i + 1}を削除`, () => { steps.splice(i, 1); render(); saveDraft(); }),
+        mk("×", `手順${i + 1}を削除`, () => { photos.forEach((p) => { if (p.step === s.k) p.step = null; }); steps.splice(i, 1); render(); saveDraft(); savePhotos(); }),
       );
       r.append(hw,
         cell("", "", editable(s, "text", "", "作業内容", `手順${i + 1}の作業内容`)),
@@ -504,6 +537,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
       sh.appendChild(r);
     });
     ["copyWord", "copyExcel"].forEach((id) => $(id).disabled = !steps.length);
+    renderPhotos();
   }
   function move(a, b) {
     if (b < 0 || b >= steps.length || a === b) return;
@@ -568,14 +602,15 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     const v = $("src").value.trim();
     if (!v) { toast("文字起こしの文章を貼り付けてください"); $("src").focus(); return; }
     const r = toSteps(v, $("pts").value, opts());
-    steps = r.list; common = r.cm;
+    const old = steps.map((s) => s.k);
+    steps = keyed(r.list); common = r.cm; relinkPhotos(old);
     render(); saveDraft();
     const n = steps.reduce((a, s) => a + (s.safety ? s.safety.split("\n").length : 0) + (s.quality ? s.quality.split("\n").length : 0), 0);
     toast(`${steps.length} 個の手順にし、ポイントを ${n} 個割り振りました`);
   }
   $("btnMake").onclick = make;
-  $("btnAdd").onclick = () => { steps.push({ text: "", safety: "", quality: "" }); render(); saveDraft(); const t = document.querySelectorAll(".step:not(.common) .cell:first-of-type .ed"); t[t.length - 1]?.focus(); };
-  $("btnClear").onclick = () => { $("src").value = ""; $("pts").value = ""; $("title").value = ""; $("aiAnswer").value = ""; steps = []; common = { safety: "", quality: "" }; render(); saveDraft(); $("src").focus(); };
+  $("btnAdd").onclick = () => { steps.push({ k: newKey(), text: "", safety: "", quality: "" }); render(); saveDraft(); const t = document.querySelectorAll(".step:not(.common) .cell:first-of-type .ed"); t[t.length - 1]?.focus(); };
+  $("btnClear").onclick = () => { $("src").value = ""; $("pts").value = ""; $("title").value = ""; $("aiAnswer").value = ""; steps = []; photos = []; savePhotos(); common = { safety: "", quality: "" }; render(); saveDraft(); $("src").focus(); };
   $("btnFile").onclick = () => $("file").click();
   $("file").onchange = (e) => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; };
   function readFile(f) {
@@ -633,7 +668,9 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     }
     if (!obj || !Array.isArray(obj.steps) || !obj.steps.length) throw new Error("答えに手順（steps）がありません。");
     const str = (v) => Array.isArray(v) ? v.map(String).join("\n") : (v == null ? "" : String(v)).trim();
+    const old = steps.map((s) => s.k);
     steps = obj.steps.map((s) => typeof s === "string" ? { text: s, safety: "", quality: "" } : { text: str(s.text), safety: str(s.safety), quality: str(s.quality) }).filter((s) => s.text || s.safety || s.quality);
+    keyed(steps); relinkPhotos(old);
     common = { safety: str(obj.common?.safety), quality: str(obj.common?.quality) };
     if (obj.title && !title()) $("title").value = str(obj.title);
     render(); saveDraft();
@@ -698,6 +735,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     const NS_XDR = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
     const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
     const NS_XML = "http://www.w3.org/XML/1998/namespace";
+    const CIRCLED_SET = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
     const REL_DRAWING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
     const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -797,10 +835,11 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         return { c1: p.c, r1: p.r, c2: q.c, r2: q.r };
       });
       const mergeAt = (c, r) => merges.find((m) => c >= m.c1 && c <= m.c2 && r >= m.r1 && r <= m.r2) || { c1: c, r1: r, c2: c, r2: r };
-      const found = {};
+      const found = {}, circles = [];
       for (const c of sheet.getElementsByTagNameNS(NS_M, "c")) {
         const txt = norm(cellText(c)); if (!txt) continue;
         const p = parseRef(c.getAttribute("r"));
+        if (txt.length === 1 && CIRCLED_SET.includes(txt)) circles.push({ n: CIRCLED_SET.indexOf(txt) + 1, ...p });
         if (!found.head && /要素作業手順|作業手順/.test(txt)) found.head = p;
         else if (!found.kotei && txt === "工程名") found.kotei = p;
         else if (!found.sagyo && /^作業名/.test(txt)) found.sagyo = p;
@@ -830,7 +869,26 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         for (const c of sheet.getElementsByTagNameNS(NS_M, "col")) for (let i = +c.getAttribute("min"); i <= +c.getAttribute("max"); i++) map[i] = +c.getAttribute("width");
         return (a, b) => { let s = 0; for (let i = a; i <= b; i++) s += map[i] ?? def; return s; };
       })();
+      // pixel geometry (Excel: column width in characters → pixels, row height in points → pixels)
+      const colWidthAt = (i) => colW(i, i);
+      const colPx = (i) => Math.trunc(((256 * colWidthAt(i) + Math.trunc(128 / 7)) / 256) * 7);
+      const defRow = +(sheet.getElementsByTagNameNS(NS_M, "sheetFormatPr")[0]?.getAttribute("defaultRowHeight") || 15);
+      const rowHt = {};
+      for (const r of sheet.getElementsByTagNameNS(NS_M, "row")) if (r.getAttribute("ht")) rowHt[+r.getAttribute("r")] = +r.getAttribute("ht");
+      const rowPx = (r) => Math.round((rowHt[r] ?? defRow) * 96 / 72);
+      const sum = (a, b, f) => { let s = 0; for (let i = a; i <= b; i++) s += f(i); return s; };
+      // 図解 frames: a cell holding just ①②… with a merged block right below it, under the step table
+      const lastRow = slots[slots.length - 1].r;
+      const frames = [];
+      for (const lab of circles) {
+        if (lab.r <= lastRow || frames.some((f) => f.n === lab.n)) continue;
+        const lm = mergeAt(lab.c, lab.r);
+        const m = merges.find((x) => x.c1 === lab.c && x.r1 === lm.r2 + 1 && (x.r2 - x.r1) >= 2);
+        if (m) frames.push({ n: lab.n, label: colName(lab.c) + lab.r, ...m });
+      }
+      frames.sort((a, b) => a.n - b.n);
       return {
+        frames, colPx, rowPx, colsPx: (a, b) => sum(a, b, colPx), rowsPx: (a, b) => sum(a, b, rowPx),
         slots, noCol, textCol: found.head.c, pointCol, figCol,
         textCap: Math.max(8, Math.floor(colW(headM.c1, headM.c2) / 2.45)),
         pointCap: Math.max(8, Math.floor(colW(pointM.c1, pointM.c2) / 2.45)),
@@ -911,22 +969,22 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     }
 
     // --- steps → form rows (long text continues on the next row, like the hand-made forms) ---
-    function toRows(list, cm, form, withMarks) {
+    function toRows(list, cm, form, withMarks, figs = []) {
       const groups = [];
-      const push = (no, text, points) => {
+      const push = (no, text, points, fig = "") => {
         const rows = []; groups.push(rows);
         const tl = wrap(text, form.textCap);
         const pl = [];
         for (const p of points) wrap(withMarks ? p.t : (p.k === "s" ? "安全：" : "品質：") + p.t, form.pointCap).forEach((x, i) => pl.push({ t: x, mark: i === 0 ? p.k : null }));
         const n = Math.max(tl.length, pl.length, 1);
-        for (let i = 0; i < n; i++) rows.push({ no: i === 0 ? no : "", text: tl[i] || "", point: pl[i]?.t || "", mark: pl[i]?.mark || null });
+        for (let i = 0; i < n; i++) rows.push({ no: i === 0 ? no : "", text: tl[i] || "", point: pl[i]?.t || "", mark: pl[i]?.mark || null, fig: i === 0 ? fig : "" });
       };
       const pts = (s) => [
         ...(s.safety || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => ({ k: "s", t })),
         ...(s.quality || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => ({ k: "q", t })),
       ];
       if (cm.safety || cm.quality) push("", "作業全体（共通）", pts(cm));
-      list.forEach((s, i) => push(i + 1, s.text, pts(s)));
+      list.forEach((s, i) => push(i + 1, s.text, pts(s), figs[i] || ""));
       return groups;
     }
     // fill pages step by step; a step that would not fit on the rest of a page starts on the next one
@@ -940,33 +998,98 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
       return pages;
     }
 
+    // --- photos (図解) into the numbered frames ①②… below the step table ---
+    const CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
+    const circ = (n) => CIRCLED[n - 1] || `(${n})`;
+    const NS_DECL = `xmlns:xdr="${NS_XDR}" xmlns:a="${NS_A}" xmlns:r="${NS_R}"`;
+    function placePhoto(dr, rels, form, frame, photo, rid, id) {
+      const W = form.colsPx(frame.c1, frame.c2), H = form.rowsPx(frame.r1, frame.r2);
+      const pad = 6, s = Math.min((W - pad * 2) / photo.w, (H - pad * 2) / photo.h);
+      const w = Math.max(10, Math.floor(photo.w * s)), h = Math.max(10, Math.floor(photo.h * s));
+      let x = Math.floor((W - w) / 2), y = Math.floor((H - h) / 2), c = frame.c1, r = frame.r1;
+      while (c < frame.c2 && x >= form.colPx(c)) { x -= form.colPx(c); c++; }
+      while (r < frame.r2 && y >= form.rowPx(r)) { y -= form.rowPx(r); r++; }
+      const E = 9525;
+      const xml = `<xdr:oneCellAnchor ${NS_DECL}><xdr:from><xdr:col>${c - 1}</xdr:col><xdr:colOff>${x * E}</xdr:colOff><xdr:row>${r - 1}</xdr:row><xdr:rowOff>${y * E}</xdr:rowOff></xdr:from>` +
+        `<xdr:ext cx="${w * E}" cy="${h * E}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="図解 ${photo.no}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>` +
+        `<xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
+        `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${w * E}" cy="${h * E}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
+      const node = dr.importNode(parse(xml).documentElement, true);
+      dr.documentElement.appendChild(node);
+    }
+    // remove what already sits inside a frame we are about to fill (old photo and the circles drawn on it)
+    function clearFramePics(dr, frame) {
+      for (const a of anchors(dr)) {
+        const f = fromOf(a); if (!f) continue;
+        if (f.c + 1 >= frame.c1 && f.c + 1 <= frame.c2 && f.r + 1 >= frame.r1 && f.r + 1 <= frame.r2) a.remove();
+      }
+    }
+
     // --- build the workbook ---
-    async function build(templateBuf, { list, cm, kotei, sagyo }) {
+    async function build(templateBuf, { list, cm, kotei, sagyo, photos = [] }) {
       const files = readZip(templateBuf);
       const text = async (name) => { const f = files.get(name); if (!f) throw new Error("ひな形に " + name + " がありません。"); return new TextDecoder().decode(await unpack(f)); };
       const put = (name, str) => files.set(name, stored(new TextEncoder().encode(str)));
+      const free = (fmt) => { let i = 1; while (files.has(fmt(i))) i++; return i; };
       const wb = parse(await text("xl/workbook.xml"));
       const wbRels = parse(await text("xl/_rels/workbook.xml.rels"));
+      const ct = parse(await text("[Content_Types].xml"));
+      const ctOverride = (part, type) => { const o = ct.createElementNS(NS_CT, "Override"); o.setAttribute("PartName", "/" + part); o.setAttribute("ContentType", type); ct.documentElement.appendChild(o); };
       const relById = (doc, id) => [...doc.getElementsByTagNameNS(NS_PR, "Relationship")].find((r) => r.getAttribute("Id") === id);
       const sheetEl = wb.getElementsByTagNameNS(NS_M, "sheet")[0];
       const sheetPath = resolve("xl/workbook.xml", relById(wbRels, sheetEl.getAttributeNS(NS_R, "id")).getAttribute("Target"));
-      const sheetTxt = await text(sheetPath);
+      let sheetTxt = await text(sheetPath);
       let sst = [];
       if (files.has("xl/sharedStrings.xml")) {
         const d = parse(await text("xl/sharedStrings.xml"));
         sst = [...d.getElementsByTagNameNS(NS_M, "si")].map((si) => [...si.getElementsByTagNameNS(NS_M, "t")].filter((t) => t.parentNode.localName !== "rPh" && t.parentNode.parentNode?.localName !== "rPh").map((t) => t.textContent).join(""));
       }
       const form = analyze(parse(sheetTxt), sst);
+      if (photos.length && !form.frames.length) throw new Error("ひな形に図解の枠（①②…の番号と、その下の結合したセル）が見つかりません。写真を外すか、別のひな形を選んでください。");
       const sRelPath = relsPath(sheetPath);
-      const sRelTxt = files.has(sRelPath) ? await text(sRelPath) : null;
+      let sRelTxt = files.has(sRelPath) ? await text(sRelPath) : null;
       let drawPath = null, drawTxt = null;
       if (sRelTxt) {
         const dRel = [...parse(sRelTxt).getElementsByTagNameNS(NS_PR, "Relationship")].find((r) => r.getAttribute("Type") === REL_DRAWING);
         if (dRel) { drawPath = resolve(sheetPath, dRel.getAttribute("Target")); drawTxt = await text(drawPath); }
       }
-      const marks = !!drawTxt && (() => { const d = parse(drawTxt); const a = anchors(d); return a.some((x) => prstOf(x) === "plus") && a.some((x) => prstOf(x) === "flowChartDecision"); })();
-      const pageRows = paginate(toRows(list, cm, form, marks), form.slots.length);
+      // a form without any drawing gets an empty one, so photos have somewhere to go
+      if (!drawTxt && photos.length) {
+        drawPath = `xl/drawings/drawing${free((i) => `xl/drawings/drawing${i}.xml`)}.xml`;
+        drawTxt = DECL + `<xdr:wsDr ${NS_DECL}/>`;
+        ctOverride(drawPath, "application/vnd.openxmlformats-officedocument.drawing+xml");
+        const rels = sRelTxt ? parse(sRelTxt) : parse(DECL + `<Relationships xmlns="${NS_PR}"/>`);
+        const used = new Set([...rels.getElementsByTagNameNS(NS_PR, "Relationship")].map((r) => r.getAttribute("Id")));
+        let n = 1; while (used.has("rId" + n)) n++;
+        const rel = rels.createElementNS(NS_PR, "Relationship");
+        rel.setAttribute("Id", "rId" + n); rel.setAttribute("Type", REL_DRAWING); rel.setAttribute("Target", "../drawings/" + drawPath.split("/").pop());
+        rels.documentElement.appendChild(rel);
+        sRelTxt = ser(rels);
+        const sh = parse(sheetTxt), el = sh.createElementNS(NS_M, "drawing");
+        el.setAttributeNS(NS_R, "r:id", "rId" + n);
+        const after = ["legacyDrawing", "legacyDrawingHF", "drawingHF", "picture", "oleObjects", "controls", "webPublishItems", "tableParts", "extLst"];
+        const next = [...sh.documentElement.children].find((x) => after.includes(x.localName));
+        sh.documentElement.insertBefore(el, next || null);
+        sheetTxt = ser(sh);
+      }
+      const dRelsPath0 = drawPath ? relsPath(drawPath) : null;
+      const dRelsTxt = dRelsPath0 && files.has(dRelsPath0) ? await text(dRelsPath0) : DECL + `<Relationships xmlns="${NS_PR}"/>`;
+      const marks = !!drawTxt && (() => { const a = anchors(parse(drawTxt)); return a.some((x) => prstOf(x) === "plus") && a.some((x) => prstOf(x) === "flowChartDecision"); })();
+
+      // 図解 numbers: photos are numbered in order; a step lists the numbers of the photos linked to it
+      photos.forEach((p, i) => { p.no = i + 1; });
+      const figs = list.map((s) => photos.filter((p) => p.step === s).map((p) => circ(p.no)).join("、"));
+      let pageRows = paginate(toRows(list, cm, form, marks, figs), form.slots.length);
+      const F = form.frames.length || 1;
+      while (pageRows.length * F < photos.length) pageRows.push([]);
       const pages = pageRows.length;
+
+      // media files for the photos (shared by all pages)
+      if (photos.length) {
+        const exts = new Set([...ct.getElementsByTagNameNS(NS_CT, "Default")].map((d) => d.getAttribute("Extension").toLowerCase()));
+        if (!exts.has("jpeg")) { const d = ct.createElementNS(NS_CT, "Default"); d.setAttribute("Extension", "jpeg"); d.setAttribute("ContentType", "image/jpeg"); ct.documentElement.insertBefore(d, ct.documentElement.firstChild); }
+        for (const p of photos) { const n = free((i) => `xl/media/zukai${i}.jpeg`); p.part = `xl/media/zukai${n}.jpeg`; files.set(p.part, stored(p.bytes)); }
+      }
 
       const fill = (page) => {
         const sh = parse(sheetTxt);
@@ -976,34 +1099,52 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
           setCell(sh, colName(form.noCol) + slot.r, row && row.no !== "" ? row.no : "");
           setCell(sh, colName(form.textCol) + slot.r, row ? row.text : "");
           setCell(sh, colName(form.pointCol) + slot.r, row ? row.point : "");
-          if (form.figCol) setCell(sh, colName(form.figCol) + slot.r, "");
+          if (form.figCol) setCell(sh, colName(form.figCol) + slot.r, row ? row.fig || "" : "");
         });
         if (form.koteiRef) setCell(sh, form.koteiRef, kotei);
         if (form.sagyoRef) setCell(sh, form.sagyoRef, sagyo);
         if (form.pageRef) setCell(sh, form.pageRef, `${page + 1}/${pages}`);
-        let dr = null;
-        if (drawTxt) { dr = parse(drawTxt); if (marks) fillDrawing(dr, form, part); }
-        return { sh, dr };
+        let dr = null, drRels = null;
+        if (drawTxt) {
+          dr = parse(drawTxt); drRels = parse(dRelsTxt);
+          if (marks) fillDrawing(dr, form, part);
+          const mine = photos.slice(page * F, page * F + F);
+          let id = Math.max(1, ...[...dr.getElementsByTagNameNS(NS_XDR, "cNvPr")].map((n) => +n.getAttribute("id") || 0));
+          const used = new Set([...drRels.getElementsByTagNameNS(NS_PR, "Relationship")].map((r) => r.getAttribute("Id")));
+          form.frames.forEach((fr, k) => {
+            const p = mine[k];
+            // frame labels follow the real photo numbers (⑧⑨… on page 2)
+            setCell(sh, fr.label, circ(page * F + k + 1));
+            if (!p) return;
+            clearFramePics(dr, fr);
+            setCell(sh, colName(fr.c1) + fr.r1, "");
+            let n = 1; while (used.has("rIdZ" + n)) n++; used.add("rIdZ" + n);
+            const rel = drRels.createElementNS(NS_PR, "Relationship");
+            rel.setAttribute("Id", "rIdZ" + n); rel.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image");
+            rel.setAttribute("Target", "../media/" + p.part.split("/").pop());
+            drRels.documentElement.appendChild(rel);
+            placePhoto(dr, drRels, form, fr, p, "rIdZ" + n, ++id);
+          });
+        }
+        return { sh, dr, drRels };
       };
 
       const p0 = fill(0);
       put(sheetPath, ser(p0.sh));
-      if (p0.dr) put(drawPath, ser(p0.dr));
+      if (sRelTxt) put(sRelPath, sRelTxt);
+      if (p0.dr) { put(drawPath, ser(p0.dr)); put(relsPath(drawPath), ser(p0.drRels)); }
 
       if (pages > 1) {
-        const ct = parse(await text("[Content_Types].xml"));
         const sheetsEl = wb.getElementsByTagNameNS(NS_M, "sheets")[0];
         const baseName = sheetEl.getAttribute("name");
         const names = new Set([...wb.getElementsByTagNameNS(NS_M, "sheet")].map((s) => s.getAttribute("name")));
         const fw = (n) => String(n).replace(/[0-9]/g, (d) => String.fromCharCode(d.charCodeAt(0) + 0xFEE0));
         let sheetId = Math.max(...[...wb.getElementsByTagNameNS(NS_M, "sheet")].map((s) => +s.getAttribute("sheetId")));
         let relN = Math.max(0, ...[...wbRels.getElementsByTagNameNS(NS_PR, "Relationship")].map((r) => +(r.getAttribute("Id").replace(/\D/g, "")) || 0));
-        const free = (fmt) => { let i = 1; while (files.has(fmt(i))) i++; return i; };
         const defNames = wb.getElementsByTagNameNS(NS_M, "definedNames")[0];
         const baseDefs = defNames ? [...defNames.getElementsByTagNameNS(NS_M, "definedName")].filter((d) => d.getAttribute("localSheetId") === "0") : [];
-        const ctOverride = (part, type) => { const o = ct.createElementNS(NS_CT, "Override"); o.setAttribute("PartName", "/" + part); o.setAttribute("ContentType", type); ct.documentElement.appendChild(o); };
         for (let pg = 1; pg < pages; pg++) {
-          const { sh, dr } = fill(pg);
+          const { sh, dr, drRels } = fill(pg);
           const si = free((i) => `xl/worksheets/sheet${i}.xml`), newSheet = `xl/worksheets/sheet${si}.xml`;
           files.set(newSheet, stored(new Uint8Array(0))); // reserve the name
           sh.querySelectorAll("sheetView").forEach((v) => v.removeAttribute("tabSelected"));
@@ -1016,8 +1157,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
               if (r.getAttribute("Type") === REL_DRAWING && dr) {
                 const di = free((i) => `xl/drawings/drawing${i}.xml`), newDraw = `xl/drawings/drawing${di}.xml`;
                 put(newDraw, ser(dr));
-                const dRels = relsPath(drawPath);
-                if (files.has(dRels)) files.set(relsPath(newDraw), files.get(dRels));
+                put(relsPath(newDraw), ser(drRels));
                 r.setAttribute("Target", "../drawings/drawing" + di + ".xml");
                 ctOverride(newDraw, "application/vnd.openxmlformats-officedocument.drawing+xml");
               } else {
@@ -1049,8 +1189,8 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
         }
         put("xl/workbook.xml", ser(wb));
         put("xl/_rels/workbook.xml.rels", ser(wbRels));
-        put("[Content_Types].xml", ser(ct));
       }
+      put("[Content_Types].xml", ser(ct));
       files.delete("xl/calcChain.xml");
       return { blob: writeZip(files), pages };
     }
@@ -1088,7 +1228,8 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     try {
       const sagyo = $("xlTitle").value.trim() || title().replace(/^（例）/, "");
       const tpl = $("tplOwn").checked ? ownTpl : b64ToBytes($("tplData").textContent);
-      const r = await XL.build(tpl, { list: steps, cm: common, kotei: $("kotei").value.trim(), sagyo });
+      const ph = photos.map((p) => ({ w: p.w, h: p.h, bytes: b64ToBytes(p.url.split(",")[1]), step: steps.find((s) => s.k === p.step) || null }));
+      const r = await XL.build(tpl, { list: steps, cm: common, kotei: $("kotei").value.trim(), sagyo, photos: ph });
       const fname = "作業要領書_" + (sagyo || "無題").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) + ".xlsx";
       await saveBlob(fname, r.blob);
       xlSay(`「${fname}」を作りました（${r.pages} ページ）。ダウンロードしたファイルを開いてください。`, "ok");
@@ -1097,6 +1238,93 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
     } finally { $("btnXlsx").disabled = false; }
   };
   ["kotei", "xlTitle"].forEach((id) => $(id).addEventListener("input", saveDraft));
+
+  // ---------- 図解の写真 ----------
+  const CIRC = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚";
+  // shrink a phone photo (often 4–8 MB) to a sharp but small JPEG; the browser applies the camera's rotation
+  async function loadPhoto(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, ng) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ng(new Error("写真を読めませんでした: " + file.name)); i.src = url; });
+      const max = 1600, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * sc)), h = Math.max(1, Math.round(img.naturalHeight * sc));
+      const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+      const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+      return { id: newKey(), url: cv.toDataURL("image/jpeg", 0.85), w, h, step: null };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function addPhotos(fileList) {
+    const files = [...fileList].filter((f) => /^image\//.test(f.type));
+    if (!files.length) return;
+    // a new photo goes to the first step that has no photo yet
+    for (const f of files) {
+      try {
+        const p = await loadPhoto(f);
+        const free = steps.find((s) => !photos.some((x) => x.step === s.k));
+        p.step = free ? free.k : null;
+        photos.push(p);
+      } catch (e) { toast(e.message); }
+    }
+    render(); savePhotos();
+    toast(`写真を ${files.length} 枚追加しました。手順の割り当てを確かめてください`);
+  }
+  function renderPhotos() {
+    const g = $("pgrid"); if (!g) return;
+    g.textContent = "";
+    if (!photos.length) {
+      const n = document.createElement("div"); n.className = "none";
+      n.textContent = "まだ写真がありません。「写真を追加」を押すか、ここへドロップしてください。";
+      g.appendChild(n); return;
+    }
+    photos.forEach((p, i) => {
+      const c = document.createElement("div"); c.className = "pcard";
+      const ph = document.createElement("div"); ph.className = "ph";
+      const img = document.createElement("img"); img.src = p.url; img.alt = `図解 ${CIRC[i] || i + 1}`;
+      const no = document.createElement("span"); no.className = "no"; no.textContent = CIRC[i] || i + 1;
+      ph.append(img, no);
+      const sel = document.createElement("select"); sel.setAttribute("aria-label", `図解 ${CIRC[i] || i + 1} の手順`);
+      sel.add(new Option("手順：なし", ""));
+      steps.forEach((s, j) => sel.add(new Option(`手順 ${j + 1}：${(s.text || "").slice(0, 14)}`, s.k)));
+      sel.value = p.step && steps.some((s) => s.k === p.step) ? p.step : "";
+      sel.onchange = () => { p.step = sel.value || null; render(); savePhotos(); };
+      const ops = document.createElement("div"); ops.className = "ops";
+      const mk = (label, aria, fn, dis) => { const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-label", aria); b.onclick = fn; b.disabled = !!dis; return b; };
+      const mv = (d) => { const [x] = photos.splice(i, 1); photos.splice(i + d, 0, x); render(); savePhotos(); };
+      ops.append(
+        mk("←", "前へ", () => mv(-1), i === 0),
+        mk("→", "後ろへ", () => mv(1), i === photos.length - 1),
+        mk("×", "この写真を外す", () => { photos.splice(i, 1); render(); savePhotos(); }),
+      );
+      c.append(ph, sel, ops);
+      g.appendChild(c);
+    });
+  }
+  $("btnPhoto").onclick = () => $("photoFile").click();
+  $("photoFile").onchange = (e) => { addPhotos(e.target.files); e.target.value = ""; };
+  const pg = $("pgrid");
+  pg.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); pg.classList.add("drop"); } });
+  pg.addEventListener("dragleave", () => pg.classList.remove("drop"));
+  pg.addEventListener("drop", (e) => { pg.classList.remove("drop"); if (e.dataTransfer.files?.length) { e.preventDefault(); addPhotos(e.dataTransfer.files); } });
+  document.addEventListener("paste", (e) => {
+    const imgs = [...(e.clipboardData?.files || [])].filter((f) => /^image\//.test(f.type));
+    if (imgs.length) { e.preventDefault(); addPhotos(imgs); }
+  });
+
+  // photos are too big for localStorage; keep them in this browser's IndexedDB when it is available
+  const idb = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((ok, ng) => {
+      try { const r = indexedDB.open("voice-memo", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }
+      catch (e) { ng(e); }
+    }));
+    return {
+      async get(k) { const db = await open(); return new Promise((ok, ng) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result); q.onerror = () => ng(q.error); }); },
+      async set(k, v) { const db = await open(); return new Promise((ok, ng) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => ok(); t.onerror = () => ng(t.error); }); },
+    };
+  })();
+  let photoTimer;
+  function savePhotos() { clearTimeout(photoTimer); photoTimer = setTimeout(() => idb.set("photos", photos).catch(() => {}), 400); }
+  idb.get("photos").then((v) => { if (Array.isArray(v) && v.length && !photos.length) { photos = v; render(); } }).catch(() => {});
 
   // ---------- draft (this browser only) ----------
   let draftTimer;
@@ -1109,7 +1337,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
       const d = JSON.parse(store.get("vm-draft2") || "null");
       if (d && (d.src || d.steps?.length)) {
         $("src").value = d.src || ""; $("pts").value = d.pts || ""; $("title").value = d.title || ""; $("kotei").value = d.kotei || ""; $("xlTitle").value = d.xlTitle || "";
-        steps = (d.steps || []).map((s) => ({ text: s.text || "", safety: s.safety || "", quality: s.quality || "" }));
+        steps = keyed((d.steps || []).map((s) => ({ k: s.k, text: s.text || "", safety: s.safety || "", quality: s.quality || "" })));
         common = { safety: d.common?.safety || "", quality: d.common?.quality || "" };
         return true;
       }
@@ -1124,7 +1352,7 @@ details ul, details ol { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem
   // ---------- start ----------
   if (!loadDraft()) {
     $("src").value = SAMPLE; $("pts").value = SAMPLE_PTS; $("title").value = "（例）ポンプのフィルター交換";
-    const r = toSteps(SAMPLE, SAMPLE_PTS, opts()); steps = r.list; common = r.cm;
+    const r = toSteps(SAMPLE, SAMPLE_PTS, opts()); steps = keyed(r.list); common = r.cm;
   }
   render();
 })();
