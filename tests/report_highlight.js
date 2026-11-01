@@ -19,6 +19,8 @@ async function newPage(b, opt = {}, nofilter = false) {
   await p.goto(PAGE);
   return p;
 }
+// 画面は手順ごとに切り替わるので、隠れている select・ボタンはプログラムから操作する
+const pick = (p, sel, v) => p.evaluate(([sel, v]) => { const s = document.querySelector(sel); s.value = v; s.onchange && s.onchange(); }, [sel, v]);
 const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { timeout: 60000 });
 
 (async () => {
@@ -45,7 +47,7 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
   // ---- B. テンポ検出 ----
   for (const f of fs.readdirSync(M).filter(x => /^song\d+/.test(x)).sort()) {
     const trueBpm = +f.match(/\d+/)[0];
-    await p.selectOption('#musicSel', 'file').catch(() => { });
+    await pick(p, '#musicSel', 'file');
     const t0 = Date.now();
     await p.setInputFiles('#musicIn', path.join(M, f));
     await p.waitForFunction(f => HM.S.musicKey === 'file:' + f && !HM.S.building, f, { timeout: 60000 });
@@ -69,10 +71,10 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
   log('bgm done');
 
   // ---- D/E. 全パターン × 長さ × 画面の形 ----
-  await p.selectOption('#musicSel', 'edm'); await idle(p);
+  await pick(p, '#musicSel', 'edm'); await idle(p);
   const styles = await p.evaluate(() => HM.STYLES.map(s => s.id));
   for (const aspect of ['9:16', '16:9']) for (const len of ['60', '120']) {
-    await p.selectOption('#aspect', aspect); await p.selectOption('#length', len); await idle(p);
+    await pick(p, '#aspect', aspect); await pick(p, '#length', len); await idle(p);
     for (const st of styles) {
       const t0 = Date.now();
       await p.evaluate(id => document.querySelector(`.style[data-id="${id}"]`).click(), st);
@@ -92,14 +94,14 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
   }
   R.perf = R.timeline.filter(r => r.frameMs !== undefined).map(r => ({ style: r.style, name: r.name, frameMs: r.frameMs, fpsMax: Math.round(1000 / r.frameMs) }));
   // 1080p の描画時間
-  await p.selectOption('#quality', '1080'); await p.selectOption('#length', '60'); await p.selectOption('#aspect', '9:16'); await idle(p);
+  await pick(p, '#quality', '1080'); await pick(p, '#length', '60'); await pick(p, '#aspect', '9:16'); await idle(p);
   for (const st of ['energetic', 'vhs', 'polaroid', 'grid', 'glitch']) {
     await p.evaluate(id => document.querySelector(`.style[data-id="${id}"]`).click(), st);
     await p.waitForFunction(id => HM.S.style === id && !HM.S.building, st);
     const ms = await p.evaluate(() => { const tl = HM.S.tl, n = 60, t1 = performance.now(); for (let i = 0; i < n; i++) HM.drawFrame(tl.total * i / n); return +((performance.now() - t1) / n).toFixed(1); });
     const row = R.perf.find(r => r.style === st); if (row) row.frameMs1080 = ms;
   }
-  await p.selectOption('#quality', '720');
+  await pick(p, '#quality', '720');
 
   // ---- H. 書き出し（60秒・実時間） ----
   async function doExport(label, setup) {
@@ -108,7 +110,7 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
     await p.click('#exportBtn');
     await p.waitForSelector('#dlLink', { timeout: 200000 });
     const ex = await p.evaluate(() => window.__lastExport);
-    const dl = p.waitForEvent('download'); await p.click('#dlLink'); const d = await dl;
+    const dl = p.waitForEvent('download'); await p.evaluate(() => document.querySelector('#dlLink').click()); const d = await dl;
     const file = path.join(OUT, 'export_' + label + '.' + ex.name.split('.').pop()); await d.saveAs(file);
     let probe = {};
     try {
@@ -122,13 +124,13 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
     log('export', label, JSON.stringify(R.exports[R.exports.length - 1]));
   }
   await doExport('vertical_edm_energetic', async () => {
-    await p.selectOption('#musicSel', 'edm'); await p.selectOption('#aspect', '9:16'); await p.selectOption('#length', '60');
-    await p.fill('#title', 'TEST 2026'); await p.evaluate(() => document.querySelector('.style[data-id="energetic"]').click());
+    await pick(p, '#musicSel', 'edm'); await pick(p, '#aspect', '9:16'); await pick(p, '#length', '60');
+    await p.evaluate(() => { document.querySelector('#title').value = 'TEST 2026'; }); await p.evaluate(() => document.querySelector('.style[data-id="energetic"]').click());
   });
   await doExport('landscape_mysong_cinematic', async () => {
-    await p.selectOption('#musicSel', 'file').catch(() => { }); await p.setInputFiles('#musicIn', path.join(M, 'song120.wav'));
+    await pick(p, '#musicSel', 'file'); await p.setInputFiles('#musicIn', path.join(M, 'song120.wav'));
     await p.waitForFunction(() => HM.S.musicKey.startsWith('file:') && !HM.S.building);
-    await p.selectOption('#aspect', '16:9'); await p.evaluate(() => document.querySelector('.style[data-id="cinematic"]').click());
+    await pick(p, '#aspect', '16:9'); await p.evaluate(() => document.querySelector('.style[data-id="cinematic"]').click());
   });
 
   // ---- G. 個人データ ----
@@ -141,7 +143,7 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
     r.beforeWipe = { clips: HM.S.clips.length, music: !!HM.S.music };
     return r;
   });
-  await p.click('#wipeBtn');
+  await p.evaluate(() => document.querySelector('#wipeBtn').click());
   Object.assign(R.privacy, await p.evaluate(async () => ({
     afterWipe: { clips: HM.S.clips.length, music: !!HM.S.music, analysis: !!HM.S.analysis, exportLink: !!document.querySelector('#dlLink'), hiddenVideos: document.querySelectorAll('#hidden video').length, canvases: Object.keys(HM.S).length && 0 },
     storage: { localStorage: localStorage.length, sessionStorage: sessionStorage.length, cookie: document.cookie.length, indexedDB: (await (indexedDB.databases ? indexedDB.databases() : Promise.resolve([]))).length },

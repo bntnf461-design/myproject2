@@ -31,6 +31,28 @@ const path = require('path');
     if (!ok) fail++;
     console.log(`${ok ? 'OK ' : 'NG '} ${id.padEnd(10)} カット${r.cuts} 素材${r.used}/10 ${r.total.toFixed(1)}秒 拍に合う:${r.onBeat}`);
   }
+  // ★メイン：使う場所・長さ・回数の組み合わせ
+  await p.evaluate(() => document.querySelectorAll('.thumb .star')[2].click());
+  await p.waitForFunction(() => !HM.S.building && HM.S.tl.segs.some(s => s.main));
+  const combos = [
+    { first: true, peak: true, last: true, bars: 2, freq: 1 }, { first: false, peak: true, last: false, bars: 4, freq: 0 },
+    { first: true, peak: false, last: true, bars: 1, freq: 2 }, { first: false, peak: false, last: false, bars: 2, freq: 0 },
+    { first: false, peak: false, last: true, bars: 1, freq: 0 },
+  ];
+  for (const mo of combos) {
+    const r = await p.evaluate(async mo => {
+      Object.assign(HM.S.mainOpt, mo); await HM.rebuild(); const tl = HM.S.tl, sg = tl.segs, m = sg.filter(s => s.main), per = tl.per;
+      const peakLen = m.filter((s, i) => sg.indexOf(s) > 0 && sg.indexOf(s) < sg.length - 1).map(s => Math.round((s.e - s.s) / per)).sort((a, b) => b - a)[0] || 0;
+      return { first: sg[0].main, last: sg[sg.length - 1].main, count: m.length, peakLen, used: new Set(sg.map(s => s.clip)).size,
+        onBeat: sg.slice(0, -1).every(s => tl.an.beats.some(b => Math.abs(b - tl.mStart - s.e) < 1e-6)), adj: sg.filter((s, i) => i && s.clip === sg[i - 1].clip).length };
+    }, mo);
+    const plain = !mo.first && !mo.peak && !mo.last && !mo.freq; // 全部オフ＝普通の素材と同じ扱い
+    const ok = (plain || (r.first === mo.first && r.last === mo.last)) && r.used === 10 && r.onBeat && r.adj === 0 && r.count >= 1 &&
+      (!mo.peak || r.peakLen === mo.bars * 4) && (mo.freq > 0 || mo.first || mo.peak || mo.last || r.count >= 1);
+    if (!ok) fail++;
+    console.log(`${ok ? 'OK ' : 'NG '} メイン ${JSON.stringify(mo)} → 最初${r.first} 最後${r.last} ${r.count}回 サビ${r.peakLen}拍 素材${r.used}/10 拍${r.onBeat} 連続${r.adj}`);
+  }
+  await p.evaluate(async () => { HM.S.mainId = null; Object.assign(HM.S.mainOpt, { first: true, peak: true, last: true, bars: 2, freq: 1 }); await HM.rebuild(); });
   // オープニングタイトル：全パターンを描いてエラーが出ないこと
   const tOk = await p.evaluate(() => { document.querySelector('#title').value = '夏の思い出'; document.querySelector('#subtitle').value = '2026.08'; let n = 0;
     for (const ts of HM.TITLE_STYLES) { HM.S.titleStyle = ts.id; const D = ts.id === 'auto' ? 4 : HM.titleDuration(ts.id, HM.S.tl.per); for (let t = 0; t < D; t += .2) HM.drawFrame(t); n++; } HM.S.titleStyle = 'auto'; return n; });

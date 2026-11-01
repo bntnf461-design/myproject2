@@ -138,6 +138,8 @@ select,input[type=text]{width:100%;background:var(--surface2);color:var(--text);
 .thumb.main{outline:3px solid var(--accent);outline-offset:1px}
 .thumb .star{position:absolute;left:3px;bottom:3px;min-height:0;height:24px;padding:0 7px;border-radius:99px;font-size:11px;background:rgba(0,0,0,.6);color:#fff;border:0;font-weight:700}
 .thumb .star[aria-pressed="true"]{background:var(--grad);color:#fff}
+.mainopts{margin-top:4px}
+.seg button[disabled]{opacity:.4}
 .mainhint{margin:10px 0 0;padding:10px 12px;border-radius:var(--radius-s);background:var(--chip);font-size:12.5px;color:var(--text)}
 .thumb .x{position:absolute;right:3px;top:3px;width:22px;height:22px;min-height:0;padding:0;border-radius:50%;font-size:11px;background:rgba(0,0,0,.65);color:#fff;border:0}
 
@@ -241,6 +243,26 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
     <label id="drop" class="drop" for="fileIn"><span class="big">📷</span><b>タップして選ぶ</b><small>写真・動画（JPG / PNG / MP4 / MOV など）</small></label>
     <div id="thumbs" class="thumbs"></div>
     <p id="mainHint" class="mainhint" hidden></p>
+    <div id="mainOpts" class="mainopts" hidden>
+      <div class="sub-h">★ メインを使う場所（いくつでも）</div>
+      <div class="seg" id="mainWhere">
+        <button data-k="first">🎬<small>最初</small></button>
+        <button data-k="peak">🔥<small>サビ（盛り上がり）</small></button>
+        <button data-k="last">🏁<small>最後</small></button>
+      </div>
+      <div class="sub-h">サビで映す長さ</div>
+      <div class="seg" id="mainBars">
+        <button data-v="1"><b>短め</b><small>1小節</small></button>
+        <button data-v="2"><b>ふつう</b><small>2小節</small></button>
+        <button data-v="4"><b>長め</b><small>4小節</small></button>
+      </div>
+      <div class="sub-h">そのほかに出てくる回数</div>
+      <div class="seg" id="mainFreq">
+        <button data-v="0"><b>なし</b><small>上の場所だけ</small></button>
+        <button data-v="1"><b>ふつう</b><small>ときどき</small></button>
+        <button data-v="2"><b>多め</b><small>たくさん</small></button>
+      </div>
+    </div>
     <div class="row">
       <button id="demoBtn" class="ghost">✨ サンプルで試す</button>
       <button id="clearBtn" class="ghost">全部はずす</button>
@@ -445,7 +467,7 @@ const ALL_TRANS = ['crossfade', 'fadeBlack', 'flash', 'flashSoft', 'flashColor',
 
 /* ------------------------------ 状態 ------------------------------ */
 const S = {
-  clips: [], style: 'auto', seed: (Date.now() & 0xffffff),
+  clips: [], mainOpt: { first: true, peak: true, last: true, bars: 2, freq: 1 }, style: 'auto', seed: (Date.now() & 0xffffff),
   music: null, musicKey: '', musicFile: null, analysis: null,
   tl: null, W: 1280, H: 720,
   playing: false, actx: null, src: null, gain: null, startAt: 0, pos: 0,
@@ -631,6 +653,26 @@ async function findHighlights(v, dur) {
   return hl.length ? hl : [0];
 }
 
+/* ★メインの使い方を選ぶ */
+function renderMainOpts(show) {
+  const box = $('#mainOpts'); box.hidden = !show; if (!show) return;
+  const MO = S.mainOpt;
+  document.querySelectorAll('#mainWhere button').forEach(b => {
+    b.setAttribute('aria-pressed', !!MO[b.dataset.k]);
+    b.onclick = () => { MO[b.dataset.k] = !MO[b.dataset.k]; renderMainOpts(true); rebuild(); };
+  });
+  document.querySelectorAll('#mainBars button').forEach(b => {
+    b.setAttribute('aria-pressed', MO.bars === +b.dataset.v); b.disabled = !MO.peak;
+    b.onclick = () => { MO.bars = +b.dataset.v; renderMainOpts(true); rebuild(); };
+  });
+  const plain = !MO.first && !MO.peak && !MO.last && !MO.freq;
+  let note = $('#mainNote'); if (!note) { note = document.createElement('p'); note.id = 'mainNote'; note.className = 'hint'; box.appendChild(note); }
+  note.textContent = plain ? '※ 全部オフなので、メインもほかの素材と同じように使われます。' : '';
+  document.querySelectorAll('#mainFreq button').forEach(b => {
+    b.setAttribute('aria-pressed', MO.freq === +b.dataset.v);
+    b.onclick = () => { MO.freq = +b.dataset.v; renderMainOpts(true); rebuild(); };
+  });
+}
 function renderThumbs() {
   const box = $('#thumbs'); box.innerHTML = '';
   S.clips.forEach((c, i) => {
@@ -649,8 +691,9 @@ function renderThumbs() {
     ? `<span class="big">➕</span><b>${S.clips.length} 個えらびました</b><small>タップでさらに追加</small>`
     : '<span class="big">📷</span><b>タップして選ぶ</b><small>写真・動画（JPG / PNG / MP4 / MOV など）</small>';
   const mh = $('#mainHint'); mh.hidden = !S.clips.length;
+  renderMainOpts(!!S.clips.find(c => c.id === S.mainId));
   const m = S.clips.find(c => c.id === S.mainId);
-  mh.innerHTML = m ? `★ メインは「${m.name.replace(/[<>&]/g, '')}」。最初・最後・一番盛り上がる所で長めに使い、ほかより多めに登場します。` : '☆ をタップすると、その写真・動画が<b>メイン</b>（主役）になります。最初・最後・一番盛り上がる所で長めに使います。';
+  mh.innerHTML = m ? `★ メインは「${m.name.replace(/[<>&]/g, '')}」。下で使い方を選べます。プレビュー下の帯の<b style="color:#e0a800">黄色い線</b>がメインの場所です。` : '☆ をタップすると、その写真・動画が<b>メイン</b>（主役）になります。最初・最後・一番盛り上がる所で長めに使います。';
   updateSteps();
 }
 
@@ -1122,18 +1165,18 @@ async function rebuild() {
   let k = 0, t = 0, ci = 0, prevClip = -1;
   const isDown = i => ((i - an.downPhase) % 4 + 4) % 4 === 0;
   // ★メイン：最初・最後・盛り上がりの入り（サビ）で長めに使い、ほかより多めに登場させる
-  const mainIdx = S.clips.findIndex(c => c.id === S.mainId), hasMain = mainIdx >= 0 && n > 1;
+  const mainIdx = S.clips.findIndex(c => c.id === S.mainId), hasMain = mainIdx >= 0 && n > 1, MO = S.mainOpt;
   const peaks = [];
-  if (hasMain) {
+  if (hasMain && MO.peak) {
     for (let j = 4; j < bl.length; j++) if (isDown(bl[j].i) && an.energy[bl[j].i] >= .85 && an.energy[bl[j - 4].i] < .75) peaks.push(j);
     if (!peaks.length) { let bj = -1, be = -1; for (let j = 4; j < bl.length; j++) if (isDown(bl[j].i) && an.energy[bl[j].i] > be) { be = an.energy[bl[j].i]; bj = j; } if (bj > 0) peaks.push(bj); }
   }
-  const others = S.clips.map((c, i) => i).filter(i => !hasMain || i !== mainIdx);
+  const others = S.clips.map((c, i) => i).filter(i => !hasMain || i !== mainIdx || (MO.freq === 0 && !MO.first && !MO.peak && !MO.last));
   let queue = [], cycle = 0;
   const nextClip = () => {
     if (!queue.length) {
       let o = ($('#shuffle').checked || cycle > 0) ? shuffleArr(rng, others) : others.slice();
-      if (hasMain) o.splice(Math.floor(o.length / 2), 0, mainIdx); // 1周の中ほどにもう1回
+      if (hasMain) for (let r = MO.freq; r >= 1; r--) o.splice(Math.floor(o.length * r / (MO.freq + 1)), 0, mainIdx); // 1周の中に freq 回（0=決めた場所だけ）
       queue = o; cycle++;
     }
     let c = queue.shift();
@@ -1148,14 +1191,14 @@ async function rebuild() {
     const e = an.energy[bl[k] ? bl[k].i : 0] ?? .5;
     if (st.adapt) { if (e > .78) nbeat = Math.max(1, nbeat / 2); else if (e < .25) nbeat *= 2; }
     else if (!st.layout) { if (e > .85 && nbeat >= 4) nbeat /= 2; else if (e < .22 && nbeat <= 4) nbeat *= 2; }
-    if (atPeak) nbeat = Math.max(8, nbeat * 2); // メインを2小節ほど見せる
+    if (atPeak) nbeat = MO.bars * 4; // サビの入りでメインを〇小節見せる
     if (nbeat >= 4 && !atPeak) { // 長いカットは小節の頭で終わるように
       let j = k + nbeat - 1; while (bl[j] && !isDown(bl[j].i) && j < k + nbeat + 3) j++; if (bl[j] && isDown(bl[j].i)) nbeat = j - k + 1;
     }
     let endIdx = k + nbeat - 1, end;
     if (endIdx >= bl.length - 1 || (bl[endIdx] && mStart + total - bl[endIdx].t < spb * .9)) { end = total; k = bl.length; }
     else { end = bl[endIdx].t - mStart; k = endIdx + 1; }
-    const clipIdx = (hasMain && (ci === 0 || atPeak)) ? mainIdx : nextClip(); ci++; prevClip = clipIdx;
+    const clipIdx = (hasMain && ((ci === 0 && MO.first) || atPeak)) ? mainIdx : nextClip(); ci++; prevClip = clipIdx;
     const clip = S.clips[clipIdx];
     const uc = useCount.get(clipIdx) || 0; useCount.set(clipIdx, uc + 1);
     const seg = { s: t, e: end, clip, n: ci, rate: st.rate || 1,
@@ -1167,7 +1210,7 @@ async function rebuild() {
     segs.push(seg); t = end;
   }
   // 最後もメインで締める
-  if (hasMain && segs.length > 2) {
+  if (hasMain && MO.last && segs.length > 2) {
     const last = segs[segs.length - 1];
     if (last.clip !== S.clips[mainIdx]) {
       if (segs[segs.length - 2].clip === S.clips[mainIdx]) { segs[segs.length - 2].clip = last.clip; segs[segs.length - 2].main = false; setSegSource(segs[segs.length - 2], 1); }
@@ -1785,6 +1828,7 @@ function drawTimeline() {
   tl.segs.forEach((s, i) => {
     c.fillStyle = `hsl(${(S.clips.indexOf(s.clip) * 47) % 360},55%,${i % 2 ? 38 : 46}%)`; c.fillRect(X(s.s), h * .3, X(s.e) - X(s.s) - 1, h * .55);
     if (s.td > 0) { c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(X(s.e - s.td / 2), h * .3, X(s.td), h * .55); }
+    if (s.main) { c.fillStyle = '#ffd23f'; c.fillRect(X(s.s), h * .86, Math.max(2, X(s.e) - X(s.s) - 1), h * .12); }
   });
   const an = tl.an;
   an.beats.forEach((b, i) => { const t = b - tl.mStart; if (t < 0 || t > tl.total) return; const d = ((i - an.downPhase) % 4 + 4) % 4 === 0; c.fillStyle = d ? '#ffd23f' : '#5b6475'; c.fillRect(X(t), 0, 1, d ? h * .26 : h * .14); });
