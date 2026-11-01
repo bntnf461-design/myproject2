@@ -453,6 +453,16 @@ public class MainActivity extends Activity {
 
     /** ページ（JavaScript）から呼ばれる窓口 */
     private class Bridge {
+        /** アプリの版（画面に表示して、どの版が入っているか分かるようにする） */
+        @JavascriptInterface
+        public String version() {
+            try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "?"; }
+        }
+
+        /** 選んだファイルをアプリ側で準備（コピー・変換）してから渡しているか */
+        @JavascriptInterface
+        public boolean preparesFiles() { return true; }
+
         @JavascriptInterface
         public void setTheme(final String color, final boolean light) {
             runOnUiThread(() -> setSystemBars(color, light));

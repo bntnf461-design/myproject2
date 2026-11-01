@@ -336,6 +336,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <p>選んだ写真・動画・曲はこの端末の中だけで処理し、インターネットには送りません。ページを閉じると全部消えます。残るのは保存した動画だけです。</p>
       <div class="row"><button id="wipeBtn" class="ghost">🗑 今すぐ全部消す</button></div>
     </div>
+    <p class="hint" id="verInfo"></p>
     <div class="panelnav"><button class="ghost" data-go="4">← 戻る</button></div>
   </div>
 </section>
@@ -532,7 +533,7 @@ async function addFiles(files) {
     }
   }
   setStatus(failed.length ? `${failed.length} 個を読み込めませんでした` : '準備OK', failed.length ? 'busy' : '');
-  if (failed.length) alert('読み込めなかったファイルがあります。\n\n' + failed.join('\n'));
+  if (failed.length) alert('読み込めなかったファイルがあります。\n\n' + failed.join('\n') + '\n\n（' + (APP_VER ? 'Android アプリ v' + APP_VER : 'Web 版') + '・画面 ' + WEB_VER + '）');
   rebuild();
 }
 const MAX_IMG = 2160; // 写真の長い辺の最大（出力 1080×1920 をズームしてもきれいな大きさ）
@@ -2203,6 +2204,10 @@ $('#titlePreviewBtn').onclick = () => {
   if (!$('#title').value.trim()) { $('#title').focus(); setStatus('タイトルを入れてください', 'busy'); return; }
   S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4; play(true);
 };
+const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
+const WEB_VER = '2026.11.02';
+$('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
+if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
 renderMusicUI(); renderTitleCards(); goStep(1);
 segFrom('#aspect', '#aspectSeg', [{ v: '9:16', html: shapeIcon(14, 24) + '縦長<small>スマホ</small>' }, { v: '16:9', html: shapeIcon(28, 16) + '横長<small>YouTube</small>' }, { v: '1:1', html: shapeIcon(20, 20) + '正方形' }, { v: '4:5', html: shapeIcon(18, 22) + '4:5<small>Instagram</small>' }]);
