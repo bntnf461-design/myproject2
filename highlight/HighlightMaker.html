@@ -59,7 +59,13 @@ button.pink{background:var(--accent2);border-color:var(--accent2);color:#fff;fon
 .row label{color:var(--sub);min-width:84px}
 select,input[type=text]{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit}
 input[type=text]{flex:1;min-width:120px}
-.drop{border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--sub);cursor:pointer}
+.drop{display:block;border:2px dashed var(--line);border-radius:10px;padding:18px 14px;text-align:center;color:var(--text);cursor:pointer;font-size:16px;-webkit-tap-highlight-color:rgba(79,140,255,.3)}
+.drop:active{border-color:var(--accent);background:var(--panel2)}
+/* ファイル選択は「隠した input をプログラムで押す」と iPhone 等で開かないことがあるため、label で直接ひらく */
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+label.btn{display:inline-flex;align-items:center;justify-content:center}
+#jsWarn{background:#5a1d1d;color:#fff;padding:14px 16px;line-height:1.7;font-size:15px}
+#jsWarn b{color:#ffd23f}
 .drop.over{border-color:var(--accent);color:var(--text)}
 .thumbs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}
 .thumb{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:#000;border:1px solid var(--line)}
@@ -86,6 +92,9 @@ a.dl{color:var(--ok)}
 </style>
 </head>
 <body>
+<div id="jsWarn"><b>⚠ この開き方では動きません</b><br>
+ファイルアプリやアプリ内のプレビューで開くと、プログラムが動かず、写真・動画を選べません。<br>
+iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https://bntnf461-design.github.io/myproject2/）を開いてください。パソコンではこのファイルを Edge / Chrome で開けば動きます。</div>
 <header>
   <h1>🎬 Highlight Maker</h1>
   <span class="tag">写真・動画を選ぶと、音楽に合わせた 1〜2 分のハイライト動画を自動で作ります（この端末の中だけで処理）</span>
@@ -96,8 +105,8 @@ a.dl{color:var(--ok)}
 <section>
   <div class="card">
     <h2><span class="num">1</span>写真・動画を選ぶ（10個くらい）</h2>
-    <div id="drop" class="drop">📷 ここをタップして写真・動画を選ぶ</div>
-    <input id="fileIn" type="file" accept="video/*,image/*" multiple hidden>
+    <input id="fileIn" class="vh" type="file" accept="video/*,image/*" multiple>
+    <label id="drop" class="drop" for="fileIn">📷 ここをタップして写真・動画を選ぶ</label>
     <div class="row" style="margin-top:8px">
       <button id="demoBtn">サンプル素材で試す</button>
       <button id="clearBtn">全部消す</button>
@@ -120,7 +129,8 @@ a.dl{color:var(--ok)}
         <option value="file">自分の曲を使う…（ファイルから）</option>
       </select>
     </div>
-    <input id="musicIn" type="file" accept="audio/*,video/*" hidden>
+    <input id="musicIn" class="vh" type="file" accept="audio/*,video/*">
+    <div class="row" id="musicPickRow" hidden><label for="musicIn" class="btn" id="musicPick">🎵 曲のファイルを選ぶ</label></div>
     <div class="row">
       <label>曲の使い方</label>
       <select id="startMode">
@@ -199,6 +209,7 @@ a.dl{color:var(--ok)}
 
 <script>
 'use strict';
+document.getElementById('jsWarn').remove(); // プログラムが動いているので注意書きを消す
 /* =========================================================================
    Highlight Maker — 音楽の拍に合わせて動画・画像を自動編集する
    ========================================================================= */
@@ -1371,6 +1382,7 @@ function wipeAll() {
   overlayCache = {};
   $('#title').value = ''; $('#musicInfo').textContent = '消去しました。';
   if ($('#musicSel').value === 'file') $('#musicSel').value = 'edm';
+  $('#musicPickRow').hidden = true; $('#musicPick').textContent = '🎵 曲のファイルを選ぶ';
   if (S.actx) { S.actx.close().catch(() => { }); S.actx = null; }
 }
 function cancelExport() { if (S.rec && S.recording) { S.recCancelled = true; S.rec.stop(); } }
@@ -1386,7 +1398,6 @@ function buildStyleCards() {
   }
 }
 const fileIn = $('#fileIn'), drop = $('#drop');
-drop.onclick = () => fileIn.click();
 fileIn.onchange = () => { addFiles(fileIn.files); fileIn.value = ''; };
 ['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || e.target === drop) drop.classList.remove('over'); }));
@@ -1403,13 +1414,15 @@ window.addEventListener('pagehide', wipeAll); // ページを閉じたら必ず�
 $('#showDate').onchange = () => { S.showDate = $('#showDate').checked; if (!S.playing && S.tl) drawFrame(S.pos || .001); };
 $('#clearBtn').onclick = () => { for (const c of S.clips) freeClip(c); S.clips = []; renderThumbs(); rebuild(); };
 $('#musicSel').onchange = () => {
-  if ($('#musicSel').value === 'file') { $('#musicIn').click(); return; }
+  const isFile = $('#musicSel').value === 'file';
+  $('#musicPickRow').hidden = !isFile;
+  if (isFile) { if (!S.musicKey.startsWith('file:')) { $('#musicInfo').textContent = '下の「🎵 曲のファイルを選ぶ」をタップして曲を選んでください。'; return; } }
   rebuild();
 };
 $('#musicIn').onchange = async () => {
   const f = $('#musicIn').files[0]; $('#musicIn').value = '';
-  if (!f) { if (!S.musicKey.startsWith('file:')) $('#musicSel').value = 'edm'; return; }
-  try { await loadMusicFile(f); } catch (e) { alert('曲を読み込めませんでした：' + e.message); $('#musicSel').value = 'edm'; setStatus('準備OK'); }
+  if (!f) return;
+  try { await loadMusicFile(f); $('#musicPick').textContent = '🎵 別の曲を選ぶ'; } catch (e) { alert('曲を読み込めませんでした：' + e.message); $('#musicSel').value = 'edm'; $('#musicPickRow').hidden = true; setStatus('準備OK'); }
   rebuild();
 };
 ['#startMode', '#tempoAdj', '#aspect', '#quality', '#length', '#shuffle'].forEach(s => $(s).onchange = rebuild);
