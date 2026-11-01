@@ -28,6 +28,7 @@
       var g = "手順 " + (i + 1);
       add("steps." + i + ".title", g, st, s.title);
       add("steps." + i + ".detail", g, "詳しい説明", s.detail);
+      add("steps." + i + ".note", g, "補足", s.note);
       (s.points || []).forEach(function (p, j) {
         add("steps." + i + ".points." + j + ".text", g, pt + " " + (j + 1), p.text);
         add("steps." + i + ".points." + j + ".reason", g, T.reason + " " + (j + 1), p.reason);

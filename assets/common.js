@@ -231,6 +231,7 @@
     (m.steps || []).forEach(function (s, i) {
       add("steps." + i + ".title", s.title, i);
       add("steps." + i + ".detail", s.detail, i);
+      add("steps." + i + ".note", s.note, i);
       (s.points || []).forEach(function (p, j) {
         add("steps." + i + ".points." + j + ".text", p.text, i);
         add("steps." + i + ".points." + j + ".reason", p.reason, i);

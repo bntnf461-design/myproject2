@@ -40,7 +40,7 @@
     "作業前の準備": "Persiapan sebelum kerja", "安全上の注意": "Perhatian keselamatan", "保護具": "APD (alat pelindung diri)",
     "使用する設備・治工具": "Peralatan & alat bantu", "使用部品・材料": "Komponen & bahan", "目的": "Tujuan",
     "手順": "Langkah kerja", "急所": "Poin kunci", "理由": "Alasan", "標準時間": "Waktu standar", "動画": "Video", "秒": "detik",
-    "動画なし": "Tanpa video", "写真で説明": "Dengan foto", "文字で説明": "Dengan teks", "改訂履歴": "Riwayat revisi", "改訂": "Revisi",
+    "動画なし": "Tanpa video", "補足": "Catatan", "写真で説明": "Dengan foto", "文字で説明": "Dengan teks", "改訂履歴": "Riwayat revisi", "改訂": "Revisi",
     "▶ 動画を再生": "▶ Putar video", "❚❚ 一時停止": "❚❚ Jeda", "◀ 前へ": "◀ Sebelumnya", "次へ ▶": "Berikutnya ▶",
     "✕ 閉じる": "✕ Tutup", "⟲ 最初から": "⟲ Ulangi", "ゆっくり": "Lambat", "標準": "Normal", "↻ 繰り返し": "↻ Ulang",
     "⏭ 続けて再生": "⏭ Putar terus", "▶ 順に見る": "▶ Lihat berurutan", "◀ 一覧": "◀ Daftar",
@@ -223,6 +223,32 @@
       playlist.push({ step: si, point: -1, video: sv });
       if (sv) stepPl = stepIdx;
 
+      // 説明・補足の中の文字に付けた動画リンク
+      var linkPl = (s.links || []).map(function (l, li) {
+        if (!l.text || !hasVideo(l.video)) return -1;
+        playlist.push({ step: si, point: -1, link: li, video: l.video });
+        return playlist.length - 1;
+      });
+      var usedLink = {};
+      var withLinks = function (key, ja) {
+        var h = tx(key, ja);
+        if (lang === "id") return h; // 訳の文には付けない（下のボタンで出す）
+        (s.links || []).forEach(function (l, li) {
+          if (linkPl[li] < 0 || usedLink[li]) return;
+          var e = esc(l.text), at = h.indexOf(e);
+          if (at === -1) return;
+          usedLink[li] = true;
+          h = h.slice(0, at) + '<span class="vlink" data-pl="' + linkPl[li] + '" role="button" tabindex="0" title="タップで動画">' + e + '<i>▶</i></span>' + h.slice(at + e.length);
+        });
+        return h;
+      };
+      var detailHtml = s.detail ? withLinks("steps." + si + ".detail", s.detail) : "";
+      var noteHtml = s.note ? withLinks("steps." + si + ".note", s.note) : "";
+      // 文の中に見つからなかったリンク（文を直した・訳を表示中など）はボタンで出す
+      var restLinks = (s.links || []).map(function (l, li) {
+        return linkPl[li] < 0 || usedLink[li] ? "" : '<span class="vlink chip" data-pl="' + linkPl[li] + '" role="button" tabindex="0">🎬 ' + esc(l.text) + '<i>▶</i></span>';
+      }).join("");
+
       var points = (s.points || []).map(function (p, pi) {
         var pv = "";
         if (hasVideo(p.video)) {
@@ -241,7 +267,9 @@
         '<td class="col-no">' + (si + 1) + (rev.steps[si] ? '<span class="rev-badge">' + L("改訂") + '</span>' : '') + '</td>' +
         '<td class="col-step" data-label="' + esc(T.step) + '">' +
           '<div class="step-title">' + tx("steps." + si + ".title", s.title) + '</div>' +
-          (s.detail ? '<div class="step-detail">' + tx("steps." + si + ".detail", s.detail) + '</div>' : '') +
+          (detailHtml ? '<div class="step-detail">' + detailHtml + '</div>' : '') +
+          (noteHtml ? '<div class="step-note"><b>' + L("補足") + '</b>' + noteHtml + '</div>' : '') +
+          (restLinks ? '<div class="vlinks">' + restLinks + '</div>' : '') +
           (s.image ? '<img class="step-image" loading="lazy" decoding="async" src="' + esc(s.image) + '" alt="写真（タップで拡大）" title="タップで拡大" onerror="this.style.display=\'none\'">' : '') +
         '</td>' +
         (hasKinds ? '<td class="col-kinds' + ((s.kinds || []).length ? '' : ' empty') + '" data-label="安全・品質ポイント">' + (s.kinds || []).map(kb).join("") + '</td>' : '') +
@@ -300,7 +328,7 @@
     openPlayer(parseInt(el.getAttribute("data-pl"), 10));
   });
   docEl.addEventListener("keydown", function (ev) {
-    if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches("li[data-pl]")) {
+    if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches("li[data-pl], .vlink[data-pl]")) {
       ev.preventDefault();
       openPlayer(parseInt(ev.target.getAttribute("data-pl"), 10));
     }
@@ -371,6 +399,7 @@
     var item = playlist[idx];
     var step = manual.steps[item.step];
     var point = item.point >= 0 ? step.points[item.point] : null;
+    var link = item.link != null ? step.links[item.link] : null;
 
     var T = WI.terms(manual, window.CATALOG);
     var n = manual.steps.length;
@@ -384,19 +413,21 @@
     // 右：手順の文・印・急所
     var lp = lang === "id" ? ID["急所"] : T.point.replace(/[（(].*$/, "");
     pNo.textContent = point ? lp + (lang === "id" ? "（Langkah " + (item.step + 1) + "）" : "（手順 " + (item.step + 1) + "）") : (lang === "id" ? ID["手順"] : T.step.replace(/[（(].*$/, ""));
-    pName.innerHTML = point ? tx("steps." + item.step + ".points." + item.point + ".text", point.text) : tx("steps." + item.step + ".title", step.title);
+    pName.innerHTML = point ? tx("steps." + item.step + ".points." + item.point + ".text", point.text) : link ? esc(link.text) : tx("steps." + item.step + ".title", step.title);
+    if (link) pNo.textContent = (lang === "id" ? "Video（Langkah " : "動画リンク（手順 ") + (item.step + 1) + "）";
     document.getElementById("pTitle").innerHTML = tx("title", manual.title || "");
     var pk = "steps." + item.step + ".points." + item.point;
     var changedHere = point ? (rev.keys[pk + ".text"] || rev.keys[pk + ".reason"]) : rev.steps[item.step];
     pMarks.innerHTML = (changedHere ? '<span class="rev-badge">' + L("改訂") + ' 第' + esc(manual.revision) + '版</span>' : '') + (step.kinds || []).map(kb).join("");
-    var pts = point ? [] : (step.points || []);
+    var pts = point || link ? [] : (step.points || []);
     var pb = "steps." + item.step + ".points.";
     pPoints.innerHTML = pts.map(function (p, pi) {
       return '<div class="tp-point' + (p.kind ? " " + esc(p.kind) : "") + '"><div class="lbl">' + esc(lp) + '</div>' +
         '<div class="txt">' + (p.kind && WI.KIND_LABEL[p.kind] ? kb(p.kind) + ' ' : '') + tx(pb + pi + ".text", p.text) + '</div>' +
         (p.reason ? '<div class="why">' + esc(lang === "id" ? ID["理由"] : T.reason) + '：' + tx(pb + pi + ".reason", p.reason) + '</div>' : '') + '</div>';
     }).join("");
-    if (step.detail && !point) pPoints.innerHTML = '<div class="tp-detail">' + tx("steps." + item.step + ".detail", step.detail) + '</div>' + pPoints.innerHTML;
+    if (step.note && !point && !link) pPoints.innerHTML = '<div class="tp-detail tp-note"><b>' + L("補足") + '</b> ' + tx("steps." + item.step + ".note", step.note) + '</div>' + pPoints.innerHTML;
+    if (step.detail && !point && !link) pPoints.innerHTML = '<div class="tp-detail">' + tx("steps." + item.step + ".detail", step.detail) + '</div>' + pPoints.innerHTML;
 
     pPrev.disabled = idx === 0;
     pNext.disabled = idx === playlist.length - 1;
@@ -522,12 +553,16 @@
     var t = function (key, ja) { var e = id && WI.trLookup(manual, "id", key, ja); return e ? e.t : ja; };
     var pb = "steps." + item.step + ".points.";
     var lp = id ? "Poin kunci" : T.point.replace(/[（(].*$/, ""), lr = id ? "Alasan" : T.reason;
-    if (point) {
+    var link = item.link != null ? (step.links || [])[item.link] : null;
+    if (link) {
+      parts.push(link.text);
+    } else if (point) {
       parts.push(t(pb + item.point + ".text", point.text));
       if (point.reason) parts.push(lr + "。" + t(pb + item.point + ".reason", point.reason));
     } else {
       parts.push((id ? "Langkah " : "手順 ") + (item.step + 1) + "。" + t("steps." + item.step + ".title", step.title));
       if (step.detail) parts.push(t("steps." + item.step + ".detail", step.detail));
+      if (step.note) parts.push((id ? "Catatan" : "補足") + "。" + t("steps." + item.step + ".note", step.note));
       (step.points || []).forEach(function (p, j) {
         if (!p.text) return;
         parts.push(lp + "。" + t(pb + j + ".text", p.text));
@@ -612,7 +647,7 @@
     if (autoNext) {
       // 急所だけの動画は飛ばして、次の「手順」の動画へ
       for (var j = cur + 1; j < playlist.length; j++) {
-        if (playlist[j].point === -1) { openPlayer(j); return; }
+        if (playlist[j].point === -1 && playlist[j].link == null) { openPlayer(j); return; }
       }
       showMsg("最後の手順まで再生しました。");
     }

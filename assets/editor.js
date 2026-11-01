@@ -25,7 +25,7 @@
 
   // ---------- 初期データ ----------
   function blankStep() {
-    return { title: "", detail: "", points: [blankPoint()], kinds: [], time: "", image: "", video: { src: "", start: "", end: "" } };
+    return { title: "", detail: "", note: "", links: [], points: [blankPoint()], kinds: [], time: "", image: "", video: { src: "", start: "", end: "" } };
   }
   function blankPoint() {
     return { text: "", reason: "", kind: "", video: { src: "", start: "", end: "" } };
@@ -59,7 +59,12 @@
       if (!s.points) s.points = [];
       if (!s.kinds) s.kinds = [];
       if (!s.video) s.video = { src: "", start: "", end: "" };
-      ["title", "detail", "time", "image"].forEach(function (k) { if (s[k] == null) s[k] = ""; });
+      ["title", "detail", "note", "time", "image"].forEach(function (k) { if (s[k] == null) s[k] = ""; });
+      if (!s.links) s.links = [];
+      s.links.forEach(function (l) {
+        if (!l.video) l.video = { src: "", start: "", end: "" };
+        if (l.text == null) l.text = "";
+      });
       s.points.forEach(function (p) {
         if (!p.video) p.video = { src: "", start: "", end: "" };
         ["text", "reason", "kind"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
@@ -226,6 +231,57 @@
     '</div>';
   }
 
+  // ---------- 補足と動画リンク ----------
+  // 説明・補足の中の文字（例：「ガタつきを手で確かめる」）を押すと、その場面の動画が出るようにする。
+  // 文はそのまま（翻訳・読み上げ・印刷に影響しない）で、つなぐ文字と動画を step.links に別に持つ
+  var lastSel = null; // { i, text }：説明・補足でなぞって選んだ文字
+  function noteFields(i) {
+    var s = m.steps[i], b = "steps." + i;
+    var body = (s.detail || "") + "\n" + (s.note || "");
+    return field("補足（要領書に無いポイント・コツ）", b + ".note", { type: "textarea", wide: true, ph: "例：締める前に、部品のガタつきを手で確かめる" }) +
+      '<div class="field wide links-box"><span>🎬 文字に動画をつなぐ</span>' +
+        '<span class="hint">「詳しい説明」か「補足」の文字をなぞって選んでから「＋ 選んだ文字に動画をつなぐ」を押します。作業者の画面でその文字を押すと、動画のその場面が出ます。</span>' +
+        s.links.map(function (l, k) {
+          var lb = b + ".links." + k;
+          var miss = l.text && body.indexOf(l.text) === -1;
+          return '<div class="link-row">' +
+            '<div class="link-head">' + field("つなぐ文字", lb + ".text", { ph: "説明・補足の中の文字" }) +
+              '<button type="button" class="btn small danger" data-act="link-del" data-i="' + i + '" data-j="' + k + '">✕ 外す</button></div>' +
+            (miss ? '<span class="warn-text small">⚠ 説明・補足の中にこの文字がありません（作業者の画面では、手順の下にボタンで出ます）</span>' : '') +
+            videoFields(lb + ".video", "動画ファイル") +
+          '</div>';
+        }).join("") +
+        '<button type="button" class="btn small" data-act="link-add" data-i="' + i + '">＋ 選んだ文字に動画をつなぐ</button>' +
+      '</div>';
+  }
+  function addLink(i) {
+    var s = m.steps[i];
+    var text = lastSel && lastSel.i === i ? lastSel.text : "";
+    if (!text) {
+      var ta = formEl.querySelector('[data-path="steps.' + i + '.note"]');
+      if (ta && !s.note) { alert("先に「補足」か「詳しい説明」に文を書いて、動画をつなぎたい文字をなぞって選んでから押してください。"); ta.focus(); return; }
+      if (!confirm("文字が選ばれていません。\n「詳しい説明」か「補足」の文字をなぞって選んでから押すと、その文字が入ります。\n\nこのまま空の行を作りますか？")) return;
+    }
+    // 動画は、この手順の動画（無ければ前の手順の動画）を最初に入れておく
+    var src = s.video.src;
+    for (var k = i - 1; !src && k >= 0; k--) src = m.steps[k].video.src;
+    s.links.push({ text: text, video: { src: src || "", start: "", end: "" } });
+    lastSel = null;
+    render();
+    saveDraft();
+    if (src) openSeg("steps." + i + ".links." + (s.links.length - 1) + ".video");
+  }
+  function trackSel(ev) {
+    var el = ev.target;
+    var mt = el && el.getAttribute && /^steps\.(\d+)\.(detail|note)$/.exec(el.getAttribute("data-path") || "");
+    if (!mt) return;
+    var t = el.value.slice(el.selectionStart, el.selectionEnd).trim();
+    if (t && t.indexOf("\n") === -1) lastSel = { i: +mt[1], text: t };
+  }
+  formEl.addEventListener("select", trackSel, true);
+  formEl.addEventListener("mouseup", trackSel);
+  formEl.addEventListener("keyup", trackSel);
+
   // ---------- かんたん入力（1 画面に 1 つずつ） ----------
   // 0 = 作業の名前、1〜N = 手順、N+1 = 仕上げ。入力欄は「すべての項目」と同じ仕組み（data-path）で m を書き換える
   function modeSwitch() {
@@ -278,6 +334,7 @@
           '<button type="button" class="btn small danger" data-act="point-del" data-i="' + i + '" data-j="' + j + '" title="この急所を消す">✕</button></div>';
       });
       h += '<button type="button" class="btn small" data-act="point-add" data-i="' + i + '">＋ 急所を追加</button></div>' +
+        '<details class="ez-note"' + (s.note || s.links.length ? " open" : "") + '><summary><b>補足</b>（要領書に無いポイント・コツ。文字に動画をつなげます）</summary>' + noteFields(i) + '</details>' +
         '<div class="ez-kinds">' + ["safety", "quality"].map(function (k) {
           return '<label class="set-check"><input type="checkbox" data-kinds="' + i + '" value="' + k + '"' + ((s.kinds || []).indexOf(k) !== -1 ? " checked" : "") + '> ' + WI.kindBadge(k) + '</label>';
         }).join("") + '</div>' +
@@ -377,6 +434,7 @@
               ((s.kinds || []).indexOf(k) !== -1 ? " checked" : "") + '> ' + WI.kindBadge(k) + '</label>';
           }).join("") + '</div></div>' +
         field("詳しい説明", b + ".detail", { type: "textarea", wide: true }) +
+        noteFields(i) +
         field("標準時間（秒）", b + ".time", { type: "number" }) +
         '<div class="field"><span>写真・図（任意）</span><div style="display:flex;gap:4px">' +
           '<input type="text" data-path="' + b + '.image" value="' + esc(s.image) + '" placeholder="images/xxx.jpg" style="flex:1;min-width:0">' +
@@ -523,6 +581,8 @@
         if (editMode === "easy") ep = Math.min(ep, st.length);
         break;
       case "point-add": st[i].points.push(blankPoint()); break;
+      case "link-add": addLink(i); return;
+      case "link-del": st[i].links.splice(j, 1); break;
       case "point-del": st[i].points.splice(j, 1); break;
       case "rev-add":
         // 改訂番号を 1 つ上げ、改訂日を今日にして、改訂履歴に行を追加
@@ -763,7 +823,7 @@
     if (!src) { alert("先に動画ファイルを選んでください。"); return; }
     segBase = base;
     var stepNo = /^steps\.(\d+)\.video$/.exec(base);
-    document.getElementById("segTitle").textContent = shot ? "動画を止めて、場面を写真にする" : "再生区間の設定";
+    document.getElementById("segTitle").textContent = shot ? "動画を止めて、場面を写真にする" : /\.links\.\d+\.video$/.test(base) ? "動画リンクの区間を設定（文字を押したときに出る場面）" : "再生区間の設定";
     segNoVideo.checked = false;
     document.getElementById("segNoVideoWrap").hidden = !stepNo || m.steps[+stepNo[1]].noVideo;
     segStopAt = null;
@@ -917,11 +977,15 @@
     if (!d.id) d.id = d.docNo || ("WI-" + Date.now());
     d.steps.forEach(function (s) {
       s.points = s.points.filter(function (p) { return p.text || p.reason; });
+      // 文字か動画の無い動画リンクは保存しない
+      s.links = (s.links || []).filter(function (l) { return l.text && l.video && l.video.src; });
+      if (!s.links.length) delete s.links;
+      if (!s.note) delete s.note;
     });
     Object.keys(d.terms || {}).forEach(function (k) { if (!d.terms[k]) delete d.terms[k]; });
     if (d.terms && !Object.keys(d.terms).length) delete d.terms;
     // 何も入力していない手順は保存しない
-    d.steps = d.steps.filter(function (s) { return s.title || s.detail || s.points.length || s.video.src || s.image; });
+    d.steps = d.steps.filter(function (s) { return s.title || s.detail || s.note || s.points.length || s.video.src || s.image; });
     WITrans.prune(d); // 今の文に対応しない古い訳は保存しない
     return d;
   }
