@@ -333,7 +333,7 @@ function trackUrl(u) { liveUrls.add(u); return u; }
 function freeClip(c) {
   if (c.type === 'video') { c.el.pause(); c.el.removeAttribute('src'); c.el.load(); c.el.remove(); }
   const u = c.el.src; if (liveUrls.has(u)) { URL.revokeObjectURL(u); liveUrls.delete(u); }
-  if (c.type === 'image') c.el.removeAttribute('src');
+  if (c.type === 'image') { if (c.el.tagName === 'CANVAS') c.el.width = c.el.height = 0; else c.el.removeAttribute('src'); }
 }
 let clipId = 0;
 async function addFiles(files) {
@@ -354,11 +354,23 @@ async function addFiles(files) {
   setStatus('準備OK');
   rebuild();
 }
+const MAX_IMG = 2160; // 写真の長い辺の最大（出力 1080×1920 をズームしてもきれいな大きさ）
 function loadImage(fileOrUrl) {
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
-      res({ type: 'image', el: img, w: img.naturalWidth, h: img.naturalHeight, thumb: img.src });
+      // スマホの写真（1200万〜4800万画素）はそのままだと重く、メモリも大量に使うので縮小して持つ
+      const w0 = img.naturalWidth, h0 = img.naturalHeight, k = Math.min(1, MAX_IMG / Math.max(w0, h0));
+      let el = img;
+      if (k < 1) {
+        el = document.createElement('canvas'); el.width = Math.round(w0 * k); el.height = Math.round(h0 * k);
+        const x = el.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, el.width, el.height);
+        if (liveUrls.has(img.src)) { URL.revokeObjectURL(img.src); liveUrls.delete(img.src); }
+        img.removeAttribute('src');
+      }
+      const tc = document.createElement('canvas'); tc.width = tc.height = 160;
+      drawCover(tc.getContext('2d'), el, el.width || w0, el.height || h0, 0, 0, 160, 160);
+      res({ type: 'image', el, w: el.width || w0, h: el.height || h0, thumb: tc.toDataURL('image/jpeg', .7), origW: w0, origH: h0 });
     };
     img.onerror = rej;
     img.src = typeof fileOrUrl === 'string' ? fileOrUrl : trackUrl(URL.createObjectURL(fileOrUrl));
@@ -469,14 +481,15 @@ async function loadMusicFile(file) {
   setStatus('曲を読み込み中…', 'busy');
   const buf = await file.arrayBuffer();
   const ab = await getActx().decodeAudioData(buf);
-  S.music = ab; S.musicKey = 'file:' + file.name; S.musicFile = file;
   setStatus('曲を解析中…', 'busy');
   await new Promise(r => setTimeout(r, 20));
-  S.analysis = analyzeMusic(ab);
+  const an = analyzeMusic(ab);
+  S.music = ab; S.analysis = an; S.musicKey = 'file:' + file.name; S.musicFile = file; // 解析が終わってから切り替える
   $('#musicInfo').textContent = `「${file.name}」 ${fmt(ab.duration)} ／ テンポ 約 ${Math.round(S.analysis.bpm)} BPM ／ 拍 ${S.analysis.beats.length} 個を検出`;
   setStatus('準備OK');
 }
 /* 拍の検出：音の立ち上がり（オンセット）→ 自己相関でテンポ → 動的計画法で拍の位置 */
+const HALF_RATIO = .33, SLOW_RATIO = .4; // テンポの倍・半分の判定のしきい値（テスト曲で決めた値）
 function analyzeMusic(buf) {
   const sr = buf.sampleRate, n = buf.length;
   const d0 = buf.getChannelData(0), d1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : d0;
@@ -515,8 +528,16 @@ function analyzeMusic(buf) {
     const v = (ac[L] + .5 * (ac[2 * L] || 0) + .25 * (ac[4 * L] || 0)) * w;
     if (v > best) { best = v; bestL = L; }
   }
+  // 速い方（半分の間隔）も強ければ、そちらを採用（キックが1・3拍目の曲で半分のテンポになるのを防ぐ）
+  const acF = L => { let s = 0; for (let f = st; f < st + lim - L; f++) s += on2[f] * on2[f + L]; return s / Math.max(1, lim - L); };
+  let factor = 1;
+  const half = Math.round(bestL / 2), dbg = { slow: 60 * fr / bestL, ratio: 0 };
+  if (half >= lagMin) { dbg.ratio = acF(half) / (acF(bestL) || 1); if (dbg.ratio > HALF_RATIO) { factor = .5; dbg.switched = true; } }
+  dbg.fast = 60 * fr / bestL; dbg.dbl = acF(bestL * 2) / (acF(bestL) || 1);
+  if (!dbg.switched && dbg.fast > 150 && dbg.dbl > SLOW_RATIO && bestL * 2 <= lagMax) factor = 2; // 速すぎる判定は、倍の間隔が強ければゆっくりの方に
   let P = bestL;
   if (bestL > lagMin && bestL < lagMax) { const y0 = ac[bestL - 1], y1 = ac[bestL], y2 = ac[bestL + 1]; const den = y0 - 2 * y1 + y2; if (den < 0) P = bestL + .5 * (y0 - y2) / den; }
+  P *= factor; // 倍・半分の補正は細かく求めた間隔に掛ける
   let bpm = 60 * fr / P;
   const silent = best <= 0 || !isFinite(bpm);
   if (silent) { bpm = 120; P = fr * .5; }
@@ -552,7 +573,7 @@ function analyzeMusic(buf) {
   const sorted = sm.slice().sort((x, y) => x - y);
   const lo = sorted[Math.floor(sorted.length * .1)] || 0, hi = sorted[Math.floor(sorted.length * .95)] || 1;
   const energy = sm.map(v => clamp((v - lo) / ((hi - lo) || 1), 0, 1));
-  return { bpm, beats, downPhase: ph, energy, duration: buf.duration };
+  return { bpm, beats, downPhase: ph, energy, duration: buf.duration, dbg };
 }
 
 /* ------------------------------ 内蔵BGM（その場で作曲） ------------------------------ */
@@ -967,9 +988,24 @@ let overlayCache = {};
 function drawFrame(t) {
   const tl = S.tl; if (!tl) return drawEmpty();
   const W = S.W, H = S.H, st = tl.style, fx = st.fx || {};
-  const frame = poolCanvas('frame', W, H), fc = frame.getContext('2d');
   const i = segAt(t), seg = tl.segs[i];
   const layout = st.layout || 'single';
+  // ---- 拍に合わせた画面効果（先に計算） ----
+  const an = tl.an, mt = t + tl.mStart;
+  const bIdx = lastBeatIndex(an.beats, mt);
+  const sinceBeat = bIdx >= 0 ? mt - an.beats[bIdx] : 9;
+  const isDown = bIdx >= 0 && ((bIdx - an.downPhase) % 4 + 4) % 4 === 0;
+  const env = Math.exp(-sinceBeat * 9), energy = an.energy[bIdx] ?? .5;
+  let scale = 1 + (fx.pulse || 0) * env * (.4 + energy * .6);
+  let sx = 0, sy = 0;
+  const shakeActive = fx.shake && (env > .3 && isDown && energy > .5);
+  const prevS = tl.segs[i - 1];
+  const shakeCut = (prevS && prevS.shakeOut && t - prevS.e < .25);
+  if (shakeActive || shakeCut) { const amp = (fx.shake || 10) * (shakeCut ? 1.5 : env) * W / 1280; sx = (Math.random() * 2 - 1) * amp; sy = (Math.random() * 2 - 1) * amp; scale = Math.max(scale, 1.02); }
+  if (scale < 1.003) scale = 1;
+  const rgbD = fx.rgb && env > .08 ? fx.rgb * (.3 + env) * W / 1280 : 0;
+  const post = scale !== 1 || sx || sy || rgbD; // 画面全体を動かす効果がある時だけ中間の絵を使う
+  const frame = post ? poolCanvas('frame', W, H) : out, fc = post ? frame.getContext('2d') : octx;
   fc.fillStyle = '#000'; fc.fillRect(0, 0, W, H);
   if (layout === 'single') {
     const prev = tl.segs[i - 1], next = tl.segs[i + 1];
@@ -1035,28 +1071,18 @@ function drawFrame(t) {
       fc.restore();
     }
   }
-  // ---- 拍に合わせた画面効果 ----
-  const an = tl.an, mt = t + tl.mStart;
-  const bIdx = lastBeatIndex(an.beats, mt);
-  const sinceBeat = bIdx >= 0 ? mt - an.beats[bIdx] : 9;
-  const isDown = bIdx >= 0 && ((bIdx - an.downPhase) % 4 + 4) % 4 === 0;
-  const env = Math.exp(-sinceBeat * 9), energy = an.energy[bIdx] ?? .5;
-  let scale = 1 + (fx.pulse || 0) * env * (.4 + energy * .6);
-  let sx = 0, sy = 0;
-  const shakeActive = fx.shake && (env > .3 && isDown && energy > .5);
-  const prevS = tl.segs[i - 1];
-  const shakeCut = (prevS && prevS.shakeOut && t - prevS.e < .25);
-  if (shakeActive || shakeCut) { const amp = (fx.shake || 10) * (shakeCut ? 1.5 : env) * W / 1280; sx = (Math.random() * 2 - 1) * amp; sy = (Math.random() * 2 - 1) * amp; scale = Math.max(scale, 1.02); }
+  if (post) {
   octx.fillStyle = '#000'; octx.fillRect(0, 0, W, H);
   octx.save(); octx.translate(W / 2 + sx, H / 2 + sy); octx.scale(scale, scale);
-  if (fx.rgb) {
-    const d = fx.rgb * (.3 + env) * W / 1280;
+  if (rgbD) {
+    const d = rgbD;
     octx.drawImage(frame, -W / 2, -H / 2);
     octx.globalCompositeOperation = 'screen'; octx.globalAlpha = .35;
     octx.drawImage(tint(frame, '#ff0000'), -W / 2 - d, -H / 2); octx.drawImage(tint(frame, '#00ffff'), -W / 2 + d, -H / 2);
     octx.globalAlpha = 1; octx.globalCompositeOperation = 'source-over';
   } else octx.drawImage(frame, -W / 2, -H / 2);
   octx.restore();
+  }
   drawOverlays(t, seg, { env, isDown, energy, sinceBeat });
 }
 function lastBeatIndex(beats, t) { let lo = 0, hi = beats.length - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (beats[m] <= t) { r = m; lo = m + 1; } else hi = m - 1; } return r; }
@@ -1245,7 +1271,7 @@ function play(fromStart = false) {
   $('#playBtn').textContent = '❚❚ 一時停止'; $('#stopBtn').disabled = false;
   syncVideos(S.pos, true);
   cancelAnimationFrame(raf);
-  let lastDraw = -1;
+  let lastDraw = -1, lastUi = 0;
   const loop = () => {
     if (!S.playing) return;
     const t = Math.max(0, ctx.currentTime - S.startAt);
@@ -1255,8 +1281,7 @@ function play(fromStart = false) {
     syncVideos(S.pos, true);
     drawFrame(S.pos);
     if (S.recording && S.recTimer) S.recTimer(S.pos);
-    $('#time').textContent = `${fmt(S.pos)} / ${fmt(S.tl.total)}`;
-    drawTimeline();
+    if (performance.now() - lastUi > 250) { lastUi = performance.now(); $('#time').textContent = `${fmt(S.pos)} / ${fmt(S.tl.total)}`; if (!S.recording) drawTimeline(); } // 画面の文字とタイムラインは 1 秒に 4 回で十分
     if (t >= S.tl.total) { finishPlay(); return; }
     raf = requestAnimationFrame(loop);
   };
