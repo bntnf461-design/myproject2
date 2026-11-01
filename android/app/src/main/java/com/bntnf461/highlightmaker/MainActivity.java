@@ -9,6 +9,26 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.ImageDecoder;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
+import android.os.Handler;
+import android.os.Looper;
+import androidx.media3.common.Effect;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.common.audio.AudioProcessor;
+import androidx.media3.effect.Presentation;
+import androidx.media3.transformer.Composition;
+import androidx.media3.transformer.EditedMediaItem;
+import androidx.media3.transformer.EditedMediaItemSequence;
+import androidx.media3.transformer.Effects;
+import androidx.media3.transformer.ExportException;
+import androidx.media3.transformer.ExportResult;
+import androidx.media3.transformer.ProgressHolder;
+import androidx.media3.transformer.Transformer;
 import android.graphics.Color;
 import android.provider.OpenableColumns;
 import android.view.View;
@@ -192,19 +212,184 @@ public class MainActivity extends Activity {
         if (result == null) { cb.onReceiveValue(null); return; }
         // 写真の選択ツールのファイルは、位置情報の除去などでサイズが変わり、画面側で読めないことがある。
         // そこでアプリ専用の一時フォルダにコピーしてから渡す（アプリを閉じる・全部消す時に必ず削除）
-        final Uri[] picked = result;
-        busy = new AlertDialog.Builder(this).setMessage("写真・動画を準備しています…（" + picked.length + " 個）").setCancelable(false).show();
+        startPrepare(result, cb);
+    }
+
+    /* ===== 選んだ写真・動画を「画面側で必ず読める形」にそろえる =====
+       ・動画：H.265/HEVC・HDR・4K・大きすぎる動画は、端末の中で H.264（720p）に変換（Media3 Transformer）
+       ・写真：HEIC は JPEG に変換
+       ・それ以外：アプリ専用の一時フォルダにコピー
+       どれもアプリ専用の一時フォルダに置き、全部消す・アプリを閉じる・次の起動で削除する */
+    private static final long MAX_VIDEO_US = 3L * 60 * 1000 * 1000; // 長い動画は最初の3分だけ使う
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private Transformer currentTx;
+    private volatile boolean prepCancelled;
+
+    private static class Info {
+        String name = "file", vmime;
+        boolean video, heic, needs;
+        long size, durationUs;
+        int w, h, rot, transfer;
+    }
+
+    private void startPrepare(Uri[] picked, ValueCallback<Uri[]> cb) {
+        prepCancelled = false;
+        busy = new AlertDialog.Builder(this).setTitle("Highlight Maker").setMessage("写真・動画を準備しています…").setCancelable(false)
+                .setNegativeButton("中止", (d, w) -> { prepCancelled = true; if (currentTx != null) currentTx.cancel(); }).show();
+        prepareAt(picked, 0, new ArrayList<>(), cb);
+    }
+
+    private void setBusy(String msg) { if (busy != null) busy.setMessage(msg); }
+
+    private void prepareAt(Uri[] picked, int i, List<Uri> out, ValueCallback<Uri[]> cb) {
+        if (i >= picked.length || prepCancelled) {
+            if (busy != null) { busy.dismiss(); busy = null; }
+            cb.onReceiveValue(out.toArray(new Uri[0]));
+            return;
+        }
+        final Uri uri = picked[i];
+        final String label = (i + 1) + " / " + picked.length;
+        setBusy("写真・動画を準備しています… " + label);
         io.execute(() -> {
-            List<Uri> out = new ArrayList<>();
-            for (int i = 0; i < picked.length; i++) {
-                File f = copyToCache(picked[i], i);
-                out.add(f != null ? Uri.fromFile(f) : picked[i]);
+            Info info = probe(uri, i);
+            if (info.video && info.needs && !prepCancelled) {
+                main.post(() -> transcode(uri, info, label, f -> {
+                    if (f != null) { out.add(Uri.fromFile(f)); main.post(() -> prepareAt(picked, i + 1, out, cb)); }
+                    else io.execute(() -> { File c = copyToCache(uri, i); out.add(c != null ? Uri.fromFile(c) : uri); main.post(() -> prepareAt(picked, i + 1, out, cb)); });
+                }));
+            } else {
+                File f = info.heic ? heicToJpeg(uri, info) : null;
+                if (f == null) f = copyToCache(uri, i);
+                out.add(f != null ? Uri.fromFile(f) : uri);
+                main.post(() -> prepareAt(picked, i + 1, out, cb));
             }
-            runOnUiThread(() -> {
-                if (busy != null) { busy.dismiss(); busy = null; }
-                cb.onReceiveValue(out.toArray(new Uri[0]));
-            });
         });
+    }
+
+    private Info probe(Uri uri, int index) {
+        Info in = new Info();
+        in.name = "file" + index;
+        try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                if (!c.isNull(0)) in.name = c.getString(0);
+                if (!c.isNull(1)) in.size = c.getLong(1);
+            }
+        } catch (Exception ignored) { }
+        String type = getContentResolver().getType(uri);
+        String lower = in.name.toLowerCase(java.util.Locale.ROOT);
+        in.video = (type != null && type.startsWith("video/")) || lower.matches(".*\\.(mp4|mov|m4v|3gp|mkv|webm)$");
+        in.heic = (type != null && (type.contains("heic") || type.contains("heif"))) || lower.matches(".*\\.(heic|heif)$");
+        if (!in.video) return in;
+        MediaExtractor ex = new MediaExtractor();
+        try {
+            ex.setDataSource(this, uri, null);
+            for (int t = 0; t < ex.getTrackCount(); t++) {
+                MediaFormat f = ex.getTrackFormat(t);
+                String m = f.getString(MediaFormat.KEY_MIME);
+                if (m != null && m.startsWith("video/")) {
+                    in.vmime = m;
+                    if (f.containsKey(MediaFormat.KEY_WIDTH)) in.w = f.getInteger(MediaFormat.KEY_WIDTH);
+                    if (f.containsKey(MediaFormat.KEY_HEIGHT)) in.h = f.getInteger(MediaFormat.KEY_HEIGHT);
+                    if (f.containsKey(MediaFormat.KEY_DURATION)) in.durationUs = f.getLong(MediaFormat.KEY_DURATION);
+                    if (f.containsKey(MediaFormat.KEY_COLOR_TRANSFER)) in.transfer = f.getInteger(MediaFormat.KEY_COLOR_TRANSFER);
+                    break;
+                }
+            }
+        } catch (Exception ignored) {
+        } finally { ex.release(); }
+        try {
+            MediaMetadataRetriever r = new MediaMetadataRetriever();
+            r.setDataSource(this, uri);
+            String rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+            if (rot != null) in.rot = Integer.parseInt(rot);
+            r.release();
+        } catch (Exception ignored) { }
+        boolean easyCodec = "video/avc".equals(in.vmime) || "video/x-vnd.on2.vp8".equals(in.vmime) || "video/x-vnd.on2.vp9".equals(in.vmime);
+        boolean hdr = in.transfer == MediaFormat.COLOR_TRANSFER_ST2084 || in.transfer == MediaFormat.COLOR_TRANSFER_HLG;
+        in.needs = !easyCodec || hdr || Math.max(in.w, in.h) > 1920 || in.size > 120L * 1024 * 1024 || in.durationUs > MAX_VIDEO_US;
+        return in;
+    }
+
+    private void transcode(Uri uri, Info info, String label, java.util.function.Consumer<File> done) {
+        File dir = new File(pickedDir(), String.valueOf(System.nanoTime()));
+        if (!dir.mkdirs() && !dir.isDirectory()) { done.accept(null); return; }
+        String base = info.name.replaceAll("[\\\\/:*?\"<>|]", "_").replaceAll("\\.[A-Za-z0-9]+$", "");
+        final File outF = new File(dir, base + ".mp4");
+        // 縦横を考えて、短い辺を 720 にそろえる（小さい動画はそのまま）
+        int w = info.w, h = info.h;
+        if (info.rot == 90 || info.rot == 270) { int t = w; w = h; h = t; }
+        if (w <= 0 || h <= 0) { w = 1280; h = 720; }
+        float k = Math.min(1f, 720f / Math.min(w, h));
+        int ow = Math.max(2, Math.round(w * k / 2) * 2), oh = Math.max(2, Math.round(h * k / 2) * 2);
+        MediaItem.Builder mb = new MediaItem.Builder().setUri(uri);
+        if (info.durationUs > MAX_VIDEO_US)
+            mb.setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder().setEndPositionMs(MAX_VIDEO_US / 1000).build());
+        List<Effect> video = new ArrayList<>();
+        video.add(Presentation.createForWidthAndHeight(ow, oh, Presentation.LAYOUT_SCALE_TO_FIT));
+        EditedMediaItem item = new EditedMediaItem.Builder(mb.build())
+                .setEffects(new Effects(new ArrayList<AudioProcessor>(), video)).build();
+        Composition comp = new Composition.Builder(new EditedMediaItemSequence(item))
+                .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL).build();
+        final String msg = "この端末で読める形に変換しています… " + label + (info.durationUs > MAX_VIDEO_US ? "\n（長い動画なので最初の3分を使います）" : "");
+        setBusy(msg);
+        final Transformer tx;
+        try {
+            tx = new Transformer.Builder(this)
+                    .setVideoMimeType(MimeTypes.VIDEO_H264)
+                    .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                    .addListener(new Transformer.Listener() {
+                        @Override
+                        public void onCompleted(Composition composition, ExportResult exportResult) {
+                            currentTx = null;
+                            done.accept(outF);
+                        }
+
+                        @Override
+                        public void onError(Composition composition, ExportResult exportResult, ExportException exportException) {
+                            currentTx = null;
+                            outF.delete();
+                            done.accept(null);
+                        }
+                    }).build();
+            currentTx = tx;
+            tx.start(comp, outF.getAbsolutePath());
+        } catch (Exception e) {
+            currentTx = null;
+            outF.delete();
+            done.accept(null);
+            return;
+        }
+        final ProgressHolder ph = new ProgressHolder();
+        main.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (currentTx != tx) return;
+                if (tx.getProgress(ph) == Transformer.PROGRESS_STATE_AVAILABLE) setBusy(msg + "  " + ph.progress + "%");
+                main.postDelayed(this, 500);
+            }
+        }, 500);
+    }
+
+    /** HEIC の写真を JPEG に（長い辺 2160 まで縮小） */
+    private File heicToJpeg(Uri uri, Info info) {
+        if (Build.VERSION.SDK_INT < 28) return null;
+        try {
+            ImageDecoder.Source src = ImageDecoder.createSource(getContentResolver(), uri);
+            Bitmap bm = ImageDecoder.decodeBitmap(src, (dec, ii, s) -> {
+                int W = ii.getSize().getWidth(), H = ii.getSize().getHeight();
+                float k = Math.min(1f, 2160f / Math.max(W, H));
+                dec.setTargetSize(Math.max(1, Math.round(W * k)), Math.max(1, Math.round(H * k)));
+                dec.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+            });
+            File dir = new File(pickedDir(), String.valueOf(System.nanoTime()));
+            if (!dir.mkdirs() && !dir.isDirectory()) return null;
+            File f = new File(dir, info.name.replaceAll("\\.[A-Za-z0-9]+$", "") + ".jpg");
+            try (OutputStream o = new FileOutputStream(f)) { bm.compress(Bitmap.CompressFormat.JPEG, 92, o); }
+            bm.recycle();
+            return f;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private File pickedDir() { return new File(getCacheDir(), "picked"); }
@@ -399,6 +584,8 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         abortSave();
         if (busy != null) { busy.dismiss(); busy = null; }
+        prepCancelled = true;
+        if (currentTx != null) { currentTx.cancel(); currentTx = null; }
         io.shutdownNow();
         deletePicked();
         if (web != null) {
