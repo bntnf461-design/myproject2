@@ -628,7 +628,7 @@ async function seekTo(v, t) {
 }
 /* 動画の「見どころ」：映像の動きが大きい所・明暗がはっきりした所を探す */
 async function findHighlights(v, dur) {
-  const n = clamp(Math.ceil(dur / 3), 4, 12);
+  const n = clamp(Math.ceil(dur / 2), 4, 16);
   const c = document.createElement('canvas'); c.width = 48; c.height = 27;
   const cx = c.getContext('2d', { willReadFrequently: true });
   let prev = null; const scores = [];
@@ -651,7 +651,7 @@ async function findHighlights(v, dur) {
   if (scores.length > 1) scores[0].s = Math.max(scores[0].s, scores[1].s * .8);
   scores.sort((a, b) => b.s - a.s);
   const hl = [];
-  for (const s of scores) { if (hl.every(h => Math.abs(h - s.t) > dur / 6)) hl.push(s.t); if (hl.length >= 4) break; }
+  for (const s of scores) { if (hl.every(h => Math.abs(h - s.t) > Math.max(1.5, dur / 10))) hl.push(s.t); if (hl.length >= 8) break; }
   return hl.length ? hl : [0];
 }
 
@@ -1093,11 +1093,31 @@ function adjustTempo(an, k) {
   for (let i = an.downPhase % 2; i < an.beats.length; i += 2) { beats.push(an.beats[i]); energy.push(an.energy[i]); }
   return Object.assign({}, an, { bpm: an.bpm / 2, beats, energy, downPhase: Math.floor(an.downPhase / 2) % 4 });
 }
-function setSegSource(seg, uc) {
-  const clip = seg.clip; delete seg.src;
+/* 動画のどこを使うか：見どころ → 動画全体の順に、まだ使っていない区間を選ぶ */
+function setSegSource(seg, used) {
+  const clip = seg.clip; delete seg.src; delete seg.loop;
   if (clip.type !== 'video') return;
-  const segLen = (seg.e - seg.s) * seg.rate, hl = clip.highlights[uc % clip.highlights.length];
-  seg.src = clamp(hl - segLen * .4, 0, Math.max(0, clip.duration - segLen - .05));
+  const L = (seg.e - seg.s + (seg.td || 0)) * seg.rate, D = clip.duration;
+  if (L >= D - .1) { seg.src = 0; seg.loop = L > D; return; } // 動画が短い時は繰り返して使う
+  const cands = clip.highlights.map(h => clamp(h - L * .4, 0, D - L - .05));
+  for (let x = 0; x + L <= D; x += Math.max(.5, L * .5)) cands.push(x);
+  let best = cands[0], bo = 1e9;
+  for (const x of cands) {
+    const ov = used.reduce((a, w) => a + Math.max(0, Math.min(x + L, w[1]) - Math.max(x, w[0])), 0);
+    if (ov < bo - 1e-6) { bo = ov; best = x; }
+    if (ov <= 0) break;
+  }
+  seg.src = best; used.push([best, best + L]);
+}
+function repeatNote(segs, n) {
+  // 同じ場面（写真の同じ見え方・動画の重なる区間）の出た回数
+  let same = 0; const seen = new Map();
+  for (const s of segs) {
+    const key = s.clip.type === 'video' ? null : s.clip.id + ':' + (s.fz || 1);
+    if (key) { if (seen.has(key)) same++; seen.set(key, 1); }
+  }
+  const per = segs.length / n;
+  return per > 4 ? ` ／ <span style="color:var(--warn)">素材が少ないので同じ素材が多めです（あと ${Math.ceil(segs.length / 3 - n)} 個くらい足すと自然です）</span>` : '';
 }
 function eligibleBeats(an, from, to) { return an.beats.map((b, i) => ({ t: b, i })).filter(o => o.t > from + .05 && o.t < to - .05); }
 function avgBeats(st) { return st.cut.reduce((a, b) => a + b, 0) / st.cut.length; }
@@ -1163,7 +1183,6 @@ async function rebuild() {
   // カット割り
   const bl = eligibleBeats(an, mStart, mStart + total);
   const segs = [];
-  const useCount = new Map();
   let k = 0, t = 0, ci = 0, prevClip = -1;
   const isDown = i => ((i - an.downPhase) % 4 + 4) % 4 === 0;
   // ★メイン：最初・最後・盛り上がりの入り（サビ）で長めに使い、ほかより多めに登場させる
@@ -1173,20 +1192,35 @@ async function rebuild() {
     for (let j = 4; j < bl.length; j++) if (isDown(bl[j].i) && an.energy[bl[j].i] >= .85 && an.energy[bl[j - 4].i] < .75) peaks.push(j);
     if (!peaks.length) { let bj = -1, be = -1; for (let j = 4; j < bl.length; j++) if (isDown(bl[j].i) && an.energy[bl[j].i] > be) { be = an.energy[bl[j].i]; bj = j; } if (bj > 0) peaks.push(bj); }
   }
-  const others = S.clips.map((c, i) => i).filter(i => !hasMain || i !== mainIdx || (MO.freq === 0 && !MO.first && !MO.peak && !MO.last));
-  let queue = [], cycle = 0;
-  const nextClip = () => {
-    if (!queue.length) {
-      let o = ($('#shuffle').checked || cycle > 0) ? shuffleArr(rng, others) : others.slice();
-      if (hasMain) for (let r = MO.freq; r >= 1; r--) o.splice(Math.floor(o.length * r / (MO.freq + 1)), 0, mainIdx); // 1周の中に freq 回（0=決めた場所だけ）
-      queue = o; cycle++;
+  // ---- 素材の選び方：同じ場面をなるべく繰り返さない ----
+  // 動画は「まだ使っていない部分」がある間は優先して、毎回ちがう場面を使う。写真は1回目を優先。
+  const shotLen = spb * avgBeats(st);
+  const stat = S.clips.map(() => ({ used: 0, last: -99 }));
+  const wins = new Map(S.clips.map(c => [c, []])); // 動画ごとの使った区間
+  const capacity = i => { const c = S.clips[i]; return c.type === 'video' ? Math.max(1, Math.floor(c.duration / Math.max(.8, shotLen * 1.05))) : 1; };
+  const fresh = i => Math.max(0, capacity(i) - stat[i].used);
+  const plainMain = hasMain && MO.freq === 0 && !MO.first && !MO.peak && !MO.last;
+  const inRotation = i => !hasMain || i !== mainIdx || MO.freq > 0 || plainMain;
+  const shuffleOn = $('#shuffle').checked;
+  const nextClip = segIdx => {
+    const recent = Math.min(3, Math.max(0, S.clips.filter((c, i) => inRotation(i)).length - 1));
+    let best = -1, bs = -1e9;
+    for (let i = 0; i < n; i++) {
+      if (!inRotation(i)) continue;
+      const gap = segIdx - stat[i].last;
+      if (gap <= recent) continue; // 直前に使った素材は避ける
+      let sc = stat[i].used === 0 ? 1000 - (shuffleOn ? rng() * 50 : i) : 0; // まず全部を1回ずつ
+      sc += fresh(i) * 4 + Math.min(gap, 3 * n) * .6 + rng() * .9;
+      if (hasMain && i === mainIdx && !plainMain) sc += MO.freq * 3;
+      if (sc > bs) { bs = sc; best = i; }
     }
-    let c = queue.shift();
-    if (c === prevClip && queue.length) { queue.push(c); c = queue.shift(); }
-    return c;
+    return best >= 0 ? best : (prevClip + 1) % n;
   };
+  // 素材が少ない時は、1カットを少し長くして繰り返しを減らす（最大2倍）
+  const totalCap = S.clips.reduce((a, c, i) => a + capacity(i), 0), expectCuts = total / shotLen;
+  const lenMul = !st.layout && expectCuts > totalCap * 1.1 ? 2 : 1;
   while (t < total - .05) {
-    let nbeat = pick(rng, st.cut);
+    let nbeat = pick(rng, st.cut) * lenMul;
     const atPeak = hasMain && peaks.includes(k);
     const nextPeak = hasMain ? peaks.find(p => p > k && p < k + nbeat) : undefined;
     if (nextPeak !== undefined) nbeat = nextPeak - k; // 盛り上がりの入りでちょうど切り替える
@@ -1200,23 +1234,26 @@ async function rebuild() {
     let endIdx = k + nbeat - 1, end;
     if (endIdx >= bl.length - 1 || (bl[endIdx] && mStart + total - bl[endIdx].t < spb * .9)) { end = total; k = bl.length; }
     else { end = bl[endIdx].t - mStart; k = endIdx + 1; }
-    const clipIdx = (hasMain && ((ci === 0 && MO.first) || atPeak)) ? mainIdx : nextClip(); ci++; prevClip = clipIdx;
+    const clipIdx = (hasMain && ((ci === 0 && MO.first) || atPeak)) ? mainIdx : nextClip(segs.length); ci++; prevClip = clipIdx;
     const clip = S.clips[clipIdx];
-    const uc = useCount.get(clipIdx) || 0; useCount.set(clipIdx, uc + 1);
+    const uc = stat[clipIdx].used; stat[clipIdx].used++; stat[clipIdx].last = segs.length;
     const seg = { s: t, e: end, clip, n: ci, rate: st.rate || 1,
       motion: MOTIONS[pick(rng, st.motions)], mMul: st.motionMul || 1,
       look: pick(rng, st.filters), filter: 'none', rot: (rng() * 2 - 1) * 8, ox: (rng() * 2 - 1) * .08, oy: (rng() * 2 - 1) * .06,
       downEnd: bl[endIdx] ? isDown(bl[endIdx].i) : false };
     seg.filter = FILTERS[seg.look] || 'none'; seg.main = clipIdx === mainIdx && hasMain;
-    setSegSource(seg, uc);
+    if (clip.type === 'image' && uc > 0) { // 2回目以降の写真は、別の場所に寄って別のカットに見せる
+      seg.fz = 1 + .22 * Math.min(uc, 3); seg.fx = rng() * 2 - 1; seg.fy = rng() * 2 - 1;
+    }
+    setSegSource(seg, wins.get(clip));
     segs.push(seg); t = end;
   }
   // 最後もメインで締める
   if (hasMain && MO.last && segs.length > 2) {
     const last = segs[segs.length - 1];
     if (last.clip !== S.clips[mainIdx]) {
-      if (segs[segs.length - 2].clip === S.clips[mainIdx]) { segs[segs.length - 2].clip = last.clip; segs[segs.length - 2].main = false; setSegSource(segs[segs.length - 2], 1); }
-      last.clip = S.clips[mainIdx]; last.main = true; setSegSource(last, (useCount.get(mainIdx) || 0) + 1);
+      if (segs[segs.length - 2].clip === S.clips[mainIdx]) { segs[segs.length - 2].clip = last.clip; segs[segs.length - 2].main = false; setSegSource(segs[segs.length - 2], wins.get(last.clip)); }
+      last.clip = S.clips[mainIdx]; last.main = true; setSegSource(last, wins.get(last.clip));
     }
   }
   // おまかせの長さ：全部の素材を1回ずつ使った所で終わる
@@ -1238,7 +1275,7 @@ async function rebuild() {
   S.pos = 0;
   const trs = st.layout && st.layout !== 'framed' ? [] : [...new Set(segs.map(s => TR_NAMES[s.trans]).filter(Boolean))];
   $('#info').innerHTML = `<b>${st.icon || ''} ${st.name}</b> ／ ${fmt(total)} ／ ${segs.length} カット ／ テンポ ${Math.round(an.bpm)} BPM` +
-    (sel === 'file' ? ` ／ 曲の ${fmt(mStart)} から` : '') + (total < target - 1 ? ` ／ <span style="color:var(--warn)">曲が短いので ${fmt(total)} になりました</span>` : '') + ` ／ 素材1つあたり平均 ${(segs.length / n).toFixed(1)} 回` + (hasMain ? ` ／ ★メインは ${segs.filter(x => x.main).length} 回（${segs.filter(x => x.main).reduce((a, x) => a + x.e - x.s, 0).toFixed(0)} 秒）` : '') + `<br>切り替え：${trs.join('・') || (st.layout ? '画面分割' : 'カット')}`;
+    (sel === 'file' ? ` ／ 曲の ${fmt(mStart)} から` : '') + (total < target - 1 ? ` ／ <span style="color:var(--warn)">曲が短いので ${fmt(total)} になりました</span>` : '') + ` ／ 素材1つあたり平均 ${(segs.length / n).toFixed(1)} 回` + repeatNote(segs, n) + (hasMain ? ` ／ ★メインは ${segs.filter(x => x.main).length} 回（${segs.filter(x => x.main).reduce((a, x) => a + x.e - x.s, 0).toFixed(0)} 秒）` : '') + `<br>切り替え：${trs.join('・') || (st.layout ? '画面分割' : 'カット')}`;
   S.building = false;
   $('#seedInfo').textContent = 'パターン番号 #' + S.seed;
   $('#time').textContent = `0:00 / ${fmt(total)}`;
@@ -1292,8 +1329,9 @@ function renderSeg(c, seg, t, x, y, w, h) {
   const len = seg.e - seg.s, td0 = seg.tdIn || 0;
   const p = clamp((t - seg.s + td0) / (len + td0 + (seg.td || 0)), 0, 1);
   const m = seg.motion, k = seg.mMul, ep = (ease[m.e] || ease.io)(p);
-  const sc = 1 + (lerp(m.s0, m.s1, ep) - 1) * k;
-  const ox = lerp(m.x0 || 0, m.x1 || 0, ep) * k, oy = lerp(m.y0 || 0, m.y1 || 0, ep) * k, rot = lerp(m.r0 || 0, m.r1 || 0, ep) * k;
+  const sc = (1 + (lerp(m.s0, m.s1, ep) - 1) * k) * (seg.fz || 1);
+  const fo = seg.fz ? (sc - 1) / 2 * .8 : 0; // 写真の2回目以降は別の場所に寄る
+  const ox = lerp(m.x0 || 0, m.x1 || 0, ep) * k + (seg.fx || 0) * fo, oy = lerp(m.y0 || 0, m.y1 || 0, ep) * k + (seg.fy || 0) * fo, rot = lerp(m.r0 || 0, m.r1 || 0, ep) * k;
   c.fillStyle = '#000'; c.fillRect(x, y, w, h);
   if (!srcReady(seg.clip)) return;
   if (FILTER_OK) c.filter = seg.filter;
@@ -1862,11 +1900,12 @@ function syncVideos(t, playing) {
     const sg = owner.get(clip), v = clip.el;
     if (!sg) { if (!v.paused) v.pause(); continue; }
     const visible = t >= sg.s - (sg.tdIn || 0) - .05;
-    const want = sg.src + Math.max(0, t - sg.s) * sg.rate;
+    let want = sg.src + Math.max(0, t - sg.s) * sg.rate;
+    if (sg.loop) want = (Math.max(0, t - sg.s) * sg.rate) % Math.max(.2, clip.duration - .05); // 短い動画は繰り返す
     if (Math.abs(v.playbackRate - sg.rate) > .01) v.playbackRate = sg.rate;
     if (playing && visible) {
       if (v.paused) { v.currentTime = want; v.play().catch(() => { }); }
-      else if (Math.abs(v.currentTime - want) > .3 && !v.seeking) v.currentTime = want;
+      else if (Math.abs(v.currentTime - want) > (sg.loop ? .15 : .5) && !v.seeking) v.currentTime = want; // スマホは頻繁に位置を直すとカクつくので余裕を持たせる
     } else {
       if (!v.paused) v.pause();
       if (Math.abs(v.currentTime - (visible ? want : sg.src)) > .08 && !v.seeking) v.currentTime = visible ? want : sg.src;
@@ -1926,7 +1965,7 @@ function play(fromStart = false) {
 }
 function stopAudio() { if (S.src) { try { S.src.stop(); } catch (e) { } S.src.disconnect(); S.src = null; } }
 function pause() {
-  S.playing = false; stopAudio(); cancelAnimationFrame(raf); keepAwake(false);
+  S.playing = false; S.stopAt = null; stopAudio(); cancelAnimationFrame(raf); keepAwake(false);
   for (const c of S.clips) if (c.type === 'video') c.el.pause();
   $('#playBtn').textContent = '▶ 再生';
 }
@@ -2202,10 +2241,10 @@ function stopTitleThumbs() { cancelAnimationFrame(thumbRaf); }
 $('#titlePreviewBtn').onclick = () => {
   if (!S.tl) { setStatus('先に ① で写真・動画を選んでください', 'busy'); return; }
   if (!$('#title').value.trim()) { $('#title').focus(); setStatus('タイトルを入れてください', 'busy'); return; }
-  S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4; play(true);
+  play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4;
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.02';
+const WEB_VER = '2026.11.02b';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
