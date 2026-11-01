@@ -8,6 +8,16 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.graphics.Color;
+import android.provider.OpenableColumns;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.widget.FrameLayout;
+import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
@@ -44,6 +54,9 @@ public class MainActivity extends Activity {
     private static final int REQ_PERM = 2;
 
     private WebView web;
+    private FrameLayout root;
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private AlertDialog busy;
     private ValueCallback<Uri[]> pickCallback;
 
     // 保存中の動画
@@ -57,8 +70,23 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        deletePicked(); // 前回の残り（強制終了した時など）を消す
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Color.parseColor("#fff7ef"));
         web = new WebView(this);
-        setContentView(web);
+        root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
+        // Android 15 以降は画面の端まで描かれるので、時計・電池の表示やナビゲーションバーと重ならないよう余白を取る
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets i = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                v.setPadding(i.left, i.top, i.right, i.bottom);
+            } else {
+                v.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            }
+            return insets;
+        });
+        setSystemBars("#fff7ef", true);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -90,6 +118,22 @@ public class MainActivity extends Activity {
                     pickCallback = null;
                     return false;
                 }
+                return true;
+            }
+
+            // ページからのお知らせ・確認を「file:// のページ」ではなくアプリ名で表示する
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, android.webkit.JsResult result) {
+                new AlertDialog.Builder(MainActivity.this).setTitle("Highlight Maker").setMessage(message)
+                        .setPositiveButton("OK", (d, w) -> result.confirm()).setOnCancelListener(d -> result.confirm()).show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, android.webkit.JsResult result) {
+                new AlertDialog.Builder(MainActivity.this).setTitle("Highlight Maker").setMessage(message)
+                        .setPositiveButton("OK", (d, w) -> result.confirm()).setNegativeButton("キャンセル", (d, w) -> result.cancel())
+                        .setOnCancelListener(d -> result.cancel()).show();
                 return true;
             }
 
@@ -143,12 +187,98 @@ public class MainActivity extends Activity {
                 result = new Uri[]{data.getData()};
             }
         }
-        pickCallback.onReceiveValue(result);
+        final ValueCallback<Uri[]> cb = pickCallback;
         pickCallback = null;
+        if (result == null) { cb.onReceiveValue(null); return; }
+        // 写真の選択ツールのファイルは、位置情報の除去などでサイズが変わり、画面側で読めないことがある。
+        // そこでアプリ専用の一時フォルダにコピーしてから渡す（アプリを閉じる・全部消す時に必ず削除）
+        final Uri[] picked = result;
+        busy = new AlertDialog.Builder(this).setMessage("写真・動画を準備しています…（" + picked.length + " 個）").setCancelable(false).show();
+        io.execute(() -> {
+            List<Uri> out = new ArrayList<>();
+            for (int i = 0; i < picked.length; i++) {
+                File f = copyToCache(picked[i], i);
+                out.add(f != null ? Uri.fromFile(f) : picked[i]);
+            }
+            runOnUiThread(() -> {
+                if (busy != null) { busy.dismiss(); busy = null; }
+                cb.onReceiveValue(out.toArray(new Uri[0]));
+            });
+        });
+    }
+
+    private File pickedDir() { return new File(getCacheDir(), "picked"); }
+
+    private File copyToCache(Uri uri, int index) {
+        String name = "file" + index;
+        try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) name = c.getString(0);
+        } catch (Exception ignored) { }
+        name = name.replaceAll("[\\/:*?\"<>|]", "_");
+        if (!name.contains(".")) {
+            String t = getContentResolver().getType(uri);
+            if (t != null) {
+                String ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(t);
+                if (ext != null) name = name + "." + ext;
+            }
+        }
+        File dir = new File(pickedDir(), String.valueOf(System.nanoTime()));
+        if (!dir.mkdirs() && !dir.isDirectory()) return null;
+        File f = new File(dir, name);
+        try (InputStream in = getContentResolver().openInputStream(uri); OutputStream o = new FileOutputStream(f)) {
+            if (in == null) return null;
+            byte[] buf = new byte[1 << 20];
+            int n;
+            while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+            return f;
+        } catch (Exception e) {
+            f.delete();
+            return null;
+        }
+    }
+
+    private void deletePicked() { deleteTree(pickedDir()); }
+
+    private static void deleteTree(File f) {
+        if (f == null || !f.exists()) return;
+        File[] list = f.listFiles();
+        if (list != null) for (File c : list) deleteTree(c);
+        f.delete();
+    }
+
+    /** 時計・電池の帯の色をデザインに合わせる（light=true は明るい背景で黒い文字） */
+    private void setSystemBars(String color, boolean light) {
+        int c;
+        try { c = Color.parseColor(color); } catch (Exception e) { return; }
+        root.setBackgroundColor(c);
+        getWindow().setStatusBarColor(c);
+        getWindow().setNavigationBarColor(c);
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController wc = getWindow().getInsetsController();
+            if (wc != null) {
+                int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                wc.setSystemBarsAppearance(light ? mask : 0, mask);
+            }
+        } else {
+            int flags = getWindow().getDecorView().getSystemUiVisibility();
+            if (light) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; else flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
     }
 
     /** ページ（JavaScript）から呼ばれる窓口 */
     private class Bridge {
+        @JavascriptInterface
+        public void setTheme(final String color, final boolean light) {
+            runOnUiThread(() -> setSystemBars(color, light));
+        }
+
+        /** 「全部消す」：コピーした写真・動画を消す */
+        @JavascriptInterface
+        public void clearPicked() {
+            io.execute(MainActivity.this::deletePicked);
+        }
+
         @JavascriptInterface
         public void keepScreenOn(final boolean on) {
             runOnUiThread(() -> {
@@ -268,6 +398,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         abortSave();
+        if (busy != null) { busy.dismiss(); busy = null; }
+        io.shutdownNow();
+        deletePicked();
         if (web != null) {
             // 個人データを残さない：メモリ・キャッシュ・履歴をすべて消す
             web.evaluateJavascript("try{wipeAll()}catch(e){}", null);

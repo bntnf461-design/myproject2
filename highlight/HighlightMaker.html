@@ -2026,6 +2026,7 @@ function wipeAll() {
   try { if (S.recording) cancelExport(); pause(); } catch (e) { }
   for (const c of S.clips) freeClip(c);
   for (const u of liveUrls) URL.revokeObjectURL(u); liveUrls.clear();
+  try { if (window.HighlightApp && HighlightApp.clearPicked) HighlightApp.clearPicked(); } catch (e) { } // アプリ版：コピーした写真・動画も消す
   S.clips = []; S.mainId = null; S.music = null; S.analysis = null; S.musicKey = ''; S.musicFile = null; S.tl = null;
   clearExport();
   for (const k in pool) { pool[k].width = pool[k].height = 0; delete pool[k]; }
@@ -2062,7 +2063,7 @@ $('#demoBtn').onclick = makeDemo;
 $('#wipeBtn').onclick = () => { if (!confirm('選んだ写真・動画・曲と、作った動画を全部消します。よろしいですか？')) return; wipeAll(); renderThumbs(); rebuild(); setStatus('全部消しました', 'done'); };
 window.addEventListener('pagehide', wipeAll); // ページを閉じたら必ず消す
 $('#showDate').onchange = () => { S.showDate = $('#showDate').checked; if (!S.playing && S.tl) drawFrame(S.pos || .001); };
-$('#clearBtn').onclick = () => { for (const c of S.clips) freeClip(c); S.clips = []; S.mainId = null; renderThumbs(); rebuild(); };
+$('#clearBtn').onclick = () => { for (const c of S.clips) freeClip(c); S.clips = []; S.mainId = null; try { if (window.HighlightApp && HighlightApp.clearPicked) HighlightApp.clearPicked(); } catch (e) { } renderThumbs(); rebuild(); };
 $('#musicSel').onchange = () => {
   const isFile = $('#musicSel').value === 'file';
   if (isFile) { if (!S.musicKey.startsWith('file:')) { $('#musicInfo').textContent = '下の「🎵 曲のファイルを選ぶ」をタップして曲を選んでください。'; return; } }
@@ -2162,6 +2163,7 @@ function setDesign(d) {
   document.documentElement.dataset.design = d;
   document.querySelectorAll('.design button').forEach(b => b.setAttribute('aria-pressed', b.dataset.design === d));
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = DESIGN_BG[d];
+  try { if (window.HighlightApp && HighlightApp.setTheme) HighlightApp.setTheme(DESIGN_BG[d], d === 'pop'); } catch (e) { }
   drawTimeline();
 }
 document.querySelectorAll('.design button').forEach(b => b.onclick = () => setDesign(b.dataset.design));
