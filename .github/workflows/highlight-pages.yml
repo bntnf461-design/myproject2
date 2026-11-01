@@ -1,0 +1,35 @@
+# Highlight Maker をスマホから開けるように GitHub Pages へ公開する
+# （公開されるのはアプリ本体だけ。写真・動画は各自の端末の中だけで処理され、ここには送られません）
+# 初回だけ: GitHub の Settings → Pages → Source を「GitHub Actions」にする
+# 既定ブランチ以外から公開する時は Settings → Environments → github-pages でそのブランチを許可する
+name: Highlight Maker (GitHub Pages)
+on:
+  push:
+    paths: ['highlight/**', '.github/workflows/highlight-pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp highlight/HighlightMaker.html _site/index.html
+          cp highlight/manifest.webmanifest highlight/icon-*.png _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

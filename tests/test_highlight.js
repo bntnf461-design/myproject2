@@ -1,6 +1,6 @@
 // Highlight Maker の動作確認（Node.js + Playwright が必要）
 //   node tests/test_highlight.js
-// サンプル素材＋内蔵BGMで、全パターンの組み立て・描画と、動画ファイルへの書き出しを確認します。
+// サンプル素材＋内蔵BGMで、全パターンの組み立て・描画（1分）、2分の組み立て、動画の書き出し、全消去を確認します。
 const { chromium } = require('playwright');
 const path = require('path');
 (async () => {
@@ -20,6 +20,7 @@ const path = require('path');
       const tl = HM.S.tl;
       for (let t = 0; t < tl.total; t += 0.25) HM.drawFrame(t);
       const used = new Set(tl.segs.map(s => s.clip)).size;
+      if (tl.total < 59) return { cuts: tl.segs.length, used, total: tl.total, onBeat: false };
       const onBeat = tl.segs.slice(0, -1).every(s => tl.an.beats.some(b => Math.abs(b - tl.mStart - s.e) < 1e-6));
       return { cuts: tl.segs.length, used, total: tl.total, onBeat };
     });
@@ -27,15 +28,26 @@ const path = require('path');
     if (!ok) fail++;
     console.log(`${ok ? 'OK ' : 'NG '} ${id.padEnd(10)} カット${r.cuts} 素材${r.used}/10 ${r.total.toFixed(1)}秒 拍に合う:${r.onBeat}`);
   }
-  await p.selectOption('#length', '15');
-  await p.waitForFunction(() => !HM.S.building && HM.S.tl.total <= 15.01);
-  const dl = p.waitForEvent('download', { timeout: 60000 });
+  // 2分の長さ
+  await p.selectOption('#length', '120');
+  await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 120) < 1);
+  console.log('OK  2分', await p.evaluate(() => HM.S.tl.segs.length), 'カット');
+  // 書き出し（1分・実時間）
+  await p.selectOption('#length', '60');
+  await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 60) < 1);
   await p.click('#exportBtn');
-  await dl;
+  await p.waitForSelector('#dlLink', { timeout: 120000 });
   const ex = await p.evaluate(() => window.__lastExport);
   const exOk = ex && ex.size > 100000;
   if (!exOk) fail++;
   console.log(`${exOk ? 'OK ' : 'NG '} 書き出し ${ex && ex.name} ${ex && (ex.size / 1048576).toFixed(1)}MB`);
+  // 全部消す（個人データが残らないこと）
+  p.on('dialog', d => d.accept());
+  await p.click('#wipeBtn');
+  const left = await p.evaluate(() => ({ clips: HM.S.clips.length, music: !!HM.S.music, dl: !!document.querySelector('#dlLink'), vids: document.querySelectorAll('#hidden video').length, storage: localStorage.length + sessionStorage.length + document.cookie.length }));
+  const wipeOk = !left.clips && !left.music && !left.dl && !left.vids && !left.storage;
+  if (!wipeOk) fail++;
+  console.log(`${wipeOk ? 'OK ' : 'NG '} 全部消す ${JSON.stringify(left)}`);
   if (errs.length) { fail++; console.log('エラー:', errs); }
   await b.close();
   console.log(fail ? `失敗 ${fail} 件` : 'すべて成功');
