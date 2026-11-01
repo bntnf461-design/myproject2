@@ -91,7 +91,7 @@
       var parts = [m.docNo, m.title, m.process, m.line, m.product, m.category, m.purpose, m._file,
         m.author, m.checker, m.inspector, m.approver];
       (m.steps || []).forEach(function (s) {
-        parts.push(s.title, s.detail);
+        parts.push(s.title, s.detail, s.note);
         (s.points || []).forEach(function (p) { parts.push(p.text, p.reason); });
       });
       m._text = fold(parts.join(" "));

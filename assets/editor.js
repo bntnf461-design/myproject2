@@ -259,7 +259,7 @@
     var text = lastSel && lastSel.i === i ? lastSel.text : "";
     if (!text) {
       var ta = formEl.querySelector('[data-path="steps.' + i + '.note"]');
-      if (ta && !s.note) { alert("先に「補足」か「詳しい説明」に文を書いて、動画をつなぎたい文字をなぞって選んでから押してください。"); ta.focus(); return; }
+      if (ta && !s.note && !s.detail) { alert("先に「補足」か「詳しい説明」に文を書いて、動画をつなぎたい文字をなぞって選んでから押してください。"); ta.focus(); return; }
       if (!confirm("文字が選ばれていません。\n「詳しい説明」か「補足」の文字をなぞって選んでから押すと、その文字が入ります。\n\nこのまま空の行を作りますか？")) return;
     }
     // 動画は、この手順の動画（無ければ前の手順の動画）を最初に入れておく
@@ -276,7 +276,8 @@
     var mt = el && el.getAttribute && /^steps\.(\d+)\.(detail|note)$/.exec(el.getAttribute("data-path") || "");
     if (!mt) return;
     var t = el.value.slice(el.selectionStart, el.selectionEnd).trim();
-    if (t && t.indexOf("\n") === -1) lastSel = { i: +mt[1], text: t };
+    // 何も選んでいない（クリックしただけ）ときは、前に選んだ文字を使わない
+    lastSel = t && t.indexOf("\n") === -1 ? { i: +mt[1], text: t } : null;
   }
   formEl.addEventListener("select", trackSel, true);
   formEl.addEventListener("mouseup", trackSel);
@@ -1027,6 +1028,7 @@
     m.steps.forEach(function (s, i) {
       seg(s.video, "手順 " + (i + 1) + " の動画");
       s.points.forEach(function (p, j) { seg(p.video, "手順 " + (i + 1) + " の急所 " + (j + 1) + " の動画"); });
+      (s.links || []).forEach(function (l, j) { seg(l.video, "手順 " + (i + 1) + " の動画リンク「" + (l.text || (j + 1)) + "」"); });
     });
     if (bad.length) { notice(bad.map(esc).join("<br>"), true); window.scrollTo(0, 0); return false; }
     return true;
@@ -1122,6 +1124,7 @@
     d.steps.forEach(function (s) {
       srcs.push(s.image, s.marks && s.marks.base, s.video && s.video.src);
       s.points.forEach(function (p) { srcs.push(p.video && p.video.src); });
+      (s.links || []).forEach(function (l) { srcs.push(l.video && l.video.src); });
     });
     Object.keys(d.stamps || {}).forEach(function (k) { srcs.push(d.stamps[k]); });
     // この画面で選んだ・書き込んだもので、まだ書き出していないものだけ（同じ名前のファイルは上書き）

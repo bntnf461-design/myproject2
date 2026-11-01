@@ -557,7 +557,8 @@ a.kpi.link:hover { border-color: var(--navy); }
 }
 .set-row .hint { width: 11em; }
 .set-check { display: flex; align-items: center; gap: 4px; font-weight: bold; min-width: 5em; cursor: pointer; }
-.set-check input { width: 22px; height: 22px; }
+.set-check input, .field .set-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; padding: 0; }
+.set-check .kind { white-space: nowrap; }
 .set-add { border-top: 2px solid var(--navy-light); margin-top: 4px; }
 
 /* ---------- 文書ヘッダ（帳票風） ---------- */

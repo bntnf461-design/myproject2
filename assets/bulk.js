@@ -235,6 +235,10 @@
       var o = oldD.steps[j];
       if (o.video && o.video.src && !(s.video && s.video.src)) s.video = o.video;
       if (o.image && !s.image) { s.image = o.image; if (o.marks) s.marks = o.marks; }
+      // 補足と動画リンク（Excel には無いので、前の要領書から引き継ぐ）
+      if (o.note && !s.note) s.note = o.note;
+      if (o.links && o.links.length && !(s.links && s.links.length)) s.links = o.links;
+      if (o.noVideo && s.noVideo == null) s.noVideo = o.noVideo;
       (s.points || []).forEach(function (p) {
         (o.points || []).forEach(function (op) { if (op.text === p.text && op.video && op.video.src) p.video = op.video; });
       });
