@@ -1,0 +1,31 @@
+# Highlight Maker の Android アプリ（APK）を作る
+# 出来上がった APK は、この実行結果ページの「Artifacts」→ HighlightMaker-apk からダウンロードできます
+name: Highlight Maker (Android APK)
+on:
+  push:
+    paths: ['highlight/HighlightMaker.html', 'android/**', '.github/workflows/android-apk.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/HighlightMaker.apk
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HighlightMaker-apk
+          path: out/HighlightMaker.apk
+          retention-days: 30

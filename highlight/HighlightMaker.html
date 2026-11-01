@@ -121,11 +121,6 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <label>BGM</label>
       <select id="musicSel">
         <option value="edm">内蔵：EDM（128 BPM）</option>
-        <option value="pop">内蔵：ポップ（112 BPM）</option>
-        <option value="happy">内蔵：ハッピー（120 BPM）</option>
-        <option value="rock">内蔵：ロック（150 BPM）</option>
-        <option value="lofi">内蔵：ローファイ（84 BPM）</option>
-        <option value="cinematic">内蔵：シネマ（90 BPM）</option>
         <option value="file">自分の曲を使う…（ファイルから）</option>
       </select>
     </div>
@@ -588,13 +583,40 @@ function analyzeMusic(buf) {
 }
 
 /* ------------------------------ 内蔵BGM（その場で作曲） ------------------------------ */
+/* 内蔵BGM。g がある曲は「16分音符のパターン」で書いた汎用の作り方で鳴らす
+   ドラム：k=キック s=スネア c=クラップ h=ハイハット o=オープンハイハット r=リム t=タム（x=強 o=弱 .=休み）
+   bass/chord/lead：パターンの x で鳴らす。type は pad（のばす）/ stab（短く）/ arp（分散和音）/ strum（ギター風）/ piano */
 const MUSIC = {
-  edm: { bpm: 128, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
-  pop: { bpm: 112, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]] },
-  happy: { bpm: 120, root: 62, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]] },
-  rock: { bpm: 150, root: 52, prog: [[0, 7, 12], [-2, 5, 10], [-4, 3, 8], [-2, 5, 10]] },
-  lofi: { bpm: 84, root: 62, prog: [[0, 3, 7, 10], [5, 9, 12, 15], [-2, 2, 5, 9], [-5, -2, 2, 5]] },
-  cinematic: { bpm: 90, root: 50, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
+  edm: { name: 'EDM', mood: '盛り上がる', bpm: 128, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
+  pop: { name: 'ポップ', mood: '明るい', bpm: 112, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]] },
+  happy: { name: 'ハッピー', mood: '楽しい', bpm: 120, root: 62, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]] },
+  rock: { name: 'ロック', mood: '力強い', bpm: 150, root: 52, prog: [[0, 7, 12], [-2, 5, 10], [-4, 3, 8], [-2, 5, 10]] },
+  lofi: { name: 'ローファイ', mood: 'まったり', bpm: 84, root: 62, prog: [[0, 3, 7, 10], [5, 9, 12, 15], [-2, 2, 5, 9], [-5, -2, 2, 5]] },
+  cinematic: { name: 'シネマ', mood: '壮大', bpm: 90, root: 50, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
+  house: { name: 'ハウス', mood: 'おしゃれ', bpm: 124, root: 57, minor: true, prog: [[0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 9], [-5, -2, 2, 5]],
+    g: { k: 'x...x...x...x...', c: '....x.......x...', h: '..x...x...x...x.', o: '..o...o...o...o.', bass: { p: '..x...x...x..x.x', w: 'sawtooth', cut: 700, v: .2 }, chord: { type: 'stab', p: '...x..x....x..x.', w: 'square', cut: 1800, v: .045 }, pad: .03, lead: { w: 'square', step: 2, v: .035, oct: 12 } } },
+  tropical: { name: 'トロピカル', mood: '夏・海', bpm: 100, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
+    g: { k: 'x...x...x...x...', r: '...x..x....x..x.', h: '..x...x...x...x.', bass: { p: 'x..x..x.x..x..x.', w: 'triangle', cut: 900, v: .26 }, chord: { type: 'arp', p: 'x.xxx.xxx.xxx.xx', w: 'sine', cut: 4000, v: .07, oct: 12 }, lead: { w: 'sine', step: 2, v: .1, oct: 24 } } },
+  hiphop: { name: 'ヒップホップ', mood: 'クール', bpm: 90, root: 57, minor: true, swing: .2, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [-4, 0, 3, 7], [-5, -2, 2, 5]],
+    g: { k: 'x......xx.x.....', s: '....x.......x...', h: 'x.x.x.x.x.x.x.xo', bass: { p: 'x......xx.x.....', w: 'sine', cut: 500, v: .35, len: 3 }, chord: { type: 'piano', p: 'x.....x...x.....', w: 'triangle', cut: 2500, v: .05 }, lead: { w: 'triangle', step: 4, v: .05, oct: 12, sparse: .5 } } },
+  ballad: { name: 'バラード', mood: '感動', bpm: 72, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
+    g: { kChorus: 'x.......x.x.....', sChorus: '....x.......x...', h: '', bass: { p: 'x.......x.......', w: 'sine', cut: 600, v: .25, len: 7 }, chord: { type: 'arp', p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 3000, v: .06 }, pad: .035, lead: { w: 'sine', step: 4, v: .09, oct: 12, len: 1.8 } } },
+  synthwave: { name: 'シンセウェーブ', mood: '80年代・夜', bpm: 110, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [-7, -3, 0], [-2, 2, 5]],
+    g: { k: 'x...x...x...x...', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', bass: { p: 'xxxxxxxxxxxxxxxx', w: 'sawtooth', cut: 800, v: .14, octUp: true }, chord: { type: 'arp', p: 'xxxxxxxxxxxxxxxx', w: 'square', cut: 2600, v: .03, oct: 12 }, pad: .04, lead: { w: 'sawtooth', step: 4, v: .05, oct: 12, len: 1.6 } } },
+  dnb: { name: 'ドラムンベース', mood: '疾走感', bpm: 172, root: 50, minor: true, prog: [[0, 3, 7], [0, 3, 7], [-4, 0, 3], [-2, 2, 5]],
+    g: { k: 'x.........x.....', s: '....x.......x...', h: 'x.xxx.xxx.xxx.xx', bass: { p: 'x.........x.....', w: 'sawtooth', cut: 400, v: .2, len: 8, det: 18 }, chord: null, pad: .04, lead: { w: 'square', step: 4, v: .03, oct: 24 } } },
+  acoustic: { name: 'アコースティック', mood: 'ほのぼの', bpm: 96, root: 55, prog: [[0, 4, 7, 12], [7, 11, 14, 19], [9, 12, 16, 21], [5, 9, 12, 17]],
+    g: { k: 'x.......x.......', s: '....x.......x...', h: 'xxxxxxxxxxxxxxxx', hv: .05, bass: { p: 'x.......x...x...', w: 'triangle', cut: 800, v: .25, len: 2 }, chord: { type: 'strum', p: 'x.x.xxx.x.x.xxx.', w: 'triangle', cut: 3500, v: .05 }, lead: { w: 'sine', step: 2, v: .07, oct: 12, sparse: .3 } } },
+  funk: { name: 'ファンク', mood: 'ノリノリ', bpm: 108, root: 52, swing: .1, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [5, 9, 12, 15], [0, 3, 7, 10]],
+    g: { k: 'x..x..x...x.....', s: '....x.......x...', h: 'xxxxxxxxxxxxxxxx', hv: .07, bass: { p: 'x..xx.x..x.x.xx.', w: 'square', cut: 900, v: .16, slap: true }, chord: { type: 'stab', p: '..x..x...x..x.x.', w: 'sawtooth', cut: 2200, v: .035, oct: 12 }, lead: { w: 'square', step: 2, v: .035, oct: 12, sparse: .4 } } },
+  reggaeton: { name: 'レゲトン', mood: 'ダンス', bpm: 95, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]],
+    g: { k: 'x...x...x...x...', s: '...x..x....x..x.', h: 'x.x.x.x.x.x.x.x.', bass: { p: 'x...x...x...x...', w: 'sine', cut: 600, v: .3, len: 2 }, chord: { type: 'stab', p: 'x..x..x.x..x..x.', w: 'triangle', cut: 3000, v: .05, oct: 12 }, lead: { w: 'sine', step: 2, v: .07, oct: 12, sparse: .3 } } },
+  chiptune: { name: 'ゲーム音楽', mood: 'ピコピコ', bpm: 140, root: 60, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]],
+    g: { k: 'x.......x.......', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', bass: { p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 5000, v: .25, octUp: true }, chord: { type: 'arp', p: 'xxxxxxxxxxxxxxxx', w: 'square', cut: 8000, v: .03, oct: 12 }, lead: { w: 'square', step: 2, v: .05, oct: 12 } } },
+  trap: { name: 'トラップ', mood: '重低音', bpm: 140, root: 53, minor: true, prog: [[0, 3, 7], [0, 3, 7], [-4, 0, 3], [-5, -2, 2]],
+    g: { k: 'x......x..x.....', s: '........x.......', h: 'xxxxxxxxxxxxxxxx', hroll: true, bass: { p: 'x......x..x.....', w: 'sine', cut: 400, v: .45, len: 5, glide: true }, chord: null, pad: .035, lead: { w: 'triangle', step: 4, v: .06, oct: 24, sparse: .4 } } },
+  wafu: { name: '和風', mood: '日本・祭り', bpm: 100, root: 62, scale: [0, 1, 5, 7, 8, 12], prog: [[0, 7, 12], [0, 7, 12], [5, 12, 17], [-5, 0, 7]],
+    g: { t: 'x.....x.x...x...', k: '', r: '..x...x...x...x.', h: '', bass: { p: 'x.......x.......', w: 'triangle', cut: 500, v: .2, len: 4 }, chord: { type: 'arp', p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 5000, v: .06, oct: 12, koto: true }, lead: { w: 'sine', step: 2, v: .09, oct: 24, flute: true } } },
 };
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 async function genMusic(kind, seconds, seed, onProgress) {
@@ -605,7 +627,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
   const noiseData = new Float32Array(sr); for (let i = 0; i < sr; i++) noiseData[i] = rng0() * 2 - 1;
   const rng = rng0;
   const scale = M.minor ? [0, 2, 3, 5, 7, 8, 10, 12] : [0, 2, 4, 5, 7, 9, 11, 12];
-  const penta = M.minor ? [0, 3, 5, 7, 10, 12] : [0, 2, 4, 7, 9, 12];
+  const penta = M.scale || (M.minor ? [0, 3, 5, 7, 10, 12] : [0, 2, 4, 7, 9, 12]);
   const melody = []; let mi = 2; for (let k = 0; k < 16; k++) { mi = clamp(mi + Math.floor(rng() * 5) - 2, 0, penta.length - 1); melody.push(rng() < .2 ? null : penta[mi]); }
   const R = M.root;
   // 曲の構成：イントロ → (Aメロ → 盛り上げ → サビ → 間奏) をくり返し → 終わり
@@ -625,7 +647,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
     const comp = oc.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.connect(oc.destination);
     const master = oc.createGain(); master.gain.value = .75; master.connect(comp);
     let bus = master;
-    if (kind === 'lofi') { const lp = oc.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2800; lp.connect(master); bus = lp; }
+    if (kind === 'lofi' || M.lp) { const lp = oc.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2800; lp.connect(master); bus = lp; }
     const nb = oc.createBuffer(1, sr, sr); nb.getChannelData(0).set(noiseData);
     const env = (g, t, a, peak, d) => { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); };
     const kick = (t, v = 1) => { const o = oc.createOscillator(), g = oc.createGain(); o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(42, t + .13); env(g, t, .003, v, .38); o.connect(g).connect(bus); o.start(t); o.stop(t + .45); };
@@ -698,6 +720,49 @@ async function genMusic(kind, seconds, seed, onProgress) {
       tone(t0, R - 12 + ch[0], bar, 'sawtooth', .12, 400, .3);
       if (full) { tom(t0, 90); tom(t0 + spb * 1.5, 120, .6); tom(t0 + spb * 2, 90); if (b % 2) { tom(t0 + spb * 3, 140, .5); tom(t0 + spb * 3.5, 160, .6); } snare(t0 + spb * 2, .3); }
       for (let s = 0; s < 8; s++) tone(t0 + s * spb / 2, R + 24 + scale[[0, 4, 2, 4, 7, 4, 2, 4][s]] + ch[0], spb / 2 - .02, 'triangle', full ? .05 : .03, 3000);
+    } else if (M.g) {
+      const G = M.g, st16 = spb / 4, sw = (M.swing || 0) * st16;
+      const at = i => t0 + i * st16 + (i % 2 ? sw : 0);
+      const hit = (pat, i) => pat && pat[i % 16] !== '.' && pat[i % 16] !== undefined ? (pat[i % 16] === 'x' ? 1 : .55) : 0;
+      const drums = full, kPat = sec === 'chorus' && G.kChorus ? G.kChorus : G.k, sPat = sec === 'chorus' && G.sChorus ? G.sChorus : G.s;
+      for (let i = 0; i < 16; i++) {
+        const t = at(i); let v;
+        if (drums && (v = hit(kPat, i))) kick(t, v * (sec === 'verse' ? .85 : 1));
+        if (drums && (v = hit(sPat, i))) snare(t, .55 * v);
+        if (drums && (v = hit(G.c, i))) clap(t, .45 * v);
+        if ((v = hit(G.h, i)) && (drums || i % 4 === 0)) hat(t, (G.hv || .1) * v);
+        if (drums && (v = hit(G.o, i))) hat(t, .1 * v, true);
+        if (drums && (v = hit(G.r, i))) noise(t, 'bandpass', 2200, .3 * v, .05, 4);
+        if (drums && (v = hit(G.t, i))) tom(t, i % 8 === 0 ? 80 : 110, .8 * v);
+      }
+      if (drums && G.hroll && b % 2 === 1) for (let i = 0; i < 6; i++) hat(t0 + bar - st16 * 1.5 + i * st16 / 4, .07); // ハイハットの連打
+      if (G.bass && (full || sec === 'build')) {
+        const B = G.bass;
+        for (let i = 0; i < 16; i++) if (hit(B.p, i)) {
+          const m = R - 12 + ch[0] + (B.octUp && i % 2 ? 12 : 0) + (B.slap && i % 4 === 3 ? 12 : 0);
+          const len = st16 * (B.len || 1) * .95;
+          tone(at(i), m, len, B.w, B.v, B.cut, .005, B.det || 0);
+          if (B.glide && i > 8) tone(at(i) + len * .5, m - 2, len * .5, B.w, B.v * .5, B.cut);
+        }
+      }
+      if (G.pad) for (const n of ch.slice(0, 3)) tone(t0, R + 12 + n, bar - .05, 'sawtooth', G.pad * (intro ? .7 : 1), intro ? 900 : 1600, .3, 12);
+      if (G.chord && (sec !== 'intro' || b % 2 === 0)) {
+        const C = G.chord, o = C.oct || 0;
+        for (let i = 0, k = 0; i < 16; i++) if (hit(C.p, i)) {
+          const t = at(i);
+          if (C.type === 'stab') for (const n of ch) tone(t, R + o + n, st16 * .8, C.w, C.v, C.cut);
+          else if (C.type === 'arp') { const n = ch[k++ % ch.length] + (k % 8 >= ch.length * 2 ? 12 : 0); tone(t, R + o + n, st16 * (C.koto ? 2.5 : .9), C.w, C.v * (C.koto ? 1.3 : 1), C.cut, .002); }
+          else if (C.type === 'strum') ch.forEach((n, j) => tone(t + j * .012, R + o + n, st16 * 1.6, C.w, C.v, C.cut, .002));
+          else if (C.type === 'piano') ch.forEach(n => tone(t, R + o + n, st16 * 3, C.w, C.v, C.cut, .003));
+        }
+      }
+      if (G.lead && (lead || (sec === 'break' && G.lead.flute))) {
+        const L = G.lead, step = L.step || 2, n = 16 / step;
+        for (let j = 0; j < n; j++) {
+          const mm = melody[(b * n + j) % 16]; if (mm === null || (L.sparse && rng() < L.sparse)) continue;
+          tone(at(j * step), R + (L.oct || 12) + mm, st16 * step * (L.len || .9), L.w, L.v, 3500, L.flute ? .06 : .005, L.flute ? 6 : 0);
+        }
+      }
     }
     if (last) { crash(t0 + bar, .3); kick(t0 + bar, 1); for (const n of ch) tone(t0 + bar, R + n, 2, 'sawtooth', .05, 1500, .01, 8); }
     return oc.startRendering();
@@ -715,7 +780,12 @@ async function genMusic(kind, seconds, seed, onProgress) {
     if (onProgress) onProgress((b + 1) / bars);
   }
   { let pk = 0; for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
-    if (pk > 0) { const g = .9 / pk; for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] *= g; } } }
+    if (pk > 0) { const g = .9 / pk; for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] *= g; } }
+    // 曲ごとの音量差をそろえる：小さい曲は持ち上げ、はみ出す所はやわらかく丸める
+    let ss = 0; const d0 = buf.getChannelData(0); for (let i = 0; i < d0.length; i += 4) ss += d0[i] * d0[i];
+    const rms = Math.sqrt(ss / (d0.length / 4)), up = Math.min(2, .12 / (rms || 1));
+    if (up > 1.05) { const k = Math.tanh(up * .9); for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = Math.tanh(d[i] * up) * .9 / Math.max(k, .9); } }
+    else if (rms > .14) { const dn = .14 / rms; for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] *= dn; } } }
   const beats = []; for (let t = 0; t < dur - .01; t += spb) beats.push(t);
   const EN = { intro: .25, verse: .5, build: .65, chorus: .95, break: .18, outro: .55 };
   const energy = beats.map(t => EN[section(Math.floor(t / bar))] ?? .5);
@@ -786,7 +856,7 @@ async function rebuild() {
       const r = await genMusic(sel, target, S.seed % 7 + 1, q => setStatus(`BGM を作曲中… ${Math.round(q * 100)}%`, 'busy'));
       if (token !== S.buildToken) return;
       S.music = r.buf; S.analysis = r.analysis; S.musicKey = key;
-      $('#musicInfo').textContent = `内蔵BGM（${$('#musicSel').selectedOptions[0].textContent.replace('内蔵：', '')}）を ${fmt(r.buf.duration)} 分作曲しました。🎲 で曲のメロディも変わります。`;
+      $('#musicInfo').textContent = `内蔵BGM「${MUSIC[sel].name}」（${MUSIC[sel].bpm} BPM）を ${fmt(r.buf.duration)} 分作曲しました。🎲 で曲のメロディも変わります。`;
       setStatus('準備OK');
     }
     an = S.analysis;
@@ -1253,7 +1323,9 @@ function syncVideos(t, playing) {
 
 /* ------------------------------ 再生と保存 ------------------------------ */
 let wakeLock = null;
+const APP = window.HighlightApp || null; // Android アプリの中で動いている時だけある（端末への保存・共有を担当）
 async function keepAwake(on) { // 再生・保存中は画面を消さない
+  try { if (APP) APP.keepScreenOn(!!on); } catch (e) { }
   try {
     if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
     else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
@@ -1357,7 +1429,17 @@ function showExport(blob, name) {
   const box = $('#dlArea'); box.innerHTML = '';
   S.exportUrl = URL.createObjectURL(blob);
   const file = new File([blob], name, { type: blob.type });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+  if (APP) { // Android アプリ：ギャラリー（動画フォルダ）に直接保存
+    const sv = document.createElement('button'); sv.className = 'primary'; sv.textContent = '📲 ギャラリーに保存';
+    sv.onclick = async () => {
+      sv.disabled = true;
+      const ok = await saveToApp(blob, name);
+      sv.disabled = false;
+      if (ok) { sv.textContent = '✅ 保存しました'; const sh = document.createElement('button'); sh.textContent = '↗ 共有'; sh.onclick = () => { try { APP.shareLast(); } catch (e) { } }; box.insertBefore(sh, sv.nextSibling); }
+    };
+    box.appendChild(sv);
+  }
+  else if (navigator.canShare && navigator.canShare({ files: [file] })) {
     const sh = document.createElement('button'); sh.className = 'primary'; sh.textContent = '📲 写真に保存／共有';
     sh.onclick = () => navigator.share({ files: [file] }).catch(() => { });
     box.appendChild(sh);
@@ -1366,6 +1448,21 @@ function showExport(blob, name) {
   box.appendChild(a);
   const del = document.createElement('button'); del.textContent = '🗑 この動画を消す'; del.onclick = () => { clearExport(); setStatus('完成動画をメモリから消しました'); };
   box.appendChild(del);
+}
+function blobToB64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(b); }); }
+async function saveToApp(blob, name) {
+  try {
+    const r = APP.beginSave(name, (blob.type || 'video/mp4').split(';')[0]);
+    if (r !== 'ok') { setStatus(r === 'permission' ? '保存の許可を「許可」にしてから、もう一度押してください' : '保存できませんでした（' + r + '）', 'busy'); return false; }
+    const CH = 768 * 1024;
+    for (let o = 0; o < blob.size; o += CH) {
+      if (!APP.appendChunk(await blobToB64(blob.slice(o, o + CH)))) throw new Error('書き込み失敗');
+      setStatus(`ギャラリーに保存中… ${Math.round(Math.min(1, (o + CH) / blob.size) * 100)}%`, 'busy');
+    }
+    const where = APP.finishSave();
+    if (where.startsWith('error')) throw new Error(where);
+    setStatus('ギャラリーに保存しました（' + where + '）', 'done'); return true;
+  } catch (e) { try { APP.abortSave(); } catch (_) { } setStatus('保存できませんでした：' + e.message, 'busy'); return false; }
 }
 function clearExport() {
   if (S.exportUrl) { URL.revokeObjectURL(S.exportUrl); S.exportUrl = null; }
@@ -1447,9 +1544,15 @@ function fitCanvas() {
 }
 window.addEventListener('resize', () => { fitCanvas(); drawTimeline(); });
 fitCanvas();
+(function buildMusicOptions() { // 内蔵BGMの一覧を MUSIC から作る
+  const sel = $('#musicSel'), fileOpt = sel.querySelector('option[value="file"]');
+  const grp = document.createElement('optgroup'); grp.label = `内蔵BGM（${Object.keys(MUSIC).length} 曲）`;
+  for (const [k, m] of Object.entries(MUSIC)) { const o = document.createElement('option'); o.value = k; o.textContent = `${m.name}｜${m.mood}（${m.bpm} BPM）`; grp.appendChild(o); }
+  sel.querySelector('option[value="edm"]').remove(); sel.insertBefore(grp, fileOpt); sel.value = 'edm';
+})();
 buildStyleCards(); renderThumbs(); drawEmpty(); drawTimeline();
 // テスト用
-window.HM = { S, STYLES, rebuild, drawFrame, analyzeMusic, genMusic, exportVideo, makeDemo, addFiles, TR };
+window.HM = { S, STYLES, MUSIC, rebuild, drawFrame, analyzeMusic, genMusic, exportVideo, makeDemo, addFiles, TR };
 </script>
 </body>
 </html>

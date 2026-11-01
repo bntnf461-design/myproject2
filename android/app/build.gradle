@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// アプリの画面は ../highlight/HighlightMaker.html をそのまま使う（Web 版と同じ1つのファイル）
+def webAssets = layout.buildDirectory.dir("generated/webassets")
+def copyWeb = tasks.register('copyWebApp', Copy) {
+    from('../../highlight') {
+        include 'HighlightMaker.html', 'manifest.webmanifest', 'icon-*.png'
+        rename 'HighlightMaker.html', 'index.html'
+    }
+    into webAssets
+}
+
+android {
+    namespace 'com.bntnf461.highlightmaker'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.bntnf461.highlightmaker'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        // 毎回同じ署名にするための開発用の鍵（上書きインストールできるように）。Google Play 公開用ではありません
+        devkey {
+            storeFile file('highlight-dev.keystore')
+            storePassword 'android'
+            keyAlias 'highlight'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug { signingConfig signingConfigs.devkey }
+        release {
+            signingConfig signingConfigs.devkey
+            minifyEnabled false
+        }
+    }
+    sourceSets {
+        main { assets.srcDirs += webAssets }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.named('preBuild') { dependsOn copyWeb }
