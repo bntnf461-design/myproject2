@@ -56,7 +56,8 @@ button,select,input,label{touch-action:manipulation;font:inherit}
 
 /* ----- 上のバー ----- */
 .appbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 16px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.logo{width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center;color:#fff;font-size:15px;box-shadow:var(--shadow);flex:none}
+.logo{width:36px;height:36px;border-radius:50%;background:var(--grad);display:grid;place-items:center;box-shadow:var(--shadow);flex:none}
+.logo svg{width:26px;height:26px;display:block}
 .brand{display:flex;flex-direction:column;line-height:1.15;min-width:0}
 .brand b{font-family:var(--font-head);font-weight:var(--head-weight);letter-spacing:var(--head-spacing);font-size:17px;white-space:nowrap}
 .brand small{color:var(--sub);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -205,7 +206,7 @@ summary{cursor:pointer;color:var(--sub);font-size:13px;padding:6px 0}
 iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https://bntnf461-design.github.io/myproject2/）を開いてください。パソコンではこのファイルを Edge / Chrome で開けば動きます。</div>
 
 <header class="appbar">
-  <div class="logo" aria-hidden="true">▶</div>
+  <div class="logo" aria-hidden="true"><svg viewBox="0 0 100 100" width="24" height="24"><g fill="#fff"><rect x="18" y="44" width="11" height="30" rx="5.5"/><rect x="35.5" y="28" width="11" height="46" rx="5.5"/><rect x="53" y="52" width="11" height="22" rx="5.5"/></g><path d="M70 15 L73 27 L85 30 L73 33 L70 45 L67 33 L55 30 L67 27 Z" fill="#ffec96"/><path d="M83 44 L84.2 48.8 L89 50 L84.2 51.2 L83 56 L81.8 51.2 L77 50 L81.8 48.8 Z" fill="#fff"/></svg></div>
   <div class="brand"><b>Highlight Maker</b><small>音楽に合わせて自動で編集</small></div>
   <div class="spacer"></div>
   <span id="status" class="status" role="status">準備OK</span>
