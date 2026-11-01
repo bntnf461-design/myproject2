@@ -657,36 +657,55 @@ function analyzeMusic(buf) {
    ドラム：k=キック s=スネア c=クラップ h=ハイハット o=オープンハイハット r=リム t=タム（x=強 o=弱 .=休み）
    bass/chord/lead：パターンの x で鳴らす。type は pad（のばす）/ stab（短く）/ arp（分散和音）/ strum（ギター風）/ piano */
 const MUSIC = {
-  edm: { name: 'EDM', mood: '盛り上がる', bpm: 128, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
-  pop: { name: 'ポップ', mood: '明るい', bpm: 112, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]] },
-  happy: { name: 'ハッピー', mood: '楽しい', bpm: 120, root: 62, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]] },
-  rock: { name: 'ロック', mood: '力強い', bpm: 150, root: 52, prog: [[0, 7, 12], [-2, 5, 10], [-4, 3, 8], [-2, 5, 10]] },
-  lofi: { name: 'ローファイ', mood: 'まったり', bpm: 84, root: 62, prog: [[0, 3, 7, 10], [5, 9, 12, 15], [-2, 2, 5, 9], [-5, -2, 2, 5]] },
-  cinematic: { name: 'シネマ', mood: '壮大', bpm: 90, root: 50, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
-  house: { name: 'ハウス', mood: 'おしゃれ', bpm: 124, root: 57, minor: true, prog: [[0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 9], [-5, -2, 2, 5]],
+  edm: { cat: '盛り上がる', name: 'EDM', mood: '盛り上がる', bpm: 128, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
+  pop: { cat: '楽しい', name: 'ポップ', mood: '明るい', bpm: 112, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]] },
+  happy: { cat: '楽しい', name: 'ハッピー', mood: '楽しい', bpm: 120, root: 62, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]] },
+  rock: { cat: '盛り上がる', name: 'ロック', mood: '力強い', bpm: 150, root: 52, prog: [[0, 7, 12], [-2, 5, 10], [-4, 3, 8], [-2, 5, 10]] },
+  lofi: { cat: 'おしゃれ・クール', name: 'ローファイ', mood: 'まったり', bpm: 84, root: 62, prog: [[0, 3, 7, 10], [5, 9, 12, 15], [-2, 2, 5, 9], [-5, -2, 2, 5]] },
+  cinematic: { cat: 'しっとり・感動', name: 'シネマ', mood: '壮大', bpm: 90, root: 50, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]] },
+  house: { cat: 'おしゃれ・クール', name: 'ハウス', mood: 'おしゃれ', bpm: 124, root: 57, minor: true, prog: [[0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 9], [-5, -2, 2, 5]],
     g: { k: 'x...x...x...x...', c: '....x.......x...', h: '..x...x...x...x.', o: '..o...o...o...o.', bass: { p: '..x...x...x..x.x', w: 'sawtooth', cut: 700, v: .2 }, chord: { type: 'stab', p: '...x..x....x..x.', w: 'square', cut: 1800, v: .045 }, pad: .03, lead: { w: 'square', step: 2, v: .035, oct: 12 } } },
-  tropical: { name: 'トロピカル', mood: '夏・海', bpm: 100, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
+  tropical: { cat: '楽しい', name: 'トロピカル', mood: '夏・海', bpm: 100, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
     g: { k: 'x...x...x...x...', r: '...x..x....x..x.', h: '..x...x...x...x.', bass: { p: 'x..x..x.x..x..x.', w: 'triangle', cut: 900, v: .26 }, chord: { type: 'arp', p: 'x.xxx.xxx.xxx.xx', w: 'sine', cut: 4000, v: .07, oct: 12 }, lead: { w: 'sine', step: 2, v: .1, oct: 24 } } },
-  hiphop: { name: 'ヒップホップ', mood: 'クール', bpm: 90, root: 57, minor: true, swing: .2, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [-4, 0, 3, 7], [-5, -2, 2, 5]],
+  hiphop: { cat: 'おしゃれ・クール', name: 'ヒップホップ', mood: 'クール', bpm: 90, root: 57, minor: true, swing: .2, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [-4, 0, 3, 7], [-5, -2, 2, 5]],
     g: { k: 'x......xx.x.....', s: '....x.......x...', h: 'x.x.x.x.x.x.x.xo', bass: { p: 'x......xx.x.....', w: 'sine', cut: 500, v: .35, len: 3 }, chord: { type: 'piano', p: 'x.....x...x.....', w: 'triangle', cut: 2500, v: .05 }, lead: { w: 'triangle', step: 4, v: .05, oct: 12, sparse: .5 } } },
-  ballad: { name: 'バラード', mood: '感動', bpm: 72, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
+  ballad: { cat: 'しっとり・感動', name: 'バラード', mood: '感動', bpm: 72, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
     g: { kChorus: 'x.......x.x.....', sChorus: '....x.......x...', h: '', bass: { p: 'x.......x.......', w: 'sine', cut: 600, v: .25, len: 7 }, chord: { type: 'arp', p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 3000, v: .06 }, pad: .035, lead: { w: 'sine', step: 4, v: .09, oct: 12, len: 1.8 } } },
-  synthwave: { name: 'シンセウェーブ', mood: '80年代・夜', bpm: 110, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [-7, -3, 0], [-2, 2, 5]],
+  synthwave: { cat: 'おしゃれ・クール', name: 'シンセウェーブ', mood: '80年代・夜', bpm: 110, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [-7, -3, 0], [-2, 2, 5]],
     g: { k: 'x...x...x...x...', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', bass: { p: 'xxxxxxxxxxxxxxxx', w: 'sawtooth', cut: 800, v: .14, octUp: true }, chord: { type: 'arp', p: 'xxxxxxxxxxxxxxxx', w: 'square', cut: 2600, v: .03, oct: 12 }, pad: .04, lead: { w: 'sawtooth', step: 4, v: .05, oct: 12, len: 1.6 } } },
-  dnb: { name: 'ドラムンベース', mood: '疾走感', bpm: 172, root: 50, minor: true, prog: [[0, 3, 7], [0, 3, 7], [-4, 0, 3], [-2, 2, 5]],
+  dnb: { cat: '盛り上がる', name: 'ドラムンベース', mood: '疾走感', bpm: 172, root: 50, minor: true, prog: [[0, 3, 7], [0, 3, 7], [-4, 0, 3], [-2, 2, 5]],
     g: { k: 'x.........x.....', s: '....x.......x...', h: 'x.xxx.xxx.xxx.xx', bass: { p: 'x.........x.....', w: 'sawtooth', cut: 400, v: .2, len: 8, det: 18 }, chord: null, pad: .04, lead: { w: 'square', step: 4, v: .03, oct: 24 } } },
-  acoustic: { name: 'アコースティック', mood: 'ほのぼの', bpm: 96, root: 55, prog: [[0, 4, 7, 12], [7, 11, 14, 19], [9, 12, 16, 21], [5, 9, 12, 17]],
+  acoustic: { cat: '楽しい', name: 'アコースティック', mood: 'ほのぼの', bpm: 96, root: 55, prog: [[0, 4, 7, 12], [7, 11, 14, 19], [9, 12, 16, 21], [5, 9, 12, 17]],
     g: { k: 'x.......x.......', s: '....x.......x...', h: 'xxxxxxxxxxxxxxxx', hv: .05, bass: { p: 'x.......x...x...', w: 'triangle', cut: 800, v: .25, len: 2 }, chord: { type: 'strum', p: 'x.x.xxx.x.x.xxx.', w: 'triangle', cut: 3500, v: .05 }, lead: { w: 'sine', step: 2, v: .07, oct: 12, sparse: .3 } } },
-  funk: { name: 'ファンク', mood: 'ノリノリ', bpm: 108, root: 52, swing: .1, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [5, 9, 12, 15], [0, 3, 7, 10]],
+  funk: { cat: '楽しい', name: 'ファンク', mood: 'ノリノリ', bpm: 108, root: 52, swing: .1, prog: [[0, 3, 7, 10], [0, 3, 7, 10], [5, 9, 12, 15], [0, 3, 7, 10]],
     g: { k: 'x..x..x...x.....', s: '....x.......x...', h: 'xxxxxxxxxxxxxxxx', hv: .07, bass: { p: 'x..xx.x..x.x.xx.', w: 'square', cut: 900, v: .16, slap: true }, chord: { type: 'stab', p: '..x..x...x..x.x.', w: 'sawtooth', cut: 2200, v: .035, oct: 12 }, lead: { w: 'square', step: 2, v: .035, oct: 12, sparse: .4 } } },
-  reggaeton: { name: 'レゲトン', mood: 'ダンス', bpm: 95, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]],
+  reggaeton: { cat: '盛り上がる', name: 'レゲトン', mood: 'ダンス', bpm: 95, root: 57, minor: true, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]],
     g: { k: 'x...x...x...x...', s: '...x..x....x..x.', h: 'x.x.x.x.x.x.x.x.', bass: { p: 'x...x...x...x...', w: 'sine', cut: 600, v: .3, len: 2 }, chord: { type: 'stab', p: 'x..x..x.x..x..x.', w: 'triangle', cut: 3000, v: .05, oct: 12 }, lead: { w: 'sine', step: 2, v: .07, oct: 12, sparse: .3 } } },
-  chiptune: { name: 'ゲーム音楽', mood: 'ピコピコ', bpm: 140, root: 60, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]],
+  chiptune: { cat: '楽しい', name: 'ゲーム音楽', mood: 'ピコピコ', bpm: 140, root: 60, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]],
     g: { k: 'x.......x.......', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', bass: { p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 5000, v: .25, octUp: true }, chord: { type: 'arp', p: 'xxxxxxxxxxxxxxxx', w: 'square', cut: 8000, v: .03, oct: 12 }, lead: { w: 'square', step: 2, v: .05, oct: 12 } } },
-  trap: { name: 'トラップ', mood: '重低音', bpm: 140, root: 53, minor: true, prog: [[0, 3, 7], [0, 3, 7], [-4, 0, 3], [-5, -2, 2]],
+  trap: { cat: '盛り上がる', name: 'トラップ', mood: '重低音', bpm: 140, root: 53, minor: true, prog: [[0, 3, 7], [0, 3, 7], [-4, 0, 3], [-5, -2, 2]],
     g: { k: 'x......x..x.....', s: '........x.......', h: 'xxxxxxxxxxxxxxxx', hroll: true, bass: { p: 'x......x..x.....', w: 'sine', cut: 400, v: .45, len: 5, glide: true }, chord: null, pad: .035, lead: { w: 'triangle', step: 4, v: .06, oct: 24, sparse: .4 } } },
-  wafu: { name: '和風', mood: '日本・祭り', bpm: 100, root: 62, scale: [0, 1, 5, 7, 8, 12], prog: [[0, 7, 12], [0, 7, 12], [5, 12, 17], [-5, 0, 7]],
+  wafu: { cat: '和風', name: '和風', mood: '日本・祭り', bpm: 100, root: 62, scale: [0, 1, 5, 7, 8, 12], prog: [[0, 7, 12], [0, 7, 12], [5, 12, 17], [-5, 0, 7]],
     g: { t: 'x.....x.x...x...', k: '', r: '..x...x...x...x.', h: '', bass: { p: 'x.......x.......', w: 'triangle', cut: 500, v: .2, len: 4 }, chord: { type: 'arp', p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 5000, v: .06, oct: 12, koto: true }, lead: { w: 'sine', step: 2, v: .09, oct: 24, flute: true } } },
+  // ---- 楽しい曲 ----
+  parade: { cat: '楽しい', name: 'パレード', mood: 'わくわく行進', bpm: 116, root: 60, prog: [[0, 4, 7], [7, 11, 14], [0, 4, 7], [5, 9, 12]],
+    g: { k: 'x.......x.......', s: '..x.x.xxx.x.x.xx', sv: .5, h: '', b: '', bass: { p: 'x...x...x...x...', w: 'triangle', cut: 900, v: .3, len: 2, alt: true }, chord: { type: 'stab', p: '..x...x...x...x.', w: 'square', cut: 2400, v: .04, oct: 12 }, lead: { w: 'square', p: 'x.x.x...x.xxx...', v: .055, oct: 12, bell: true } } },
+  ska: { cat: '楽しい', name: 'スカ', mood: 'ゴキゲン', bpm: 152, root: 55, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [5, 9, 12]],
+    g: { k: 'x.......x.......', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', hv: .08, bass: { p: 'x.x.x.x.x.x.x.x.', w: 'triangle', cut: 1000, v: .26, walk: true }, chord: { type: 'stab', p: '..x...x...x...x.', w: 'sawtooth', cut: 2600, v: .04, oct: 12 }, lead: { w: 'square', p: 'x..x..x.x..x..x.', v: .05, oct: 12 } } },
+  disco: { cat: '楽しい', name: 'ディスコ', mood: 'キラキラ', bpm: 118, root: 57, prog: [[0, 3, 7, 10], [5, 9, 12, 15], [3, 7, 10, 14], [5, 9, 12, 15]],
+    g: { k: 'x...x...x...x...', c: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', o: '..x...x...x...x.', bass: { p: 'x.xxx.xxx.xxx.xx', w: 'sawtooth', cut: 900, v: .16, octUp: true }, chord: { type: 'stab', p: 'x..x..x...x..x..', w: 'sawtooth', cut: 3200, v: .035, oct: 12 }, pad: .03, lead: { w: 'square', step: 2, v: .04, oct: 24, sparse: .2 } } },
+  picnic: { cat: '楽しい', name: 'ピクニック', mood: 'のどか・軽快', bpm: 112, root: 55, prog: [[0, 4, 7], [5, 9, 12], [0, 4, 7], [7, 11, 14]],
+    g: { k: 'x.......x.......', s: '....x.......x...', h: '..x...x...x...x.', hv: .07, bass: { p: 'x...x...x...x...', w: 'triangle', cut: 800, v: .28, len: 2, alt: true }, chord: { type: 'arp', p: 'xxxxxxxxxxxxxxxx', w: 'triangle', cut: 5000, v: .05, oct: 12, koto: true }, lead: { w: 'sine', step: 2, v: .09, oct: 24, sparse: .25, whistle: true } } },
+  toybox: { cat: '楽しい', name: 'おもちゃ箱', mood: 'かわいい', bpm: 126, root: 64, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]],
+    g: { k: 'x.......x.......', c: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', hv: .06, b: '..x.......x.x...', bass: { p: 'x...x...x...x...', w: 'triangle', cut: 1200, v: .22, alt: true }, chord: { type: 'arp', p: 'x.x.x.x.x.x.x.x.', w: 'sine', cut: 6000, v: .06, oct: 24 }, lead: { w: 'sine', p: 'x.x.x.x.x...x.x.', v: .1, oct: 24, bell: true } } },
+  carnival: { cat: '楽しい', name: 'カーニバル', mood: 'お祭り・南国', bpm: 104, root: 57, prog: [[0, 4, 7], [7, 11, 14], [0, 4, 7], [7, 11, 14]],
+    g: { k: 'x..x..x.x..x..x.', t: '.......x.......x', h: 'xxxxxxxxxxxxxxxx', hv: .06, b: 'x.x..x.x.x..x.x.', c: '....x.......x...', bass: { p: 'x..x..x.x..x..x.', w: 'sine', cut: 700, v: .3 }, chord: { type: 'strum', p: 'x.xx.x.xx.xx.x.x', w: 'triangle', cut: 4000, v: .045 }, lead: { w: 'square', p: 'x.x.xx.x.x.xx...', v: .045, oct: 12 } } },
+  ukulele: { cat: '楽しい', name: 'ウクレレ', mood: 'ハワイ・ゆるかわ', bpm: 100, root: 60, swing: .25, prog: [[0, 4, 7, 12], [9, 12, 16, 21], [5, 9, 12, 17], [7, 11, 14, 19]],
+    g: { k: 'x.......x.......', r: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', hv: .05, bass: { p: 'x.......x...x...', w: 'sine', cut: 600, v: .25, len: 2 }, chord: { type: 'strum', p: 'x.x.xxx.x.x.xxx.', w: 'triangle', cut: 5000, v: .05, oct: 12 }, lead: { w: 'sine', step: 2, v: .08, oct: 24, sparse: .35, whistle: true } } },
+  undokai: { cat: '楽しい', name: '運動会', mood: 'かけっこ・元気', bpm: 168, root: 60, prog: [[0, 4, 7], [7, 11, 14], [0, 4, 7], [7, 11, 14]],
+    g: { k: 'x...x...x...x...', s: '..x...x...x...x.', h: 'x.x.x.x.x.x.x.x.', hv: .08, bass: { p: 'x...x...x...x...', w: 'triangle', cut: 1000, v: .28, alt: true }, chord: { type: 'stab', p: '..x...x...x...x.', w: 'square', cut: 3000, v: .04, oct: 12 }, lead: { w: 'square', step: 1, v: .04, oct: 24, sparse: .15 } } },
+  clap: { cat: '楽しい', name: 'ハンドクラップ', mood: 'みんなで手拍子', bpm: 108, root: 58, prog: [[0, 4, 7, 10], [5, 9, 12, 15], [0, 4, 7, 10], [7, 11, 14, 17]],
+    g: { k: 'x.....x...x.....', c: '....x.......x...', cExtra: '....x..x....x...', h: 'x.x.x.x.x.x.x.x.', hv: .07, bass: { p: 'x.....x...x...x.', w: 'square', cut: 700, v: .2, walk: true }, chord: { type: 'piano', p: 'x..x..x...x..x..', w: 'triangle', cut: 3000, v: .05, oct: 12 }, lead: { w: 'triangle', p: 'x.x.x...x.x.x...', v: .07, oct: 12 } } },
 };
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 async function genMusic(kind, seconds, seed, onProgress) {
@@ -798,18 +817,21 @@ async function genMusic(kind, seconds, seed, onProgress) {
       for (let i = 0; i < 16; i++) {
         const t = at(i); let v;
         if (drums && (v = hit(kPat, i))) kick(t, v * (sec === 'verse' ? .85 : 1));
-        if (drums && (v = hit(sPat, i))) snare(t, .55 * v);
+        if (drums && (v = hit(sPat, i))) snare(t, (G.sv || .55) * v);
         if (drums && (v = hit(G.c, i))) clap(t, .45 * v);
         if ((v = hit(G.h, i)) && (drums || i % 4 === 0)) hat(t, (G.hv || .1) * v);
         if (drums && (v = hit(G.o, i))) hat(t, .1 * v, true);
         if (drums && (v = hit(G.r, i))) noise(t, 'bandpass', 2200, .3 * v, .05, 4);
         if (drums && (v = hit(G.t, i))) tom(t, i % 8 === 0 ? 80 : 110, .8 * v);
+        if (drums && (v = hit(G.b, i))) { tone(t, 79 + (i % 4 === 0 ? 0 : 5), .07, 'square', .045 * v, 4000, .001); } // カウベル
+        if (drums && sec === 'chorus' && (v = hit(G.cExtra, i))) clap(t, .35 * v);
       }
       if (drums && G.hroll && b % 2 === 1) for (let i = 0; i < 6; i++) hat(t0 + bar - st16 * 1.5 + i * st16 / 4, .07); // ハイハットの連打
       if (G.bass && (full || sec === 'build')) {
         const B = G.bass;
-        for (let i = 0; i < 16; i++) if (hit(B.p, i)) {
-          const m = R - 12 + ch[0] + (B.octUp && i % 2 ? 12 : 0) + (B.slap && i % 4 === 3 ? 12 : 0);
+        const WALK = [0, 4, 7, 9, 12, 9, 7, 4];
+        for (let i = 0, nb = 0; i < 16; i++) if (hit(B.p, i)) {
+          const m = R - 12 + ch[0] + (B.octUp && i % 2 ? 12 : 0) + (B.slap && i % 4 === 3 ? 12 : 0) + (B.alt && nb % 2 ? 7 : 0) + (B.walk ? WALK[nb % 8] : 0); nb++;
           const len = st16 * (B.len || 1) * .95;
           tone(at(i), m, len, B.w, B.v, B.cut, .005, B.det || 0);
           if (B.glide && i > 8) tone(at(i) + len * .5, m - 2, len * .5, B.w, B.v * .5, B.cut);
@@ -827,11 +849,16 @@ async function genMusic(kind, seconds, seed, onProgress) {
         }
       }
       if (G.lead && (lead || (sec === 'break' && G.lead.flute))) {
-        const L = G.lead, step = L.step || 2, n = 16 / step;
-        for (let j = 0; j < n; j++) {
-          const mm = melody[(b * n + j) % 16]; if (mm === null || (L.sparse && rng() < L.sparse)) continue;
-          tone(at(j * step), R + (L.oct || 12) + mm, st16 * step * (L.len || .9), L.w, L.v, 3500, L.flute ? .06 : .005, L.flute ? 6 : 0);
-        }
+        const L = G.lead;
+        // リズムの決まった明るいメロディ（L.p）か、一定の間隔（L.step）で鳴らす
+        const steps = L.p ? [...L.p].map((c, i) => c !== '.' ? i : -1).filter(i => i >= 0) : Array.from({ length: 16 / (L.step || 2) }, (_, j) => j * (L.step || 2));
+        steps.forEach((i, j) => {
+          const mm = melody[(b * steps.length + j) % 16]; if (mm === null || (L.sparse && rng() < L.sparse)) return;
+          const nxt = steps[j + 1] ?? 16, len = st16 * (nxt - i) * (L.len || .85);
+          const m = R + (L.oct || 12) + mm;
+          tone(at(i), m, L.bell ? Math.min(len, st16 * 1.2) : len, L.w, L.v, L.bell ? 6000 : 3500, L.flute || L.whistle ? .04 : .003, L.flute || L.whistle ? 7 : 0);
+          if (L.bell) tone(at(i), m + 12, st16 * .8, 'sine', L.v * .5, 8000, .001); // 鉄琴のようなキラキラ
+        });
       }
     }
     if (last) { crash(t0 + bar, .3); kick(t0 + bar, 1); for (const n of ch) tone(t0 + bar, R + n, 2, 'sawtooth', .05, 1500, .01, 8); }
@@ -1616,9 +1643,14 @@ window.addEventListener('resize', () => { fitCanvas(); drawTimeline(); });
 fitCanvas();
 (function buildMusicOptions() { // 内蔵BGMの一覧を MUSIC から作る
   const sel = $('#musicSel'), fileOpt = sel.querySelector('option[value="file"]');
-  const grp = document.createElement('optgroup'); grp.label = `内蔵BGM（${Object.keys(MUSIC).length} 曲）`;
-  for (const [k, m] of Object.entries(MUSIC)) { const o = document.createElement('option'); o.value = k; o.textContent = `${m.name}｜${m.mood}（${m.bpm} BPM）`; grp.appendChild(o); }
-  sel.querySelector('option[value="edm"]').remove(); sel.insertBefore(grp, fileOpt); sel.value = 'edm';
+  sel.querySelector('option[value="edm"]').remove();
+  for (const cat of ['楽しい', '盛り上がる', 'おしゃれ・クール', 'しっとり・感動', '和風']) {
+    const list = Object.entries(MUSIC).filter(([, m]) => m.cat === cat);
+    const grp = document.createElement('optgroup'); grp.label = `${cat}（${list.length} 曲）`;
+    for (const [k, m] of list) { const o = document.createElement('option'); o.value = k; o.textContent = `${m.name}｜${m.mood}（${m.bpm} BPM）`; grp.appendChild(o); }
+    sel.insertBefore(grp, fileOpt);
+  }
+  sel.value = 'happy';
 })();
 buildStyleCards(); renderThumbs(); drawEmpty(); drawTimeline();
 // テスト用
