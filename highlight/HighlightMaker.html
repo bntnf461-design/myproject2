@@ -135,6 +135,10 @@ select,input[type=text]{width:100%;background:var(--surface2);color:var(--text);
 .thumb{position:relative;aspect-ratio:1;border-radius:var(--radius-s);overflow:hidden;background:#000;border:1px solid var(--line)}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb .badge{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 5px;border-radius:6px}
+.thumb.main{outline:3px solid var(--accent);outline-offset:1px}
+.thumb .star{position:absolute;left:3px;bottom:3px;min-height:0;height:24px;padding:0 7px;border-radius:99px;font-size:11px;background:rgba(0,0,0,.6);color:#fff;border:0;font-weight:700}
+.thumb .star[aria-pressed="true"]{background:var(--grad);color:#fff}
+.mainhint{margin:10px 0 0;padding:10px 12px;border-radius:var(--radius-s);background:var(--chip);font-size:12.5px;color:var(--text)}
 .thumb .x{position:absolute;right:3px;top:3px;width:22px;height:22px;min-height:0;padding:0;border-radius:50%;font-size:11px;background:rgba(0,0,0,.65);color:#fff;border:0}
 
 /* 2 音楽 */
@@ -236,6 +240,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
     <input id="fileIn" class="vh" type="file" accept="video/*,image/*" multiple>
     <label id="drop" class="drop" for="fileIn"><span class="big">📷</span><b>タップして選ぶ</b><small>写真・動画（JPG / PNG / MP4 / MOV など）</small></label>
     <div id="thumbs" class="thumbs"></div>
+    <p id="mainHint" class="mainhint" hidden></p>
     <div class="row">
       <button id="demoBtn" class="ghost">✨ サンプルで試す</button>
       <button id="clearBtn" class="ghost">全部はずす</button>
@@ -629,15 +634,23 @@ async function findHighlights(v, dur) {
 function renderThumbs() {
   const box = $('#thumbs'); box.innerHTML = '';
   S.clips.forEach((c, i) => {
-    const d = document.createElement('div'); d.className = 'thumb'; d.title = c.name;
-    d.innerHTML = `<img src="${c.thumb}"><span class="badge">${i + 1}${c.type === 'video' ? ' ▶' : ''}</span>`;
+    const isMain = c.id === S.mainId;
+    const d = document.createElement('div'); d.className = 'thumb' + (isMain ? ' main' : ''); d.title = c.name;
+    d.innerHTML = `<img src="${c.thumb}" alt=""><span class="badge">${i + 1}${c.type === 'video' ? ' ▶' : ''}</span>`;
+    const st = document.createElement('button'); st.className = 'star'; st.textContent = isMain ? '★ メイン' : '☆';
+    st.setAttribute('aria-pressed', isMain); st.setAttribute('aria-label', isMain ? 'メインをやめる' : 'メインにする');
+    st.onclick = () => { S.mainId = isMain ? null : c.id; renderThumbs(); rebuild(); };
+    d.appendChild(st);
     const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.title = '外す';
-    x.onclick = () => { S.clips.splice(i, 1); freeClip(c); renderThumbs(); rebuild(); };
+    x.onclick = () => { S.clips.splice(i, 1); if (c.id === S.mainId) S.mainId = null; freeClip(c); renderThumbs(); rebuild(); };
     d.appendChild(x); box.appendChild(d);
   });
   $('#drop').innerHTML = S.clips.length
     ? `<span class="big">➕</span><b>${S.clips.length} 個えらびました</b><small>タップでさらに追加</small>`
     : '<span class="big">📷</span><b>タップして選ぶ</b><small>写真・動画（JPG / PNG / MP4 / MOV など）</small>';
+  const mh = $('#mainHint'); mh.hidden = !S.clips.length;
+  const m = S.clips.find(c => c.id === S.mainId);
+  mh.innerHTML = m ? `★ メインは「${m.name.replace(/[<>&]/g, '')}」。最初・最後・一番盛り上がる所で長めに使い、ほかより多めに登場します。` : '☆ をタップすると、その写真・動画が<b>メイン</b>（主役）になります。最初・最後・一番盛り上がる所で長めに使います。';
   updateSteps();
 }
 
@@ -1035,6 +1048,12 @@ function adjustTempo(an, k) {
   for (let i = an.downPhase % 2; i < an.beats.length; i += 2) { beats.push(an.beats[i]); energy.push(an.energy[i]); }
   return Object.assign({}, an, { bpm: an.bpm / 2, beats, energy, downPhase: Math.floor(an.downPhase / 2) % 4 });
 }
+function setSegSource(seg, uc) {
+  const clip = seg.clip; delete seg.src;
+  if (clip.type !== 'video') return;
+  const segLen = (seg.e - seg.s) * seg.rate, hl = clip.highlights[uc % clip.highlights.length];
+  seg.src = clamp(hl - segLen * .4, 0, Math.max(0, clip.duration - segLen - .05));
+}
 function eligibleBeats(an, from, to) { return an.beats.map((b, i) => ({ t: b, i })).filter(o => o.t > from + .05 && o.t < to - .05); }
 function avgBeats(st) { return st.cut.reduce((a, b) => a + b, 0) / st.cut.length; }
 
@@ -1099,39 +1118,61 @@ async function rebuild() {
   // カット割り
   const bl = eligibleBeats(an, mStart, mStart + total);
   const segs = [];
-  let order = S.clips.map((c, i) => i);
-  if ($('#shuffle').checked) order = shuffleArr(rng, order);
   const useCount = new Map();
   let k = 0, t = 0, ci = 0, prevClip = -1;
   const isDown = i => ((i - an.downPhase) % 4 + 4) % 4 === 0;
+  // ★メイン：最初・最後・盛り上がりの入り（サビ）で長めに使い、ほかより多めに登場させる
+  const mainIdx = S.clips.findIndex(c => c.id === S.mainId), hasMain = mainIdx >= 0 && n > 1;
+  const peaks = [];
+  if (hasMain) {
+    for (let j = 4; j < bl.length; j++) if (isDown(bl[j].i) && an.energy[bl[j].i] >= .85 && an.energy[bl[j - 4].i] < .75) peaks.push(j);
+    if (!peaks.length) { let bj = -1, be = -1; for (let j = 4; j < bl.length; j++) if (isDown(bl[j].i) && an.energy[bl[j].i] > be) { be = an.energy[bl[j].i]; bj = j; } if (bj > 0) peaks.push(bj); }
+  }
+  const others = S.clips.map((c, i) => i).filter(i => !hasMain || i !== mainIdx);
+  let queue = [], cycle = 0;
+  const nextClip = () => {
+    if (!queue.length) {
+      let o = ($('#shuffle').checked || cycle > 0) ? shuffleArr(rng, others) : others.slice();
+      if (hasMain) o.splice(Math.floor(o.length / 2), 0, mainIdx); // 1周の中ほどにもう1回
+      queue = o; cycle++;
+    }
+    let c = queue.shift();
+    if (c === prevClip && queue.length) { queue.push(c); c = queue.shift(); }
+    return c;
+  };
   while (t < total - .05) {
     let nbeat = pick(rng, st.cut);
+    const atPeak = hasMain && peaks.includes(k);
+    const nextPeak = hasMain ? peaks.find(p => p > k && p < k + nbeat) : undefined;
+    if (nextPeak !== undefined) nbeat = nextPeak - k; // 盛り上がりの入りでちょうど切り替える
     const e = an.energy[bl[k] ? bl[k].i : 0] ?? .5;
     if (st.adapt) { if (e > .78) nbeat = Math.max(1, nbeat / 2); else if (e < .25) nbeat *= 2; }
     else if (!st.layout) { if (e > .85 && nbeat >= 4) nbeat /= 2; else if (e < .22 && nbeat <= 4) nbeat *= 2; }
-    if (nbeat >= 4) { // 長いカットは小節の頭で終わるように
+    if (atPeak) nbeat = Math.max(8, nbeat * 2); // メインを2小節ほど見せる
+    if (nbeat >= 4 && !atPeak) { // 長いカットは小節の頭で終わるように
       let j = k + nbeat - 1; while (bl[j] && !isDown(bl[j].i) && j < k + nbeat + 3) j++; if (bl[j] && isDown(bl[j].i)) nbeat = j - k + 1;
     }
     let endIdx = k + nbeat - 1, end;
     if (endIdx >= bl.length - 1 || (bl[endIdx] && mStart + total - bl[endIdx].t < spb * .9)) { end = total; k = bl.length; }
     else { end = bl[endIdx].t - mStart; k = endIdx + 1; }
-    if (ci > 0 && ci % n === 0 && n > 2) { // 2周目以降は並べ替え（同じ素材が続かないように）
-      order = shuffleArr(rng, order); if (order[0] === prevClip) [order[0], order[1]] = [order[1], order[0]];
-    }
-    const clipIdx = order[ci % n]; ci++; prevClip = clipIdx;
+    const clipIdx = (hasMain && (ci === 0 || atPeak)) ? mainIdx : nextClip(); ci++; prevClip = clipIdx;
     const clip = S.clips[clipIdx];
     const uc = useCount.get(clipIdx) || 0; useCount.set(clipIdx, uc + 1);
     const seg = { s: t, e: end, clip, n: ci, rate: st.rate || 1,
       motion: MOTIONS[pick(rng, st.motions)], mMul: st.motionMul || 1,
       look: pick(rng, st.filters), filter: 'none', rot: (rng() * 2 - 1) * 8, ox: (rng() * 2 - 1) * .08, oy: (rng() * 2 - 1) * .06,
       downEnd: bl[endIdx] ? isDown(bl[endIdx].i) : false };
-    seg.filter = FILTERS[seg.look] || 'none';
-    if (clip.type === 'video') {
-      const segLen = (end - t) * seg.rate;
-      const hl = clip.highlights[uc % clip.highlights.length];
-      seg.src = clamp(hl - segLen * .4, 0, Math.max(0, clip.duration - segLen - .05));
-    }
+    seg.filter = FILTERS[seg.look] || 'none'; seg.main = clipIdx === mainIdx && hasMain;
+    setSegSource(seg, uc);
     segs.push(seg); t = end;
+  }
+  // 最後もメインで締める
+  if (hasMain && segs.length > 2) {
+    const last = segs[segs.length - 1];
+    if (last.clip !== S.clips[mainIdx]) {
+      if (segs[segs.length - 2].clip === S.clips[mainIdx]) { segs[segs.length - 2].clip = last.clip; segs[segs.length - 2].main = false; setSegSource(segs[segs.length - 2], 1); }
+      last.clip = S.clips[mainIdx]; last.main = true; setSegSource(last, (useCount.get(mainIdx) || 0) + 1);
+    }
   }
   // おまかせの長さ：全部の素材を1回ずつ使った所で終わる
   // 短すぎる最後のカットはまとめる
@@ -1152,7 +1193,7 @@ async function rebuild() {
   S.pos = 0;
   const trs = st.layout && st.layout !== 'framed' ? [] : [...new Set(segs.map(s => TR_NAMES[s.trans]).filter(Boolean))];
   $('#info').innerHTML = `<b>${st.icon || ''} ${st.name}</b> ／ ${fmt(total)} ／ ${segs.length} カット ／ テンポ ${Math.round(an.bpm)} BPM` +
-    (sel === 'file' ? ` ／ 曲の ${fmt(mStart)} から` : '') + (total < target - 1 ? ` ／ <span style="color:var(--warn)">曲が短いので ${fmt(total)} になりました</span>` : '') + ` ／ 素材1つあたり平均 ${(segs.length / n).toFixed(1)} 回` + `<br>切り替え：${trs.join('・') || (st.layout ? '画面分割' : 'カット')}`;
+    (sel === 'file' ? ` ／ 曲の ${fmt(mStart)} から` : '') + (total < target - 1 ? ` ／ <span style="color:var(--warn)">曲が短いので ${fmt(total)} になりました</span>` : '') + ` ／ 素材1つあたり平均 ${(segs.length / n).toFixed(1)} 回` + (hasMain ? ` ／ ★メインは ${segs.filter(x => x.main).length} 回（${segs.filter(x => x.main).reduce((a, x) => a + x.e - x.s, 0).toFixed(0)} 秒）` : '') + `<br>切り替え：${trs.join('・') || (st.layout ? '画面分割' : 'カット')}`;
   S.building = false;
   $('#seedInfo').textContent = 'パターン番号 #' + S.seed;
   $('#time').textContent = `0:00 / ${fmt(total)}`;
@@ -1940,7 +1981,7 @@ function wipeAll() {
   try { if (S.recording) cancelExport(); pause(); } catch (e) { }
   for (const c of S.clips) freeClip(c);
   for (const u of liveUrls) URL.revokeObjectURL(u); liveUrls.clear();
-  S.clips = []; S.music = null; S.analysis = null; S.musicKey = ''; S.musicFile = null; S.tl = null;
+  S.clips = []; S.mainId = null; S.music = null; S.analysis = null; S.musicKey = ''; S.musicFile = null; S.tl = null;
   clearExport();
   for (const k in pool) { pool[k].width = pool[k].height = 0; delete pool[k]; }
   overlayCache = {};
@@ -1976,7 +2017,7 @@ $('#demoBtn').onclick = makeDemo;
 $('#wipeBtn').onclick = () => { if (!confirm('選んだ写真・動画・曲と、作った動画を全部消します。よろしいですか？')) return; wipeAll(); renderThumbs(); rebuild(); setStatus('全部消しました', 'done'); };
 window.addEventListener('pagehide', wipeAll); // ページを閉じたら必ず消す
 $('#showDate').onchange = () => { S.showDate = $('#showDate').checked; if (!S.playing && S.tl) drawFrame(S.pos || .001); };
-$('#clearBtn').onclick = () => { for (const c of S.clips) freeClip(c); S.clips = []; renderThumbs(); rebuild(); };
+$('#clearBtn').onclick = () => { for (const c of S.clips) freeClip(c); S.clips = []; S.mainId = null; renderThumbs(); rebuild(); };
 $('#musicSel').onchange = () => {
   const isFile = $('#musicSel').value === 'file';
   if (isFile) { if (!S.musicKey.startsWith('file:')) { $('#musicInfo').textContent = '下の「🎵 曲のファイルを選ぶ」をタップして曲を選んでください。'; return; } }
