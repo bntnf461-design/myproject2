@@ -1,6 +1,6 @@
 {
   "name": "Highlight Maker",
-  "short_name": "ハイライト",
+  "short_name": "Highlight Maker",
   "description": "写真・動画から音楽に合わせたハイライト動画を端末の中だけで作ります",
   "start_url": "./",
   "scope": "./",

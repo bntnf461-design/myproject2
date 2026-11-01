@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ハイライト">
+<meta name="apple-mobile-web-app-title" content="Highlight Maker">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
@@ -193,7 +193,7 @@ summary{cursor:pointer;color:var(--sub);font-size:13px;padding:6px 0}
 .dlbox:empty{display:none}
 .dlbox>*{flex:1}
 
-@media (max-width:440px){.brand small{display:none}.brand b{font-size:15.5px}.status{max-width:30vw}.design button{width:26px;height:26px}}
+@media (max-width:440px){.brand small{display:none}.brand b{font-size:16px}.status{max-width:34vw}.status:not(.busy):not(.done){display:none}.design button{width:26px;height:26px}.design{gap:5px}.appbar{gap:8px}}
 #hidden{position:fixed;left:0;bottom:0;width:2px;height:2px;overflow:hidden;opacity:.01;pointer-events:none;z-index:-1}
 #jsWarn{background:#5a1d1d;color:#fff;padding:14px 16px;line-height:1.7;font-size:15px}
 #jsWarn b{color:#ffd23f}
@@ -206,7 +206,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
 
 <header class="appbar">
   <div class="logo" aria-hidden="true">▶</div>
-  <div class="brand"><b>ハイライトメーカー</b><small>音楽に合わせて自動で編集</small></div>
+  <div class="brand"><b>Highlight Maker</b><small>音楽に合わせて自動で編集</small></div>
   <div class="spacer"></div>
   <span id="status" class="status" role="status">準備OK</span>
   <div class="design" role="group" aria-label="デザイン">
