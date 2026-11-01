@@ -7,7 +7,7 @@ const path = require('path'), fs = require('fs'), { execSync } = require('child_
 const M = path.resolve(process.argv[2] || '.'), OUT = path.resolve(process.argv[3] || '.');
 const PAGE = 'file://' + path.resolve(__dirname, '../highlight/HighlightMaker.html');
 const R = { when: new Date().toISOString(), errors: [], load: [], bpm: [], bgm: [], timeline: [], perf: [], fallback: [], privacy: {}, exports: [] };
-const csv = (name, rows) => { if (!rows.length) return; const k = Object.keys(rows[0]); fs.writeFileSync(path.join(OUT, name), '﻿' + [k.join(','), ...rows.map(r => k.map(x => JSON.stringify(r[x] ?? '')).join(','))].join('\n')); };
+const csv = (name, rows) => { if (!rows.length) return; const k = [...new Set(rows.flatMap(r => Object.keys(r)))]; fs.writeFileSync(path.join(OUT, name), '﻿' + [k.join(','), ...rows.map(r => k.map(x => JSON.stringify(r[x] ?? '')).join(','))].join('\n')); };
 const log = (...a) => console.log(...a);
 
 async function newPage(b, opt = {}, nofilter = false) {
