@@ -9,12 +9,15 @@ const path = require('path');
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));
   await p.goto('file://' + path.resolve(__dirname, '../highlight/HighlightMaker.html'));
+  // 画面は「手順」ごとに切り替わるので、隠れている部品はプログラムから操作する
+  const pick = (sel, v) => p.evaluate(([sel, v]) => { const s = document.querySelector(sel); s.value = v; s.onchange(); }, [sel, v]);
+  const tap = sel => p.evaluate(sel => document.querySelector(sel).click(), sel);
   await p.click('#demoBtn');
   await p.waitForFunction(() => HM.S.clips.length === 10 && HM.S.tl && !HM.S.building, null, { timeout: 30000 });
   let fail = 0;
   const ids = await p.evaluate(() => HM.STYLES.map(s => s.id));
   for (const id of ids) {
-    await p.click(`.style[data-id="${id}"]`);
+    await tap(`.style[data-id="${id}"]`);
     await p.waitForFunction(id => HM.S.style === id && !HM.S.building, id);
     const r = await p.evaluate(() => {
       const tl = HM.S.tl;
@@ -28,12 +31,16 @@ const path = require('path');
     if (!ok) fail++;
     console.log(`${ok ? 'OK ' : 'NG '} ${id.padEnd(10)} カット${r.cuts} 素材${r.used}/10 ${r.total.toFixed(1)}秒 拍に合う:${r.onBeat}`);
   }
+  // オープニングタイトル：全パターンを描いてエラーが出ないこと
+  const tOk = await p.evaluate(() => { document.querySelector('#title').value = '夏の思い出'; document.querySelector('#subtitle').value = '2026.08'; let n = 0;
+    for (const ts of HM.TITLE_STYLES) { HM.S.titleStyle = ts.id; const D = ts.id === 'auto' ? 4 : HM.titleDuration(ts.id, HM.S.tl.per); for (let t = 0; t < D; t += .2) HM.drawFrame(t); n++; } HM.S.titleStyle = 'auto'; return n; });
+  console.log(`OK  タイトル ${tOk} パターン`);
   // 2分の長さ
-  await p.selectOption('#length', '120');
+  await pick('#length', '120');
   await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 120) < 1);
   console.log('OK  2分', await p.evaluate(() => HM.S.tl.segs.length), 'カット');
   // 書き出し（1分・実時間）
-  await p.selectOption('#length', '60');
+  await pick('#length', '60');
   await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 60) < 1);
   await p.click('#exportBtn');
   await p.waitForSelector('#dlLink', { timeout: 120000 });
@@ -43,7 +50,7 @@ const path = require('path');
   console.log(`${exOk ? 'OK ' : 'NG '} 書き出し ${ex && ex.name} ${ex && (ex.size / 1048576).toFixed(1)}MB`);
   // 全部消す（個人データが残らないこと）
   p.on('dialog', d => d.accept());
-  await p.click('#wipeBtn');
+  await tap('#wipeBtn');
   const left = await p.evaluate(() => ({ clips: HM.S.clips.length, music: !!HM.S.music, dl: !!document.querySelector('#dlLink'), vids: document.querySelectorAll('#hidden video').length, storage: localStorage.length + sessionStorage.length + document.cookie.length }));
   const wipeOk = !left.clips && !left.music && !left.dl && !left.vids && !left.storage;
   if (!wipeOk) fail++;
