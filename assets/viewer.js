@@ -251,7 +251,7 @@
           (stepPl >= 0
             ? '<button type="button" class="round-btn" data-pl="' + stepPl + '" title="動画を再生"><span>▶</span></button><span class="print-only">動画あり</span>' +
               (s.video.end != null && s.video.end !== "" ? '<small class="seg">' + segLabel(s.video) + '</small>' : '')
-            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">' + L(s.noVideo ? (s.image ? "写真で説明" : "文字で説明") : "動画なし") + '</small><span class="print-only">－</span>') +
+            : '<button type="button" class="round-btn off" data-pl="' + stepIdx + '" title="大きく表示（動画なし）"><span>⤢</span></button><small class="seg">' + L(s.image ? "写真で説明" : "文字で説明") + '</small><span class="print-only">－</span>') +
         '</td>' +
       '</tr>';
     });

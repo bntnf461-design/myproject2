@@ -150,7 +150,7 @@
     var nNo = inSel.filter(noVideo).length, nRev = inSel.filter(WI.needsReview).length;
     document.getElementById("quick").innerHTML =
       '<button type="button" class="chip toggle' + (flags.noVideo ? " on" : "") + '" data-flag="noVideo" aria-pressed="' + !!flags.noVideo + '">' +
-        (flags.noVideo ? "✓ " : "") + '動画がまだの手順がある<span class="n">' + nNo + '</span></button>' +
+        (flags.noVideo ? "✓ " : "") + '動画を足せる手順がある<span class="n">' + nNo + '</span></button>' +
       '<button type="button" class="chip toggle' + (flags.review ? " on" : "") + '" data-flag="review" aria-pressed="' + !!flags.review + '">' +
         (flags.review ? "✓ " : "") + '見直し時期（1 年以上 改訂なし）<span class="n">' + nRev + '</span></button>' +
       '<span style="flex:1"></span>' +
@@ -161,7 +161,7 @@
     var path = levels.filter(function (k) { return sel[k] !== undefined; }).map(function (k) {
       return '<b>' + esc(label(sel[k])) + '</b>';
     });
-    if (flags.noVideo) path.push("<b>動画がまだ</b>");
+    if (flags.noVideo) path.push("<b>動画を足せる</b>");
     if (flags.review) path.push("<b>見直し時期</b>");
     var filtered = path.length || qEl.value.trim();
     shown = list;
@@ -221,7 +221,7 @@
       '<div class="meta">' +
         (m.category && levels.indexOf("category") === -1 ? '<span class="tag">' + esc(m.category) + '</span> ' : '') +
         meta + '<br>' +
-        '手順 ' + steps + ' 件・動画 ' + (videos < steps ? '<b class="warn-text">' + videos + ' / ' + steps + '</b>' : videos + ' / ' + steps) +
+        '手順 ' + steps + ' 件' + (videos ? '・動画 ' + videos + ' / ' + steps : '') +
         (m.updated ? '・更新 ' + esc(m.updated) : '') +
       '</div></a></li>';
   }

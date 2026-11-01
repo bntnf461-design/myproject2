@@ -281,9 +281,9 @@
         '<div class="ez-kinds">' + ["safety", "quality"].map(function (k) {
           return '<label class="set-check"><input type="checkbox" data-kinds="' + i + '" value="' + k + '"' + ((s.kinds || []).indexOf(k) !== -1 ? " checked" : "") + '> ' + WI.kindBadge(k) + '</label>';
         }).join("") + '</div>' +
-        '<div class="ez-media"><b>この手順の見せ方</b>' +
+        '<div class="ez-media"><b>この手順の見せ方</b> <span class="hint">迷ったら「写真」か「文字だけ」で大丈夫。動画はあとからでも足せます</span>' +
           '<div class="ez-choice" role="radiogroup">' +
-            [["video", "🎬", "動画", "動きが大事な作業"], ["photo", "🖼", "写真", "場所・向き・見た目が大事"], ["none", "📝", "文字だけ", "見なくても分かる"]].map(function (c) {
+            [["video", "🎬", "動画", "動きが大事（あとから付けても OK）"], ["photo", "🖼", "写真", "場所・向き・見た目が大事"], ["none", "📝", "文字だけ", "見なくても分かる"]].map(function (c) {
               return '<button type="button" role="radio" aria-checked="' + (md === c[0]) + '" class="' + (md === c[0] ? "on" : "") + '" data-act="ez-media" data-i="' + i + '" data-v="' + c[0] + '">' +
                 '<span class="ic">' + c[1] + '</span><b>' + c[2] + '</b><small>' + c[3] + '</small></button>';
             }).join("") +
@@ -303,12 +303,13 @@
       h += '<section class="ez-page"><h2>③ 仕上げ</h2>' +
         '<ol class="ez-sum">' + m.steps.map(function (s, k) {
           var md2 = mediaOf(s);
-          var st = md2 === "video" ? (s.video.src ? '<span class="ok">🎬 動画あり</span>' : '<span class="warn-text">🎬 動画がまだ</span>') :
+          var st = md2 === "video" ? (s.video.src ? '<span class="ok">🎬 動画あり</span>' : '<span class="hint">🎬 動画はあとで（今は文字・写真で表示）</span>') :
             md2 === "photo" ? '<span class="ok">🖼 写真</span>' : '<span>📝 文字だけ</span>';
           return '<li><button type="button" class="linkish" data-act="ez-go" data-i="' + (k + 1) + '">' + esc(s.title || "（手順の名前がまだ）") + '</button>' + st + '</li>';
         }).join("") + '</ol>' +
-        (vs.all > vs.done ? '<div class="cut-banner"><div><b>動画がまだの手順が ' + (vs.all - vs.done) + ' つあります。</b><span class="hint">作業を最初から最後まで 1 本で撮った動画から、見ながら区切るだけで付けられます。</span></div>' +
-          '<button type="button" class="btn primary" data-act="cut">🎬 動画を手順に分ける</button></div>' : '<p class="ez-ok">✓ 動画が必要な手順には、すべて動画が付いています。</p>') +
+        '<p class="ez-ok">✓ このままで完成です。' + (vs.all > vs.done ? '動画の無い手順は、作業者の画面で写真（無ければ文字）が大きく出ます。' : '') + '</p>' +
+        (vs.all > vs.done ? '<div class="cut-banner later"><div><b>動画を足したいとき（あとからで OK）</b><span class="hint">動きが大事な手順だけで十分です。作業を 1 本で撮った動画から、見ながら区切るだけで付けられます。</span></div>' +
+          '<button type="button" class="btn" data-act="cut">🎬 動画を手順に分ける</button></div>' : '') +
         '<p>下の「<b>プレビュー</b>」で作業者の画面を確認して、「<b>フォルダに保存</b>」を押してください。</p>' +
       '</section>';
     }
@@ -356,8 +357,8 @@
 
     var revCh = WI.revChanges(m);
     h += '<section class="section"><h2>作業手順</h2>' +
-      '<div class="cut-banner"><div><b>動画は 1 本で撮るのがかんたんです。</b>' +
-      '<span class="hint">作業を最初から最後まで続けて撮り、見ながら手順の切れ目で「区切る」を押すだけで、全部の手順に動画が付きます。</span></div>' +
+      '<div class="cut-banner"><div><b>動画は無くても完成です。足すときは 1 本で撮るのがかんたんです。</b>' +
+      '<span class="hint">動きが大事な手順だけで十分です。作業を最初から最後まで続けて撮り、見ながら手順の切れ目で「区切る」を押すだけで、全部の手順に動画が付きます。</span></div>' +
       '<button type="button" class="btn primary" data-act="cut">🎬 動画を手順に分ける</button></div>';
     m.steps.forEach(function (s, i) {
       var b = "steps." + i;
@@ -386,7 +387,7 @@
           checkBox(s.image) + '</div>' +
         '<div class="field wide"><span>この手順の動画</span>' +
           '<label class="set-check novideo"><input type="checkbox" data-novideo="' + i + '"' + (s.noVideo ? " checked" : "") + '> この手順は動画を使わない（写真や文字の方が分かりやすい）</label>' +
-          (s.noVideo ? '<span class="hint">作業者の画面では、写真（無ければ文字）を大きく表示します。「動画がまだ」には数えません。</span>' : videoFields(b + ".video")) + '</div>' +
+          (s.noVideo ? '<span class="hint">作業者の画面では、写真（無ければ文字）を大きく表示します。「動画を足せる手順」には数えません。</span>' : videoFields(b + ".video")) + '</div>' +
       '</div>' +
       '<div class="sub-list"><b>' + esc(T.point) + '</b>';
       s.points.forEach(function (p, j) {
@@ -932,8 +933,7 @@
     var no = [];
     d.steps.forEach(function (s, i) { if (!s.noVideo && !(s.video && s.video.src)) no.push(i + 1); });
     if (!no.length) return "";
-    return '<br><span class="warn-text">動画がまだの手順：' + (no.length === d.steps.length ? "すべて" : no.join("、")) + '</span>' +
-      '<small>（手順の「選ぶ」から動画を付けられます。動画より写真や文字の方が分かりやすい手順は「この手順は動画を使わない」にチェックしてください）</small>';
+    return '<br><span class="hint">動画の無い手順：' + (no.length === d.steps.length ? "すべて" : no.join("、")) + '（このままで使えます。作業者の画面では写真か文字が大きく出ます。動画は、動きが大事な手順だけ「🎬 動画を手順に分ける」で、あとから足せます）</span>';
   }
 
   // 文書番号からファイル名を作る。無い場合は日時を付けて、他の要領書を上書きしないようにする

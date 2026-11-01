@@ -31,14 +31,16 @@
   // フォルダを取得
   // - 記憶しているフォルダが、いま開いている画面と同じフォルダなら、許可の確認だけ
   // - 違う（新しい版を別の場所に展開した・フォルダを移動した など）場合は、選び直してもらう
-  function getRoot() {
+  // opt.noGuide: 案内を先に画面に出してあるので、すぐフォルダ選択を開く（はじめての案内から）
+  function getRoot(opt) {
+    var noGuide = opt && opt.noGuide;
     return (rootDir ? Promise.resolve(rootDir) : remembered).then(function (d) {
-      if (!d) return pick();
+      if (!d) return pick(noGuide);
       return permit(d).then(function (ok) {
-        if (!ok) return pick();
+        if (!ok) return pick(noGuide);
         return samePage(d).then(function (same) {
           if (same === true) { matchesPage = true; return use(d); }
-          return pick();
+          return pick(noGuide);
         });
       });
     });
@@ -107,24 +109,52 @@
 
   // フォルダを選ぶ前に、どのフォルダを選べばよいかを画面に出す
   // （ボタンを押したときにフォルダ選択の画面を開く。ブラウザの決まりで、ボタン操作から開く必要がある）
+  function openPicker() {
+    var pf = pageFolder();
+    var opt = { id: "wi-root", mode: "readwrite" };
+    if (pf && pf.startIn) opt.startIn = pf.startIn;
+    return window.showDirectoryPicker(opt);
+  }
+
+  // フォルダを選ぶときに出るブラウザの画面を、絵で見せる（押すボタンに赤い丸）
+  function pictures() {
+    return '<div class="fg-pics" aria-hidden="true">' +
+      '<figure><div class="fg-win">' +
+          '<div class="fg-bar">フォルダーの選択</div>' +
+          '<div class="fg-files"><span>📁 assets</span><span>📁 images</span><span>📁 manuals</span><span>📁 videos</span><span>📄 index.html</span></div>' +
+          '<div class="fg-btns"><span class="fg-hit">フォルダーの選択</span><span>キャンセル</span></div>' +
+        '</div><figcaption>① index.html が見えるフォルダを開いて「<b>フォルダーの選択</b>」</figcaption></figure>' +
+      '<figure><div class="fg-win small">' +
+          '<div class="fg-q">このサイトに「…」内のファイルの<b>表示</b>を許可しますか？</div>' +
+          '<div class="fg-btns"><span class="fg-hit">ファイルを表示</span><span>キャンセル</span></div>' +
+          '<div class="fg-q">このサイトにファイルの<b>編集</b>を許可しますか？</div>' +
+          '<div class="fg-btns"><span class="fg-hit">ファイルを編集</span><span>キャンセル</span></div>' +
+        '</div><figcaption>② 確認が出たら「<b>ファイルを表示</b>」「<b>ファイルを編集</b>」（許可）を押す。キャンセルは押さない</figcaption></figure>' +
+    '</div>';
+  }
+
+  // どのフォルダを選べばよいか（場所の表示と手順）
+  function guideBody() {
+    var pf = pageFolder();
+    return '<p>次に開く画面で、<b>この画面のファイル（index.html・editor.html など）があるフォルダ</b>を選んでください。</p>' +
+      (pf ? '<div class="crumbs">' + pf.crumbs.map(function (c) { return '<span>' + WI.esc(c) + '</span>'; }).join('<i>＞</i>') + '</div>' +
+        '<p class="hint">場所：' + WI.esc(pf.full) + '</p>' : '') +
+      '<ol>' +
+        '<li>上のフォルダを順に開く（' + (pf && pf.crumbs.length ? '最後の「<b>' + WI.esc(pf.crumbs[pf.crumbs.length - 1]) + '</b>」を開いた状態' : 'index.html が見える状態') + '）</li>' +
+        '<li>「<b>フォルダーの選択</b>」を押す</li>' +
+        '<li>「ファイルの表示（編集）を許可しますか」と出たら、<b>許可</b>のボタン（「ファイルを表示」「ファイルを編集」）を押す</li>' +
+      '</ol>' + pictures() +
+      '<p class="hint">一度選ぶと覚えるので、次からはこの手順はいりません（ブラウザを開き直したときは、許可の確認だけ出ます）。</p>';
+  }
+
   function guide() {
     return new Promise(function (resolve, reject) {
-      var pf = pageFolder();
       var box = document.createElement("div");
       box.className = "folder-guide";
       box.setAttribute("role", "dialog");
       box.innerHTML =
         '<div class="folder-guide-box">' +
-          '<h2>保存先のフォルダを選びます</h2>' +
-          '<p>次に開く画面で、<b>この画面のファイル（index.html・editor.html など）があるフォルダ</b>を選んでください。</p>' +
-          (pf ? '<div class="crumbs">' + pf.crumbs.map(function (c) { return '<span>' + WI.esc(c) + '</span>'; }).join('<i>＞</i>') + '</div>' +
-            '<p class="hint">場所：' + WI.esc(pf.full) + '</p>' : '') +
-          '<ol>' +
-            '<li>上のフォルダを順に開く（' + (pf && pf.crumbs.length ? '最後の「<b>' + WI.esc(pf.crumbs[pf.crumbs.length - 1]) + '</b>」を開いた状態' : 'index.html が見える状態') + '）</li>' +
-            '<li>「<b>フォルダーの選択</b>」を押す</li>' +
-            '<li>「ファイルの編集を許可しますか」と出たら「<b>ファイルを編集</b>」（許可）を押す</li>' +
-          '</ol>' +
-          '<p class="hint">一度選ぶと覚えるので、次からはこの手順はいりません。</p>' +
+          '<h2>保存先のフォルダを選びます</h2>' + guideBody() +
           '<div class="actions"><button type="button" class="btn" data-g="cancel">やめる</button>' +
           '<button type="button" class="btn primary" data-g="ok">フォルダを選ぶ</button></div>' +
         '</div>';
@@ -136,9 +166,7 @@
         box.remove();
         if (g === "ok") {
           // ボタンを押した操作の中でフォルダ選択を開く
-          var opt = { id: "wi-root", mode: "readwrite" };
-          if (pf && pf.startIn) opt.startIn = pf.startIn;
-          resolve(window.showDirectoryPicker(opt));
+          resolve(openPicker());
         } else {
           var e = new Error("cancel");
           e.name = "AbortError";
@@ -148,8 +176,8 @@
     });
   }
 
-  function pick() {
-    return guide().then(findTemplateDir).then(function (dir) {
+  function pick(noGuide) {
+    return (noGuide ? openPicker() : guide()).then(findTemplateDir).then(function (dir) {
       return samePage(dir).then(function (same) {
         matchesPage = same;
         if (!same && !confirm("選んだフォルダ「" + dir.name + "」は、いま開いている画面とは別のフォルダのようです。\n" +
@@ -302,6 +330,8 @@
   window.WIFolder = {
     supported: supported,
     getRoot: getRoot,
+    guideBody: guideBody,
+    pictures: pictures,
     forget: forget,
     currentName: currentName,
     errorMessage: errorMessage,

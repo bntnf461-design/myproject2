@@ -63,7 +63,7 @@
     var pct = stepsAll ? Math.round(stepsDone / stepsAll * 100) : 0;
     document.getElementById("kpis").innerHTML =
       kpi("登録されている要領書", list.length, "件", (Object.keys(lines).length ? "ライン " + Object.keys(lines).length + " ／ " : "") + "工程 " + Object.keys(procs).length) +
-      kpi("動画がまだ付いていない", noVideo.length, "件", "手順の動画 " + stepsDone + " / " + stepsAll + "（" + pct + "%）", noVideo.length ? "warn" : "", pct, "noVideo") +
+      kpi("動画を足せる要領書", noVideo.length, "件", "手順の動画 " + stepsDone + " / " + stepsAll + "・なしでも OK", "", pct, "noVideo") +
       kpi("今月の改訂・新規", thisMonth.length, "件", thisMonth.length ? "最新：" + esc(latest(thisMonth).title) : "") +
       (errors ? kpi("読み込めない要領書", errors, "件", "ファイルを確認してください", "err")
         : kpi("見直し時期（1 年以上 改訂なし）", review.length, "件", review.length ? "押すと一覧で確認できます" : "すべて 1 年以内に見直し済み", review.length ? "err" : "", undefined, "review"));
@@ -76,7 +76,7 @@
         var p = v.all ? Math.round(v.done / v.all * 100) : 0;
         var d = Date.parse(m.updated || m.issued || "");
         var fresh = !isNaN(d) && (today - d) / 86400000 <= 30;
-        var chip = v.done < v.all ? '<span class="st warn">動画不足</span>' : fresh ? '<span class="st ok">' + (m.updated && m.updated !== m.issued ? "改訂" : "新規") + '</span>' : '';
+        var chip = fresh ? '<span class="st ok">' + (m.updated && m.updated !== m.issued ? "改訂" : "新規") + '</span>' : '';
         return '<tr><td><a href="manual.html?file=' + encodeURIComponent(m._file) + '"><small>' + esc(m.docNo) + '</small><br><b>' + esc(m.title) + '</b></a></td>' +
           '<td class="hide-sp">' + esc([m.line, m.process].filter(Boolean).join(" ／ ")) + '</td>' +
           '<td><span class="mini-bar"><i style="width:' + p + '%"></i></span> ' + v.done + '/' + v.all + '</td>' +
@@ -87,7 +87,8 @@
     // はじめての方へ：済んだところに ✓
     var imported = list.some(function (m) { return !/^sample-/.test(m._file); });
     mark("import", imported, imported ? "取り込み済み：" + list.length + " 件" : "");
-    mark("video", list.length && !noVideo.length, noVideo.length ? "あと " + noVideo.length + " 件" : "");
+    mark("view", imported, "");
+    mark("video", stepsDone > 0, stepsDone ? "動画のある手順：" + stepsDone + " / " + stepsAll : "");
   });
 
   function latest(arr) { return arr.slice().sort(function (a, b) { return String(b.updated).localeCompare(String(a.updated)); })[0]; }

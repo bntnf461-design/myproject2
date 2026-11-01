@@ -30,7 +30,7 @@
     <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 10c6-3 12-3 18 1v29c-6-4-12-4-18-1z M42 10c-6-3-12-3-18 1v29c6-4 12-4 18-1z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M20 20l8 5-8 5z" fill="currentColor"/></svg>
     <span class="txt">
       <span class="ttl">要領書を見る</span>
-      <span class="desc">ライン・製品・工程を選んで開きます。手順をタップすると動画が再生されます。</span>
+      <span class="desc">ライン・製品・工程を選んで開きます。手順をタップすると動画や写真が大きく出ます。</span>
     </span>
     <span class="go">開く ▶</span>
   </a>
@@ -61,12 +61,11 @@
     </section>
 
     <section class="panel">
-      <h2>はじめての方へ</h2>
+      <h2>はじめての方へ <button type="button" class="linkish" id="welcomeOpen">▶ はじめての案内</button></h2>
       <ol class="check" id="check">
-        <li data-c="import"><span class="n">1</span><span class="t"><a href="bulk.html"><b>Excel の要領書を取り込む</b></a><small>フォルダごと選んで「フォルダに保存」。様式は 1 度覚えさせれば次から自動</small></span></li>
-        <li data-c="shoot"><span class="n">2</span><span class="t"><a href="guide.html"><b>作業の動画を撮る</b></a><small>スマホは 1080p・互換性優先。PC は画面録画</small></span></li>
-        <li data-c="video"><span class="n">3</span><span class="t"><a href="list.html"><b>要領書に動画を付ける</b></a><small>要領書を開いて「編集」→「🎬 動画を手順に分ける」で、見ながら区切るだけ</small></span></li>
-        <li data-c="view"><span class="n">4</span><span class="t"><a href="list.html"><b>作業者が見る</b></a><small>「要領書を見る」→ 手順をタップ</small></span></li>
+        <li data-c="import"><span class="n">1</span><span class="t"><a href="bulk.html"><b>Excel の要領書を取り込む</b></a><small>フォルダごと選んで「フォルダに保存」。様式は 1 度覚えさせれば次から自動。<a href="editor.html">＋ 新しく作る</a> でも OK</small></span></li>
+        <li data-c="view"><span class="n">2</span><span class="t"><a href="list.html"><b>写真と文字だけで、作業者に見てもらう</b></a><small><b>動画が無くても完成です。</b>動画の無い手順は、写真か文字が大きく出ます</small></span></li>
+        <li data-c="video" class="later"><span class="n">3</span><span class="t"><a href="guide.html"><b>動きが大事な手順だけ、動画を足す</b><span class="tag-later">あとからで OK</span></a><small>作業を 1 本で撮り、「編集」→「🎬 動画を手順に分ける」で見ながら区切るだけ</small></span></li>
       </ol>
     </section>
   </div>
@@ -78,6 +77,8 @@
 <script src="manuals/catalog.js"></script>
 <script src="assets/shell.js"></script>
 <script src="assets/menu.js"></script>
+<script src="assets/folder.js"></script>
+<script src="assets/welcome.js"></script>
 <script src="assets/help.js"></script>
 </body>
 </html>
