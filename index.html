@@ -159,6 +159,18 @@
   td.flash-minus { animation: flashm .5s ease-out; }
   @keyframes flashm { 0% { background: #ff9c9c; } 100% { } }
 
+  /* ---- 途中変更 ---- */
+  #chgDlg { width: min(860px, 96vw); }
+  .chg-tbl td, .chg-tbl th { text-align: center; font-size: 17px !important; }
+  .chg-tbl td.it { text-align: left; }
+  .chg-tbl td:nth-child(4) { white-space: nowrap; }
+  .chg-tbl th:nth-child(1) { width: 8%; } .chg-tbl th:nth-child(2) { width: 30%; } .chg-tbl th:nth-child(5) { width: 12%; }
+  .chg-tbl tr.done td { color: #889; }
+  .dlg-body .chg-tbl select, .dlg-body .chg-tbl input { font: inherit; padding: 3px 6px; }
+  .dlg-body .chg-tbl input.chg-qty { width: 6.5em !important; text-align: right; }
+  .dlg-body .chg-tbl select.chg-pp { width: auto; min-width: 9em; }
+  td.item { cursor: pointer; }
+
   /* ---- はじめに・バージョン・エラー表示 ---- */
   #welcomeDlg { width: min(640px, 94vw); }
   .welcome ol { line-height: 1.9; padding-left: 1.4em; }
@@ -649,6 +661,11 @@
         <button data-clear="viewKey">なし</button>
         <span class="note">アンドン表示と「本日の計画」表示を切り替えます。</span>
       </div>
+      <div class="row-flex">
+        <span>途中変更キー：</span><button class="keybtn" data-key="editKey"></button>
+        <button data-clear="editKey">なし</button>
+        <span class="note">このキーの後にラインのキーを押すと、そのラインの作業人数・計画数量を変える画面が出ます（部品名を押しても出ます）。</span>
+      </div>
       </section>
       <section id="set-share"><h2>共有・データ</h2>
       <h3>事務所との共有</h3>
@@ -669,6 +686,22 @@
   <div class="dlg-foot">
     <button id="sCancel">キャンセル</button>
     <button id="sSave" class="primary">保存</button>
+  </div>
+</dialog>
+
+<dialog id="chgDlg">
+  <div class="dlg-head" id="chgTitle">途中変更</div>
+  <div class="dlg-body">
+    <p class="note">作業の途中で、作業人数や計画数量を変えられます。人数を変えると、<b>今から</b>その人数の時間で目標・終了時間を計算します（それまでの分は前の人数のまま）。</p>
+    <table class="chg-tbl">
+      <thead><tr><th>順番</th><th>部品</th><th>作業人数</th><th>計画数量</th><th>実績</th></tr></thead>
+      <tbody id="chgRows"></tbody>
+    </table>
+    <div class="carry-keys">テンキー：<kbd>8</kbd><kbd>2</kbd> で人数を選ぶ　／　<kbd>6</kbd><kbd>4</kbd> 次・前の欄へ　／　<kbd>Enter</kbd> 変更する　／　<kbd>Esc</kbd> やめる</div>
+  </div>
+  <div class="dlg-foot">
+    <button id="chgCancel">やめる</button>
+    <button id="chgOk" class="primary">変更する（Enter）</button>
   </div>
 </dialog>
 
@@ -837,6 +870,7 @@
     <table>
       <tr><th>作業開始・一時停止・再開</th><td><kbd>Enter</kbd>（押すたびに切り替わります。自動開始なら押さなくても始まります）</td></tr>
       <tr><th>1カートンできた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）<br>「1カートンの個数」を決めた部品は、1回で1カートン分（最後は残りの端数だけ）増えます。−1 も1カートン分（端数のカートンは端数だけ）戻ります。<br>実績は<b>計画数量まで</b>しか増えません。計画数量が小数（例：10.5）のときは、10 の次に押すと 10.5 になって完了します。<br>計画数量に達すると、次に押した分から<b>次の部品</b>を数えます。</td></tr>
+      <tr><th>途中で人数・数量を変える</th><td><kbd>.</kbd>（途中変更キー）を押してから、そのラインのキー。または画面の部品名を押します。<br>作業人数（人数ごとに時間を登録した部品）と計画数量を変えられます。人数を変えると、<b>変えた時点から</b>新しい人数の時間で目標・終了時間を計算します。<br>画面の中では テンキー 8・2 で人数を選び、6・4 で次・前の欄へ、<kbd>Enter</kbd> で変更します。</td></tr>
       <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー（最後に数えた部品から取り消します。端数で増えた分は端数だけ戻ります）。<br>ラインごとの「−1 キー」を決めてあれば、そのキーを1回押すだけです（複数の人が同時に押しても混ざりません）</td></tr>
       <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>.</kbd> で小数点、<kbd>−</kbd> で1文字消す）</td></tr>
       <tr><th>リセット</th><td><kbd>／</kbd> を3秒以内に2回</td></tr>
@@ -953,6 +987,7 @@
       resetKey: 'NumpadDivide',
       planKey: 'NumpadMultiply',
       viewKey: 'NumpadAdd',
+      editKey: 'NumpadDecimal',   // 途中変更（人数・計画数量）
       keyVer: 2,
       autoStart: false,
       startTime: '08:00',
@@ -1426,7 +1461,7 @@
   // 今の部品の目標は「前の部品が実際に終わった時刻」から数えるので、前の部品が遅れると後の部品も自動で後ろへずれる。
   function lineSchedule(l, now) {
     const base = started() ? st.segments[0].s : (st.startTime ? midnight(now) + parseHM(st.startTime) : null);
-    let prev = base, cur = -1, curTarget = null, curEnd = null, doneAt = null;
+    let prev = base, cur = -1, curTarget = null, curEnd = null, doneAt = null, curN = null;
     let dayPlan = 0, dayAct = 0, dayTarget = 0, totalMs = 0;
     l.queue.forEach((e, j) => {
       if (!(e.qty > 0)) return;
@@ -1439,7 +1474,10 @@
       } else if (cur < 0) {
         cur = j;
         if (started()) {
-          const n = workSince(prev ?? base, now) / ctMs;
+          // 途中で人数を変えたときは、変えた時点の目標（baseN）＋ 変えた後の時間 ÷ 新しい時間
+          const from = prev ?? base;
+          const n = e.chgAt && e.chgAt > from ? (e.baseN || 0) + workSince(e.chgAt, now) / ctMs : workSince(from, now) / ctMs;
+          curN = n;
           curTarget = n >= e.qty ? e.qty : Math.floor(n);
           curEnd = addWork(now, (e.qty - e.act) * ctMs);
           dayTarget += curTarget;
@@ -1453,7 +1491,7 @@
     });
     // 当初の計画どおりに進んだ場合の終了時刻（作業開始時刻から、遅れを含まない）
     const planEnd = totalMs > 0 && base !== null ? (started() ? planReachTime(totalMs, now) : addWork(base, totalMs)) : null;
-    return { cur, curTarget, curEnd, planEnd, lineEnd: cur >= 0 ? prev : null, doneAt: cur < 0 ? doneAt : null,
+    return { cur, curTarget, curN, curEnd, planEnd, lineEnd: cur >= 0 ? prev : null, doneAt: cur < 0 ? doneAt : null,
       dayPlan: round2(dayPlan), dayAct: round2(dayAct), dayTarget: round2(dayTarget), hasPlan: dayPlan > 0 };
   }
 
@@ -1655,6 +1693,7 @@
     if (st.startKey) parts.push(`${k(st.startKey)}開始/停止`);
     if (st.planKey) parts.push(`${k(st.planKey)}計画入力`);
     if (st.viewKey) parts.push(`${k(st.viewKey)}本日の計画`);
+    if (st.editKey) parts.push(`${k(st.editKey)}→ライン 途中変更`);
     if (st.resetKey) parts.push(`${k(st.resetKey)}×2 リセット`);
     $('keyLegend').innerHTML = '<span>テンキー：</span>' + parts.map(p => `<span>${p}</span>`).join('');
   }
@@ -1758,6 +1797,7 @@
         const o = old[j] && old[j].item === p.item ? old[j] : null;
         const act = o ? Math.min(o.act, p.qty) : 0;
         const e = Object.assign({ item: p.item, qty: p.qty, act, doneAt: null }, entryExtra(p));
+        if (o && o.chgAt && (o.people || null) === (e.people || null)) { e.chgAt = o.chgAt; e.baseN = o.baseN; }
         if (isDone(e)) e.doneAt = (o && o.doneAt) || Date.now();
         return e;
       });
@@ -1961,7 +2001,7 @@
   });
 
   // テンキー入力（複数ラインのキーを同時に受け付ける）
-  let minusArmed = false, minusTimer = null, resetArmed = false, resetTimer = null;
+  let minusArmed = false, minusTimer = null, resetArmed = false, resetTimer = null, editArmed = false, editTimer = null;
   function armMinus(on) {
     minusArmed = on;
     $('minusMode').style.display = on ? 'block' : 'none';
@@ -1987,6 +2027,13 @@
       return;
     }
     if (st.viewKey && code === st.viewKey) { e.preventDefault(); togglePlanView(); return; }
+    if (st.editKey && code === st.editKey && !planMode) {
+      e.preventDefault();
+      editArmed = !editArmed;
+      clearTimeout(editTimer);
+      if (editArmed) { banner('途中変更：ラインのキーを押してください'); editTimer = setTimeout(() => (editArmed = false), 4000); }
+      return;
+    }
     if (st.planKey && code === st.planKey && !planMode) {
       e.preventDefault();
       requireAdmin('planInput', () => {
@@ -1994,6 +2041,10 @@
         if (first) { first.focus(); first.select(); }
       });
       return;
+    }
+    if (editArmed) {
+      const li = st.lines.findIndex(l => l.key === code);
+      if (li >= 0) { e.preventDefault(); editArmed = false; clearTimeout(editTimer); requireAdmin('planInput', () => openChange(li)); return; }
     }
     const mi = st.lines.findIndex(l => l.minusKey === code);
     if (mi >= 0) { e.preventDefault(); count(mi, -1); return; }
@@ -2231,7 +2282,7 @@
     // 同じキーが他で使われていたら外す
     draft.lines.forEach(l => { if (l.key === code) l.key = null; if (l.minusKey === code) l.minusKey = null; });
     if (draft.minusKey === code) draft.minusKey = null;
-    for (const k of ['startKey', 'resetKey', 'planKey', 'viewKey']) if (draft[k] === code) draft[k] = null;
+    for (const k of ['startKey', 'resetKey', 'planKey', 'viewKey', 'editKey']) if (draft[k] === code) draft[k] = null;
     if (learning.line !== undefined) draft.lines[learning.line][learning.lk] = code;
     else draft[learning.key] = code;
     learning = null;
@@ -3703,6 +3754,93 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     if (clr) clr.onclick = () => { if (confirm('暗証番号をなくしますか？（保存すると、だれでも設定を変えられるようになります）')) { draft.adminPin = null; renderAdmin(); } };
   }
 
+  // ---------- 途中変更（作業人数・計画数量） ----------
+  let chgLine = -1;
+  function openChange(i) {
+    const l = st.lines[i];
+    if (!l || document.querySelector('dialog[open]')) return;
+    if (!l.queue.some(e => e.qty > 0)) { banner(`${l.name}：計画がありません。「📅 計画」で部品と数量を入れてください`); return; }
+    chgLine = i;
+    $('banner').style.display = 'none';   // 「ラインのキーを押してください」を消す
+    $('chgTitle').textContent = `✏ ${l.name} ライン　途中変更`;
+    const cur = currentIndex(l);
+    $('chgRows').innerHTML = l.queue.map((e, j) => {
+      if (!(e.qty > 0)) return '';
+      const it = itemOf(e.item);
+      const rs = it ? ratesOf(it) : [];
+      const done = isDone(e);
+      const pp = rs.length > 1
+        ? `<select class="chg-pp" data-j="${j}"${done ? ' disabled' : ''}>${rs.map(rt => `<option value="${rt.people || ''}"${rt.people === peopleOf(e) ? ' selected' : ''}>${esc(rateLabel(rt))}</option>`).join('')}</select>`
+        : esc(rs[0] && rs[0].people ? rateLabel(rs[0]) : '-');
+      return `<tr class="${done ? 'done' : ''}"><td>${j === cur ? '▶' : j + 1}</td><td class="it">${esc(itemName(e.item) || '部品未選択')}</td><td>${pp}</td>` +
+        `<td><input type="text" inputmode="decimal" class="chg-qty" data-j="${j}" value="${fmtNum(e.qty)}"${done ? ' disabled' : ''}> ${qtyUnit(e)}</td>` +
+        `<td>${fmtNum(e.act)}${done ? ' ✓' : ''}</td></tr>`;
+    }).join('');
+    $('chgDlg').showModal();
+    const first = $('chgRows').querySelector('select:not(:disabled), input:not(:disabled)');
+    if (first) first.focus();
+  }
+  function applyChange() {
+    const l = st.lines[chgLine];
+    $('chgDlg').close();
+    if (!l) return;
+    const now = Date.now();
+    const sch = lineSchedule(l, now);
+    let changed = false;
+    $('chgRows').querySelectorAll('.chg-pp:not(:disabled)').forEach(sel => {
+      const e = l.queue[+sel.dataset.j];
+      const np = sel.value ? Number(sel.value) : null;
+      if (!e || np === peopleOf(e)) return;
+      // 作業中の部品は、ここまでの目標を前の人数で確定してから人数を変える
+      if (+sel.dataset.j === sch.cur && started() && sch.curN !== null) { e.baseN = sch.curN; e.chgAt = now; }
+      if (np) e.people = np; else delete e.people;
+      changed = true;
+    });
+    $('chgRows').querySelectorAll('.chg-qty:not(:disabled)').forEach(inp => {
+      const e = l.queue[+inp.dataset.j];
+      const v = round2(Math.max(0, parseFloat(normText(inp.value).replace(/,/g, '')) || 0));
+      if (!e || v === e.qty || !(v > 0)) return;
+      e.qty = v;
+      if (e.act > v) e.act = v;
+      e.doneAt = isDone(e) ? (e.doneAt || now) : null;
+      changed = true;
+    });
+    if (!changed) return;
+    syncTodayCalendar();
+    save();
+    render();
+    if (planMode) renderPlanView();
+    banner(`${l.name}：変更しました`);
+  }
+  $('chgOk').onclick = applyChange;
+  $('chgCancel').onclick = () => $('chgDlg').close();
+  $('chgDlg').addEventListener('keydown', e => {
+    // テンキーの操作がアンドン画面に届かないよう止める
+    const t = e.target;
+    if (e.code === 'NumpadEnter' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); applyChange(); return; }
+    if (t.tagName === 'SELECT' && (e.code === 'Numpad8' || e.code === 'Numpad2')) {
+      // NumLock がオンでも 8・2 で人数を上下できるように
+      e.preventDefault();
+      t.selectedIndex = Math.max(0, Math.min(t.options.length - 1, t.selectedIndex + (e.code === 'Numpad8' ? -1 : 1)));
+      return;
+    }
+    if (t.tagName === 'SELECT' && (e.code === 'Numpad6' || e.code === 'Numpad4' || e.code === 'Tab')) {
+      // 次・前の入力欄へ
+      e.preventDefault();
+      const all = [...$('chgRows').querySelectorAll('select:not(:disabled), input:not(:disabled)')];
+      const k = all.indexOf(t) + (e.code === 'Numpad4' || e.shiftKey ? -1 : 1);
+      if (all[k]) all[k].focus();
+    }
+    e.stopPropagation();
+  });
+  // 部品名を押しても開く
+  rowsEl.addEventListener('click', e => {
+    const td = e.target.closest('td.item');
+    if (!td) return;
+    const i = [...rowsEl.children].indexOf(td.parentElement);
+    if (i >= 0 && i < st.lines.length) requireAdmin('planInput', () => openChange(i));
+  });
+
   // ---------- エラーの知らせ ----------
   let lastErrAt = 0;
   function showError(msg) {
@@ -3736,7 +3874,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   const isFresh = () => !st.welcomed && !st.items.length && st.lines.every(l => !l.queue.length) && !Object.keys(st.calendar).some(k => calendarDay(st.calendar, k).some(ln => ln.length));
 
   // ---------- 確認画面の ✕ ボタン（それぞれの「閉じる／キャンセル」と同じ動き）----------
-  for (const [dlgId, btnId] of [['dlg', 'sCancel'], ['calDlg', 'calCancel'], ['helpDlg', 'helpClose'], ['carryDlg', 'carryLater'], ['pinDlg', 'pinCancel'], ['histDlg', 'hClose'], ['welcomeDlg', 'wClose']]) {
+  for (const [dlgId, btnId] of [['dlg', 'sCancel'], ['calDlg', 'calCancel'], ['helpDlg', 'helpClose'], ['carryDlg', 'carryLater'], ['pinDlg', 'pinCancel'], ['histDlg', 'hClose'], ['welcomeDlg', 'wClose'], ['chgDlg', 'chgCancel']]) {
     const head = $(dlgId).querySelector('.dlg-head');
     const x = document.createElement('button');
     x.className = 'dlg-x';
