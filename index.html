@@ -397,6 +397,13 @@
   .dlg-body .lv-table input[type=number] { width: 6em; }
   .lv-table .lv-range { color: #556; font-size: 13px; margin-left: 6px; }
   .ct-in { display: flex; gap: 4px; align-items: center; }
+  .rate-row { display: flex; gap: 4px; align-items: center; margin-bottom: 3px; }
+  .rate-row .ppl { width: 4.2em !important; flex: 0 0 auto; text-align: right; }
+  .rate-row .ppl-u { flex: 0 0 auto; margin-right: 6px; }
+  .rate-row .ct-in { flex: 1 1 auto; }
+  .dlg-body .rate-row .rate-del { flex: 0 0 auto; width: 2.2em; padding: 2px 0; }
+  .dlg-body .rate-add { font-size: 0.9em; padding: 2px 10px; }
+  .dlg-body .cal-ent select.pp-sel { flex: 0 0 auto; width: auto; min-width: 7.5em; }
   .dlg-body .ct-in input[type=number] { flex: 1 1 auto; min-width: 4em; }
   .dlg-body .ct-in select { flex: 0 0 auto; width: auto; }
   .keybtn.learning { background: #ffeb7a !important; }
@@ -486,7 +493,7 @@
     <thead>
       <tr>
         <th>ライン<small>LINE</small></th>
-        <th>品目<small>Item / Next</small></th>
+        <th>部品名<small>Part / Next</small></th>
         <th>計画数量<small>Plan</small></th>
         <th>現時点目標<small>Target</small></th>
         <th>実績数量<small>Act</small></th>
@@ -533,7 +540,7 @@
   <div class="dlg-head">⚙ 設定</div>
   <div class="dlg-body set-layout">
     <nav class="set-nav" id="setNav">
-      <a href="#set-lines">ライン・品目</a>
+      <a href="#set-lines">ライン・部品</a>
       <a href="#set-time">時間・休憩</a>
       <a href="#set-view">表示・判定</a>
       <a href="#set-keys">操作キー</a>
@@ -541,7 +548,7 @@
       <a href="#set-admin">管理</a>
     </nav>
     <div class="set-main" id="setMain">
-      <section id="set-lines"><h2>ライン・品目</h2>
+      <section id="set-lines"><h2>ライン・部品</h2>
       <h3>ライン</h3>
       <div class="row-flex">
         <label>ライン数：
@@ -552,19 +559,19 @@
         </label>
       </div>
       <table>
-        <thead><tr><th>ライン名</th><th>品目なしの時の<br>1個あたりの時間</th><th>+1 キー</th><th>−1 キー<br><small>（なくても可）</small></th><th>色</th></tr></thead>
+        <thead><tr><th>ライン名</th><th>部品なしの時の<br>1カートンあたりの時間</th><th>+1 キー</th><th>−1 キー<br><small>（なくても可）</small></th><th>色</th></tr></thead>
         <tbody id="sLines"></tbody>
       </table>
       <p class="note">「+1 キー」「−1 キー」のボタンを押してから、割り当てたいキー（テンキー等）を押すと登録されます。「−1 キー」を決めると、そのキー1回でそのラインを −1 できます（ラインごとにテンキーを置くときにおすすめ。Delete キーで「なし」に戻せます）。</p>
 
-      <h3>品目の登録</h3>
-      <p class="note">品目ごとに「1個あたりの時間」を登録します。単位は 秒・分・時間 から選べます（例：2 と「時間」で 1個あたり2時間）。計画カレンダーで品目を呼び出して、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は品目の時間で計算します。</p>
-      <table>
-        <thead><tr><th>品目名</th><th>1個あたりの時間</th><th style="width:80px"></th></tr></thead>
+      <h3>部品の登録</h3>
+      <p class="note">部品ごとに「作業人数」と「1カートンあたりの時間」を登録します。人数によって時間が変わるときは「＋ 人数を追加」で人数ごとに登録します（例：2人で 60秒、3人で 45秒）。単位は 秒・分・時間 から選べます。計画カレンダーで部品と人数を選んで、ラインごとに作る順番を組みます。現時点目標・差異・進捗率・終了時間は、その人数の時間で計算します。</p>
+      <table class="item-tbl">
+        <thead><tr><th>部品名</th><th>作業人数と1カートンあたりの時間</th><th style="width:80px"></th></tr></thead>
         <tbody id="sItems"></tbody>
       </table>
-      <div class="row-flex"><button id="sAddItem">＋ 品目を追加</button>
-        <span class="note">品目は Excel の雛形（「品目」シート）からもまとめて登録できます。</span></div>
+      <div class="row-flex"><button id="sAddItem">＋ 部品を追加</button>
+        <span class="note">部品は Excel の雛形（「部品」シート）からもまとめて登録できます。</span></div>
 
       </section>
       <section id="set-time"><h2>時間・休憩</h2>
@@ -574,7 +581,7 @@
         <input type="time" id="sStartTime" style="width:auto">
         <label><input type="checkbox" id="sAutoStart"> この時刻に自動で作業開始する</label>
       </div>
-      <p class="note">作業開始前の終了時間は「作業開始時刻 ＋ 計画数量 × 1個あたりの時間 ＋ 休憩」で表示します。自動開始にすると、この時刻に自動で作業開始します。開始時刻より後に画面を開いた場合も、この時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
+      <p class="note">作業開始前の終了時間は「作業開始時刻 ＋ 計画数量 × 1カートンあたりの時間 ＋ 休憩」で表示します。自動開始にすると、この時刻に自動で作業開始します。開始時刻より後に画面を開いた場合も、この時刻から作業していたものとして計算します。手動で「作業開始」を押した日は自動開始しません。</p>
 
       <h3>休憩時間</h3>
       <table>
@@ -593,7 +600,7 @@
           <option value="none">持ち越さない</option>
         </select>
       </div>
-      <p class="note">「毎回確認する」では、翌日の画面に確認が出ます（テンキー Enter＝持ち越す、−＝持ち越さない）。持ち越した品目には「↻」と元の日付が付きます。休みの日をはさんだ場合は、次に計画のある日に持ち越せます。</p>
+      <p class="note">「毎回確認する」では、翌日の画面に確認が出ます（テンキー Enter＝持ち越す、−＝持ち越さない）。持ち越した部品には「↻」と元の日付が付きます。休みの日をはさんだ場合は、次に計画のある日に持ち越せます。</p>
 
       </section>
       <section id="set-view"><h2>表示・判定</h2>
@@ -616,7 +623,7 @@
       <p class="note">ボタンを押してから、割り当てたいキーを押すと登録されます。</p>
       <div class="row-flex">
         <span>取消（−1）キー：</span><button class="keybtn" data-key="minusKey"></button>
-        <span class="note">このキーの後にラインのキーを押すと、そのラインの実績が −1 されます。ラインごとの「−1 キー」（ライン・品目）を決めると、1回押すだけで取り消せます。</span>
+        <span class="note">このキーの後にラインのキーを押すと、そのラインの実績が −1 されます。ラインごとの「−1 キー」（ライン・部品）を決めると、1回押すだけで取り消せます。</span>
       </div>
       <div class="row-flex">
         <span>作業開始／一時停止キー：</span><button class="keybtn" data-key="startKey"></button>
@@ -646,7 +653,7 @@
         <button id="sExport">💾 データを書き出す（バックアップ）</button>
         <button id="sImportData">📂 データを読み込む</button>
         <input type="file" id="sDataFile" accept=".json" hidden>
-        <span class="note">計画・品目・実績・設定をまとめて1つのファイルに保存／復元します。</span>
+        <span class="note">計画・部品・実績・設定をまとめて1つのファイルに保存／復元します。</span>
       </div>
 
       </section>
@@ -666,9 +673,9 @@
   <div class="dlg-body welcome">
     <p>ライン進捗アンドンへようこそ。次の3つで使い始められます。</p>
     <ol>
-      <li><b>⚙ 設定</b>：ライン数・ライン名、品目と「1個あたりの時間」、作業開始時刻と休憩時間を入れます。</li>
-      <li><b>📅 計画</b>：今日（または先の日）の計画を、ラインごとに品目と数量で入れます。Excel からも取り込めます。</li>
-      <li><b>テンキー</b>：<kbd>Enter</kbd> で作業開始。1個できたらそのラインの番号（<kbd>1</kbd>＝A ラインなど）を押します。</li>
+      <li><b>⚙ 設定</b>：ライン数・ライン名、部品と「作業人数・1カートンあたりの時間」、作業開始時刻と休憩時間を入れます。</li>
+      <li><b>📅 計画</b>：今日（または先の日）の計画を、ラインごとに部品・作業人数・カートン数で入れます。Excel からも取り込めます。</li>
+      <li><b>テンキー</b>：<kbd>Enter</kbd> で作業開始。1カートンできたらそのラインの番号（<kbd>1</kbd>＝A ラインなど）を押します。</li>
     </ol>
     <p class="note">くわしくは画面右上の「？ 使い方」を見てください。事務所の PC と共有するには、現場PCで start-server.bat を起動します。</p>
     <label><input type="checkbox" id="wNoMore" checked> 次からこの案内を表示しない</label>
@@ -721,7 +728,7 @@
   <div class="dlg-body">
     <p class="carry-msg" id="carryMsg"></p>
     <table class="carry-tbl">
-      <thead><tr><th>ライン</th><th>品目</th><th>残り数量</th><th>持ち越す</th></tr></thead>
+      <thead><tr><th>ライン</th><th>部品</th><th>残り数量</th><th>持ち越す</th></tr></thead>
       <tbody id="carryRows"></tbody>
     </table>
     <div class="row-flex" style="font-size:16px">
@@ -750,7 +757,7 @@
     <div class="cal" id="calGrid"></div>
     <div class="cal-edit">
       <b id="calSelTitle"></b>
-      <span class="note">　ラインごとに作る順番に品目を並べます（品目は「⚙ 設定 → 品目の登録」で登録）。</span>
+      <span class="note">　ラインごとに作る順番に部品を並べます（部品は「⚙ 設定 → 部品の登録」で登録）。</span>
       <div class="lines" id="calLines"></div>
       <div class="row-flex">
         <button id="calCopyPrev">前日の計画をコピー</button>
@@ -778,22 +785,22 @@
   <div class="dlg-body help" id="helpBody">
     <h3>1. 画面の見かた</h3>
     <table>
-      <tr><th>品目</th><td>今作っている品目。下の小さい字は「何品目め／全品目数」「今の品目の終了見込み」「次の品目と数量」。<br>品目は1日に複数登録でき、上から順番に作ります。全部作り終えると「完了」になります。</td></tr>
-      <tr><th>計画数量</th><td>今の品目の計画数量（小数も可。例：10.5）。</td></tr>
-      <tr><th>現時点目標</th><td>今の品目で、今の時刻までに作り終えているべき数。<br>前の品目が<b>実際に終わった時刻</b>から数えます（休憩・一時停止中は増えません）。前の品目が遅れても、次の品目の目標は自動で後ろにずれます。</td></tr>
-      <tr><th>実績数量</th><td>今の品目でテンキーを押して数えた数。</td></tr>
+      <tr><th>部品</th><td>今作っている部品。下の小さい字は「何番めの部品か／部品の数」「今の部品の終了見込み」「次の部品と数量」。<br>部品は1日に複数登録でき、上から順番に作ります。全部作り終えると「完了」になります。</td></tr>
+      <tr><th>計画数量</th><td>今の部品の計画数量（カートン数。小数も可。例：10.5）。</td></tr>
+      <tr><th>現時点目標</th><td>今の部品で、今の時刻までに作り終えているべき数。<br>前の部品が<b>実際に終わった時刻</b>から数えます（休憩・一時停止中は増えません）。前の部品が遅れても、次の部品の目標は自動で後ろにずれます。</td></tr>
+      <tr><th>実績数量</th><td>今の部品でテンキーを押して数えたカートン数。部品名の後ろの「（3人）」は作業人数です。</td></tr>
       <tr><th>差異／進捗率</th><td>実績 − 現時点目標（不足は ▲）／ 実績 ÷ 現時点目標。</td></tr>
       <tr><th>状況</th><td>進捗率で色が変わります：<span class="lg-items" data-sep=" ／ "></span>（いちばん下の色は稼働中に点滅）。段階の数・区切りの %・色は「⚙ 設定 → 状況の判定」で変更できます。</td></tr>
-      <tr><th>終了時間</th><td>大きい数字：そのラインの全品目が終わる見込み時刻（休憩を含む）。<br>作業開始前は「作業開始時刻 ＋ 各品目の数量 × 1個あたりの時間」、開始後は今の遅れ・進みを含めて自動で更新します。<br>小さい「計画」：遅れがない場合の当初の終了時刻。</td></tr>
-      <tr><th>合計</th><td>全ライン・全品目の計画数量・現時点目標・実績の合計。</td></tr>
+      <tr><th>終了時間</th><td>大きい数字：そのラインの全部品が終わる見込み時刻（休憩を含む）。<br>作業開始前は「作業開始時刻 ＋ 各部品の数量 × 1カートンあたりの時間」、開始後は今の遅れ・進みを含めて自動で更新します。<br>小さい「計画」：遅れがない場合の当初の終了時刻。</td></tr>
+      <tr><th>合計</th><td>全ライン・全部品の計画数量・現時点目標・実績の合計。</td></tr>
     </table>
 
     <h3>1-2. 本日の計画（📋 本日）</h3>
     <ul>
       <li>「📋 本日」ボタン（またはテンキー <kbd>＋</kbd>）で、今日の計画を1画面で確認できます。もう一度押すとアンドン表示に戻ります。</li>
-      <li><b>タイムライン</b>：ラインごとに、品目を作る順番・開始〜終了時刻を帯で表示します。斜線は休憩、赤い縦線は現在時刻です。</li>
-      <li>稼働中は、完了した品目は灰色、作業中の品目は青い枠（青い部分が進み具合）で表示し、遅れた分だけ後ろの品目もずれます。帯の下の細い線は当初の計画です。</li>
-      <li><b>一覧表</b>：品目ごとの数量・1個あたりの時間・所要時間・開始／終了時刻・遅れを表示します。</li>
+      <li><b>タイムライン</b>：ラインごとに、部品を作る順番・開始〜終了時刻を帯で表示します。斜線は休憩、赤い縦線は現在時刻です。</li>
+      <li>稼働中は、完了した部品は灰色、作業中の部品は青い枠（青い部分が進み具合）で表示し、遅れた分だけ後ろの部品もずれます。帯の下の細い線は当初の計画です。</li>
+      <li><b>一覧表</b>：部品ごとの数量・1カートンあたりの時間・所要時間・開始／終了時刻・遅れを表示します。</li>
       <li>「◀ 前の日／次の日 ▶」で、カレンダーに入力した他の日の計画も確認できます。「🖨 印刷」で紙に印刷できます。</li>
       <li>事務所からは <b>http://現場PCの名前:8080/#plan</b> を開くと、最初からこの画面で表示されます。</li>
     </ul>
@@ -801,32 +808,32 @@
     <h3>2. 準備（最初に1回）</h3>
     <ol>
       <li>「⚙ 設定」でライン数（4ライン・5ラインなど）を選びます。</li>
-      <li>「品目の登録」で、品目名と「1個あたりの時間」を登録します。単位は 秒・分・時間 から選べます（Excel の「品目」シートからも登録できます）。</li>
+      <li>「部品の登録」で、部品名と「作業人数」「1カートンあたりの時間」を登録します。人数で時間が変わるときは「＋ 人数を追加」で人数ごとに登録します（例：2人 60秒・3人 45秒）。単位は 秒・分・時間 から選べます（Excel の「部品」シートからも登録できます）。</li>
       <li>作業開始時刻と休憩時間を入力します。毎日決まった時刻に始めるなら「自動で作業開始する」にチェックを入れます。</li>
       <li>必要に応じて、キーの割り当て・行の色・状況の色を変えて「保存」します。</li>
     </ol>
 
     <h3>3. 計画の入力</h3>
     <ul>
-      <li><b>カレンダーで入力</b>：「📅 計画」を押し、日付をクリック → ラインごとに「＋ 品目を追加」で品目を呼び出し、数量を入れます。作る順番は ▲▼ で並べ替えます。最後に「保存」。</li>
+      <li><b>カレンダーで入力</b>：「📅 計画」を押し、日付をクリック → ラインごとに「＋ 部品を追加」で部品を呼び出し、作業人数（人数ごとに時間を登録した部品のみ）とカートン数を入れます。作る順番は ▲▼ で並べ替えます。最後に「保存」。</li>
       <li>「前日の計画をコピー」「この計画を今月の平日すべてに入れる」でまとめて入力できます。</li>
-      <li><b>当日に数量だけ直す</b>：表の計画数量をクリックするか、テンキー <kbd>＊</kbd> → 数字（小数点は <kbd>.</kbd>）→ <kbd>Enter</kbd>。今の品目の数量が変わります。</li>
+      <li><b>当日に数量だけ直す</b>：表の計画数量をクリックするか、テンキー <kbd>＊</kbd> → 数字（小数点は <kbd>.</kbd>）→ <kbd>Enter</kbd>。今の部品の数量が変わります。</li>
     </ul>
 
     <h3>3-2. Excel から取り込む</h3>
     <ol>
-      <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・品目・日付が入った Excel ファイルができます）。</li>
-      <li>「品目」シートに品目名・1個あたりの時間・単位（秒／分／時間）を入力します。時間は Excel の時刻の形（例：0:01:30）でも入力できます。</li>
-      <li>「計画」シートに「日付・ライン・品目・計画数量」を1行ずつ入力します。同じ日・同じラインで複数の品目を作るときは、作る順番に行を並べます（行は挿入して増やせます。日付を省略すると上の行と同じ日）。</li>
+      <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・部品・日付が入った Excel ファイルができます）。</li>
+      <li>「部品」シートに部品名・作業人数・1カートンあたりの時間・単位（秒／分／時間）を入力します。人数で時間が変わる部品は、人数ごとに行を分けます。時間は Excel の時刻の形（例：0:01:30）でも入力できます。</li>
+      <li>「計画」シートに「日付・ライン・部品名・作業人数・計画数量（カートン）」を1行ずつ入力します（作業人数が空欄なら、その部品の最初の人数）。同じ日・同じラインで複数の部品を作るときは、作る順番に行を並べます（行は挿入して増やせます。日付を省略すると上の行と同じ日）。</li>
       <li>「📥 Excelから取り込み」でそのファイルを選び、内容を確認して「OK」→「保存」を押します。</li>
     </ol>
-    <p class="note">読み込めるのは .xlsx と .csv です。ファイルに入っている日の計画は、全ラインともファイルの内容に置き換わります。入力ミス（未登録の品目・数字以外・マイナスなど）がある行は取り込まず、行番号を表示します。前の形式（A列：日付、B列以降：ラインごとの数量）の雛形も取り込めます。</p>
+    <p class="note">読み込めるのは .xlsx と .csv です。ファイルに入っている日の計画は、全ラインともファイルの内容に置き換わります。入力ミス（未登録の部品・登録していない人数・数字以外・マイナスなど）がある行は取り込まず、行番号を表示します。前の形式（A列：日付、B列以降：ラインごとの数量）や、前の「品目」シートの雛形も取り込めます。</p>
 
     <h3>4. 毎日の操作（テンキー）</h3>
     <table>
       <tr><th>作業開始・一時停止・再開</th><td><kbd>Enter</kbd>（押すたびに切り替わります。自動開始なら押さなくても始まります）</td></tr>
-      <tr><th>1個できた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）<br>実績は<b>計画数量まで</b>しか増えません。計画数量が小数（例：10.5）のときは、10 の次に押すと 10.5 になって完了します。<br>計画数量に達すると、次に押した分から<b>次の品目</b>を数えます。</td></tr>
-      <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー（最後に数えた品目から取り消します。端数で増えた分は端数だけ戻ります）。<br>ラインごとの「−1 キー」を決めてあれば、そのキーを1回押すだけです（複数の人が同時に押しても混ざりません）</td></tr>
+      <tr><th>1カートンできた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）<br>実績は<b>計画数量まで</b>しか増えません。計画数量が小数（例：10.5）のときは、10 の次に押すと 10.5 になって完了します。<br>計画数量に達すると、次に押した分から<b>次の部品</b>を数えます。</td></tr>
+      <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー（最後に数えた部品から取り消します。端数で増えた分は端数だけ戻ります）。<br>ラインごとの「−1 キー」を決めてあれば、そのキーを1回押すだけです（複数の人が同時に押しても混ざりません）</td></tr>
       <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>.</kbd> で小数点、<kbd>−</kbd> で1文字消す）</td></tr>
       <tr><th>リセット</th><td><kbd>／</kbd> を3秒以内に2回</td></tr>
       <tr><th>本日の計画を表示</th><td><kbd>＋</kbd>（もう一度押すとアンドン表示に戻る）</td></tr>
@@ -841,16 +848,16 @@
 
     <h3>5-2. 前日の残りの持ち越し</h3>
     <ul>
-      <li>24時を過ぎたとき、前日に終わらなかった品目の残り（計画 − 実績）があると、翌日の画面に「↻ 前日の生産の残り」の確認が出ます。</li>
-      <li>テンキー <kbd>Enter</kbd> で持ち越し、<kbd>−</kbd> で持ち越しません。品目ごとにチェックを外したり、「本日の計画の前（先に作る）／後」を選んだりもできます。</li>
-      <li>持ち越した品目には <span class="carry-mark">↻</span> と「10/30の残り」のような元の日付が付きます。すでに数え始めた品目があるラインでは、その品目の後ろに入ります。</li>
+      <li>24時を過ぎたとき、前日に終わらなかった部品の残り（計画 − 実績）があると、翌日の画面に「↻ 前日の生産の残り」の確認が出ます。</li>
+      <li>テンキー <kbd>Enter</kbd> で持ち越し、<kbd>−</kbd> で持ち越しません。部品ごとにチェックを外したり、「本日の計画の前（先に作る）／後」を選んだりもできます。</li>
+      <li>持ち越した部品には <span class="carry-mark">↻</span> と「10/30の残り」のような元の日付が付きます。すでに数え始めた部品があるラインでは、その部品の後ろに入ります。</li>
       <li>「あとで決める（Esc）」や「持ち越さない」を選んだあとでも、「📋 本日」の「↻ 前日の残りを持ち越す」から持ち越せます。</li>
       <li>休みの日をはさんだ場合も、残りはまとめて次の日に持ち越せます。</li>
       <li>「⚙ 設定 → 前日の残りの持ち越し」で「毎回確認する／自動で持ち越す／持ち越さない」を選べます。</li>
     </ul>
 
     <h3>6. 事務所との共有（社内LAN）</h3>
-    <p>現場PCを「サーバー役」にすると、事務所などの PC のブラウザから同じ画面を開いて、見たり変更したりできます（計画・品目・設定・実績の修正・作業開始など、現場と同じ操作ができます）。変更は約2秒で全部の画面に反映されます。</p>
+    <p>現場PCを「サーバー役」にすると、事務所などの PC のブラウザから同じ画面を開いて、見たり変更したりできます（計画・部品・設定・実績の修正・作業開始など、現場と同じ操作ができます）。変更は約2秒で全部の画面に反映されます。</p>
     <ol>
       <li><b>現場PC（最初に1回）</b>：アンドンのフォルダー（index.html・andon-server.ps1 と .bat ファイル）を現場PCに置きます。</li>
       <li><b>setup-firewall.bat</b> を右クリック →「管理者として実行」（事務所からつなげるようにする設定。最初に1回だけ）。会社のルールで実行できない場合は、システム担当者に「TCP 8080番の受信許可」を依頼してください。</li>
@@ -875,7 +882,7 @@
     <h3>6-2. 実績の履歴・日報（📊 実績）</h3>
     <ul>
       <li>24時に日付が変わるとき、その日の計画・実績・完了時刻・作業開始・最終入力を自動で記録します（1年分）。</li>
-      <li>「📊 実績」で期間を選ぶと、日別の集計と、ライン・品目ごとの明細を表示します。今日の分は途中の状態です。</li>
+      <li>「📊 実績」で期間を選ぶと、日別の集計と、ライン・部品ごとの明細を表示します。今日の分は途中の状態です。</li>
       <li>「📥 Excel に書き出す」で「日別」「明細」の2シートの Excel ファイル、「🖨 印刷」で日報を印刷できます。</li>
       <li>実稼働時間は「作業開始〜最後に実績を入力した時刻」（休憩・一時停止を除く）です。</li>
     </ul>
@@ -890,7 +897,7 @@
 
     <h3>7. 困ったとき</h3>
     <ul>
-      <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。計画数量に達した品目は、それ以上数えません。</li>
+      <li><b>テンキーを押しても数えない</b>：画面下にオレンジ色の帯が出ていたら、画面をクリックしてください。作業開始前は数えません（「作業開始」を押してください）。計画数量に達した部品は、それ以上数えません。</li>
       <li><b>画面がはみ出す</b>：「⛶ 全画面」を押すか F11 キーで全画面にしてください。文字の大きさは自動で調整されます。</li>
       <li><b>画面の下に赤いお知らせが出た</b>：画面を読み込み直してください（F5 キー）。データは保存されています。「保存できませんでした」と出たときは、「⚙ 設定 → 💾 データを書き出す」でバックアップを取ってください。</li>
       <li><b>暗証番号を忘れた</b>：共有サーバーで使っている場合は、現場PCの andon-data.json の "adminPin" を null に書き換えてから、サーバーを起動し直してください。</li>
@@ -924,8 +931,8 @@
   const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // ---------- 状態 ----------
-  // queue：その日にこのラインで作る品目の順番 [{ item: 品目ID|null, qty: 計画数量, act: 実績, doneAt: 完了時刻 }]
-  // ct：品目を指定しないときの 1個あたりの時間（秒）
+  // queue：その日にこのラインで作る部品の順番 [{ item: 部品ID|null, people: 作業人数（なければ部品の最初の人数）, qty: 計画数量（カートン）, act: 実績, doneAt: 完了時刻 }]
+  // ct：部品を指定しないときの 1カートンあたりの時間（秒）
   function defaultLine(i) {
     return { name: String.fromCharCode(65 + i), ct: 60, key: DEFAULT_KEYS[i], color: PALETTE[i], queue: [] };
   }
@@ -958,7 +965,7 @@
       adminLock: { calendar: true, reset: true, planInput: false, minutes: 10 },   // 暗証番号で守る操作・解除が続く分数
       segments: [],        // 稼働区間 [{s, e}]（e=null は稼働中）
       calendar: {},        // 日別の計画 { 'YYYY-MM-DD': [ライン順に [{ item, qty }, ...]] }
-      items: [],           // 品目マスタ [{ id, name, ct, unit }]（ct は 1個あたりの時間・秒、unit は表示の単位 s/m/h）
+      items: [],           // 部品マスタ [{ id, name, rates: [{ people: 作業人数|null, ct: 1カートンあたりの時間・秒, unit: 表示の単位 s/m/h }], ct, unit }]（ct・unit は rates の最初と同じ）
       itemSeq: 0,
       day: null,           // 表示中データの日付
       carryMode: 'ask',    // 前日の残り：ask=毎回確認 / auto=自動で持ち越す / none=持ち越さない
@@ -984,7 +991,7 @@
     } catch (e) { /* 保存領域が使えなくても動作させる */ }
     return defaultState();
   }
-  // 旧バージョン（ライン1品目・整数の計画）の保存データを品目キューの形に変換する
+  // 旧バージョン（ライン1部品・整数の計画）の保存データを部品キューの形に変換する
   function migrate(s) {
     s.lines.forEach(l => {
       if (!Array.isArray(l.queue)) {
@@ -996,6 +1003,15 @@
     for (const [k, day] of Object.entries(s.calendar || {})) {
       s.calendar[k] = (day || []).map(v => Array.isArray(v) ? v : (Number(v) > 0 ? [{ item: null, qty: Number(v) }] : []));
     }
+    // 部品の時間は「人数ごとの1カートンあたりの時間」の一覧で持つ（以前の部品は人数の指定なしの1行にする）
+    // （起動直後に呼ばれるので、後で定義する unitOf は使わない）
+    const unit = u => (['s', 'm', 'h'].includes(u) ? u : 's');
+    (s.items || []).forEach(it => {
+      if (!Array.isArray(it.rates) || !it.rates.length) it.rates = [{ people: null, ct: Number(it.ct) || 60, unit: unit(it.unit) }];
+      it.rates.forEach(rt => { rt.people = Number(rt.people) > 0 ? Math.round(Number(rt.people)) : null; rt.ct = Number(rt.ct) || 0; rt.unit = unit(rt.unit); });
+      it.ct = it.rates[0].ct;
+      it.unit = it.rates[0].unit;
+    });
   }
   let saveWarned = false;
   function save() {
@@ -1058,7 +1074,7 @@
     }
     if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)) {
       if (local.length === base.length && remote.length === base.length) return local.map((v, i) => merge3(base[i], v, remote[i], key));
-      // 片方だけが要素を増減した（品目の追加・削除など）：増減した側の並びを使い、もう片方の変更（実績など）は同じ品目の位置に合わせる
+      // 片方だけが要素を増減した（部品の追加・削除など）：増減した側の並びを使い、もう片方の変更（実績など）は同じ部品の位置に合わせる
       const sameId = (x, y) => !(isObj(x) && isObj(y) && 'item' in x && 'item' in y) || x.item === y.item;
       const overlay = (shape, other, otherIsLocal) => shape.map((v, i) =>
         i < base.length && i < other.length && sameId(base[i], v) && sameId(base[i], other[i])
@@ -1304,11 +1320,11 @@
       .concat(lv.length ? [`${fmtNum(lv[lv.length - 1].min)}%未満`] : ['すべて']);
   }
 
-  // 持ち越した品目の表示（例：10/26の残り）
+  // 持ち越した部品の表示（例：10/26の残り）
   const carryLabel = k => { const [, m, d] = String(k).split('-').map(Number); return m ? `${m}/${d}の残り` : '前日の残り'; };
 
   // ---------- 時間の単位 ----------
-  // 1個あたりの時間は内部では秒で持ち、入力・表示だけ 秒／分／時間 を切り替える
+  // 1カートンあたりの時間は内部では秒で持ち、入力・表示だけ 秒／分／時間 を切り替える
   const UNITS = { s: { label: '秒', sec: 1 }, m: { label: '分', sec: 60 }, h: { label: '時間', sec: 3600 } };
   const unitOf = u => (UNITS[u] ? u : 's');
   const ctValue = (ct, u) => Math.round((Number(ct) || 0) / UNITS[unitOf(u)].sec * 10000) / 10000;
@@ -1324,11 +1340,30 @@
     if (/^(秒|s|sec|secs|second|seconds)$/.test(t)) return 's';
     return undefined;
   }
-  // 品目（なければライン）の時間の表示
+  // 部品（なければライン）の時間の表示
   function ctText(e, l) {
     const it = itemOf(e.item);
-    return it ? fmtCt(it.ct, it.unit) : fmtCt(l.ct, l.ctUnit);
+    if (!it) return fmtCt(l.ct, l.ctUnit);
+    const rt = rateOf(it, e.people);
+    return fmtCt(rt.ct, rt.unit);
   }
+  // 部品の「人数ごとの1カートンあたりの時間」。人数の指定がない・登録にない人数のときは一覧の最初を使う
+  const ratesOf = it => (it.rates && it.rates.length ? it.rates : [{ people: null, ct: it.ct, unit: unitOf(it.unit) }]);
+  const rateOf = (it, people) => { const rs = ratesOf(it); return rs.find(rt => rt.people === people) || rs[0]; };
+  const rateLabel = rt => (rt.people ? `${rt.people}人：${fmtCt(rt.ct, rt.unit)}` : fmtCt(rt.ct, rt.unit));
+  // 計画の行で実際に使う人数（部品なし・人数の指定がない部品は null）
+  function peopleOf(e) {
+    const it = itemOf(e.item);
+    return it ? rateOf(it, e.people).people : null;
+  }
+  // 部品名の表示（人数があれば「部品名（3人）」）
+  function entryName(e) {
+    const n = itemName(e.item) || '部品なし';
+    const pp = peopleOf(e);
+    return pp ? `${n}（${pp}人）` : n;
+  }
+  // 計画の行の、部品・数量以外の情報（人数・持ち越し元）
+  const entryExtra = e => Object.assign({}, Number(e.people) > 0 ? { people: Math.round(Number(e.people)) } : {}, e.carry ? { carry: e.carry } : {});
   // 設定画面の「数字＋単位」入力欄。obj[ctKey] を秒で、obj[unitKey] を単位で更新する
   function ctInput(obj, ctKey, unitKey) {
     const box = document.createElement('div');
@@ -1344,26 +1379,37 @@
     return box;
   }
 
-  // ---------- 品目 ----------
+  // ---------- 部品 ----------
   const round2 = n => Math.round(n * 100) / 100;
   const fmtNum = n => String(round2(n));
   const itemOf = id => (id ? st.items.find(it => it.id === id) || null : null);
   function itemName(id) {
     if (!id) return '';
     const it = itemOf(id);
-    return it ? it.name : '（削除された品目）';
+    return it ? it.name : '（削除された部品）';
   }
-  // 1個あたりの時間（秒）。品目の設定がなければラインの値を使う
+  // 人数ごとの時間の一覧の入力ミス。なければ ''
+  function ratesError(rates) {
+    if (!rates.length) return '作業人数と時間を1つ以上登録してください';
+    if (rates.some(rt => rt.people !== null && !(Number.isInteger(rt.people) && rt.people >= 1 && rt.people <= 999))) return '作業人数は 1 以上の整数で入力してください';
+    if (rates.length > 1 && rates.some(rt => rt.people === null)) return '人数ごとに時間を登録するときは、すべての行に作業人数を入力してください';
+    const pp = rates.map(rt => rt.people);
+    const d = pp.find((v, i) => pp.indexOf(v) !== i);
+    if (d !== undefined) return `作業人数「${d}人」が重複しています`;
+    if (rates.some(rt => !(rt.ct > 0))) return '1カートンあたりの時間は 0 より大きい数で入力してください';
+    return '';
+  }
+  // 1カートンあたりの時間（秒）。部品は人数ごとの時間、部品の設定がなければラインの値を使う
   function ctOf(e, l) {
     const it = itemOf(e.item);
-    return Math.max(0.1, Number(it ? it.ct : l.ct) || 1);
+    return Math.max(0.1, Number(it ? rateOf(it, e.people).ct : l.ct) || 1);
   }
   const isDone = e => e.qty > 0 && e.act >= e.qty - 1e-9;
   const currentIndex = l => l.queue.findIndex(e => e.qty > 0 && !isDone(e));
   const nextIndex = (l, from) => l.queue.findIndex((e, j) => j > from && e.qty > 0 && !isDone(e));
 
-  // ラインの品目を順番に並べた予定を計算する。
-  // 今の品目の目標は「前の品目が実際に終わった時刻」から数えるので、前の品目が遅れると後の品目も自動で後ろへずれる。
+  // ラインの部品を順番に並べた予定を計算する。
+  // 今の部品の目標は「前の部品が実際に終わった時刻」から数えるので、前の部品が遅れると後の部品も自動で後ろへずれる。
   function lineSchedule(l, now) {
     const base = started() ? st.segments[0].s : (st.startTime ? midnight(now) + parseHM(st.startTime) : null);
     let prev = base, cur = -1, curTarget = null, curEnd = null, doneAt = null;
@@ -1517,23 +1563,25 @@
       const itemCell = tr.children[1];
       let endText, endSub = '';
       if (sc.cur >= 0) {
-        // 作業中の品目を表示
+        // 作業中の部品を表示
         const e = l.queue[sc.cur];
         const nx = nextIndex(l, sc.cur);
         const pos = l.queue.filter(x => x.qty > 0).indexOf(e) + 1;
         const total = l.queue.filter(x => x.qty > 0).length;
-        const info = (e.carry ? `${carryLabel(e.carry)}　` : '') + (total > 1 ? `${pos}/${total}品目` : '') + (nx >= 0 && sc.curEnd ? `　〜${fmtEnd(sc.curEnd)}` : '');
-        const nextText = `次：${nx >= 0 ? (l.queue[nx].carry ? '↻' : '') + esc(itemName(l.queue[nx].item) || '品目なし') + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
-        itemCell.innerHTML = `<div class="it-cur">${e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(itemName(e.item) || '品目なし')}</div>` +
+        // 作業人数は部品名の下に出す（部品名を大きく見せるため）
+        const pp = peopleOf(e);
+        const info = [e.carry ? carryLabel(e.carry) : '', pp ? `👥${pp}人` : '', total > 1 ? `${pos}/${total}番め` : '', nx >= 0 && sc.curEnd ? `〜${fmtEnd(sc.curEnd)}` : ''].filter(Boolean).join('　');
+        const nextText = `次：${nx >= 0 ? (l.queue[nx].carry ? '↻' : '') + esc(entryName(l.queue[nx])) + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
+        itemCell.innerHTML = `<div class="it-cur">${e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(itemName(e.item) || '部品なし')}</div>` +
           (info ? `<div class="it-next">${info}</div>` : '') + `<div class="it-next">${nextText}</div>`;
-        itemCell.title = l.queue.filter(x => x.qty > 0).map((x, k) => `${k + 1}. ${itemName(x.item) || '品目なし'} ${fmtNum(x.act)}/${fmtNum(x.qty)}`).join('\n');
+        itemCell.title = l.queue.filter(x => x.qty > 0).map((x, k) => `${k + 1}. ${entryName(x)} ${fmtNum(x.act)}/${fmtNum(x.qty)}`).join('\n');
         if (document.activeElement !== inp) inp.value = fmtNum(e.qty);
         setCells(tr, { target: started() ? sc.curTarget : null, act: e.act }, '', '');
         endText = sc.lineEnd ? fmtEnd(sc.lineEnd) : '-';
         if (started() && sc.planEnd) endSub = '計画 ' + fmtEnd(sc.planEnd);
         allDone = false;
       } else if (sc.hasPlan) {
-        // 全品目完了
+        // 全部品完了
         itemCell.innerHTML = `<div class="it-cur">完了</div><div class="it-next">次：なし</div>`;
         if (document.activeElement !== inp) inp.value = fmtNum(l.queue.filter(x => x.qty > 0).slice(-1)[0].qty);
         setCells(tr, { target: started() ? sc.dayTarget : null, act: sc.dayAct }, '', '');
@@ -1619,8 +1667,8 @@
     bannerTimer = setTimeout(() => (b.style.display = 'none'), 1800);
   }
 
-  // 実績を数える。+1 は今の品目の計画数量まで（小数の計画なら端数分だけ増える）。
-  // 品目が計画数量に達したら完了とし、次に押すと次の品目を数える。
+  // 実績を数える。+1 は今の部品の計画数量まで（小数の計画なら端数分だけ増える）。
+  // 部品が計画数量に達したら完了とし、次に押すと次の部品を数える。
   function count(i, delta) {
     const l = st.lines[i];
     if (!l) return;
@@ -1630,17 +1678,17 @@
     st.lastCountAt = now;
     if (delta > 0) {
       const j = currentIndex(l);
-      if (j < 0) { banner(l.queue.some(e => e.qty > 0) ? `${l.name}：全品目完了（計画数量に達しています）` : `${l.name}：計画がありません`); return; }
+      if (j < 0) { banner(l.queue.some(e => e.qty > 0) ? `${l.name}：全部品完了（計画数量に達しています）` : `${l.name}：計画がありません`); return; }
       const e = l.queue[j];
       e.act = round2(e.act + Math.min(1, e.qty - e.act));
       if (isDone(e)) {
         e.doneAt = now;
         const nx = nextIndex(l, j);
-        msg = `${l.name}：${itemName(e.item) || '品目'} 完了 → ` +
-          (nx >= 0 ? `次 ${itemName(l.queue[nx].item) || '品目なし'} ${fmtNum(l.queue[nx].qty)}` : '全品目完了');
+        msg = `${l.name}：${e.item ? entryName(e) : '部品'} 完了 → ` +
+          (nx >= 0 ? `次 ${entryName(l.queue[nx])} ${fmtNum(l.queue[nx].qty)}` : '全部品完了');
       }
     } else {
-      // 最後に数えた品目から取り消す（端数で増えた分は端数だけ戻す）
+      // 最後に数えた部品から取り消す（端数で増えた分は端数だけ戻す）
       let j = -1;
       l.queue.forEach((e, k) => { if (e.act > 0) j = k; });
       if (j < 0) return;
@@ -1675,22 +1723,21 @@
   function calendarDay(cal, key, keepEmpty) {
     const day = cal[key] || [];
     return st.lines.map((_, i) => (day[i] || []).filter(e => e && (keepEmpty || e.qty > 0))
-      .map(e => Object.assign({ item: e.item || null, qty: round2(Number(e.qty) || 0) }, e.carry ? { carry: e.carry } : {})));
+      .map(e => Object.assign({ item: e.item || null, qty: round2(Number(e.qty) || 0) }, entryExtra(e))));
   }
   // 画面の計画を今日のカレンダーへ書き込む
   function syncTodayCalendar() {
     st.calendar[dateKey(Date.now())] = st.lines.map(l => l.queue.filter(e => e.qty > 0)
-      .map(e => Object.assign({ item: e.item, qty: e.qty }, e.carry ? { carry: e.carry } : {})));
+      .map(e => Object.assign({ item: e.item, qty: e.qty }, entryExtra(e))));
   }
-  // 計画を画面に反映する。同じ順番・同じ品目の実績は引き継ぐ
+  // 計画を画面に反映する。同じ順番・同じ部品の実績は引き継ぐ
   function applyPlans(day) {
     st.lines.forEach((l, i) => {
       const old = l.queue;
       l.queue = day[i].map((p, j) => {
         const o = old[j] && old[j].item === p.item ? old[j] : null;
         const act = o ? Math.min(o.act, p.qty) : 0;
-        const e = { item: p.item, qty: p.qty, act, doneAt: null };
-        if (p.carry) e.carry = p.carry;
+        const e = Object.assign({ item: p.item, qty: p.qty, act, doneAt: null }, entryExtra(p));
         if (isDone(e)) e.doneAt = (o && o.doneAt) || Date.now();
         return e;
       });
@@ -1714,7 +1761,7 @@
       if (rec) st.history[st.day] = rec;
       // 終わらなかった分（計画 − 実績）を前日の残りとして取っておく。まだ決めていない残りがあれば合わせる
       const left = st.lines.map(l => l.queue.filter(e => e.qty > 0 && !isDone(e))
-        .map(e => ({ item: e.item, qty: round2(e.qty - e.act), carry: e.carry || st.day })));
+        .map(e => Object.assign({ item: e.item, qty: round2(e.qty - e.act) }, entryExtra(e), { carry: e.carry || st.day })));
       const pending = st.carry && !st.carry.decided ? st.carry : null;
       if (pending) pending.lines.forEach((ln, i) => { if (left[i]) left[i] = [...ln, ...left[i]]; });
       st.segments = [];
@@ -1793,15 +1840,15 @@
     const b = e.target.closest('button[data-d]');
     if (b) { b.blur(); count(+b.dataset.i, +b.dataset.d); }
   });
-  // 表の計画数量の入力で変更する品目（今の品目。全部完了なら最後の品目。計画がなければ -1）
+  // 表の計画数量の入力で変更する部品（今の部品。全部完了なら最後の部品。計画がなければ -1）
   function planTargetIndex(l) {
     const j = currentIndex(l);
     if (j >= 0) return j;
     const list = l.queue.map((e, k) => (e.qty > 0 ? k : -1)).filter(k => k >= 0);
     return list.length ? list[list.length - 1] : -1;
   }
-  // 表の計画数量の入力：確定（Enter・他の欄へ移動）したときに、入力を始めた時点の品目の計画数量を変更する
-  //（計画がなければ「品目なし」で追加）。空欄のまま確定したときは変更しない
+  // 表の計画数量の入力：確定（Enter・他の欄へ移動）したときに、入力を始めた時点の部品の計画数量を変更する
+  //（計画がなければ「部品なし」で追加）。空欄のまま確定したときは変更しない
   function commitPlan(inp) {
     const l = st.lines[+inp.dataset.i];
     if (!l || String(inp.value).trim() === '') { render(); return; }
@@ -2036,7 +2083,7 @@
     let data;
     try { data = JSON.parse(await f.text()); if (!data || !Array.isArray(data.lines)) throw new Error(); }
     catch (err) { alert('アンドンのデータファイルとして読み込めません'); return; }
-    if (!confirm('今のデータ（計画・品目・実績・設定）を、このファイルの内容に置き換えます。よろしいですか？' +
+    if (!confirm('今のデータ（計画・部品・実績・設定）を、このファイルの内容に置き換えます。よろしいですか？' +
       (SERVER ? '\n（共有中のすべての PC に反映されます）' : ''))) return;
     learning = null;
     dlg.close();
@@ -2072,16 +2119,43 @@
     it.innerHTML = '';
     draft.items.forEach((item, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><input type="text" data-f="name"></td><td class="ct-cell"></td>
-        <td><button>削除</button></td>`;
+      tr.innerHTML = `<td><input type="text" data-f="name"></td><td class="rates-cell"></td>
+        <td><button class="del-item">削除</button></td>`;
       const nameIn = tr.querySelector('[data-f="name"]');
       nameIn.value = item.name;
       nameIn.oninput = () => (item.name = nameIn.value);
-      tr.querySelector('.ct-cell').appendChild(ctInput(item, 'ct', 'unit'));
-      tr.querySelector('button').onclick = () => {
+      item.rates = ratesOf(item);
+      const cell = tr.querySelector('.rates-cell');
+      item.rates.forEach((rt, k) => {
+        const row = document.createElement('div');
+        row.className = 'rate-row';
+        row.innerHTML = `<input type="number" class="ppl" min="1" step="1" placeholder="-"><span class="ppl-u">人</span>`;
+        const ppl = row.querySelector('.ppl');
+        ppl.value = rt.people || '';
+        ppl.oninput = () => (rt.people = ppl.value === '' ? null : Number(ppl.value));
+        row.appendChild(ctInput(rt, 'ct', 'unit'));
+        const x = document.createElement('button');
+        x.className = 'rate-del';
+        x.title = 'この人数を削除';
+        x.textContent = '✕';
+        x.disabled = item.rates.length < 2;
+        x.onclick = () => { item.rates.splice(k, 1); renderSettings(); };
+        row.appendChild(x);
+        cell.appendChild(row);
+      });
+      const addRate = document.createElement('button');
+      addRate.className = 'rate-add';
+      addRate.textContent = '＋ 人数を追加';
+      addRate.onclick = () => {
+        const last = item.rates[item.rates.length - 1];
+        item.rates.push({ people: last.people ? last.people + 1 : null, ct: last.ct, unit: last.unit });
+        renderSettings();
+      };
+      cell.appendChild(addRate);
+      tr.querySelector('.del-item').onclick = () => {
         const used = Object.values(draft.calendar).some(day => (day || []).some(ln => (ln || []).some(e => e.item === item.id))) ||
           st.lines.some(l => l.queue.some(e => e.item === item.id));
-        if (used && !confirm(`品目「${item.name}」は計画で使われています。削除しますか？\n（計画には「削除された品目」と表示され、ラインの時間で計算します）`)) return;
+        if (used && !confirm(`部品「${item.name}」は計画で使われています。削除しますか？\n（計画には「削除された部品」と表示され、ラインの時間で計算します）`)) return;
         draft.items.splice(i, 1);
         renderSettings();
       };
@@ -2152,7 +2226,8 @@
   $('sAddItem').onclick = () => {
     draft.itemSeq = (draft.itemSeq || 0) + 1;
     const lastUnit = draft.items.length ? unitOf(draft.items[draft.items.length - 1].unit) : 's';
-    draft.items.push({ id: 'i' + draft.itemSeq, name: '', ct: UNITS[lastUnit].sec * (lastUnit === 's' ? 60 : 1), unit: lastUnit });
+    const ct = UNITS[lastUnit].sec * (lastUnit === 's' ? 60 : 1);
+    draft.items.push({ id: 'i' + draft.itemSeq, name: '', ct, unit: lastUnit, rates: [{ people: 1, ct, unit: lastUnit }] });
     renderSettings();
     const ins = $('sItems').querySelectorAll('input[data-f="name"]');
     ins[ins.length - 1].focus();
@@ -2214,13 +2289,23 @@
   $('sSave').onclick = () => {
     learning = null;
     draft.breaks = draft.breaks.filter(b => b.s && b.e);
-    // 品目名の確認
-    draft.items.forEach(it => { it.name = String(it.name || '').trim(); it.ct = Number(it.ct) || 0; });
+    // 部品名の確認
+    draft.items.forEach(it => {
+      it.name = String(it.name || '').trim();
+      // 入力欄とつながったままにするため、同じオブジェクトを直す（保存できなかったときに続けて直せるように）
+      it.rates = ratesOf(it);
+      it.rates.forEach(rt => { rt.people = rt.people === null || rt.people === '' ? null : Number(rt.people); rt.ct = Number(rt.ct) || 0; rt.unit = unitOf(rt.unit); });
+    });
     const names = draft.items.map(it => it.name);
-    if (names.some(n => !n)) { alert('品目名が空欄の行があります'); return; }
+    if (names.some(n => !n)) { alert('部品名が空欄の行があります'); return; }
     const dup = names.find((n, i) => names.indexOf(n) !== i);
-    if (dup) { alert(`品目名「${dup}」が重複しています`); return; }
-    if (draft.items.some(it => !(it.ct > 0))) { alert('品目の「1個あたりの時間」は 0 より大きい数で入力してください'); return; }
+    if (dup) { alert(`部品名「${dup}」が重複しています`); return; }
+    for (const it of draft.items) {
+      const err = ratesError(it.rates);
+      if (err) { alert(`部品「${it.name}」：${err}`); return; }
+      it.ct = it.rates[0].ct;
+      it.unit = it.rates[0].unit;
+    }
     const lvs = draft.levels;
     if (!lvs.length) { alert('状況の判定の段階を1つ以上にしてください'); return; }
     if (lvs.some(l => !Number.isFinite(l.min) || l.min < 0 || l.min > 1000)) { alert('状況の判定の % は 0〜1000 の数で入力してください'); return; }
@@ -2230,7 +2315,7 @@
     sortLevels();
     draft.levels = lvs.map(l => ({ min: l.min, color: l.color }));
     const badLine = draft.lines.find(l => !(Number(l.ct) > 0));
-    if (badLine) { alert(`ライン「${badLine.name}」の「品目なしの時の1個あたりの時間」は 0 より大きい数で入力してください`); return; }
+    if (badLine) { alert(`ライン「${badLine.name}」の「部品なしの時の1カートンあたりの時間」は 0 より大きい数で入力してください`); return; }
     // 設定を開いている間に実績・計画・自動開始・日付変更が変わっても最新を保持（ライン数を増やした分は空）
     draft.lines.forEach((l, i) => {
       l.queue = st.lines[i] ? st.lines[i].queue : [];
@@ -2283,7 +2368,7 @@
     renderCalendar();
     calDlg.showModal();
   }
-  // セルに表示する概要（ラインごとの合計数量と品目数）
+  // セルに表示する概要（ラインごとの合計数量と部品数）
   function calSummary(k) {
     const day = calendarDay(calDraft, k);
     const tot = round2(day.flat().reduce((a, e) => a + e.qty, 0));
@@ -2313,15 +2398,15 @@
     $('calSelTitle').textContent = `${sd.getMonth() + 1}月${sd.getDate()}日（${WD[sd.getDay()]}）の計画`;
     renderCalEditor();
   }
-  // 選択中の日の編集欄（ラインごとに品目と数量を順番に並べる）
+  // 選択中の日の編集欄（ラインごとに部品と数量を順番に並べる）
   function renderCalEditor() {
     const box = $('calLines');
     box.innerHTML = '';
     const day = calendarDay(calDraft, calSel, true);
     const store = () => { calDraft[calSel] = day; refreshCalCell(); };
-    const options = sel => `<option value="">品目なし（ラインの時間）</option>` +
-      st.items.map(it => `<option value="${esc(it.id)}"${it.id === sel ? ' selected' : ''}>${esc(it.name)}（${fmtCt(it.ct, it.unit)}）</option>`).join('') +
-      (sel && !itemOf(sel) ? `<option value="${esc(sel)}" selected>（削除された品目）</option>` : '');
+    const options = sel => `<option value="">部品なし（ラインの時間）</option>` +
+      st.items.map(it => `<option value="${esc(it.id)}"${it.id === sel ? ' selected' : ''}>${esc(it.name)}${ratesOf(it).length === 1 ? `（${rateLabel(ratesOf(it)[0])}）` : ''}</option>`).join('') +
+      (sel && !itemOf(sel) ? `<option value="${esc(sel)}" selected>（削除された部品）</option>` : '');
     st.lines.forEach((l, i) => {
       const wrap = document.createElement('div');
       wrap.className = 'cal-line';
@@ -2330,18 +2415,42 @@
       list.forEach((e, j) => {
         const row = document.createElement('div');
         row.className = 'cal-ent';
-        row.innerHTML = `<span class="no">${e.carry ? '<span class="carry-mark" title="' + esc(carryLabel(e.carry)) + '">↻</span>' : j + 1}</span><select>${options(e.item)}</select>
-          <input type="text" inputmode="decimal" placeholder="数量"><span class="sec"></span>
+        row.innerHTML = `<span class="no">${e.carry ? '<span class="carry-mark" title="' + esc(carryLabel(e.carry)) + '">↻</span>' : j + 1}</span><select class="it-sel">${options(e.item)}</select><select class="pp-sel" title="作業人数"></select>
+          <input type="text" inputmode="decimal" placeholder="カートン数"><span class="sec"></span>
           <button title="上へ">▲</button><button title="下へ">▼</button><button title="削除">✕</button>`;
-        const [sel, inp] = [row.querySelector('select'), row.querySelector('input')];
+        const [sel, inp] = [row.querySelector('.it-sel'), row.querySelector('input')];
         const sec = row.querySelector('.sec');
+        // 作業人数：人数ごとの時間を登録した部品だけ選べる
+        const pSel = row.querySelector('.pp-sel');
+        const showPeople = () => {
+          const it = itemOf(e.item);
+          const rs = it ? ratesOf(it) : [];
+          pSel.style.display = rs.length > 1 ? '' : 'none';
+          pSel.innerHTML = rs.map(rt => `<option value="${rt.people || ''}">${esc(rateLabel(rt))}</option>`).join('');
+          if (rs.length) pSel.value = String(rateOf(it, e.people).people || '');
+        };
+        showPeople();
+        pSel.onchange = () => {
+          if (pSel.value) e.people = Number(pSel.value); else delete e.people;
+          showSec();
+          store();
+        };
         const showSec = () => {
           const ct = ctOf(e, l);
           sec.textContent = e.qty > 0 ? fmtMin(e.qty * ct * 1000) : '';
         };
         inp.value = e.qty > 0 ? fmtNum(e.qty) : '';
         showSec();
-        sel.onchange = () => { e.item = sel.value || null; showSec(); store(); };
+        sel.onchange = () => {
+          e.item = sel.value || null;
+          // 部品を変えたら人数はその部品の最初の人数にする
+          const it = itemOf(e.item);
+          const p0 = it ? ratesOf(it)[0].people : null;
+          if (p0) e.people = p0; else delete e.people;
+          showPeople();
+          showSec();
+          store();
+        };
         inp.oninput = () => { e.qty = round2(Math.max(0, parseFloat(inp.value) || 0)); showSec(); store(); };
         inp.onkeydown = ev => {
           if (ev.key !== 'Enter') return;
@@ -2357,9 +2466,11 @@
         wrap.appendChild(row);
       });
       const add = document.createElement('button');
-      add.textContent = '＋ 品目を追加';
+      add.textContent = '＋ 部品を追加';
       add.onclick = () => {
-        list.push({ item: st.items[0] ? st.items[0].id : null, qty: 0 });
+        const it0 = st.items[0] || null;
+        const p0 = it0 ? ratesOf(it0)[0].people : null;
+        list.push(Object.assign({ item: it0 ? it0.id : null, qty: 0 }, p0 ? { people: p0 } : {}));
         store();
         renderCalEditor();
         const ins = $('calLines').children[i].querySelectorAll('.cal-ent input');
@@ -2604,47 +2715,69 @@
     return -1;
   }
 
-  // 「品目」シート：品目名と 1個あたりの時間（秒）。{ items: [{ name, ct }], errors }
+  // 部品名の列の見出し（今の雛形は「部品名」、前の雛形は「品目」）
+  const isItemHead = x => x.includes('部品') || x.includes('品目');
+  // 「部品」シート：部品名・作業人数・1カートンあたりの時間・単位。同じ部品を人数ごとに複数行書ける
+  // { items: [{ name, rates: [{ people, ct, unit }] }], errors }
   function parseItemRows(rows) {
-    const items = [], errors = [];
-    const h = findHeader(rows, ['品目']);
-    if (h < 0) return { items, errors };
+    const items = new Map(), errors = [];
+    let h = findHeader(rows, ['部品']);
+    if (h < 0) h = findHeader(rows, ['品目']);
+    if (h < 0) return { items: [], errors };
     const head = rows[h].map(hdr);
-    const cName = head.findIndex(x => x.includes('品目'));
+    const cName = head.findIndex(isItemHead);
+    const cPeople = head.findIndex(x => x.includes('人数'));
     const cCt = head.findIndex(x => (x.includes('時間') || x.includes('秒')) && !x.includes('単位'));
     const cUnit = head.findIndex(x => x.includes('単位'));
     // 単位の列がないときは、見出しの（秒）（分）（時間）で決める。何もなければ秒
     const headUnit = cCt >= 0 ? (/[（(]時間[）)]/.test(head[cCt]) ? 'h' : /[（(]分[）)]/.test(head[cCt]) ? 'm' : 's') : 's';
     for (let ri = h + 1; ri < rows.length; ri++) {
-      const r = rows[ri];
+      const r = rows[ri], at = `部品シート ${ri + 1}行目`;
       if (isBlank(r[cName])) continue;
       const name = normText(r[cName]);
+      let people = null;
+      if (cPeople >= 0 && !isBlank(r[cPeople])) {
+        people = toNum(r[cPeople]);
+        if (!(Number.isInteger(people) && people >= 1 && people <= 999)) { errors.push(`${at}：部品「${name}」の作業人数「${r[cPeople]}」は 1 以上の整数で入力してください`); continue; }
+      }
       const cell = cCt >= 0 ? r[cCt] : null;
       let unit = cUnit >= 0 ? parseUnit(r[cUnit]) : null;
-      if (unit === undefined) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の単位「${r[cUnit]}」は 秒・分・時間 のどれかで入力してください`); continue; }
+      if (unit === undefined) { errors.push(`${at}：部品「${name}」の単位「${r[cUnit]}」は 秒・分・時間 のどれかで入力してください`); continue; }
+      let ct;
       if (cell && typeof cell === 'object' && 'sec' in cell) {
         // Excel の時刻形式（0:01:30 など）で入力された時間。単位の指定がなければ大きさで決める
-        if (!(cell.sec > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間は 0 より大きくしてください`); continue; }
-        items.push({ name, ct: cell.sec, unit: unit || (cell.sec >= 3600 ? 'h' : cell.sec >= 60 ? 'm' : 's') });
-        continue;
+        if (!(cell.sec > 0)) { errors.push(`${at}：部品「${name}」の1カートンあたりの時間は 0 より大きくしてください`); continue; }
+        ct = cell.sec;
+        unit = unit || (cell.sec >= 3600 ? 'h' : cell.sec >= 60 ? 'm' : 's');
+      } else {
+        unit = unit || headUnit;
+        const v = toNum(cell);
+        if (!(v > 0)) { errors.push(`${at}：部品「${name}」の1カートンあたりの時間「${cell ?? ''}」は 0 より大きい数で入力してください`); continue; }
+        ct = toSec(v, unit);
       }
-      unit = unit || headUnit;
-      const v = toNum(cell);
-      if (!(v > 0)) { errors.push(`品目シート ${ri + 1}行目：品目「${name}」の1個あたりの時間「${cell ?? ''}」は 0 より大きい数で入力してください`); continue; }
-      items.push({ name, ct: toSec(v, unit), unit });
+      if (!items.has(name)) items.set(name, { name, rates: [] });
+      const it = items.get(name);
+      if (it.rates.some(rt => rt.people === people)) { errors.push(`${at}：部品「${name}」の${people ? `作業人数「${people}人」` : '人数の指定なしの行'}が重複しています`); continue; }
+      it.rates.push({ people, ct, unit });
     }
-    return { items, errors };
+    // 人数の指定なしの行と人数ありの行が混ざっていたら、その部品は取り込まない
+    for (const [name, it] of items) {
+      const err = ratesError(it.rates);
+      if (err) { errors.push(`部品シート：部品「${name}」：${err}`); items.delete(name); }
+    }
+    return { items: [...items.values()], errors };
   }
 
-  // 「計画」シート（日付・ライン・品目・計画数量の縦並び）。同じ日・同じラインの行は上から順番に作る
+  // 「計画」シート（日付・ライン・部品・計画数量の縦並び）。同じ日・同じラインの行は上から順番に作る
   // { plans: { 日付: [ライン順に [{ itemName, qty }]] }, errors, warnings }
-  function parseLongPlanRows(rows, h, knownItem) {
+  function parseLongPlanRows(rows, h, knownItem, ratesByName) {
     const errors = [], warnings = [];
     const head = rows[h].map(hdr);
     const col = test => head.findIndex(test);
     const cDate = col(x => x.includes('日付'));
     const cLine = col(x => x.includes('ライン'));
-    const cItem = col(x => x.includes('品目'));
+    const cItem = col(isItemHead);
+    const cPeople = col(x => x.includes('人数'));
     const cQty = col(x => x.includes('数量') || x === '計画');
     const plans = {};
     if (cLine < 0 || cQty < 0) {
@@ -2658,12 +2791,25 @@
         lastDate = cellToDateKey(r[cDate]);
         if (!lastDate) { errors.push(`${rowNo}行目：日付「${r[cDate]}」を読み取れません`); continue; }
       }
-      if (isBlank(r[cQty]) && (cItem < 0 || isBlank(r[cItem]))) continue;     // 数量も品目も空欄の行は取り込まない
+      if (isBlank(r[cQty]) && (cItem < 0 || isBlank(r[cItem])) && (cPeople < 0 || isBlank(r[cPeople]))) continue;     // 数量も部品も人数も空欄の行は取り込まない
       if (!lastDate) { errors.push(`${rowNo}行目：日付がありません`); continue; }
       const li = st.lines.findIndex(l => normName(l.name) === normName(r[cLine]));
       if (li < 0) { errors.push(`${rowNo}行目：ライン「${r[cLine] ?? ''}」がありません`); continue; }
       const itemName = cItem >= 0 && !isBlank(r[cItem]) ? normText(r[cItem]) : null;
-      if (itemName && !knownItem(itemName)) { errors.push(`${rowNo}行目：品目「${itemName}」が登録されていません（「品目」シートに追加してください）`); continue; }
+      if (itemName && !knownItem(itemName)) { errors.push(`${rowNo}行目：部品「${itemName}」が登録されていません（「部品」シートに追加してください）`); continue; }
+      // 作業人数（空欄なら、その部品に登録した最初の人数）
+      let people = null;
+      if (cPeople >= 0 && !isBlank(r[cPeople])) {
+        people = toNum(r[cPeople]);
+        if (!(Number.isInteger(people) && people >= 1)) { errors.push(`${rowNo}行目：作業人数「${r[cPeople]}」は 1 以上の整数で入力してください`); continue; }
+        if (!itemName) { errors.push(`${rowNo}行目：作業人数を入れるときは部品名も入力してください`); continue; }
+        const rs = ratesByName(itemName);
+        if (!rs.some(rt => rt.people === people)) {
+          const reg = rs.filter(rt => rt.people).map(rt => rt.people + '人');
+          errors.push(`${rowNo}行目：部品「${itemName}」に作業人数「${people}人」の時間が登録されていません` + (reg.length ? `（登録：${reg.join('・')}）` : '（人数の指定なしの部品です）'));
+          continue;
+        }
+      }
       const qty = toNum(r[cQty]);
       if (isBlank(r[cQty]) || !Number.isFinite(qty) || qty < 0) {
         errors.push(`${rowNo}行目：計画数量「${r[cQty] ?? ''}」は 0 以上の数で入力してください`);
@@ -2671,12 +2817,12 @@
       }
       if (qty === 0) continue;
       if (!plans[lastDate]) plans[lastDate] = st.lines.map(() => []);
-      plans[lastDate][li].push({ itemName, qty: round2(qty) });
+      plans[lastDate][li].push({ itemName, people, qty: round2(qty) });
     }
     return { plans, errors, warnings };
   }
 
-  // 旧形式（A列：日付、B列以降：ラインごとの計画数量）。品目なしで取り込む
+  // 旧形式（A列：日付、B列以降：ラインごとの計画数量）。部品なしで取り込む
   function parseWidePlanRows(rows) {
     const errors = [], warnings = [];
     const firstDate = rows.findIndex(r => cellToDateKey(r[0]) !== null);
@@ -2706,7 +2852,7 @@
           errors.push(`${rowNo}行目：ライン「${st.lines[i].name}」の計画数量「${v}」は 0 以上の数で入力してください`);
           bad = true;
         }
-        return n > 0 ? [{ itemName: null, qty: round2(n) }] : [];
+        return n > 0 ? [{ itemName: null, people: null, qty: round2(n) }] : [];
       });
       if (!bad) plans[key] = day;
     }
@@ -2723,44 +2869,54 @@
         (/\.xls$/i.test(file.name) ? '\n\n古い形式（.xls）は読めません。Excel で「.xlsx」形式で保存し直してください。' : ''));
       return;
     }
-    // 品目シート（あれば品目マスタへ追加・更新）
-    const itemRes = sheets['品目'] ? parseItemRows(sheets['品目']) : { items: [], errors: [] };
+    // 部品シート（あれば部品マスタへ追加・更新）
+    const itemSheet = sheets['部品'] ? '部品' : sheets['品目'] ? '品目' : null;   // 「品目」は前の雛形のシート名
+    const itemRes = itemSheet ? parseItemRows(sheets[itemSheet]) : { items: [], errors: [] };
     const fileItems = new Map(itemRes.items.map(it => [it.name, it]));
     const knownItem = name => fileItems.has(name) || st.items.some(it => normText(it.name) === name);
+    const ratesByName = name => {
+      const f = fileItems.get(name);
+      if (f) return f.rates;
+      const it = st.items.find(x => normText(x.name) === name);
+      return it ? ratesOf(it) : [];
+    };
 
-    // 「品目」シートだけのファイルは品目の登録だけ行う
-    const others = Object.keys(sheets).filter(k => k !== '品目' && k !== '説明');
+    // 「部品」シートだけのファイルは部品の登録だけ行う
+    const others = Object.keys(sheets).filter(k => k !== itemSheet && k !== '説明');
     const planRows = sheets['計画'] || (others.length ? sheets[others[0]] : null);
     const h = planRows ? findHeader(planRows, ['日付', 'ライン']) : -1;
     const res = !planRows ? { plans: {}, errors: [], warnings: [] }
-      : h >= 0 ? parseLongPlanRows(planRows, h, knownItem) : parseWidePlanRows(planRows);
+      : h >= 0 ? parseLongPlanRows(planRows, h, knownItem, ratesByName) : parseWidePlanRows(planRows);
     const errors = [...itemRes.errors, ...res.errors], warnings = res.warnings;
     const keys = Object.keys(res.plans).sort();
     const list = a => a.slice(0, 15).join('\n') + (a.length > 15 ? `\n…ほか ${a.length - 15} 件` : '');
 
     const newItems = [...fileItems.values()].filter(it => !st.items.some(x => normText(x.name) === it.name));
-    const changed = [...fileItems.values()].filter(it => st.items.some(x => normText(x.name) === it.name && (Math.abs(x.ct - it.ct) > 1e-6 || unitOf(x.unit) !== it.unit)));
+    const rkey = rs => JSON.stringify(rs.map(rt => [rt.people, Math.round(rt.ct * 1e4), unitOf(rt.unit)]));
+    const changed = [...fileItems.values()].filter(it => st.items.some(x => normText(x.name) === it.name && rkey(ratesOf(x)) !== rkey(it.rates)));
+    const ratesText = it => it.rates.map(rateLabel).join('・');
     if (!keys.length && !newItems.length && !changed.length) {
       alert('取り込める計画がありませんでした。' + (errors.length ? '\n\n【エラー】\n' + list(errors) : ''));
       return;
     }
     let msg = '';
     if (keys.length) msg += `${keys[0]} 〜 ${keys[keys.length - 1]} の ${keys.length} 日分の計画を取り込みます。\n取り込む日の計画は、全ラインともファイルの内容に置き換わります。\n`;
-    if (newItems.length) msg += `\n品目を追加：${newItems.map(it => `${it.name}（${fmtCt(it.ct, it.unit)}）`).join('、')}`;
-    if (changed.length) msg += `\n1個あたりの時間を変更：${changed.map(it => `${it.name}（${fmtCt(it.ct, it.unit)}）`).join('、')}`;
+    if (newItems.length) msg += `\n部品を追加：${newItems.map(it => `${it.name}（${ratesText(it)}）`).join('、')}`;
+    if (changed.length) msg += `\n人数・1カートンあたりの時間を変更：${changed.map(it => `${it.name}（${ratesText(it)}）`).join('、')}`;
     if (errors.length) msg += `\n\n【エラー：この行は取り込みません】\n${list(errors)}`;
     if (warnings.length) msg += `\n\n【注意】\n${list(warnings)}`;
     if (!confirm(msg.trim() + '\n\nよろしいですか？')) return;
 
-    // 品目マスタは今すぐ反映（計画は「保存」で確定）
+    // 部品マスタは今すぐ反映（計画は「保存」で確定）
     for (const it of fileItems.values()) {
       const cur = st.items.find(x => normText(x.name) === it.name);
-      if (cur) { cur.ct = it.ct; cur.unit = it.unit; }
-      else { st.itemSeq = (st.itemSeq || 0) + 1; st.items.push({ id: 'i' + st.itemSeq, name: it.name, ct: it.ct, unit: it.unit }); }
+      const rates = it.rates.map(rt => Object.assign({}, rt));
+      if (cur) Object.assign(cur, { rates, ct: rates[0].ct, unit: rates[0].unit });
+      else { st.itemSeq = (st.itemSeq || 0) + 1; st.items.push({ id: 'i' + st.itemSeq, name: it.name, rates, ct: rates[0].ct, unit: rates[0].unit }); }
     }
     save();
     const idOf = name => (name ? (st.items.find(x => normText(x.name) === name) || {}).id || null : null);
-    for (const k of keys) calDraft[k] = res.plans[k].map(ln => ln.map(e => ({ item: idOf(e.itemName), qty: e.qty })));
+    for (const k of keys) calDraft[k] = res.plans[k].map(ln => ln.map(e => Object.assign({ item: idOf(e.itemName), qty: e.qty }, e.people ? { people: e.people } : {})));
     if (keys.length) {
       const d0 = keyToDate(keys[0]);
       calMonth = new Date(d0.getFullYear(), d0.getMonth(), 1);
@@ -2768,7 +2924,7 @@
     }
     renderCalendar();
     render();
-    banner(keys.length ? `${keys.length} 日分を取り込みました。「保存」で確定します` : '品目を登録しました');
+    banner(keys.length ? `${keys.length} 日分を取り込みました。「保存」で確定します` : '部品を登録しました');
   }
 
   // ---- .xlsx 雛形の作成 ----
@@ -2873,13 +3029,13 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   }
   function colName(i) { let s = ''; i++; while (i) { s = String.fromCharCode(65 + (i - 1) % 26) + s; i = Math.floor((i - 1) / 26); } return s; }
 
-  // 表示中の月の雛形。「計画」シートは 日付・ライン・品目・計画数量 の縦並び（同じ日・同じラインは上から順に作る）。
-  // 入力済みの計画は値として入れ、未入力の日はラインごとに空欄の行を用意する。「品目」シートには品目マスタを入れる
+  // 表示中の月の雛形。「計画」シートは 日付・ライン・部品・計画数量 の縦並び（同じ日・同じラインは上から順に作る）。
+  // 入力済みの計画は値として入れ、未入力の日はラインごとに空欄の行を用意する。「部品」シートには部品マスタを入れる
   function buildTemplate(year, month) {
     const days = new Date(year, month + 1, 0).getDate();
     const strCell = (ref, v, s) => `<c r="${ref}" t="inlineStr"${s ? ` s="${s}"` : ''}><is><t>${esc(v)}</t></is></c>`;
     const numCell = (ref, v, s) => `<c r="${ref}" s="${s}"><v>${v}</v></c>`;
-    const head = ['日付', 'ライン', '品目', '計画数量'];
+    const head = ['日付', 'ライン', '部品名', '作業人数', '計画数量（カートン）'];
     let rowsXml = `<row r="1">${head.map((h, i) => strCell(colName(i) + '1', h, 1)).join('')}</row>`;
     let r = 1;
     for (let d = 1; d <= days; d++) {
@@ -2894,7 +3050,8 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
           r++;
           rowsXml += `<row r="${r}">${numCell('A' + r, dateToSerial(dt), dateStyle)}${strCell('B' + r, l.name, 5)}` +
             (e && e.item ? strCell('C' + r, itemName(e.item), 7) : `<c r="C${r}" s="7"/>`) +
-            (e ? numCell('D' + r, e.qty, 5) : `<c r="D${r}" s="5"/>`) + '</row>';
+            (e && peopleOf(e) ? numCell('D' + r, peopleOf(e), 5) : `<c r="D${r}" s="5"/>`) +
+            (e ? numCell('E' + r, e.qty, 5) : `<c r="E${r}" s="5"/>`) + '</row>';
         });
       });
     }
@@ -2904,47 +3061,53 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       ? `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="ライン名を選んでください" sqref="B2:B${last}"><formula1>${esc('"' + lineList + '"')}</formula1></dataValidation>` : '';
     const dvs = [
       lineDv,
-      `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="「品目」シートに登録した品目を選んでください" sqref="C2:C${last}"><formula1>'品目'!$A$2:$A$1000</formula1></dataValidation>`,
-      `<dataValidation type="decimal" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0以上の数を入力してください（小数も可）" sqref="D2:D${last}"><formula1>0</formula1></dataValidation>`,
+      `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="「部品」シートに登録した部品を選んでください" sqref="C2:C${last}"><formula1>'部品'!$A$2:$A$1000</formula1></dataValidation>`,
+      `<dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="作業人数は1以上の整数で入力してください（空欄なら部品に登録した最初の人数）" sqref="D2:D${last}"><formula1>1</formula1></dataValidation>`,
+      `<dataValidation type="decimal" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0以上の数を入力してください（小数も可）" sqref="E2:E${last}"><formula1>0</formula1></dataValidation>`,
     ].filter(Boolean);
     const sheet1 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<dimension ref="A1:D${r}"/>
+<dimension ref="A1:E${r}"/>
 <sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
 <sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="10" customWidth="1"/><col min="3" max="3" width="28" customWidth="1"/><col min="4" max="4" width="12" customWidth="1"/></cols>
+<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="10" customWidth="1"/><col min="3" max="3" width="28" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/><col min="5" max="5" width="20" customWidth="1"/></cols>
 <sheetData>${rowsXml}</sheetData>
 <dataValidations count="${dvs.length}">${dvs.join('')}</dataValidations>
 </worksheet>`;
 
-    let itemXml = `<row r="1">${strCell('A1', '品目', 1)}${strCell('B1', '1個あたりの時間', 1)}${strCell('C1', '単位', 1)}</row>`;
-    st.items.forEach((it, i) => {
-      const rr = i + 2;
-      itemXml += `<row r="${rr}">${strCell('A' + rr, it.name, 7)}${numCell('B' + rr, ctValue(it.ct, it.unit), 5)}${strCell('C' + rr, UNITS[unitOf(it.unit)].label, 5)}</row>`;
-    });
+    let itemXml = `<row r="1">${strCell('A1', '部品名', 1)}${strCell('B1', '作業人数', 1)}${strCell('C1', '1カートンあたりの時間', 1)}${strCell('D1', '単位', 1)}</row>`;
+    let rr = 1;
+    st.items.forEach(it => ratesOf(it).forEach(rt => {
+      rr++;
+      itemXml += `<row r="${rr}">${strCell('A' + rr, it.name, 7)}${rt.people ? numCell('B' + rr, rt.people, 5) : `<c r="B${rr}" s="5"/>`}` +
+        `${numCell('C' + rr, ctValue(rt.ct, rt.unit), 5)}${strCell('D' + rr, UNITS[unitOf(rt.unit)].label, 5)}</row>`;
+    }));
     const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:C${st.items.length + 1}"/>
+<dimension ref="A1:D${rr}"/>
 <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
 <sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/><col min="3" max="3" width="10" customWidth="1"/></cols>
+<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="10" customWidth="1"/><col min="3" max="3" width="22" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/></cols>
 <sheetData>${itemXml}</sheetData>
-<dataValidations count="2"><dataValidation type="decimal" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0より大きい数を入力してください" sqref="B2:B1000"><formula1>0</formula1></dataValidation><dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="秒・分・時間 から選んでください" sqref="C2:C1000"><formula1>"秒,分,時間"</formula1></dataValidation></dataValidations>
+<dataValidations count="3"><dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="作業人数は1以上の整数で入力してください" sqref="B2:B1000"><formula1>1</formula1></dataValidation><dataValidation type="decimal" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="0より大きい数を入力してください" sqref="C2:C1000"><formula1>0</formula1></dataValidation><dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="秒・分・時間 から選んでください" sqref="D2:D1000"><formula1>"秒,分,時間"</formula1></dataValidation></dataValidations>
 </worksheet>`;
 
     const help = [
       'ライン進捗アンドン 計画取り込み用の雛形',
       '',
-      '【「品目」シート】',
-      '品目名・1個あたりの時間・単位（秒／分／時間）を登録します。単位が空欄のときは秒になります。',
+      '【「部品」シート】',
+      '部品名・作業人数・1カートンあたりの時間・単位（秒／分／時間）を登録します。単位が空欄のときは秒になります。',
+      '人数によって時間が変わるときは、同じ部品名で人数ごとに行を分けて書きます（例：部品A・2人・60秒 ／ 部品A・3人・45秒）。',
+      '人数を分けない部品は、作業人数を空欄にしてもかまいません。',
       '時間は Excel の時刻の形（例：0:01:30＝1分30秒）で入力することもできます。',
-      'ここに書いた品目は、取り込むとアンドンの品目に追加・更新されます。',
+      'ここに書いた部品は、取り込むとアンドンの部品に追加・更新されます。',
       '',
       '【「計画」シート】',
-      '1. 1行に「日付・ライン・品目・計画数量」を入力します。',
-      '2. 同じ日・同じラインで複数の品目を作るときは、作る順番に行を並べます（上の行から順に作ります）。',
+      '1. 1行に「日付・ライン・部品名・作業人数・計画数量（カートン）」を入力します。',
+      '2. 同じ日・同じラインで複数の部品を作るときは、作る順番に行を並べます（上の行から順に作ります）。',
       '   行が足りないときは、行を挿入して追加してください。日付は省略すると上の行と同じ日になります。',
-      '3. 品目は一覧から選びます（「品目」シートに登録した品目）。空欄にすると、ラインの「品目なしの時の時間」で計算します。',
+      '3. 部品名は一覧から選びます（「部品」シートに登録した部品）。空欄にすると、ラインの「部品なしの時の時間」で計算します。',
+      '   作業人数は「部品」シートに登録した人数を入れます。空欄にすると、その部品の最初の行の人数になります。',
       '4. 計画数量は小数も入力できます（例：10.5）。休みの日など、計画のない行は数量を空欄のままにします（取り込みません）。',
       '5. 保存するときは「Excel ブック（.xlsx）」形式にします。',
       '',
@@ -3007,7 +3170,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <bookViews><workbookView activeTab="0"/></bookViews>
-<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="品目" sheetId="2" r:id="rId2"/><sheet name="説明" sheetId="3" r:id="rId4"/></sheets>
+<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="部品" sheetId="2" r:id="rId2"/><sheet name="説明" sheetId="3" r:id="rId4"/></sheets>
 </workbook>`,
       'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -3058,16 +3221,16 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   };
 
   // ---------- 前日の残りの持ち越し ----------
-  // sel：ライン順に、各残り品目を持ち越すかどうか（true/false）。pos：front=本日の計画の前 / back=後
+  // sel：ライン順に、各残り部品を持ち越すかどうか（true/false）。pos：front=本日の計画の前 / back=後
   function applyCarry(sel, pos) {
     const c = st.carry;
     if (!c) return;
     let n = 0;
     st.lines.forEach((l, i) => {
       const add = (c.lines[i] || []).filter((e, k) => sel[i] && sel[i][k] && e.qty > 0)
-        .map(e => ({ item: e.item, qty: e.qty, act: 0, doneAt: null, carry: e.carry || c.from }));
+        .map(e => Object.assign({ item: e.item, qty: e.qty, act: 0, doneAt: null }, entryExtra(e), { carry: e.carry || c.from }));
       if (!add.length) return;
-      // 前に入れるとき、すでに数え始めた品目があればその後ろに入れる（数え中の品目を変えない）
+      // 前に入れるとき、すでに数え始めた部品があればその後ろに入れる（数え中の部品を変えない）
       let at = l.queue.length;
       if (pos === 'front') { at = 0; while (at < l.queue.length && l.queue[at].act > 0) at++; }
       l.queue.splice(at, 0, ...add);
@@ -3078,7 +3241,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     syncTodayCalendar();
     save();
     if (rowsEl.children.length) { render(); renderPlanView(); }
-    banner(`↻ ${n}品目を持ち越しました`);
+    banner(`↻ ${n}部品を持ち越しました`);
   }
   let carryDismissed = null;     // 「あとで決める」を押した日（その日だけ確認を出さない）
   const carryDlg = $('carryDlg');
@@ -3087,12 +3250,12 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     if (!c || c.applied || carryDlg.open) return;
     if (document.querySelector('dialog[open]')) return;      // 他の画面を開いている間は待つ
     const total = round2(c.lines.flat().reduce((a, e) => a + e.qty, 0));
-    $('carryMsg').innerHTML = `<b>${esc(carryLabel(c.from).replace('の残り', ''))}</b> に終わらなかった生産が <b>${c.lines.flat().length} 品目（${fmtNum(total)}個）</b> あります。今日に持ち越しますか？`;
+    $('carryMsg').innerHTML = `<b>${esc(carryLabel(c.from).replace('の残り', ''))}</b> に終わらなかった生産が <b>${c.lines.flat().length} 部品（${fmtNum(total)}カートン）</b> あります。今日に持ち越しますか？`;
     const rows = $('carryRows');
     rows.innerHTML = '';
     st.lines.forEach((l, i) => (c.lines[i] || []).forEach((e, k) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td style="background:${l.color};font-weight:bold">${esc(l.name)}</td><td class="it">${esc(itemName(e.item) || '品目なし')}` +
+      tr.innerHTML = `<td style="background:${l.color};font-weight:bold">${esc(l.name)}</td><td class="it">${esc(entryName(e))}` +
         `${e.carry && e.carry !== c.from ? `<small>（${esc(carryLabel(e.carry))}）</small>` : ''}</td><td>${fmtNum(e.qty)}</td>` +
         `<td><input type="checkbox" checked data-i="${i}" data-k="${k}"></td>`;
       rows.appendChild(tr);
@@ -3133,8 +3296,8 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   $('pvCarry').onclick = e => { e.currentTarget.blur(); carryDismissed = null; openCarry(); };
 
   // ---------- 本日の計画ページ ----------
-  // ラインごとに品目を作る順番に並べ、開始・終了の時刻をタイムラインと表で表示する。
-  // 稼働中は、完了した品目は実際の時刻、作業中・これからの品目は今の進み具合からの見込み時刻で表示する（遅れは後ろへずれる）。
+  // ラインごとに部品を作る順番に並べ、開始・終了の時刻をタイムラインと表で表示する。
+  // 稼働中は、完了した部品は実際の時刻、作業中・これからの部品は今の進み具合からの見込み時刻で表示する（遅れは後ろへずれる）。
   let planMode = false, planDate = null, planTick = 0;
   function togglePlanView(on = !planMode) {
     planMode = on;
@@ -3143,7 +3306,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     try { history.replaceState(null, '', on ? '#plan' : location.pathname + location.search); } catch (e) { /* noop */ }
     if (!on) fitLayout();
   }
-  // 1ラインの品目ごとの予定。live：今日（実績・稼働を反映）
+  // 1ラインの部品ごとの予定。live：今日（実績・稼働を反映）
   function planSchedule(l, entries, dayStart, now, live) {
     const on = live && started();
     const base = on ? st.segments[0].s : (st.startTime ? dayStart + parseHM(st.startTime) : null);
@@ -3182,7 +3345,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     $('pvTitle').textContent = `${live ? '本日の計画' : '計画'}　${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`;
     const cal = live ? null : calendarDay(st.calendar, planDate);
     const rows = st.lines.map((l, i) => {
-      const entries = live ? l.queue : cal[i].map(p => ({ item: p.item, qty: p.qty, act: 0, doneAt: null }));
+      const entries = live ? l.queue : cal[i].map(p => Object.assign({ item: p.item, qty: p.qty, act: 0, doneAt: null }, entryExtra(p)));
       return { l, i, items: planSchedule(l, entries, dayStart, now, live) };
     });
     const all = rows.flatMap(r => r.items);
@@ -3196,19 +3359,19 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     const late = live && started() && maxEnd && maxPlan && maxEnd - maxPlan > 60000;
     const card = (k, v, cls = '') => `<div class="pv-card ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
     $('pvCards').innerHTML = [
-      card('計画数量（合計）', `${fmtNum(totalQty)}<small>${all.length}品目 / ${rows.filter(r => r.items.length).length}ライン</small>`),
+      card('計画数量（合計）', `${fmtNum(totalQty)}<small>${all.length}部品 / ${rows.filter(r => r.items.length).length}ライン</small>`),
       live && started() ? card('実績（合計）', `${fmtNum(totalAct)}<small>${totalQty ? (totalAct / totalQty * 100).toFixed(1) : 0}%</small>`) : '',
       card('作業開始', live && started() ? fmtHM(st.segments[0].s) : (st.startTime || '-')),
       card('計画の終了', maxPlan ? fmtD(maxPlan) : '-'),
       live && started() ? card(allDone ? '完了' : '今の見込み終了', allDone ? '完了' : maxEnd ? fmtD(maxEnd) : '-', late ? 'late' : '') : '',
-      live && st.carry && !st.carry.applied ? card('前日の残り（未持ち越し）', `${fmtNum(round2(st.carry.lines.flat().reduce((a, e) => a + e.qty, 0)))}<small>${st.carry.lines.flat().length}品目</small>`, 'late') : '',
+      live && st.carry && !st.carry.applied ? card('前日の残り（未持ち越し）', `${fmtNum(round2(st.carry.lines.flat().reduce((a, e) => a + e.qty, 0)))}<small>${st.carry.lines.flat().length}部品</small>`, 'late') : '',
       card('休憩', st.breaks.length ? st.breaks.map(b => `${b.s}〜${b.e}`).join('<br>').replace(/^/, '<small style="margin:0;font-size:0.45em;line-height:1.3;display:block">') + '</small>' : '-'),
     ].join('');
 
     // タイムライン
     const times = [...all.map(r => r.start), ...ends, ...planEnds].filter(Boolean);
     if (!all.length) {
-      $('pvGantt').innerHTML = `<div class="pv-empty">この日の計画はありません。「📅 計画」で品目と数量を入力してください。</div>`;
+      $('pvGantt').innerHTML = `<div class="pv-empty">この日の計画はありません。「📅 計画」で部品と数量を入力してください。</div>`;
       $('pvTable').innerHTML = '';
       return;
     }
@@ -3235,10 +3398,10 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
         let blocks = '';
         for (const it of r.items) {
           if (it.start === null || it.end === null) continue;
-          const name = itemName(it.e.item) || '品目なし';
+          const name = entryName(it.e);
           const prog = it.state === 'cur' ? `<div class="fill" style="width:${Math.min(100, it.e.act / it.e.qty * 100).toFixed(1)}%"></div>` : '';
           const qtyText = it.state === 'cur' || it.state === 'done' ? `${fmtNum(it.e.act)}/${fmtNum(it.e.qty)}` : fmtNum(it.e.qty);
-          const tip = `${name}　${qtyText}個\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1個 ${ctText(it.e, r.l)}・所要 ${fmtMin(it.ms)}`;
+          const tip = `${name}　${qtyText}カートン\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1カートン ${ctText(it.e, r.l)}・所要 ${fmtMin(it.ms)}`;
           blocks += `<div class="g-blk ${it.state}" style="left:${x(it.start)};width:${w(it.start, it.end)};background:${r.l.color}" title="${esc(tip)}">${prog}` +
             `<div class="t1">${it.state === 'done' ? '✓ ' : ''}${it.e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(name)} ${qtyText}</div><div class="t2">${fmtD(it.start)}〜${fmtD(it.end)}</div></div>`;
           if (live && started() && it.planStart !== null && it.planEnd !== null) {
@@ -3256,8 +3419,8 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     }
 
     // 一覧表
-    let t = `<table class="pv-table"><thead><tr><th>ライン</th><th>順番</th><th>品目</th><th>計画数量</th>${live && started() ? '<th>実績</th>' : ''}` +
-      `<th>1個あたり</th><th>所要時間</th><th>開始</th><th>終了</th>${live && started() ? '<th>当初の計画</th><th>状態</th>' : ''}</tr></thead><tbody>`;
+    let t = `<table class="pv-table"><thead><tr><th>ライン</th><th>順番</th><th>部品</th><th>計画数量</th>${live && started() ? '<th>実績</th>' : ''}` +
+      `<th>1カートンあたり</th><th>所要時間</th><th>開始</th><th>終了</th>${live && started() ? '<th>当初の計画</th><th>状態</th>' : ''}</tr></thead><tbody>`;
     for (const r of rows) {
       if (!r.items.length) {
         t += `<tr class="first"><td class="l" style="background:${r.l.color}">${esc(r.l.name)}</td><td colspan="${live && started() ? 10 : 7}">計画なし</td></tr>`;
@@ -3266,7 +3429,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       r.items.forEach((it, k) => {
         const lateMs = it.end && it.planEnd ? it.end - it.planEnd : 0;
         t += `<tr class="${it.state}${k === 0 ? ' first' : ''}">` + (k === 0 ? `<td class="l" rowspan="${r.items.length}" style="background:${r.l.color}">${esc(r.l.name)}</td>` : '') +
-          `<td>${k + 1}</td><td class="it">${it.e.carry ? `<span class="carry-mark">↻</span>` : ''}${esc(itemName(it.e.item) || '品目なし')}${it.e.carry ? `<small class="carry-mark">（${carryLabel(it.e.carry)}）</small>` : ''}</td><td>${fmtNum(it.e.qty)}</td>` +
+          `<td>${k + 1}</td><td class="it">${it.e.carry ? `<span class="carry-mark">↻</span>` : ''}${esc(entryName(it.e))}${it.e.carry ? `<small class="carry-mark">（${carryLabel(it.e.carry)}）</small>` : ''}</td><td>${fmtNum(it.e.qty)}</td>` +
           (live && started() ? `<td>${fmtNum(it.e.act)}</td>` : '') +
           `<td>${ctText(it.e, r.l)}</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
           `<td class="${live && started() && lateMs > 60000 ? 'late' : ''}">${it.end ? fmtD(it.end) : '-'}</td>` +
@@ -3292,7 +3455,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       name: l.name,
       items: l.queue.filter(e => e.qty > 0).map(e => {
         const it = itemOf(e.item);
-        return { name: itemName(e.item) || '品目なし', qty: e.qty, act: e.act, ct: ctOf(e, l), unit: it ? unitOf(it.unit) : unitOf(l.ctUnit),
+        return { name: entryName(e), people: peopleOf(e), qty: e.qty, act: e.act, ct: ctOf(e, l), unit: it ? unitOf(rateOf(it, e.people).unit) : unitOf(l.ctUnit),
           doneAt: isDone(e) ? e.doneAt || null : null, carry: e.carry || null };
       }),
     }));
@@ -3335,16 +3498,16 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       <div>計画数量（合計）<b>${fmtNum(round2(tq))}</b></div>
       <div>実績（合計）<b>${fmtNum(round2(ta))}</b></div>
       <div>達成率<b>${rateCell(pct(ta, tq))}</b></div>
-      <div>完了した品目<b>${done} / ${items}</b></div>
+      <div>完了した部品<b>${done} / ${items}</b></div>
     </div>`;
-    h += `<h3>日別の集計</h3><table class="hist-tbl"><thead><tr><th>日付</th><th>作業開始</th><th>最終入力</th><th>実稼働</th><th>計画数量</th><th>実績</th><th>達成率</th><th>完了した品目</th></tr></thead><tbody>`;
+    h += `<h3>日別の集計</h3><table class="hist-tbl"><thead><tr><th>日付</th><th>作業開始</th><th>最終入力</th><th>実稼働</th><th>計画数量</th><th>実績</th><th>達成率</th><th>完了した部品</th></tr></thead><tbody>`;
     for (const d of days) {
       let q = 0, a = 0, n = 0, dn = 0;
       d.rec.lines.forEach(l => l.items.forEach(it => { q += it.qty; a += it.act; n++; if (it.doneAt) dn++; }));
       h += `<tr class="${d.live ? 'live' : ''}"><td>${fmtDay(d.day)}${d.live ? '　本日（途中）' : ''}</td><td>${d.rec.start ? fmtHM(d.rec.start) : '-'}</td><td>${d.rec.last ? fmtHM(d.rec.last) : '-'}</td>` +
         `<td>${d.rec.workMs ? fmtDur(d.rec.workMs) : '-'}</td><td>${fmtNum(round2(q))}</td><td>${fmtNum(round2(a))}</td><td>${rateCell(pct(a, q))}</td><td>${dn} / ${n}</td></tr>`;
     }
-    h += `</tbody></table><h3>明細（ライン・品目ごと）</h3><table class="hist-tbl"><thead><tr><th>日付</th><th>ライン</th><th>品目</th><th>計画数量</th><th>実績</th><th>達成率</th><th>1個あたり</th><th>完了時刻</th></tr></thead><tbody>`;
+    h += `</tbody></table><h3>明細（ライン・部品ごと）</h3><table class="hist-tbl"><thead><tr><th>日付</th><th>ライン</th><th>部品</th><th>計画数量</th><th>実績</th><th>達成率</th><th>1カートンあたり</th><th>完了時刻</th></tr></thead><tbody>`;
     for (const d of days) {
       let first = true;
       for (const l of d.rec.lines) for (const it of l.items) {
@@ -3381,8 +3544,8 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       daily.push([fmtDay(d.day) + (d.live ? '（途中）' : ''), d.rec.start ? fmtHM(d.rec.start) : '', d.rec.last ? fmtHM(d.rec.last) : '', d.rec.workMs ? Math.round(d.rec.workMs / 60000) : '', round2(q), round2(a), q > 0 ? a / q : '', `${dn} / ${n}`]);
     }
     const blob = buildXlsx([
-      { name: '日別', header: ['日付', '作業開始', '最終入力', '実稼働（分）', '計画数量', '実績', '達成率', '完了した品目'], rows: daily, widths: [22, 10, 10, 12, 12, 12, 10, 14], pct: [6] },
-      { name: '明細', header: ['日付', 'ライン', '品目', '計画数量', '実績', '達成率', '1個あたりの時間', '完了時刻'], rows: detail, widths: [22, 8, 30, 12, 12, 10, 16, 10], pct: [5] },
+      { name: '日別', header: ['日付', '作業開始', '最終入力', '実稼働（分）', '計画数量', '実績', '達成率', '完了した部品'], rows: daily, widths: [22, 10, 10, 12, 12, 12, 10, 14], pct: [6] },
+      { name: '明細', header: ['日付', 'ライン', '部品', '計画数量', '実績', '達成率', '1カートンあたりの時間', '完了時刻'], rows: detail, widths: [22, 8, 30, 12, 12, 10, 16, 10], pct: [5] },
     ]);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -3551,7 +3714,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   $('wCal').onclick = () => { closeWelcome(); requireAdmin('calendar', openCalendar); };
   $('helpWelcome').onclick = () => { $('helpDlg').close(); openWelcome(); };
   $('appVer').textContent = `ライン進捗アンドン ver ${APP_VERSION}`;
-  // まだ何も設定していないとき（品目・計画・カレンダーがすべて空）に表示する
+  // まだ何も設定していないとき（部品・計画・カレンダーがすべて空）に表示する
   const isFresh = () => !st.welcomed && !st.items.length && st.lines.every(l => !l.queue.length) && !Object.keys(st.calendar).some(k => calendarDay(st.calendar, k).some(ln => ln.length));
 
   // ---------- 確認画面の ✕ ボタン（それぞれの「閉じる／キャンセル」と同じ動き）----------
