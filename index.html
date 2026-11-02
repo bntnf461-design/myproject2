@@ -31,6 +31,12 @@
   .toolbar .sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.4); margin: 0 4px; }
   .toolbar #qrBox { width: 190px; padding: 5px 6px; border-radius: 4px; background: #fff; color: #111; }
   .toolbar .status { margin-left: auto; font-size: 11px; opacity: .85; }
+  #cntBar { margin: 0 -12px; padding: 4px 12px; font-size: 13px; background: #1f3346; color: #fff; display: none; gap: 14px; align-items: center; }
+  #cntBar.on { display: flex; }
+  #cntBar .st { padding: 1px 8px; border-radius: 3px; font-weight: bold; }
+  #cntBar .st.run { background: #2e8b57; } #cntBar .st.stop { background: #c62828; }
+  #cntBar .st.brk { background: #1e63b5; } #cntBar .st.idle { background: #666; }
+  #cntBar .key { margin-left: auto; color: #ffd54f; font-weight: bold; }
   #msg { margin: 0 -12px 12px; padding: 6px 12px; font-size: 12px; min-height: 28px; background: #e8eef4; }
   #msg.warn { background: #fde2e2; color: #900; font-weight: bold; }
   #msg.ok { background: #e3f4e1; color: #145214; }
@@ -185,6 +191,7 @@
   <input id="qrBox" placeholder="素板QR（ここで読取りも可）" autocomplete="off">
   <button type="button" id="btnCounter" title="不良数カウンターのデータから、不良数と稼働状況を取り込みます">カウンター取込</button>
   <button type="button" id="btnCounterFile" title="取り込むファイルを選び直します">ファイル変更</button>
+  <label title="テンキー（数字・＋−＊／．・テンキーのEnter）を、同じパソコンで開いている不良数カウンターへ送ります"><input type="checkbox" id="chkFwd"> テンキー→カウンター</label>
   <span class="sep"></span>
   <button type="button" id="btnSettings">設定（型式・作業者）</button>
   <button type="button" id="btnExport">JSON書出し</button>
@@ -192,6 +199,7 @@
   <button type="button" id="btnCsv">CSV書出し（明細）</button>
   <span class="status" id="status"></span>
 </div>
+<div id="cntBar" class="noprint"></div>
 <div id="msg"></div>
 
 <form id="nippo" class="sheet" autocomplete="off" onsubmit="return false">
@@ -880,7 +888,7 @@
   document.body.appendChild(fb);
   fb.onchange = function () { var file = fb.files[0]; if (file) file.text().then(function (t) { importCounter(t, file.name); }); fb.value = ""; };
 
-  function importCounter(text, fname) {
+  function importCounter(text, fname, quiet) {
     var d = parseJSON(text, null);
     var h = d && d.hist;
     if (!h || !Array.isArray(h.d) || !Array.isArray(h.shifts)) { msg("不良数カウンターのデータではありません（" + fname + "）", "warn"); return; }
@@ -936,10 +944,101 @@
     recalc(); save();
     var note = "カウンター取込（" + fname + "）：" + (added.length ? "不良を " + row + " 行目に反映" : "新しい不良なし") +
       (starts.length ? "／稼働状況を反映" : "／この日の作業記録なし");
+    if (quiet && !added.length && !unknown.length) return;
     msg(note + (unknown.length ? "　⚠ 日報に対応のない不良の種類：" + unknown.join("、") : ""), unknown.length ? "warn" : "ok");
   }
-  document.getElementById("btnCounter").onclick = function () { readCounter(false); };
+  document.getElementById("btnCounter").onclick = function () {
+    var c = counterLocal();
+    if (c) importCounter(JSON.stringify(c), "このパソコンのカウンター"); else readCounter(false);
+  };
   document.getElementById("btnCounterFile").onclick = function () { readCounter(true); };
+
+  // ---------- 同じパソコンの不良数カウンターとの連携 ----------
+  // カウンターも日報もパソコンのファイルを Edge / Chrome で開くと、同じ保存場所（localStorage）を使う。
+  // そのため、カウンターのデータを直接読めるうえ、カウンターの「実績グラフ」と同じ仕組みでテンキーを送れる
+  // （カウンター側の変更は不要）。
+  var CNT = { state: "defectCounterState", hist: "defectCounterHistory", fwd: "defectCounterKeyForward",
+              active: "defectCounterActiveTab", reply: "defectCounterKeyReply", ping: "defectCounterReportPing" };
+  var FWD_KEY = "nline-nippo-fwd";
+  var chkFwd = document.getElementById("chkFwd");
+  chkFwd.checked = localStorageGet(FWD_KEY) !== "0";
+  chkFwd.onchange = function () { localStorageSet(FWD_KEY, chkFwd.checked ? "1" : "0"); drawCntBar(); };
+  function counterLocal() {
+    var h = parseJSON(localStorageGet(CNT.hist), null);
+    return h && Array.isArray(h.d) ? { hist: h, state: parseJSON(localStorageGet(CNT.state), {}) || {} } : null;
+  }
+  function counterAlive() { var a = parseJSON(localStorageGet(CNT.active), null); return a && Date.now() - a.t < 6000 ? a : null; }
+  function isToday() {
+    var t = new Date();
+    return val("workDate") === t.getFullYear() + "-" + pad2(t.getMonth() + 1) + "-" + pad2(t.getDate());
+  }
+  var keyNote = "", keyNoteTimer;
+  function drawCntBar() {
+    var bar = document.getElementById("cntBar"), c = counterLocal(), alive = counterAlive();
+    if (!c && !alive) { bar.className = ""; return; }
+    var st = (c && c.state) || {}, cls = "idle", txt = "待機中";
+    if (st.brk && st.brk.running) { cls = "brk"; txt = "休憩中"; }
+    else if (st.downtime && st.downtime.running) { cls = "stop"; txt = "停止中"; }
+    else if (st.job && st.job.running) { cls = "run"; txt = "作業中　" + (st.job.shift || ""); }
+    var counts = (st.types || []).map(function (t) { var n = (st.counts || {})[t.id]; return n ? t.name + " " + n : ""; }).filter(Boolean);
+    bar.innerHTML = "<span>不良数カウンター</span><span class=\"st " + cls + "\">" + esc(txt) + "</span>" +
+      "<span>" + esc(counts.join("　") || "不良 0") + "</span>" +
+      "<span style=\"opacity:.75\">" + (alive ? (chkFwd.checked ? "テンキー入力はカウンターへ送ります" : "テンキーは日報で使います") : "⚠ カウンターの画面が開いていません") + "</span>" +
+      "<span class=\"key\">" + esc(keyNote) + "</span>";
+    bar.className = "on";
+  }
+  function showKey(t) { keyNote = t; drawCntBar(); clearTimeout(keyNoteTimer); keyNoteTimer = setTimeout(function () { keyNote = ""; drawCntBar(); }, 1500); }
+  var KEY_LABEL = { NumpadAdd: "＋", NumpadSubtract: "−", NumpadMultiply: "＊", NumpadDivide: "／", NumpadDecimal: "．", NumpadEnter: "Enter", Backspace: "←" };
+  function editable(t) { return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable); }
+  window.addEventListener("keydown", function (e) {
+    if (!chkFwd.checked || e.ctrlKey || e.altKey || e.metaKey) return;
+    var code = e.code || "";
+    // テンキーのキーだけ送る。← はどの欄にもいないときだけ（日報の文字消しと区別するため）
+    if (!(code.indexOf("Numpad") === 0 || (code === "Backspace" && !editable(e.target)))) return;
+    if (dlg.open) return;
+    var a = counterAlive();
+    if (!a) { showKey("カウンターが開いていないため、日報に入力しました"); return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.repeat) return;
+    localStorageSet(CNT.fwd, JSON.stringify({ to: a.id, code: code, key: e.key, shiftKey: e.shiftKey, t: Date.now(), n: Math.random() }));
+    var m = /^Numpad(\d)$/.exec(code);
+    showKey("⌨ カウンターへ：" + (m ? m[1] : (KEY_LABEL[code] || e.key)));
+  }, true);
+  // カウンターの画面に「テンキーが記録されません」と出ないように、日報にフォーカスがあることを知らせる
+  function ping() { if (chkFwd.checked && document.hasFocus()) localStorageSet(CNT.ping, JSON.stringify({ t: Date.now(), focused: true })); }
+  setInterval(ping, 2000); window.addEventListener("focus", ping);
+  // カウンターからの返事（音・メッセージ）
+  var actx = null;
+  function tone(freq, dur, delay, vol) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var t0 = actx.currentTime + (delay || 0) + 0.01, o = actx.createOscillator(), g = actx.createGain();
+      o.type = "square"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol || 0.2, t0 + 0.01);
+      g.gain.setValueAtTime(vol || 0.2, t0 + Math.max(0.02, dur - 0.04)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+    } catch (err) {}
+  }
+  var autoTimer;
+  window.addEventListener("storage", function (e) {
+    if (e.key === CNT.reply && e.newValue) {
+      var m = parseJSON(e.newValue, null);
+      if (!m || Date.now() - m.t > 3000) return;
+      (m.beeps || []).forEach(function (b) { tone(b[0], b[1], b[2], m.vol); });
+      var last = (m.toasts || []).slice(-1)[0];
+      if (last) showKey(last[0]);
+      return;
+    }
+    if (e.key === CNT.state || e.key === CNT.hist || e.key === CNT.active) {
+      drawCntBar();
+      // 今日の日報を開いているときは、カウンターで数えた不良をその場で今の行へ取り込む
+      if (e.key !== CNT.active && isToday()) {
+        clearTimeout(autoTimer);
+        autoTimer = setTimeout(function () { var c = counterLocal(); if (c) importCounter(JSON.stringify(c), "このパソコンのカウンター", true); }, 800);
+      }
+    }
+  });
+  setInterval(drawCntBar, 5000);
 
   // ---------- 保存 / 読込み ----------
   var hiddenExtra = ["cntImported", "autoVals"];
@@ -1231,6 +1330,7 @@
   var last = localStorageGet(PREFIX + "last");
   var today = new Date(); today = today.getFullYear() + "-" + pad2(today.getMonth() + 1) + "-" + pad2(today.getDate());
   load(last || today);
+  drawCntBar();
   if (!master.models.length) msg("はじめに「設定（型式・作業者）」で型式を登録してください（Excel の雛形から読み込めます）");
 })();
 </script>
