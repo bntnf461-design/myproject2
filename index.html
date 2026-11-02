@@ -488,6 +488,11 @@
     .set-nav a { white-space: nowrap; font-size: 13px; padding: 6px 10px; }
     .set-main { padding: 4px 10px 20px; }
   }
+  @media (max-width: 760px) {
+    .chg-tbl td, .chg-tbl th { font-size: 13px !important; padding: 3px 2px !important; }
+    .dlg-body .chg-tbl input.chg-qty { width: 4.5em !important; }
+    .dlg-body .chg-tbl select.chg-pp { min-width: 0; max-width: 7em; }
+  }
 </style>
 </head>
 <body>
@@ -2527,6 +2532,9 @@
     draft.calendar = st.calendar;
     draft.day = st.day;
     draft.carry = st.carry;
+    draft.staff = st.staff;
+    draft.history = st.history;
+    draft.lastCountAt = st.lastCountAt;
     if (draft.adminPin) draft.adminPin = { salt: draft.adminPin.salt, hash: draft.adminPin.hash };
     // 暗証番号を新しく決めた・変えたときは、このパソコンでは解除した状態にする
     if (draft.adminPin && (!st.adminPin || st.adminPin.hash !== draft.adminPin.hash)) unlockedUntil = Date.now() + adminLockOf(draft).minutes * 60000;
