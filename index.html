@@ -159,6 +159,18 @@
   td.flash-minus { animation: flashm .5s ease-out; }
   @keyframes flashm { 0% { background: #ff9c9c; } 100% { } }
 
+  /* ---- 人数の予定 ---- */
+  .staff-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 4px 0 6px; padding: 5px 8px; background: #eef5ff; border-radius: 6px; font-size: 14px; }
+  .staff-lbl { font-weight: bold; color: #0a3f78; }
+  .staff-pt { display: inline-flex; align-items: center; gap: 3px; }
+  .dlg-body .staff-pt input[type=time] { width: 8em; padding: 2px 4px; }
+  .dlg-body .staff-pt input[type=number] { width: 4em; padding: 2px 4px; text-align: right; }
+  .dlg-body .staff-pt button { padding: 0 6px; }
+  .dlg-body .staff-add { padding: 2px 10px; font-size: 13px; }
+  .has-staff .pp-sel { display: none !important; }
+  .pp-staff { display: none; color: #0a3f78; font-size: 0.9em; }
+  .has-staff .pp-staff { display: inline; }
+
   /* ---- 途中変更 ---- */
   #chgDlg { width: min(860px, 96vw); }
   .chg-tbl td, .chg-tbl th { text-align: center; font-size: 17px !important; }
@@ -692,7 +704,8 @@
 <dialog id="chgDlg">
   <div class="dlg-head" id="chgTitle">途中変更</div>
   <div class="dlg-body">
-    <p class="note">作業の途中で、作業人数や計画数量を変えられます。人数を変えると、<b>今から</b>その人数の時間で目標・終了時間を計算します（それまでの分は前の人数のまま）。</p>
+    <p class="note">作業の途中で、作業人数や計画数量を変えられます。人数を変えると、<b>今から</b>その人数の時間で目標・終了時間を計算します（それまでの分は前の人数のまま）。<br>「👥 人数の予定」に「13:00 から 4人」のように入れると、その時刻から人数が変わる予定を組めます（予定を入れたラインは、部品ごとの人数より予定を使います）。</p>
+    <div id="chgStaff"></div>
     <table class="chg-tbl">
       <thead><tr><th>順番</th><th>部品</th><th>作業人数</th><th>計画数量</th><th>実績</th></tr></thead>
       <tbody id="chgRows"></tbody>
@@ -870,6 +883,7 @@
     <table>
       <tr><th>作業開始・一時停止・再開</th><td><kbd>Enter</kbd>（押すたびに切り替わります。自動開始なら押さなくても始まります）</td></tr>
       <tr><th>1カートンできた</th><td>そのラインのキー：<kbd>1</kbd>=A <kbd>2</kbd>=B <kbd>3</kbd>=C <kbd>4</kbd>=D <kbd>5</kbd>=E …（初期設定）<br>「1カートンの個数」を決めた部品は、1回で1カートン分（最後は残りの端数だけ）増えます。−1 も1カートン分（端数のカートンは端数だけ）戻ります。<br>実績は<b>計画数量まで</b>しか増えません。計画数量が小数（例：10.5）のときは、10 の次に押すと 10.5 になって完了します。<br>計画数量に達すると、次に押した分から<b>次の部品</b>を数えます。</td></tr>
+      <tr><th>人数の予定</th><td>「📅 計画」の各ラインの「👥 人数の予定」に「8:30 から 3人」「13:00 から 4人」のように入れると、その時刻から人数が変わる予定を先に組めます。目標・終了時間は時刻ごとの人数の時間で計算します。<br>部品に登録していない人数のときは、いちばん近い登録人数の時間を人数の比で直して使います（例：2人 60秒 → 4人なら 30秒。表では「（推定）」と表示）。<br>予定を入れたラインは、部品ごとの人数より予定を使います。当日の変更は、部品名を押して出る画面からもできます。</td></tr>
       <tr><th>途中で人数・数量を変える</th><td>画面の<b>部品名</b>を押します（事務所の PC からも同じ）。作業人数（人数ごとに時間を登録した部品）と計画数量を変えられます。人数を変えると、<b>変えた時点から</b>新しい人数の時間で目標・終了時間を計算します。<br>テンキーでも変えたいときは、「⚙ 設定 → 操作キー」で「途中変更キー」を決めると、そのキー → ラインのキーで開けます（初期は なし）。</td></tr>
       <tr><th>押し間違えた（−1）</th><td><kbd>−</kbd> を押してから、そのラインのキー（最後に数えた部品から取り消します。端数で増えた分は端数だけ戻ります）。<br>ラインごとの「−1 キー」を決めてあれば、そのキーを1回押すだけです（複数の人が同時に押しても混ざりません）</td></tr>
       <tr><th>計画数量の入力</th><td><kbd>＊</kbd> → 数字 → <kbd>Enter</kbd>（<kbd>.</kbd> で小数点、<kbd>−</kbd> で1文字消す）</td></tr>
@@ -987,6 +1001,7 @@
       resetKey: 'NumpadDivide',
       planKey: 'NumpadMultiply',
       viewKey: 'NumpadAdd',
+      staff: {},           // 人数の予定 { 'YYYY-MM-DD': [ライン順に [{ t: 'HH:MM', people }]] }（その時刻からその人数）
       editKey: null,              // 途中変更（人数・計画数量）のキー。初期は なし（事務所の PC で部品名を押して変える）
       keyVer: 2,
       autoStart: false,
@@ -1380,12 +1395,22 @@
     if (/^(秒|s|sec|secs|second|seconds)$/.test(t)) return 's';
     return undefined;
   }
-  // 部品（なければライン）の時間の表示
-  function ctText(e, l) {
+  // 部品（なければライン）の時間の表示。people を渡すとその人数の時間
+  function ctText(e, l, people) {
     const it = itemOf(e.item);
     if (!it) return fmtCt(l.ct, l.ctUnit);
-    const rt = rateOf(it, e.people);
-    return fmtCt(rt.ct, rt.unit);
+    const rt = people ? rateFor(it, people) : rateOf(it, e.people);
+    return fmtCt(rt.ct, rt.unit) + (rt.est ? '（推定）' : '');
+  }
+  // 人数の時間。登録にない人数は、いちばん近い登録人数の時間を人数の比で直す（例：2人 60秒 → 3人なら 40秒）
+  function rateFor(it, people) {
+    const rs = ratesOf(it);
+    const hit = rs.find(rt => rt.people === people);
+    if (hit || !people) return hit || rs[0];
+    const reg = rs.filter(rt => rt.people);
+    if (!reg.length) return rs[0];
+    const near = reg.reduce((a, b) => (Math.abs(b.people - people) < Math.abs(a.people - people) ? b : a));
+    return { people, ct: near.ct * near.people / people, unit: near.unit, est: true };
   }
   // 部品の「人数ごとの1カートンあたりの時間」。人数の指定がない・登録にない人数のときは一覧の最初を使う
   const ratesOf = it => (it.rates && it.rates.length ? it.rates : [{ people: null, ct: it.ct, unit: unitOf(it.unit) }]);
@@ -1396,11 +1421,103 @@
     const it = itemOf(e.item);
     return it ? rateOf(it, e.people).people : null;
   }
-  // 部品名の表示（人数があれば「部品名（3人）」）
-  function entryName(e) {
+  // 部品名の表示（人数があれば「部品名（3人）」）。人数の予定があるラインは人数を付けない（時刻で変わるため）
+  function entryName(e, l) {
     const n = itemName(e.item) || '部品未選択';
+    if (l && staffPoints(l, st.day).length) return n;
     const pp = peopleOf(e);
     return pp ? `${n}（${pp}人）` : n;
+  }
+
+  // ---------- 人数の予定（ラインごと・日ごと） ----------
+  // 人数の予定の入力欄。list（[{ t, people }]）を直接書き換え、変えるたびに onChange を呼ぶ
+  function staffEditor(list, onChange, defTime) {
+    const box = document.createElement('div');
+    box.className = 'staff-ed';
+    const draw = () => {
+      box.innerHTML = '<span class="staff-lbl">👥 人数の予定</span>';
+      list.forEach((x, k) => {
+        const row = document.createElement('span');
+        row.className = 'staff-pt';
+        row.innerHTML = `<input type="time"><span>から</span><input type="number" min="1" step="1"><span>人</span><button type="button" title="削除">✕</button>`;
+        const [ti, pi] = row.querySelectorAll('input');
+        ti.value = x.t || '';
+        pi.value = x.people || '';
+        ti.onchange = () => { x.t = ti.value; onChange(); };
+        pi.oninput = () => { x.people = Math.round(Number(pi.value)) || 0; onChange(); };
+        row.querySelector('button').onclick = () => { list.splice(k, 1); draw(); onChange(); };
+        box.appendChild(row);
+      });
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'staff-add';
+      add.textContent = list.length ? '＋ 人数の変更を追加' : '＋ 人数の予定を入れる';
+      add.onclick = () => {
+        const last = list[list.length - 1];
+        list.push({ t: last ? (defTime && defTime > last.t ? defTime : '') : (defTime || st.startTime || '08:00'), people: last ? last.people : 1 });
+        draw();
+        onChange();
+        const ins = box.querySelectorAll('input[type=time]');
+        ins[ins.length - 1].focus();
+      };
+      box.appendChild(add);
+      if (!list.length) box.insertAdjacentHTML('beforeend', '<span class="note">なし（部品ごとの人数で計算）</span>');
+    };
+    draw();
+    return box;
+  }
+  // 入力した人数の予定を確認して並べ替える。入力ミスがあれば { error }
+  function cleanStaff(list) {
+    const out = [];
+    for (const x of list || []) {
+      if (!x.t && !x.people) continue;
+      if (!/^\d{1,2}:\d{2}$/.test(x.t || '')) return { error: '人数の予定に、時刻が空欄の行があります' };
+      if (!(Number.isInteger(x.people) && x.people >= 1)) return { error: '人数の予定の人数は 1 以上の整数で入力してください' };
+      const same = out.find(y => y.t === x.t);
+      if (same) return { error: `人数の予定の ${x.t} が重複しています` };
+      out.push({ t: x.t, people: x.people });
+    }
+    return { list: out.sort((a, b) => parseHM(a.t) - parseHM(b.t)) };
+  }
+  function staffList(i, day) {
+    const d = (st.staff || {})[day];
+    return ((d && d[i]) || []).filter(x => x && /^\d{1,2}:\d{2}$/.test(x.t || '') && x.people > 0)
+      .slice().sort((a, b) => parseHM(a.t) - parseHM(b.t));
+  }
+  // 予定の変わり目 [{ at: 時刻(ms), people }]。予定がなければ空
+  function staffPoints(l, day) {
+    const i = st.lines.indexOf(l);
+    if (i < 0 || !day) return [];
+    const d0 = keyToDate(day).getTime();
+    return staffList(i, day).map(x => ({ at: d0 + parseHM(x.t), people: x.people }));
+  }
+  // その時刻の人数（最初の予定より前は、最初の人数）
+  function staffAt(pts, ms) {
+    let pp = pts.length ? pts[0].people : null;
+    for (const x of pts) if (x.at <= ms) pp = x.people;
+    return pp;
+  }
+  // 部品 e の「数える単位1つあたりの時間（ms）」。人数の予定があれば、その時刻の人数で
+  const unitMsAt = (e, l, pts, ms) => unitSecOf(e, l, pts.length ? staffAt(pts, ms) : null) * 1000;
+  // from〜to に実際に作業した時間で、作れたはずの数
+  function unitsWorked(e, l, pts, from, to) {
+    const cuts = [from, ...pts.map(x => x.at).filter(t => t > from && t < to), to];
+    let n = 0;
+    for (let k = 0; k + 1 < cuts.length; k++) n += workSince(cuts[k], cuts[k + 1]) / unitMsAt(e, l, pts, cuts[k]);
+    return n;
+  }
+  // from から units だけ作り終える時刻（休憩を除く。人数の予定の変わり目で速さを変える）
+  function addUnits(e, l, pts, from, units) {
+    let cursor = from;
+    for (const x of pts) {
+      if (x.at <= cursor) continue;
+      const u = unitMsAt(e, l, pts, cursor);
+      const cap = workMs(cursor, x.at) / u;
+      if (units <= cap) return addWork(cursor, units * u);
+      units -= cap;
+      cursor = x.at;
+    }
+    return addWork(cursor, units * unitMsAt(e, l, pts, cursor));
   }
   // 部品の「1カートンの個数（MAX）」。決めた部品は数量を個数で持ち、テンキー1回で1カートン分（残りが少なければ残りだけ）増える。
   // 決めていなければ null（数量はカートン数、テンキー1回で +1）
@@ -1410,7 +1527,7 @@
   }
   const qtyUnit = e => (perCartonOf(e) ? '個' : 'カートン');
   // 数える単位（個 または カートン）1つあたりの時間（秒）
-  const unitSecOf = (e, l) => ctOf(e, l) / (perCartonOf(e) || 1);
+  const unitSecOf = (e, l, people) => ctOf(e, l, people) / (perCartonOf(e) || 1);
   // 計画の行の、部品・数量以外の情報（人数・持ち越し元）
   const entryExtra = e => Object.assign({}, Number(e.people) > 0 ? { people: Math.round(Number(e.people)) } : {}, e.carry ? { carry: e.carry } : {});
   // 設定画面の「数字＋単位」入力欄。obj[ctKey] を秒で、obj[unitKey] を単位で更新する
@@ -1449,9 +1566,9 @@
     return '';
   }
   // 1カートンあたりの時間（秒）。部品は人数ごとの時間、部品の設定がなければラインの値を使う
-  function ctOf(e, l) {
+  function ctOf(e, l, people) {
     const it = itemOf(e.item);
-    return Math.max(0.1, Number(it ? rateOf(it, e.people).ct : l.ct) || 1);
+    return Math.max(0.1, Number(it ? (people ? rateFor(it, people) : rateOf(it, e.people)).ct : l.ct) || 1);
   }
   const isDone = e => e.qty > 0 && e.act >= e.qty - 1e-9;
   const currentIndex = l => l.queue.findIndex(e => e.qty > 0 && !isDone(e));
@@ -1463,6 +1580,7 @@
     const base = started() ? st.segments[0].s : (st.startTime ? midnight(now) + parseHM(st.startTime) : null);
     let prev = base, cur = -1, curTarget = null, curEnd = null, doneAt = null, curN = null;
     let dayPlan = 0, dayAct = 0, dayTarget = 0, totalMs = 0;
+    const pts = staffPoints(l, st.day || dateKey(now));
     l.queue.forEach((e, j) => {
       if (!(e.qty > 0)) return;
       const ctMs = unitSecOf(e, l) * 1000;
@@ -1475,22 +1593,30 @@
         cur = j;
         if (started()) {
           // 途中で人数を変えたときは、変えた時点の目標（baseN）＋ 変えた後の時間 ÷ 新しい時間
+          // 人数の予定があれば、時刻ごとの人数の時間で数える
           const from = prev ?? base;
-          const n = e.chgAt && e.chgAt > from ? (e.baseN || 0) + workSince(e.chgAt, now) / ctMs : workSince(from, now) / ctMs;
+          const n = pts.length ? unitsWorked(e, l, pts, from, now)
+            : e.chgAt && e.chgAt > from ? (e.baseN || 0) + workSince(e.chgAt, now) / ctMs : workSince(from, now) / ctMs;
           curN = n;
           curTarget = n >= e.qty ? e.qty : Math.floor(n);
-          curEnd = addWork(now, (e.qty - e.act) * ctMs);
+          curEnd = addUnits(e, l, pts, now, e.qty - e.act);
           dayTarget += curTarget;
         } else {
-          curEnd = prev !== null ? addWork(prev, e.qty * ctMs) : null;
+          curEnd = prev !== null ? addUnits(e, l, pts, prev, e.qty) : null;
         }
         prev = curEnd;
       } else {
-        prev = prev !== null ? addWork(prev, e.qty * ctMs) : null;
+        prev = prev !== null ? addUnits(e, l, pts, prev, e.qty) : null;
       }
     });
     // 当初の計画どおりに進んだ場合の終了時刻（作業開始時刻から、遅れを含まない）
-    const planEnd = totalMs > 0 && base !== null ? (started() ? planReachTime(totalMs, now) : addWork(base, totalMs)) : null;
+    let planEnd = null;
+    if (totalMs > 0 && base !== null) {
+      if (pts.length) {
+        planEnd = base;
+        l.queue.forEach(e => { if (e.qty > 0) planEnd = addUnits(e, l, pts, planEnd, e.qty); });
+      } else planEnd = started() ? planReachTime(totalMs, now) : addWork(base, totalMs);
+    }
     return { cur, curTarget, curN, curEnd, planEnd, lineEnd: cur >= 0 ? prev : null, doneAt: cur < 0 ? doneAt : null,
       dayPlan: round2(dayPlan), dayAct: round2(dayAct), dayTarget: round2(dayTarget), hasPlan: dayPlan > 0 };
   }
@@ -1621,13 +1747,14 @@
         const pos = l.queue.filter(x => x.qty > 0).indexOf(e) + 1;
         const total = l.queue.filter(x => x.qty > 0).length;
         // 作業人数は部品名の下に出す（部品名を大きく見せるため）
-        const pp = peopleOf(e);
+        const spts = staffPoints(l, st.day);
+        const pp = spts.length ? staffAt(spts, Date.now()) : peopleOf(e);
         const pcs = perCartonOf(e);
         const info = [e.carry ? carryLabel(e.carry) : '', pp ? `👥${pp}人` : '', pcs ? `📦${fmtNum(pcs)}個/カートン` : '', total > 1 ? `${pos}/${total}番め` : '', nx >= 0 && sc.curEnd ? `〜${fmtEnd(sc.curEnd)}` : ''].filter(Boolean).join('　');
-        const nextText = `次：${nx >= 0 ? (l.queue[nx].carry ? '↻' : '') + esc(entryName(l.queue[nx])) + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
+        const nextText = `次：${nx >= 0 ? (l.queue[nx].carry ? '↻' : '') + esc(entryName(l.queue[nx], l)) + ' ' + fmtNum(l.queue[nx].qty) : 'なし'}`;
         itemCell.innerHTML = `<div class="it-cur">${e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(itemName(e.item) || '部品未選択')}</div>` +
           (info ? `<div class="it-next">${info}</div>` : '') + `<div class="it-next">${nextText}</div>`;
-        itemCell.title = l.queue.filter(x => x.qty > 0).map((x, k) => `${k + 1}. ${entryName(x)} ${fmtNum(x.act)}/${fmtNum(x.qty)}`).join('\n');
+        itemCell.title = l.queue.filter(x => x.qty > 0).map((x, k) => `${k + 1}. ${entryName(x, l)} ${fmtNum(x.act)}/${fmtNum(x.qty)}`).join('\n');
         if (document.activeElement !== inp) inp.value = fmtNum(e.qty);
         setCells(tr, { target: started() ? sc.curTarget : null, act: e.act }, '', '');
         endText = sc.lineEnd ? fmtEnd(sc.lineEnd) : '-';
@@ -1738,8 +1865,8 @@
       if (isDone(e)) {
         e.doneAt = now;
         const nx = nextIndex(l, j);
-        msg = `${l.name}：${e.item ? entryName(e) : '部品'} 完了 → ` +
-          (nx >= 0 ? `次 ${entryName(l.queue[nx])} ${fmtNum(l.queue[nx].qty)}` : '全部品完了');
+        msg = `${l.name}：${e.item ? entryName(e, l) : '部品'} 完了 → ` +
+          (nx >= 0 ? `次 ${entryName(l.queue[nx], l)} ${fmtNum(l.queue[nx].qty)}` : '全部品完了');
       }
     } else {
       // 最後に数えた部品から取り消す（端数で増えた分は端数だけ戻す）
@@ -2433,9 +2560,12 @@
   let calDraft = null, calOrig = null, calMonth = null, calSel = null;
 
   function keyToDate(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
+  let calStaff = {}, calStaffOrig = {};
   function openCalendar() {
     calDraft = JSON.parse(JSON.stringify(st.calendar));
     calOrig = JSON.parse(JSON.stringify(st.calendar));
+    calStaff = JSON.parse(JSON.stringify(st.staff || {}));
+    calStaffOrig = JSON.parse(JSON.stringify(st.staff || {}));
     const now = new Date();
     calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     calSel = dateKey(now.getTime());
@@ -2481,11 +2611,22 @@
     const options = sel => (sel ? '' : `<option value="" selected disabled>部品を選んでください</option>`) +
       st.items.map(it => `<option value="${esc(it.id)}"${it.id === sel ? ' selected' : ''}>${esc(it.name)}${ratesOf(it).length === 1 ? `（${rateLabel(ratesOf(it)[0])}）` : ''}</option>`).join('') +
       (sel && !itemOf(sel) ? `<option value="${esc(sel)}" selected>（削除された部品）</option>` : '');
+    // 人数の予定（この日・ライン順）
+    if (!calStaff[calSel]) calStaff[calSel] = [];
+    const sday = calStaff[calSel];
+    while (sday.length < st.lines.length) sday.push([]);
     st.lines.forEach((l, i) => {
       const wrap = document.createElement('div');
       wrap.className = 'cal-line';
       wrap.innerHTML = `<b>${esc(l.name)} ライン</b>`;
       const list = day[i];
+      const secs = [];   // 人数の予定を変えたら所要時間を出し直す
+      const sync = () => {
+        const has = sday[i].some(x => x.t && x.people > 0);
+        wrap.classList.toggle('has-staff', has);
+        secs.forEach(f => f());
+      };
+      wrap.appendChild(staffEditor(sday[i], sync));
       list.forEach((e, j) => {
         const row = document.createElement('div');
         row.className = 'cal-ent';
@@ -2510,12 +2651,15 @@
           store();
         };
         const showSec = () => {
-          const ct = unitSecOf(e, l);
+          // 人数の予定があれば、最初の人数の時間で目安を出す
+          const sp = sday[i].filter(x => x.t && x.people > 0).sort((a, b) => parseHM(a.t) - parseHM(b.t));
+          const ct = unitSecOf(e, l, sp.length ? sp[0].people : null);
           inp.placeholder = perCartonOf(e) ? '個数' : 'カートン数';
           sec.textContent = qtyUnit(e) + (e.qty > 0 ? '　' + fmtMin(e.qty * ct * 1000) : '');
         };
         inp.value = e.qty > 0 ? fmtNum(e.qty) : '';
         showSec();
+        secs.push(showSec);
         sel.onchange = () => {
           e.item = sel.value || null;
           // 部品を変えたら人数はその部品の最初の人数にする
@@ -2554,6 +2698,7 @@
       };
       wrap.appendChild(add);
       box.appendChild(wrap);
+      sync();
     });
   }
   // 入力中にフォーカスを失わないよう、選択中の日のセルだけ更新
@@ -2577,6 +2722,7 @@
     const pk = dateKey(prev.getTime());
     if (!calDraft[pk]) { alert('前日の計画が入力されていません'); return; }
     calDraft[calSel] = calendarDay(calDraft, pk);
+    calStaff[calSel] = JSON.parse(JSON.stringify(calStaff[pk] || []));
     renderCalendar();
   };
   $('calFillWeekdays').onclick = () => {
@@ -2590,18 +2736,36 @@
       const k = dateKey(dt.getTime());
       if (dt.getDay() === 0 || dt.getDay() === 6 || k < today) continue;
       calDraft[k] = JSON.parse(JSON.stringify(plans));
+      calStaff[k] = JSON.parse(JSON.stringify(calStaff[calSel] || []));
       n++;
     }
     renderCalendar();
     banner(`${n}日分に入力しました（今日以降の平日）`);
   };
-  $('calClear').onclick = () => { delete calDraft[calSel]; renderCalendar(); };
+  $('calClear').onclick = () => { delete calDraft[calSel]; delete calStaff[calSel]; renderCalendar(); };
   $('calCancel').onclick = () => calDlg.close();
   $('calSave').onclick = () => {
     // 部品を選んでいない行があれば保存しない
     for (const k of Object.keys(calDraft)) {
       const bad = calendarDay(calDraft, k).findIndex(ln => ln.some(e => !e.item));
       if (bad >= 0) { calSel = k; renderCalendar(); alert(`${k.slice(5).replace('-', '/')} の ${st.lines[bad].name} ラインに、部品を選んでいない行があります`); return; }
+    }
+    // 人数の予定の確認
+    const staffClean = {};
+    for (const k of Object.keys(calStaff)) {
+      const lines = [];
+      for (let i = 0; i < st.lines.length; i++) {
+        const c = cleanStaff((calStaff[k] || [])[i]);
+        if (c.error) { calSel = k; renderCalendar(); alert(`${k.slice(5).replace('-', '/')} の ${st.lines[i].name} ライン：${c.error}`); return; }
+        lines.push(c.list);
+      }
+      if (lines.some(x => x.length)) staffClean[k] = lines;
+    }
+    if (!st.staff) st.staff = {};
+    for (const k of new Set([...Object.keys(staffClean), ...Object.keys(calStaffOrig)])) {
+      if (same(staffClean[k], calStaffOrig[k])) continue;
+      if (staffClean[k]) st.staff[k] = staffClean[k];
+      else delete st.staff[k];
     }
     // 数量 0 の行は除き、変更した日だけを書き戻す（開いている間に他の PC が変えた日は消さない）
     for (const k of new Set([...Object.keys(calDraft), ...Object.keys(calOrig)])) {
@@ -3380,17 +3544,22 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     const on = live && started();
     const base = on ? st.segments[0].s : (st.startTime ? dayStart + parseHM(st.startTime) : null);
     const out = [];
+    const pts = staffPoints(l, dateKey(dayStart));
     let prev = base, planPrev = base, cum = 0, curFound = false;
     for (const e of entries) {
       if (!(e.qty > 0)) continue;
-      const ct = unitSecOf(e, l), ms = e.qty * ct * 1000;
-      cum += ms;
-      const planEnd = base === null ? null : on ? planReachTime(cum, now) : addWork(base, cum);
-      const r = { e, ct, ms, planStart: planPrev, planEnd, start: prev };
+      // 人数の予定があれば、その部品を始める時刻の人数で時間を表示する（計算は時刻ごとの人数）
+      const pp = pts.length ? staffAt(pts, prev ?? base ?? dayStart) : null;
+      const ct = unitSecOf(e, l, pp);
+      cum += e.qty * ct * 1000;
+      const planEnd = base === null ? null : pts.length ? addUnits(e, l, pts, planPrev, e.qty) : on ? planReachTime(cum, now) : addWork(base, cum);
+      const r = { e, ct, pp, planStart: planPrev, planEnd, start: prev };
       planPrev = planEnd;
       if (live && isDone(e)) { r.state = 'done'; r.end = e.doneAt ?? prev; }
-      else if (!curFound && on) { curFound = true; r.state = 'cur'; r.end = addWork(now, (e.qty - e.act) * ct * 1000); }
-      else { r.state = 'next'; r.end = prev === null ? null : addWork(prev, ms); }
+      else if (!curFound && on) { curFound = true; r.state = 'cur'; r.end = addUnits(e, l, pts, now, e.qty - e.act); }
+      else { r.state = 'next'; r.end = prev === null ? null : addUnits(e, l, pts, prev, e.qty); }
+      // 所要時間（休憩を除く作業時間）
+      r.ms = pts.length && r.start !== null && r.end !== null && r.state !== 'done' ? workMs(r.state === 'cur' ? now : r.start, r.end) + (r.state === 'cur' ? e.act * ct * 1000 : 0) : e.qty * ct * 1000;
       if (!curFound && !on && r.state === 'next') curFound = true;
       prev = r.end;
       out.push(r);
@@ -3467,10 +3636,10 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
         let blocks = '';
         for (const it of r.items) {
           if (it.start === null || it.end === null) continue;
-          const name = entryName(it.e);
+          const name = entryName(it.e, r.l) + (it.pp ? `（${it.pp}人〜）` : '');
           const prog = it.state === 'cur' ? `<div class="fill" style="width:${Math.min(100, it.e.act / it.e.qty * 100).toFixed(1)}%"></div>` : '';
           const qtyText = it.state === 'cur' || it.state === 'done' ? `${fmtNum(it.e.act)}/${fmtNum(it.e.qty)}` : fmtNum(it.e.qty);
-          const tip = `${name}　${qtyText}${qtyUnit(it.e)}\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1カートン ${ctText(it.e, r.l)}・所要 ${fmtMin(it.ms)}`;
+          const tip = `${name}　${qtyText}${qtyUnit(it.e)}\n${fmtD(it.start)}〜${fmtD(it.end)}（${it.state === 'done' ? '完了' : it.state === 'cur' ? '作業中' : '予定'}）\n1カートン ${ctText(it.e, r.l, it.pp)}・所要 ${fmtMin(it.ms)}`;
           blocks += `<div class="g-blk ${it.state}" style="left:${x(it.start)};width:${w(it.start, it.end)};background:${r.l.color}" title="${esc(tip)}">${prog}` +
             `<div class="t1">${it.state === 'done' ? '✓ ' : ''}${it.e.carry ? '<span class="carry-mark">↻</span>' : ''}${esc(name)} ${qtyText}</div><div class="t2">${fmtD(it.start)}〜${fmtD(it.end)}</div></div>`;
           if (live && started() && it.planStart !== null && it.planEnd !== null) {
@@ -3498,9 +3667,9 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       r.items.forEach((it, k) => {
         const lateMs = it.end && it.planEnd ? it.end - it.planEnd : 0;
         t += `<tr class="${it.state}${k === 0 ? ' first' : ''}">` + (k === 0 ? `<td class="l" rowspan="${r.items.length}" style="background:${r.l.color}">${esc(r.l.name)}</td>` : '') +
-          `<td>${k + 1}</td><td class="it">${it.e.carry ? `<span class="carry-mark">↻</span>` : ''}${esc(entryName(it.e))}${it.e.carry ? `<small class="carry-mark">（${carryLabel(it.e.carry)}）</small>` : ''}</td><td>${fmtNum(it.e.qty)}<small>${qtyUnit(it.e)}</small></td>` +
+          `<td>${k + 1}</td><td class="it">${it.e.carry ? `<span class="carry-mark">↻</span>` : ''}${esc(entryName(it.e, r.l))}${it.pp ? `<small>（👥${it.pp}人〜）</small>` : ''}${it.e.carry ? `<small class="carry-mark">（${carryLabel(it.e.carry)}）</small>` : ''}</td><td>${fmtNum(it.e.qty)}<small>${qtyUnit(it.e)}</small></td>` +
           (live && started() ? `<td>${fmtNum(it.e.act)}</td>` : '') +
-          `<td>${ctText(it.e, r.l)}</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
+          `<td>${ctText(it.e, r.l, it.pp)}</td><td>${fmtMin(it.ms)}</td><td>${it.start ? fmtD(it.start) : '-'}</td>` +
           `<td class="${live && started() && lateMs > 60000 ? 'late' : ''}">${it.end ? fmtD(it.end) : '-'}</td>` +
           (live && started() ? `<td>${it.planStart ? fmtD(it.planStart) + '〜' + fmtD(it.planEnd) : '-'}</td>` +
             `<td>${it.state === 'done' ? '✓ 完了' : it.state === 'cur' ? '作業中' : 'これから'}${lateMs > 60000 && it.state !== 'done' ? `<br><span class="late">${fmtMin(lateMs)}遅れ</span>` : ''}</td>` : '') +
@@ -3520,11 +3689,12 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   // ---------- 実績の履歴・日報 ----------
   // 今の画面の状態から、その日の記録を作る（計画も実績もなければ null）
   function snapshotDay(now) {
-    const lines = st.lines.map(l => ({
+    const lines = st.lines.map((l, i) => ({
       name: l.name,
+      staff: staffList(i, st.day),
       items: l.queue.filter(e => e.qty > 0).map(e => {
         const it = itemOf(e.item);
-        return { name: entryName(e), people: peopleOf(e), qu: qtyUnit(e), qty: e.qty, act: e.act, ct: ctOf(e, l), unit: it ? unitOf(rateOf(it, e.people).unit) : unitOf(l.ctUnit),
+        return { name: entryName(e, l), people: peopleOf(e), qu: qtyUnit(e), qty: e.qty, act: e.act, ct: ctOf(e, l), unit: it ? unitOf(rateOf(it, e.people).unit) : unitOf(l.ctUnit),
           doneAt: isDone(e) ? e.doneAt || null : null, carry: e.carry || null };
       }),
     }));
@@ -3755,12 +3925,20 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
   }
 
   // ---------- 途中変更（作業人数・計画数量） ----------
-  let chgLine = -1;
+  let chgLine = -1, chgStaff = [];
   function openChange(i) {
     const l = st.lines[i];
     if (!l || document.querySelector('dialog[open]')) return;
     if (!l.queue.some(e => e.qty > 0)) { banner(`${l.name}：計画がありません。「📅 計画」で部品と数量を入れてください`); return; }
     chgLine = i;
+    // 今日の人数の予定（編集用の写し）
+    chgStaff = staffList(i, st.day).map(x => Object.assign({}, x));
+    const now = new Date();
+    const nowHM = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    $('chgStaff').innerHTML = '';
+    const tbl = $('chgDlg').querySelector('.chg-tbl');
+    const syncStaff = () => tbl.classList.toggle('has-staff', chgStaff.some(x => x.t && x.people > 0));
+    $('chgStaff').appendChild(staffEditor(chgStaff, syncStaff, nowHM));
     $('banner').style.display = 'none';   // 「ラインのキーを押してください」を消す
     $('chgTitle').textContent = `✏ ${l.name} ライン　途中変更`;
     const cur = currentIndex(l);
@@ -3770,24 +3948,36 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       const rs = it ? ratesOf(it) : [];
       const done = isDone(e);
       const pp = rs.length > 1
-        ? `<select class="chg-pp" data-j="${j}"${done ? ' disabled' : ''}>${rs.map(rt => `<option value="${rt.people || ''}"${rt.people === peopleOf(e) ? ' selected' : ''}>${esc(rateLabel(rt))}</option>`).join('')}</select>`
-        : esc(rs[0] && rs[0].people ? rateLabel(rs[0]) : '-');
-      return `<tr class="${done ? 'done' : ''}"><td>${j === cur ? '▶' : j + 1}</td><td class="it">${esc(itemName(e.item) || '部品未選択')}</td><td>${pp}</td>` +
+        ? `<select class="chg-pp pp-sel" data-j="${j}"${done ? ' disabled' : ''}>${rs.map(rt => `<option value="${rt.people || ''}"${rt.people === peopleOf(e) ? ' selected' : ''}>${esc(rateLabel(rt))}</option>`).join('')}</select>`
+        : `<span class="pp-sel">${esc(rs[0] && rs[0].people ? rateLabel(rs[0]) : '-')}</span>`;
+      return `<tr class="${done ? 'done' : ''}"><td>${j === cur ? '▶' : j + 1}</td><td class="it">${esc(itemName(e.item) || '部品未選択')}</td><td>${pp}<span class="pp-staff">人数の予定どおり</span></td>` +
         `<td><input type="text" inputmode="decimal" class="chg-qty" data-j="${j}" value="${fmtNum(e.qty)}"${done ? ' disabled' : ''}> ${qtyUnit(e)}</td>` +
         `<td>${fmtNum(e.act)}${done ? ' ✓' : ''}</td></tr>`;
     }).join('');
+    syncStaff();
     $('chgDlg').showModal();
     const first = $('chgRows').querySelector('select:not(:disabled), input:not(:disabled)');
     if (first) first.focus();
   }
   function applyChange() {
     const l = st.lines[chgLine];
+    if (!l) { $('chgDlg').close(); return; }
+    const c = cleanStaff(chgStaff);
+    if (c.error) { alert(c.error); return; }
     $('chgDlg').close();
-    if (!l) return;
     const now = Date.now();
     const sch = lineSchedule(l, now);
     let changed = false;
-    $('chgRows').querySelectorAll('.chg-pp:not(:disabled)').forEach(sel => {
+    // 人数の予定
+    if (!same(c.list, staffList(chgLine, st.day))) {
+      if (!st.staff) st.staff = {};
+      const day = st.staff[st.day] || (st.staff[st.day] = []);
+      while (day.length < st.lines.length) day.push([]);
+      day[chgLine] = c.list;
+      if (!day.some(x => x.length)) delete st.staff[st.day];
+      changed = true;
+    }
+    if (!c.list.length) $('chgRows').querySelectorAll('.chg-pp:not(:disabled)').forEach(sel => {
       const e = l.queue[+sel.dataset.j];
       const np = sel.value ? Number(sel.value) : null;
       if (!e || np === peopleOf(e)) return;
