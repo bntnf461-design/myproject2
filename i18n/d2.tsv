@@ -1,0 +1,317 @@
+時間帯別の推移	Tren per jam
+時間ごと	Per jam
+・直近	· terakhir
+時間のみ表示。全時間帯は実績グラフの画面で見られます	jam saja. Semua jam bisa dilihat di layar grafik hasil
+時間帯別の不良数と設備停止時間	Cacat dan waktu mesin berhenti per jam
+不良数（	Jumlah cacat (
+設備停止時間（分）	Waktu mesin berhenti (mnt)
+設備停止	Mesin berhenti
+最多の時間帯	Jam terbanyak
+台（	(
+変更が保存されていません。破棄して閉じるには、もう一度	Perubahan belum disimpan. Untuk buang & tutup, tekan sekali lagi
+（またはキャンセル）を押してください。	(atau Batal).
+不良の名前	Nama cacat
+番号キー	Tombol angka
+削除	Hapus
+もう一度押すと削除（	Tekan lagi untuk hapus (
+は合計から外れます）	dikeluarkan dari total)
+使う	Pakai
+自動の休憩の時間はありません。	Tidak ada jam istirahat otomatis.
+もう一度押すと削除	Tekan lagi untuk hapus
+理由の名前	Nama alasan
+上へ	Ke atas
+下へ	Ke bawah
+種類は	Jenis maksimal
+つまでです。	.
+新しい種類	Jenis baru
+不良の種類を	Daftarkan jenis cacat minimal
+つ以上登録してください。	.
+番号キーが重複しています。それぞれ別の番号にしてください。	Tombol angka ganda. Gunakan nomor yang berbeda.
+名前が空の種類があります。	Ada jenis tanpa nama.
+製造種類を	Isi produk minimal
+つ以上入力してください。	.
+名前が空の停止理由があります（使わない場合は「削除」してください）。	Ada alasan berhenti tanpa nama (jika tidak dipakai, “Hapus”).
+停止理由の名前が重複しています。	Nama alasan berhenti ganda.
+停止理由を使う場合は、候補を	Jika memakai alasan berhenti, isi pilihan minimal
+休憩の時間に空欄があります（使わない時間は「削除」してください）。	Ada jam istirahat yang kosong (jika tidak dipakai, “Hapus”).
+休憩の開始と終わりが同じ時刻になっています。	Jam mulai dan selesai istirahat sama.
+曜日が	Ada istirahat tanpa hari dipilih
+つも選ばれていない休憩があります（使わないときは「使う」を外してください）。	(jika tidak dipakai, hilangkan centang “Pakai”).
+同じ曜日に同じ開始時刻の休憩が	Ada istirahat dengan hari dan jam mulai yang sama:
+つあります。	buah.
+日の計画稼働時間は	Waktu operasi rencana per hari isi dengan bilangan bulat
+分の整数で入れてください。	mnt.
+共有フォルダに保存するときは、「保存先のフォルダを選ぶ」でフォルダを選んでください。	Untuk simpan ke folder bersama, pilih folder di “Pilih folder tujuan”.
+設定を保存しました	Pengaturan disimpan
+。ファイルは「ダウンロード」フォルダに保存されます。別のパソコンへの引っ越しにも使えます。	. File disimpan di folder “Download”. Bisa juga untuk pindah ke PC lain.
+バックアップを保存しました：	Cadangan disimpan:
+フォルダを選べませんでした：	Folder tidak bisa dipilih:
+このタブを閲覧用に切り替えます（この	Tab ini diganti ke mode lihat (layar penghitung di
+のカウンターの画面は閉じます）。よろしいですか？	ini ditutup). Lanjutkan?
+もう一度押すと取り消し（この停止は記録されません）	Tekan lagi untuk batal (berhenti ini tidak dicatat)
+停止を取り消すには、もう一度	Untuk membatalkan berhenti, tekan sekali lagi
+停止理由	Alasan berhenti
+（数字キーかクリックで選ぶ）	(pilih dengan tombol angka atau klik)
+：	:
+停止理由：	Alasan berhenti:
+停止理由を外しました	Alasan berhenti dihapus
+番の停止理由はありません（	tidak ada alasan berhenti untuk nomor itu (
+で選んでください）	untuk memilih)
+停止を取り消しました（記録されていません）	Berhenti dibatalkan (tidak dicatat)
+（設備停止はここで終了しました）	(mesin berhenti selesai di sini)
+休憩の時間です（自動）。	Waktunya istirahat (otomatis).
+に自動で戻ります	kembali otomatis
+休憩に入りました。終わったら	Mulai istirahat. Setelah selesai tekan
+休憩の時間が終わりました（自動）	Waktu istirahat selesai (otomatis)
+休憩を終了しました	Istirahat selesai
+自動休憩	Istirahat otomatis
+、	,
+今日の自動の休憩はありません（設定で選ぶ）	Hari ini tidak ada istirahat otomatis (pilih di pengaturan)
+自動休憩をオンにしました（	Istirahat otomatis dinyalakan (
+使う時間がありません。設定で選んでください	Tidak ada jam yang dipakai. Pilih di pengaturan
+自動休憩をオフにしました（	Istirahat otomatis dimatikan (
+での休憩はいつでも使えます）	tetap bisa untuk istirahat kapan saja)
+休憩を取り消しました（記録されていません）	Istirahat dibatalkan (tidak dicatat)
+休憩開始	Mulai istirahat
+　｜　休憩の合計	 | Total istirahat
+　休憩の時間は稼働時間に入りません	 Waktu istirahat tidak dihitung operasi
+休憩中です。	Sedang istirahat.
+で休憩を終わってから入力してください	untuk selesai istirahat, lalu input
+もう一度押すと取り消し（この休憩は記録されません）	Tekan lagi untuk batal (istirahat ini tidak dicatat)
+休憩を取り消すには、もう一度	Untuk membatalkan istirahat, tekan sekali lagi
+早く戻るときも	Untuk kembali lebih cepat juga tekan
+で終わります	untuk selesai
+入力欄をクリックしてから数字を入れてください	Klik kolom input lalu isi angka
+記録の修正画面を閉じてから入力してください	Tutup layar koreksi catatan, lalu input
+キーには不良の種類が割り当てられていません	tombol belum diberi jenis cacat
+＋：作業開始・作業終了（作業の記録を使わないときは、以前の	+: mulai / selesai kerja (jika catatan kerja tidak dipakai, panduan tombol simpan
+保存キーの案内）	lama)
+＋キーは使いません。データは実績グラフの画面の「	Tombol + tidak dipakai. Ambil data dari layar grafik hasil “
+別のタブでの変更を読み込みました	Perubahan dari tab lain dimuat
+（空き）	(kosong)
+貼らない	Tidak ditempel
+取消	Batal
+選ぶ	Pilih
+＋	+
+元に戻す（押すたびに	Undo (tiap tekan mundur
+つ前へ）／停止中は	langkah) / saat berhenti
+を
+回で停止の取り消し	kali = batal berhenti
+取消モード（続けて数字で	Mode batal (lalu angka:
+設備停止の開始／終了	Mulai / selesai mesin berhenti
+作業開始（製造種類を番号で選ぶ）／作業終了（もう一度	Mulai kerja (pilih produk dengan nomor) / Selesai kerja (tekan lagi
+で確定）	untuk konfirmasi)
+設備停止中は、停止理由を選ぶ（停止画面の番号）	Saat mesin berhenti: pilih alasan berhenti (nomor di layar berhenti)
+製造種類を選ぶ（作業していないとき）	Pilih produk (saat tidak bekerja)
+製造種類を選ぶ（番号を入れて	Pilih produk (isi nomor lalu
+休憩の開始／終了（休憩の時間は稼働・停止に入れない）。休憩中は	Mulai / selesai istirahat (tidak dihitung operasi / berhenti). Saat istirahat
+回で取り消し	kali = batal
+テンキー配置表	Tata letak tombol
+作成	Dibuat
+不良のキー（画面のタイルと同じ色）	Tombol cacat (warna sama dengan kotak di layar)
+操作のキー	Tombol operasi
+黒いテンキー用：不良のキーは画面と同じ色、操作のキーは白テープにして、不良の色と区別します。全リセットは画面の「全リセット」ボタンから行います。テプラは	Untuk keypad hitam: tombol cacat diberi warna yang sama dengan layar, tombol operasi diberi selotip putih agar beda. Reset semua dilakukan dengan tombol “Reset semua” di layar. Label (Tepra) disarankan lebar
+幅・	·
+文字がおすすめです。キーの数字が隠れないよう下半分に貼ってください。	huruf. Tempel di setengah bawah agar angka tombol tidak tertutup.
+実績サマリー（数字）	Ringkasan hasil (angka)
+不良率の推移	Tren rasio cacat
+不良の内訳（円グラフ）	Rincian cacat (lingkaran)
+不良の種類別ランキング（横棒）	Peringkat jenis cacat (batang)
+不良数の推移（積み上げ棒）	Tren jumlah cacat (batang tumpuk)
+種類別の推移（折れ線）	Tren per jenis (garis)
+時間帯別の不良数	Cacat per jam
+設備停止時間の推移	Tren waktu mesin berhenti
+稼働率の推移	Tren rasio operasi
+作業ごとの実績（一覧）	Hasil per kerja (daftar)
+品種別の不良数（比較）	Cacat per produk (perbandingan)
+品種別の不良の内訳（	Rincian cacat per produk (
+横棒）	batang)
+停止理由の内訳	Rincian alasan berhenti
+品種別の設備停止（比較）	Mesin berhenti per produk (perbandingan)
+品種別の不良率（比較）	Rasio cacat per produk (perbandingan)
+生産計画と実績（作業数）	Rencana vs hasil (jumlah kerja)
+昨日	Kemarin
+直近	Terakhir
+今月	Bulan ini
+先月	Bulan lalu
+全期間	Semua periode
+日の不良数	Cacat per hari
+日の停止時間	Waktu berhenti per hari
+稼働率	Rasio operasi
+時間	jam
+週	Minggu
+月	Bulan
+日ごと	Per hari
+週ごと	Per minggu
+月ごと	Per bulan
+か月	bulan
+目標達成	Target tercapai
+全品種	Semua produk
+・	 ·
+（除外：	(dikecualikan:
+達成	Tercapai
+未達	Belum tercapai
+日平均	Rata-rata harian
+実績サマリー	Ringkasan hasil
+記録のある日	Hari dengan catatan
+生産	Produksi
+に対して	terhadap
+日あたり平均	Rata-rata per hari
+記録のある日で平均	Rata-rata hari dengan catatan
+いちばん多い不良	Cacat terbanyak
+計画	Rencana
+・最長	· terlama
+日あたり停止	Berhenti per hari
+日で平均	hari rata-rata
+この期間の不良の記録はありません	Tidak ada catatan cacat pada periode ini
+不良の種類別ランキング	Peringkat jenis cacat
+・累計	· akumulasi
+不良数の推移	Tren jumlah cacat
+（記録のある日数分）	(hari dengan catatan)
+不良数の推移（	Tren jumlah cacat (
+種類別の推移	Tren per jenis
+種類別の推移（	Tren per jenis (
+時台	jam
+）　横軸：時	)  Sumbu datar: jam
+いちばん多い時間帯：	Jam terbanyak:
+時台（	jam (
+この期間の設備停止の記録はありません	Tidak ada catatan mesin berhenti pada periode ini
+設備停止時間の推移（	Tren waktu mesin berhenti (
+停止時間（分）	Waktu berhenti (mnt)
+この期間の記録はありません	Tidak ada catatan pada periode ini
+／	 /
+記録なし	Tidak ada catatan
+稼働率の推移（	Tren rasio operasi (
+稼働率（	Rasio operasi (
+期間の稼働率	Rasio operasi periode
+（計画	(rencana
+除いた休憩	istirahat dikecualikan
+計画稼働時間	Waktu operasi rencana
+分（日ごとの変更は「生産数・稼働時間の入力」）	mnt (ubah per hari di “Input produksi & waktu operasi”)
+作業ごとの実績	Hasil per kerja
+この期間の作業の記録はありません	Tidak ada catatan kerja pada periode ini
+カウンターで	Di penghitung,
+＋キーを押すと作業開始・終了を記録します	tekan tombol + untuk mencatat mulai / selesai kerja
+作業中	Sedang kerja
+（新しい	(terbaru
+件）	)
+日時	Tanggal & jam
+作業時間	Waktu kerja
+作業数（不良率）	Jumlah kerja (rasio cacat)
+作業数	Jumlah kerja
+この期間の作業	Kerja pada periode ini
+生産計画と実績	Rencana vs hasil
+この期間の生産計画はありません	Tidak ada rencana produksi pada periode ini
+カウンターの「生産計画」ボタンで	Dengan tombol “Rencana produksi” di penghitung bisa impor dari
+から取り込めます
+（計画の多い	(rencana terbanyak
+種類）	jenis)
+期間の達成率	Pencapaian periode
+（実績	(hasil
+計画　	Rencana
+実績（作業数）	Hasil (jumlah kerja)
+品種別の不良数	Cacat per produk
+品種別の不良の内訳	Rincian cacat per produk
+品種別の不良の内訳（割合）	Rincian cacat per produk (persentase)
+この期間は生産数が入力されていません	Jumlah produksi belum diisi pada periode ini
+設定の「生産数の入力」、またはカウンターのメニュー	Bisa diisi di pengaturan “Input jumlah produksi” atau menu penghitung
+で入力できます
+生産数	Jumlah produksi
+未入力	Belum diisi
+不良率の推移（	Tren rasio cacat (
+不良率（	Rasio cacat (
+期間の不良率	Rasio cacat periode
+（不良	(cacat
+生産数が未入力の日は表示しません	Hari tanpa jumlah produksi tidak ditampilkan
+理由なし	Tanpa alasan
+停止理由の内訳（停止時間の長い順）	Rincian alasan berhenti (urut waktu terlama)
+品種別の不良率	Rasio cacat per produk
+品種別の設備停止	Mesin berhenti per produk
+あり	Ada
+ゆっくり	Pelan
+なし	Tidak ada
+作業の実績がありません	Tidak ada hasil kerja
+表示するスライドがありません	Tidak ada slide untuk ditampilkan
+選んだ品種（	Produk yang dipilih (
+）は、	) tidak punya hasil kerja pada
+に作業の実績がありません。期間か品種を変えてください	. Ubah periode atau produk
+左の設定で「表示するスライド」と「品種」を選んでください	Pilih “slide yang ditampilkan” dan “produk” di pengaturan kiri
+この期間に作業の実績がある品種はありません	Tidak ada produk dengan hasil kerja pada periode ini
+品種の比較	Perbandingan produk
+再生	Putar
+クリックで	Klik untuk
+集計に戻す	kembalikan ke hitungan
+この日のこの記録だけ除外	kecualikan catatan ini di hari ini
+除外	Dikecualikan
+実績グラフの設定	Pengaturan grafik hasil
+共有フォルダのデータを表示しています（読むだけ）。	Menampilkan data folder bersama (hanya baca).
+カウンターの画面とは別タブで動きます。カウンターで記録すると自動で反映されます。	Berjalan di tab terpisah dari penghitung. Catatan di penghitung otomatis tampil.
+最終読込	Terakhir dimuat
+期間	Periode
+この期間は作業の実績がないので、グラフには出しません	Tidak ada hasil kerja pada periode ini, jadi tidak ditampilkan di grafik
+実績なし	Tanpa hasil
+「実績なし」の品種は、この期間に記録がないのでグラフに出しません	Produk “Tanpa hasil” tidak punya catatan pada periode ini, jadi tidak ditampilkan di grafik
+品種ごとに別のスライドにする	Slide terpisah per produk
+選んだ品種をまとめたスライドも流す	Tampilkan juga slide gabungan produk terpilih
+データの取り出し	Ambil data
+生産数・稼働時間	Produksi & waktu operasi
+稼働時間	Waktu operasi
+の入力（	input (
+週間分の表）	minggu tabel)
+ファイルに出力（今の条件で）	Ekspor ke file (kondisi sekarang)
+週に	Simpan cadangan
+回はバックアップしておくと安心です	kali seminggu agar aman
+期間・品種・除外した日の設定がそのまま反映されます。シート：条件／日別集計／日別	Periode · produk · hari yang dikecualikan ikut diterapkan. Sheet: kondisi / harian / harian
+品種／	produk /
+作業一覧／	daftar kerja /
+種類別集計／時間帯別／設備停止一覧／不良明細／転記用（別の様式の	per jenis / per jam / daftar berhenti / rincian cacat / salin (untuk memindah angka ke
+へ数字を飛ばす用）	format lain)
+流すスライド	Slide yang ditampilkan
+右の時間で、スライドごとに表示する長さを変えられます（「標準」は下の標準の表示時間）。	Lama tampil tiap slide bisa diubah di kanan (“Standar” = waktu tampil standar di bawah).
+つ以上	atau lebih
+の表示時間	waktu tampil
+標準	Standar
+秒	dtk
+すべて選ぶ	Pilih semua
+すべて外す	Hapus semua
+（目標）	(target)
+入れた目標が、グラフに	Target yang diisi tampil di grafik sebagai
+黄色の点線	garis putus-putus kuning
+で表示されます（実績サマリーには達成／未達）。空欄にすると表示しません。	(di ringkasan: tercapai / belum). Kosongkan untuk tidak menampilkan.
+未設定	Belum diatur
+グラフの動き（アニメーション）	Gerak grafik (animasi)
+棒が伸びる・円が描かれる・線が引かれる・数字が増えていく動きです。「なし」にすると、すぐに完成したグラフを表示します。	Batang memanjang · lingkaran tergambar · garis tergambar · angka naik. Jika “Tidak ada”, grafik langsung tampil jadi.
+標準の表示時間	Waktu tampil standar
+枚あたり）	per slide)
+日ごとの記録	Catatan per hari
+間違いがある記録をクリックすると、	Klik catatan yang salah untuk
+その日のその記録だけ	hanya catatan itu di hari itu
+集計から外します（不良だけ・停止だけも可）。「修正」で件数や停止時間を直せます。	dikeluarkan dari hitungan (bisa cacat saja / berhenti saja). Jumlah dan waktu berhenti bisa diubah di “Koreksi”.
+修正	Koreksi
+この期間・品種の記録はありません	Tidak ada catatan untuk periode / produk ini
+除外をすべて解除（不良	Batalkan semua pengecualian (cacat
+日・停止	hari · berhenti
+／うち期間外	/ di luar periode
+設定を表示	Tampilkan pengaturan
+良品数	Jumlah baik
+良品率	Rasio baik
+計画稼働	Operasi rencana
+計画数	Jumlah rencana
+達成率	Pencapaian
+条件	Kondisi
+項目	Item
+内容	Isi
+出力日時	Waktu ekspor
+（未設定）	(belum diatur)
+（なし）	(tidak ada)
+不良を除外した日	Hari cacat dikecualikan
+設備停止を除外した日	Hari berhenti dikecualikan
+不良の合計	Total cacat
+キーで記録。稼働時間・停止時間には入れていません）	tombol. Tidak dihitung operasi / berhenti)
+目標（	Target (
+）：	):
+計画稼働時間（	Waktu operasi rencana (
+日）	hari)
+分（日ごとに変えた日	mnt (hari yang diubah
+注意	Catatan
+件数は「取消」「元に戻す」「記録の修正」を反映した後の数です。除外した記録（不良・設備停止）は、その日のその記録だけをすべてのシートから外しています。日別の表では「除外」と表示します。	Jumlah sudah memperhitungkan “batal”, “undo”, dan “koreksi catatan”. Catatan yang dikecualikan (cacat / berhenti) dikeluarkan dari semua sheet hanya untuk hari itu. Di tabel harian tertulis “Dikecualikan”.

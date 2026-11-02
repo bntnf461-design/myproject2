@@ -1,0 +1,290 @@
+日別集計	Harian
+曜日	Hari
+不良合計	Total cacat
+日別	Harian
+種類別集計	Per jenis
+種類	Jenis
+割合	Persentase
+時間帯別	Per jam
+時間帯	Jam
+設備停止一覧	Daftar mesin berhenti
+区分	Kategori
+（停止中）	(berhenti)
+（理由なし）	(tanpa alasan)
+修正済み	Sudah dikoreksi
+記録	Catatan
+不良明細	Rincian cacat
+修正で追加	Ditambah lewat koreksi
+転記用	Untuk salin
+値	Nilai
+作業一覧	Daftar kerja
+（作業中）	(sedang kerja)
+不良実績	Hasil cacat
+出力	Ekspor
+ファイルを保存しました：	File disimpan:
+ファイルを作れませんでした	File tidak bisa dibuat
+）の記録です。変更はすぐに保存され、カウンター画面・実績グラフ・	). Perubahan langsung disimpan dan tampil di layar penghitung · grafik hasil ·
+出力に反映されます。直した記録は「修正」として残ります。	ekspor. Catatan yang diubah tersimpan sebagai “Koreksi”.
+不良数	Jumlah cacat
+／＋	/ +
+で	dengan
+件ずつ直す）	per 1)
+件減らす	kurangi
+件増やす	tambah
+（時刻を変えると自動で保存）	(jam diubah = otomatis tersimpan)
+停止を取り消す	Batalkan berhenti
+この日の設備停止の記録はありません。	Tidak ada catatan mesin berhenti di hari ini.
+作業（開始・終了）	Kerja (mulai · selesai)
+（日時を変えると自動で保存。終了を押し忘れたときは終了時刻を直してください）	(tanggal/jam diubah = otomatis tersimpan. Jika lupa tekan selesai, ubah jam selesai)
+長い	Lama
+この日の作業の記録はありません。	Tidak ada catatan kerja di hari ini.
+（日時を変えると自動で保存。休憩の時間は稼働時間に入りません）	(tanggal/jam diubah = otomatis tersimpan. Waktu istirahat tidak dihitung operasi)
+休憩時間	Waktu istirahat
+休憩を取り消す	Batalkan istirahat
+停止を追加（押し忘れたとき）	Tambah berhenti (jika lupa menekan)
+追加	Tambah
+日時を入れてください	Isi tanggal & jam
+今より後の日時にはできません	Tidak boleh setelah waktu sekarang
+終了は開始より後にしてください	Selesai harus setelah mulai
+休憩が	Istirahat lebih dari
+時間を超えています。日時を確かめてください	jam. Periksa tanggal & jam
+作業時間が	Waktu kerja lebih dari
+日を超えています。日時を確かめてください	hari. Periksa tanggal & jam
+時刻を入れてください	Isi jam
+今より後の時刻は入れられません	Tidak bisa isi jam setelah sekarang
+ほかの停止と時間が重なっています。先にそちらを直すか削除してください	Waktunya tumpang tindih dengan berhenti lain. Ubah atau hapus yang itu dulu
+日付が変わったので数字をリセットしました（品種などの設定はそのまま。	Tanggal berganti, angka direset (pengaturan produk tetap.
+の記録は実績グラフに残っています）	catatan tetap ada di grafik hasil)
+設定の「追加機能」で、不良率または稼働率をオンにすると使えます	Bisa dipakai jika rasio cacat atau rasio operasi dinyalakan di “Fitur tambahan”
+生産数・稼働時間の入力	Input produksi & waktu operasi
+数字を入れて	Isi angka lalu
+で下の日へ移ります（入れた時点で保存）。	untuk pindah ke hari di bawah (langsung tersimpan).
+の表を	tabel
+まとめてコピーして貼り付け	salin & tempel sekaligus
+もできます（縦に日付・横に	juga bisa (tanggal ke bawah, ke samping
+の並び）。	urutannya).
+計画稼働は空欄なら設定の	Jika operasi rencana kosong, dipakai pengaturan
+分。休みの日は	mnt. Hari libur isi
+、残業の日は長めに入れてください。	, hari lembur isi lebih panjang.
+生産数（	Jumlah produksi (
+の生産数	jumlah produksi
+の計画稼働時間（分）	waktu operasi rencana (mnt)
+休み	Libur
+変更あり	Ada perubahan
+」は数字ではありません。数字だけを入れてください（例：	” bukan angka. Isi angka saja (contoh:
+計画稼働時間は	Waktu operasi rencana maksimal
+分（	mnt (
+時間）までです	jam)
+生産数を保存しました	Jumlah produksi disimpan
+数字でない	Bukan angka:
+か所は入れませんでした	tempat tidak diisi
+表からはみ出した	Di luar tabel:
+か所に貼り付けて保存しました	tempat ditempel & disimpan
+が「	pada “
+」と「	” dan “
+」で重なっています。別の番号にしてください。	” ganda. Gunakan nomor lain.
+（いま	(sekarang
+作業開始：製造種類を選んでください	Mulai kerja: pilih produk
+製造種類の切り替え	Ganti produk
+テンキーで	Dengan keypad isi
+を入れて	lalu
+（黄色の種類に決まります）。	(produk kuning yang dipilih).
+文字消す　	hapus 1 huruf
+やめる。	batal.
+名前で探すときは、右上の欄をクリックして文字を入れてください。マウスで押しても選べます。	Untuk cari dengan nama, klik kolom kanan atas lalu ketik. Bisa juga klik dengan mouse.
+（済	(selesai
+」に合う製造種類：	” cocok dengan produk:
+（はじめの	(pertama
+合う製造種類がありません。	Tidak ada produk yang cocok.
+で消して入れ直してください	untuk hapus lalu isi ulang
+今日の計画	Rencana hari ini
+最近使った製造種類	Produk terakhir dipakai
+すべての製造種類（	Semua produk (
+選べる製造種類がありません。番号を確かめてください	Tidak ada produk yang bisa dipilih. Periksa nomornya
+作業中は製造種類を変えられません。＋キーで作業終了してから、次の作業で選んでください	Saat kerja, produk tidak bisa diganti. Selesaikan kerja dengan tombol +, lalu pilih di kerja berikutnya
+作業開始：	Mulai kerja:
+から数えます）	mulai dihitung)
+作業終了	Selesai kerja
+いま（	Sekarang (
+　設備停止	 Mesin berhenti
+　休憩	 Istirahat
+作業を終了するには、もう一度	Untuk selesai kerja, tekan sekali lagi
+本当の終了時刻と違うときは、終了したあと「記録の修正」で直せます。	Jika beda dengan jam selesai sebenarnya, bisa diubah di “Koreksi catatan” setelah selesai.
+作業を終了しました	Kerja selesai
+作業数を保存しました	Jumlah kerja disimpan
+作業数が入っていません	Jumlah kerja belum diisi
+前の作業（	Kerja sebelumnya (
+）の作業数がまだです。	) jumlah kerjanya belum diisi.
+で戻って、テンキーで数字	untuk kembali, isi angka dengan keypad lalu
+で入れてください。	.
+入れずに次の作業へ進むときは、もう一度	Untuk lanjut tanpa mengisi, tekan sekali lagi
+を押してください。	.
+休憩は作業中に使います（作業していない時間は、もともと稼働に入りません）	Istirahat dipakai saat kerja (waktu tidak bekerja memang tidak dihitung operasi)
+作業していません。＋キーで作業を開始してください	Tidak sedang kerja. Mulai kerja dengan tombol +
+キーで切り替え	tombol untuk ganti
+作業終了を押し忘れていませんか？	Lupa tekan selesai kerja?
+終わっていたら	Jika sudah selesai tekan
+回。終了時刻はあとで「記録の修正」で直せます	kali. Jam selesai bisa diubah nanti di “Koreksi catatan”
+　良品	 Baik
+（良品率	(rasio baik
+　不良率	 Rasio cacat
+で保存（	untuk simpan (
+文字消す）	hapus 1 huruf)
+保存しました	Tersimpan
+（数字を入れ直すと修正できます）	(isi angka lagi untuk mengubah)
+作業数を入れてください：テンキーで数字	Isi jumlah kerja: angka dengan keypad lalu
+の計画	rencana
+　作業数の合計	 Total jumlah kerja
+計画どおり	Sesuai rencana
+　あと	 Kurang
+前の作業	Kerja sebelumnya
+）　不良	)  Cacat
+作業していません	Tidak sedang kerja
+作業開始	Mulai kerja
+＋キーを押して製造種類を選ぶと、カウントが	Tekan tombol + dan pilih produk, hitungan mulai dari
+から始まります。	.
+でメニュー	= Menu
+作業を始めてから	Sudah
+たっています。作業終了を押し忘れていませんか？	sejak mulai kerja. Lupa tekan selesai kerja?
+生産計画・生産数　	Rencana & jumlah produksi
+差	Selisih
+この行の計画数と生産数を消す	Hapus rencana & produksi baris ini
+の行を消す	hapus baris
+番号か名前	Nomor atau nama
+に製造種類を追加	tambah produk
+この日の計画・生産はまだありません	Belum ada rencana / produksi di hari ini
+週の計	Total minggu
+生産数は、不良品も含めた作った数（作業終了の画面で入れた作業数と同じ）。良品数＝生産数	Jumlah produksi = semua yang dibuat termasuk cacat (sama dengan jumlah kerja di layar selesai kerja). Jumlah baik = produksi
+不良数、良品率＝良品数	cacat, Rasio baik = jumlah baik
+生産数。不良数は記録から自動で出ます（	produksi. Jumlah cacat otomatis dari catatan (
+）。	).
+数字で入れてください（消すときは空にする）	Isi dengan angka (kosongkan untuk hapus)
+」に合う製造種類がありません（番号か名前を確かめてください）	” tidak cocok dengan produk (periksa nomor atau nama)
+」は製造種類の一覧にありません（そのままの名前で入れます）	” tidak ada di daftar produk (dimasukkan dengan nama itu)
+行目：製造種類「	: produk “
+」が分かりません	” tidak dikenal
+行目：数字ではありません	: bukan angka
+行目：この日の行が足りません（下の「＋」の行で製造種類を増やしてください）	: baris hari ini kurang (tambah produk di baris “+” bawah)
+行目：数字ではありません（	: bukan angka (
+個のセルを貼り付けました。	sel ditempel.
+読めなかった所：	Tidak terbaca:
+ほか	dll.
+消す	Hapus
+年
+枚	lembar
+台	unit
+：製造種類が分かりません	: produk tidak dikenal
+総計	Total keseluruhan
+計	Total
+小計	Subtotal
+行目	baris
+：数字ではありません（	: bukan angka (
+表（横に日付）	Tabel (tanggal ke samping)
+行目：日付が分かりません	: tanggal tidak dikenal
+表（縦に日付）	Tabel (tanggal ke bawah)
+製造	Produksi
+品	Produk
+行目：計画数が分かりません	: jumlah rencana tidak dikenal
+件（日付・製造種類・数）	baris (tanggal · produk · jumlah)
+）として読めません	) tidak bisa dibaca
+このブラウザでは	Browser ini tidak bisa membaca
+を読めません。	.
+で保存するか、コピーして貼り付けてください	Simpan sebagai format lain, atau salin & tempel
+読み込めませんでした：	Tidak bisa dimuat:
+貼り付けた表	Tabel yang ditempel
+　シート	 Sheet
+読み取った形：	Format terbaca:
+読み取れた計画	Rencana terbaca
+）　うち新しい・変わる計画	)  Baru / berubah:
+製造種類の一覧にない名前：	Nama tidak ada di daftar produk:
+（そのままの名前で取り込みます）	(diimpor dengan nama itu)
+読めなかった所	Tidak terbaca
+件：	baris:
+　…	 …
+この内容で取り込む（同じ日・製造種類は上書き）	Impor isi ini (hari & produk yang sama ditimpa)
+やめる	Batal
+生産計画を	Rencana produksi
+取り込みました	diimpor
+の表をコピーして、上の欄に貼り付けてください	salin tabel lalu tempel di kolom atas
+ファイルを開けませんでした：	File tidak bisa dibuka:
+前に選んだファイルが見つかりません。もう一度選んでください	File sebelumnya tidak ditemukan. Pilih lagi
+読み直せませんでした（ファイルを移動・削除しましたか？）：	Tidak bisa dibaca ulang (file dipindah / dihapus?):
+を読み直す	baca ulang
+前回の取り込み：	Impor terakhir:
+生産数（作業数）	Jumlah produksi (jumlah kerja)
+　達成率	 Pencapaian
+良品数・良品率	Jumlah baik · rasio baik
+良品＝生産数	Baik = produksi
+生産数が未入力	Jumlah produksi belum diisi
+稼働・停止に入れない	Tidak dihitung operasi / berhenti
+日（	(
+品種別	Per produk
+　｜　不良数カウンター	 | Penghitung Cacat
+承認	Persetujuan
+品種別の実績	Hasil per produk
+主な不良	Cacat utama
+計画と実績	Rencana vs hasil
+作業の記録はありません	Tidak ada catatan kerja
+不良はありません	Tidak ada cacat
+設備停止はありません	Tidak ada mesin berhenti
+特記事項	Catatan khusus
+データ	Data
+バックアップ	Cadangan
+共有フォルダへの自動保存：保存先のフォルダが選ばれていません（設定で選んでください）	Simpan otomatis ke folder bersama: folder tujuan belum dipilih (pilih di pengaturan)
+共有フォルダへの自動保存が止まっています。ここをクリックすると再開します	Simpan otomatis ke folder bersama berhenti. Klik di sini untuk lanjut
+共有フォルダに保存できません（ネットワーク・フォルダを確かめてください）：	Tidak bisa simpan ke folder bersama (periksa jaringan / folder):
+　ここをクリックでもう一度	 Klik di sini untuk coba lagi
+このブラウザでは使えません（	Tidak bisa di browser ini (buka dengan
+か	atau
+で開いてください）	)
+保存先：まだ選んでいません	Tujuan: belum dipilih
+保存先：	Tujuan:
+（クリックで許可が必要）	(perlu izin dengan klik)
+最後に保存	Terakhir disimpan
+（まだ保存していません）	(belum disimpan)
+共有フォルダに保存できませんでした	Gagal simpan ke folder bersama
+共有フォルダに保存しました	Tersimpan di folder bersama
+不良数カウンターのデータファイルではありません	Bukan file data Penghitung Cacat
+クリックで読み直しの許可が必要です	Perlu izin baca ulang dengan klik
+不良数カウンターのデータ	Data Penghitung Cacat
+前のファイルを開けませんでした（移動・削除されたか、ネットワークにつながっていません）：	File sebelumnya tidak bisa dibuka (dipindah / dihapus, atau jaringan putus):
+で保存：	menyimpan:
+分前）	mnt lalu)
+分ごとに自動で読み直し	menit sekali baca ulang otomatis
+確認）	dicek)
+このブラウザでは自動で読み直せません。新しくするときはもう一度ファイルを開いてください	Browser ini tidak bisa baca ulang otomatis. Untuk memperbarui, buka file lagi
+分以上新しいデータがありません。カウンターの	menit lebih tidak ada data baru. PC penghitung
+が止まっているか、共有フォルダに保存できていません	mungkin mati, atau tidak bisa simpan ke folder bersama
+今すぐ読み直す	Baca ulang sekarang
+別のファイルを開く	Buka file lain
+閲覧用の画面では記録を直せません。カウンターの	Di mode lihat catatan tidak bisa diubah. Ubah di
+で直してください	penghitung
+続けて見る：	Lanjut lihat:
+最近の入力	Input terakhir
+まだありません	Belum ada
+（元に戻す）	(undo)
+不良カウンター	Penghitung Cacat
+まだバックアップしていません	Belum pernah cadangan
+前回のバックアップ：	Cadangan terakhir:
+日前	hari lalu
+このファイルは読み込めません（バックアップのファイルを選んでください）	File ini tidak bisa dimuat (pilih file cadangan)
+不良カウンターのバックアップファイルではありません	Bukan file cadangan Penghitung Cacat
+に保存したバックアップで、今のデータを置き換えます。	— data sekarang akan diganti dengan cadangan ini.
+件・設備停止	· mesin berhenti
+件・品種	· produk
+今のデータは、念のため別のファイルに保存してから置き換えます。よろしいですか？	Data sekarang akan disimpan dulu ke file lain sebelum diganti. Lanjutkan?
+復元前の自動保存	Simpan otomatis sebelum pemulihan
+保存できませんでした（容量不足の可能性があります）	Gagal menyimpan (mungkin memori penuh)
+復元しました。画面を読み込み直します。	Sudah dipulihkan. Layar akan dimuat ulang.
+ファイルを読み込めませんでした	File tidak bisa dimuat
+（未割り当て）	(belum diberi)
+取消モード	Mode batal
+製造種類の切替（確認）	Ganti produk (konfirmasi)
+カウンターの画面が開いていないため、テンキー入力は記録されていません	Layar penghitung tidak terbuka, input keypad tidak dicatat
+カウンターへ送信：	Kirim ke penghitung:
+を押します。	.
+を押してください	
+日付	Tanggal
+ファイルに出力」で取り出せます	Ekspor ke file”
+製造種類の番号	Nomor produk
+共有フォルダへの自動保存（	Simpan otomatis ke folder bersama (

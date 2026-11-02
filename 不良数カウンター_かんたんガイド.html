@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>不良数カウンター かんたんガイド</title>
+<style>
+:root {
+  --navy:#14325C; --navy2:#24497A; --teal:#0E8C8C; --tealL:#E3F2F2; --ink:#1E2A36; --mute:#5F6B78; --line:#D5DCE4; --bg:#F4F6F9;
+  --yellow:#FFD54F; --red:#C62828; --stop:#A31515;
+  --c-red:#E53935; --c-blue:#1E88E5; --c-green:#43A047; --c-coral:#FB8C00; --c-purple:#8E24AA;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Meiryo UI","Yu Gothic UI","Hiragino Sans","Noto Sans JP",sans-serif; line-height:1.7; }
+.wrap { max-width:1180px; margin:0 auto; padding:0 20px; }
+/* ===== ヒーロー：付箋がテンキーに変わる ===== */
+.hero { background:linear-gradient(135deg,#0F2747,#1C4D80); color:#fff; padding:56px 0 64px; overflow:hidden; }
+.hero .wrap { display:grid; grid-template-columns:1.1fr 1fr; gap:30px; align-items:center; }
+.hero h1 { font-size:44px; line-height:1.25; margin:0 0 14px; }
+.hero h1 em { font-style:normal; color:var(--yellow); }
+.hero p { font-size:18px; color:#CFE0F0; margin:0; }
+.hero .chips { display:flex; gap:10px; flex-wrap:wrap; margin-top:22px; }
+.hero .chips span { background:#ffffff1c; border:1px solid #ffffff33; border-radius:999px; padding:6px 14px; font-size:14px; }
+.morph { position:relative; height:260px; }
+.note { position:absolute; left:4%; top:34px; width:170px; height:170px; background:#FFE27A; color:#5A4600; font-size:44px; font-weight:700; display:flex; align-items:center; justify-content:center; transform:rotate(-7deg); box-shadow:0 12px 26px rgba(0,0,0,.3); animation:noteOut 6s ease-in-out infinite; }
+.note::after { content:""; position:absolute; top:-12px; left:50%; width:70px; height:24px; margin-left:-35px; background:#ffffff66; transform:rotate(3deg); }
+.arrowBig { position:absolute; left:42%; top:96px; font-size:54px; color:var(--yellow); animation:arrowPulse 6s ease-in-out infinite; }
+.mini { position:absolute; right:2%; top:22px; width:200px; height:200px; border-radius:22px; background:#0B1624; border:2px solid #2E7BC0; box-shadow:0 14px 30px rgba(0,0,0,.35); display:flex; flex-direction:column; align-items:center; justify-content:center; animation:miniIn 6s ease-in-out infinite; }
+.mini .lb { font-size:20px; color:#9FC3D9; }
+.mini .num { font-size:84px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+.mini .key { position:absolute; bottom:-22px; left:50%; margin-left:-30px; width:60px; height:52px; border-radius:12px; background:#2B2F36; color:#fff; font-weight:700; font-size:26px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 0 #000; animation:keyTap 1.5s ease-in-out infinite; }
+.mini .key b { position:absolute; bottom:5px; left:8px; right:8px; height:9px; border-radius:3px; background:var(--c-red); }
+@keyframes noteOut { 0%,20% { opacity:1; transform:rotate(-7deg) translateY(0); } 45%,80% { opacity:.25; transform:rotate(-14deg) translateY(30px) scale(.85); filter:grayscale(1); } 100% { opacity:1; transform:rotate(-7deg); } }
+@keyframes arrowPulse { 0%,25% { opacity:.2; transform:translateX(-12px); } 40%,85% { opacity:1; transform:none; } 100% { opacity:.2; } }
+@keyframes miniIn { 0%,30% { transform:scale(.9); opacity:.6; } 45%,90% { transform:none; opacity:1; } 100% { transform:scale(.9); opacity:.6; } }
+@keyframes keyTap { 0%,60%,100% { transform:none; box-shadow:0 4px 0 #000; } 70% { transform:translateY(4px); box-shadow:0 0 0 #000, 0 0 20px #4DD0E1; } }
+/* ===== 見出し ===== */
+section.blk { padding:56px 0 20px; }
+.ttl { text-align:center; margin-bottom:28px; }
+.ttl .en { color:var(--teal); font-weight:700; letter-spacing:.12em; font-size:13px; }
+.ttl h2 { margin:4px 0 6px; font-size:32px; color:var(--navy); }
+.ttl p { margin:0; color:var(--mute); }
+/* ===== 動くデモ ===== */
+.demo { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(250px,.75fr); gap:26px; align-items:start; }
+.screen { position:relative; aspect-ratio:16/10; background:#141412; border-radius:18px; border:10px solid #2A2D33; box-shadow:0 18px 40px rgba(0,0,0,.25); overflow:hidden; font-size:clamp(10px,1.25vw,15px); color:#fff; }
+.screen .bar { display:flex; align-items:center; gap:.8em; margin:4% 3% 2%; padding:.5em 1em; border-radius:.7em; background:#103A5C; border:1px solid #2E7BC0; height:13%; }
+.screen .bar .st { color:#7CC4FF; font-weight:700; font-size:.9em; white-space:nowrap; }
+.screen .bar .cd { color:#FFD54F; font-weight:700; font-size:2em; }
+.screen .bar .nm { font-weight:700; font-size:2em; white-space:nowrap; }
+.screen .bar .tm { margin-left:auto; color:#CFE6FF; font-size:.85em; }
+.screen .body { display:grid; grid-template-columns:1.9fr 1fr; gap:2.5%; margin:0 3%; height:72%; }
+.tiles { display:flex; flex-direction:column; gap:3%; }
+.tile { flex:1; display:flex; align-items:center; gap:.8em; background:#1E1E1C; border:1px solid #ffffff24; border-radius:.6em; padding:0 .9em; transition:background .25s; }
+.tile.hit { background:#3A3A33; }
+.tile .kb { width:1.9em; height:1.9em; border-radius:.35em; display:flex; align-items:center; justify-content:center; font-weight:700; }
+.tile .tn { font-size:1.15em; font-weight:700; width:5em; white-space:nowrap; }
+.tile .tb { flex:1; height:.55em; border-radius:9em; background:#26262C; overflow:hidden; }
+.tile .tb i { display:block; height:100%; width:0; border-radius:9em; transition:width .4s ease; }
+.tile .tc { font-size:2em; font-weight:500; width:1.6em; text-align:right; font-variant-numeric:tabular-nums; }
+.tile .tc.pop { animation:pop .45s ease; }
+@keyframes pop { 40% { transform:scale(1.35); color:#FFD54F; } }
+.side { display:flex; flex-direction:column; gap:4%; }
+.side .box { background:#1E1E1C; border:1px solid #ffffff24; border-radius:.6em; padding:.6em .9em; }
+.side .tot { flex:1.1; display:flex; align-items:flex-end; justify-content:space-between; }
+.side .tot .v { font-size:3.6em; font-weight:500; line-height:1; font-variant-numeric:tabular-nums; }
+.side .run { flex:1; background:#0F2A1F; border-color:#2E7D5B; }
+.side .run b { color:#7BE0B0; }
+.side .run .t { font-size:2.2em; line-height:1.2; font-variant-numeric:tabular-nums; }
+/* 画面いっぱいの表示（待機・選ぶ・停止・終了） */
+.ov { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:.6em; opacity:0; visibility:hidden; transition:opacity .35s, visibility .35s; }
+.ov.on { opacity:1; visibility:visible; }
+.ov.idle { background:#0E2A44; }
+.ov.idle .big { font-size:3em; font-weight:700; }
+.ov.idle .go { background:#FFD54F; color:#0E2A44; font-weight:700; font-size:1.6em; padding:.35em 1.2em; border-radius:.5em; animation:goPulse 1.6s ease-in-out infinite; }
+@keyframes goPulse { 50% { box-shadow:0 0 0 .45em rgba(255,213,79,.25); } }
+.ov.pick { background:#0B1E30; align-items:stretch; justify-content:flex-start; padding:5% 5%; text-align:left; }
+.ov.pick .h { display:flex; align-items:center; gap:1em; font-size:1.6em; font-weight:700; }
+.ov.pick .in { margin-left:auto; background:#fff; color:#0B1E30; border:3px solid #FFD54F; border-radius:.35em; min-width:5em; padding:0 .4em; font-variant-numeric:tabular-nums; }
+.ov.pick .list { display:grid; grid-template-columns:repeat(3,1fr); gap:.6em; margin-top:1.2em; }
+.ov.pick .it { background:#ffffff12; border:2px solid #ffffff2e; border-radius:.5em; padding:.6em .8em; font-size:1.2em; transition:all .2s; }
+.ov.pick .it b { color:#FFD54F; margin-right:.5em; }
+.ov.pick .it.hit { background:#FFD54F; color:#0B1E30; border-color:#FFD54F; transform:scale(1.04); }
+.ov.pick .it.hit b { color:#0B1E30; }
+.ov.pick .it.dim { opacity:.25; }
+.ov.stop { background:#A31515; animation:none; }
+.ov.brk { background:#1565C0; }
+.ov.brk.on { animation:brkPulse 2.2s ease-in-out infinite; }
+@keyframes brkPulse { 50% { background:#0D3F8A; } }
+.ov.brk .big { font-size:3.2em; font-weight:700; }
+.ov.brk .t { font-size:4.6em; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+.ov.stop.on { animation:stopPulse 2.2s ease-in-out infinite; }
+@keyframes stopPulse { 50% { background:#7E0F0F; } }
+.ov.stop .big { font-size:3.2em; font-weight:700; }
+.ov.stop .t { font-size:4.6em; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+.ov.stop .rs { display:flex; gap:.5em; flex-wrap:wrap; justify-content:center; }
+.ov.stop .rs span { border:2px solid #ffffffaa; border-radius:.5em; padding:.2em .7em; background:#0003; transition:all .2s; }
+.ov.stop .rs span i { font-style:normal; background:#fff; color:#A31515; border-radius:.3em; padding:0 .35em; margin-right:.35em; font-weight:700; }
+.ov.stop .rs span.on { background:#fff; color:#A31515; font-weight:700; transform:scale(1.08); }
+.ov.stop .rs span.on i { background:#A31515; color:#fff; }
+.ov.end { background:#0E2A44; }
+.ov.end .big { font-size:2.6em; font-weight:700; }
+.ov.end .card { background:#ffffff14; border:1px solid #ffffff40; border-radius:.7em; padding:.8em 1.6em; }
+.ov.end .pn { display:inline-block; background:#fff; color:#0E2A44; border-radius:.35em; padding:0 .5em; min-width:4em; font-weight:700; font-variant-numeric:tabular-nums; }
+.ov.cfm { background:#000a; }
+.ov.cfm .card { background:#1E1E1C; border:1px solid #ffffff40; border-radius:.7em; padding:1em 1.8em; font-size:1.2em; }
+.flash { position:absolute; left:50%; top:52%; transform:translate(-50%,-50%) scale(.8); opacity:0; background:#141412ee; border:.25em solid var(--fc,#fff); border-radius:.6em; padding:.3em 1em; font-size:3em; font-weight:700; white-space:nowrap; pointer-events:none; }
+.flash.show { animation:fl .9s ease-out; }
+@keyframes fl { 0% { opacity:0; transform:translate(-50%,-50%) scale(.8); } 15% { opacity:1; transform:translate(-50%,-50%) scale(1.05); } 30% { transform:translate(-50%,-50%) scale(1); } 75% { opacity:1; } 100% { opacity:0; } }
+/* テンキー */
+.pad { background:#15181D; border-radius:22px; padding:16px; display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(5,52px); gap:9px; box-shadow:0 14px 30px rgba(0,0,0,.25); user-select:none; }
+.pad .k { position:relative; border-radius:10px; background:#2B2F36; color:#F2F4F7; font-weight:700; font-size:18px; display:flex; align-items:flex-start; justify-content:flex-start; padding:4px 8px; box-shadow:0 4px 0 #000; cursor:pointer; transition:transform .08s, box-shadow .08s, background .15s; }
+.pad .k small { position:absolute; left:6px; right:6px; bottom:5px; font-size:10.5px; font-weight:700; text-align:center; border-radius:3px; padding:1px 0; line-height:1.3; }
+.pad .k.tall { grid-row:span 2; } .pad .k.wide { grid-column:span 2; }
+.pad .k.down { transform:translateY(4px); box-shadow:0 0 0 #000, 0 0 18px #4DD0E1; background:#0E8C8C; }
+.cap { margin-top:16px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px; min-height:96px; }
+.cap .stp { font-size:12px; color:var(--teal); font-weight:700; letter-spacing:.06em; }
+.cap .tx { font-size:17px; font-weight:700; color:var(--navy); line-height:1.5; }
+.cap .ky { margin-top:4px; color:var(--mute); font-size:14px; }
+.ctrl { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.ctrl button { font:inherit; font-size:14px; padding:8px 14px; border-radius:10px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+.ctrl button.pri { background:var(--navy); color:#fff; border-color:var(--navy); }
+.ctrl .mode { font-size:13px; color:var(--mute); align-self:center; }
+.prog { display:flex; gap:6px; margin-top:12px; }
+.prog i { flex:1; height:6px; border-radius:9px; background:#DCE2E8; overflow:hidden; position:relative; }
+.prog i.on::after, .prog i.done::after { content:""; position:absolute; inset:0; background:var(--teal); }
+.prog i.on::after { animation:grow var(--d,6s) linear forwards; transform-origin:left; }
+@keyframes grow { from { transform:scaleX(0); } }
+/* ===== キー早見表 ===== */
+.cheat { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.ck { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; display:flex; gap:14px; align-items:flex-start; }
+.ck .kk { flex:0 0 auto; min-width:56px; height:56px; border-radius:12px; background:#2B2F36; color:#fff; font-size:22px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 0 #000; padding:0 8px; }
+.ck .kk.y { background:#FFD54F; color:var(--navy); box-shadow:0 4px 0 #B38F00; }
+.ck h4 { margin:0; font-size:16px; color:var(--navy); }
+.ck p { margin:2px 0 0; font-size:13.5px; color:var(--mute); line-height:1.5; }
+/* ===== こんなときは ===== */
+.cases { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+.case { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; transition:transform .25s, box-shadow .25s; }
+.case:hover { transform:translateY(-4px); box-shadow:0 12px 24px rgba(20,50,92,.12); }
+.case .ic { width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; margin-bottom:10px; }
+.case h4 { margin:0 0 6px; font-size:17px; color:var(--navy); }
+.case p { margin:0; font-size:14.5px; }
+/* ===== お約束 ===== */
+.rules { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; counter-reset:r; }
+.rule { position:relative; background:var(--navy); color:#fff; border-radius:18px; padding:26px 22px 22px; overflow:hidden; counter-increment:r; }
+.rule::before { content:counter(r); position:absolute; right:14px; top:-14px; font-size:110px; font-weight:700; color:#ffffff14; }
+.rule h4 { margin:0 0 6px; font-size:19px; color:var(--yellow); }
+.rule p { margin:0; color:#D6E2EE; font-size:15px; }
+footer { text-align:center; color:var(--mute); font-size:13px; padding:40px 0 50px; }
+/* スクロールで現れる */
+.rv { opacity:0; transform:translateY(22px); transition:opacity .7s ease, transform .7s ease; }
+.rv.in { opacity:1; transform:none; }
+.stag > * { opacity:0; transform:translateY(16px); transition:opacity .5s ease, transform .5s ease; }
+.stag.in > * { opacity:1; transform:none; }
+@media (max-width:960px) {
+  .hero .wrap, .demo { grid-template-columns:1fr; }
+  .hero h1 { font-size:32px; }
+  .cheat, .cases { grid-template-columns:1fr 1fr; }
+  .rules { grid-template-columns:1fr; }
+}
+@media (max-width:560px) { .cheat, .cases { grid-template-columns:1fr; } .morph { display:none; } .hero h1 { font-size:25px; } .ttl h2 { font-size:23px; } .hero { padding:36px 0 40px; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation:none !important; transition:none !important; }
+  .rv, .stag > * { opacity:1; transform:none; }
+}
+@media print {
+  @page { size:A4; margin:12mm; }
+  body { background:#fff; }
+  .hero { padding:18px 0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .morph, .ctrl, .prog, .demo .cap { display:none; }
+  .rv, .stag > * { opacity:1 !important; transform:none !important; }
+  *, *::before, *::after { animation:none !important; transition:none !important; }
+  section.blk { padding:16px 0 0; break-inside:avoid; }
+  .demo { display:block; } .screen { display:none; } .pad { max-width:320px; margin:0 auto; }
+  .rule, .ck .kk, .pad, .pad .k, .case .ic { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  #s-cases { break-before:page; }
+  section.blk { padding-top:10px; } footer { padding:8px 0 !important; margin:0 !important; }
+  .rules { grid-template-columns:repeat(3,1fr) !important; gap:10px; } .rule { padding:18px 14px 14px; } .rule h4 { font-size:15px; } .rule p { font-size:12px; }
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="rv">
+      <h1>付箋は、もう要りません。<br><em>テンキーを押すだけ</em>で記録。</h1>
+      <p>不良・設備停止・作業の開始と終了を、テンキー1つで記録。集計とグラフは自動でできあがります。</p>
+      <div class="chips"><span>数え直し 0回</span><span>書き写し 0回</span><span>インストール不要</span></div>
+    </div>
+    <div class="morph" aria-hidden="true">
+      <div class="note">キズ</div>
+      <div class="arrowBig">➜</div>
+      <div class="mini"><div class="lb">キズ</div><div class="num" id="heroNum">17</div><div class="key">1<b></b></div></div>
+    </div>
+  </div>
+</header>
+
+<section class="blk" id="s-demo">
+  <div class="wrap">
+    <div class="ttl rv"><div class="en">HOW IT WORKS</div><h2>1日の流れを、見てみよう</h2><p>自動で再生します。「自分で押してみる」を押すと、キーボードのテンキーで操作を試せます。</p></div>
+    <div class="demo rv">
+      <div>
+        <div class="screen" id="scr" aria-live="polite">
+          <div class="bar"><span class="st">● 作業中</span><span class="cd" id="bCd">101</span><span class="nm" id="bNm">製品A</span><span class="tm" id="bTm">開始 08:00</span></div>
+          <div class="body">
+            <div class="tiles" id="tiles"></div>
+            <div class="side">
+              <div class="box tot"><span>合計</span><span class="v" id="tot">0</span></div>
+              <div class="box run"><b>● 稼働中</b><div class="t">00:00</div><div style="font-size:.85em;color:#B8D8C8">停止回数 <span id="stopN">0</span> 回</div></div>
+            </div>
+          </div>
+          <div class="flash" id="flash"></div>
+          <div class="ov idle" id="ovIdle"><div class="big">作業していません</div><div class="go">＋ 作業開始</div><div style="color:#A9C3DC">＋キーを押して製造種類を選びます</div></div>
+          <div class="ov pick" id="ovPick"><div class="h">作業開始：製造種類を選んでください<span class="in" id="pkIn">&nbsp;</span></div><div class="list" id="pkList"></div></div>
+          <div class="ov stop" id="ovStop"><div class="big">■ 設備停止中</div><div class="t" id="stT">00:00</div><div class="rs" id="rs"></div><div style="font-size:.9em;opacity:.9">直ったら Enter　／　間違いは 0 を2回</div></div>
+          <div class="ov brk" id="ovBrk"><div class="big">☕ 休憩中</div><div class="t" id="bkT">00:00</div><div style="font-size:.9em;opacity:.9">終わったら *　／　休憩の時間は稼働に入りません</div></div>
+          <div class="ov cfm" id="ovCfm"><div class="card">作業を終了しますか？<br><b>もう一度 ＋</b> で終了（Enter でやめる）</div></div>
+          <div class="ov end" id="ovEnd"><div class="big">作業終了</div><div class="card"><div style="font-size:1.6em;font-weight:700"><span style="color:#FFD54F" id="eCd">101</span> <span id="eNm">製品A</span></div><div>不良 合計 <b id="eTot">0</b> 件　設備停止 <b id="eStop">0</b> 回</div><div style="margin-top:.4em">作業数 <span class="pn" id="ePn">未入力</span> 件 <span id="eRate"></span></div></div><div style="color:#A9C3DC">＋で次の作業を開始</div></div>
+        </div>
+        <div class="prog" id="prog"></div>
+      </div>
+      <div>
+        <div class="pad" id="pad"></div>
+        <div class="cap"><div class="stp" id="capS">STEP</div><div class="tx" id="capT">　</div><div class="ky" id="capK"></div></div>
+        <div class="ctrl"><button class="pri" id="btnPlay">⏸ 一時停止</button><button id="btnTry">⌨ 自分で押してみる</button><button id="btnRestart">↺ 最初から</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="s-keys">
+  <div class="wrap">
+    <div class="ttl rv"><div class="en">CHEAT SHEET</div><h2>キー早見表</h2><p>テンキーのラベルと同じ色です。</p></div>
+    <div class="cheat stag">
+      <div class="ck"><div class="kk y">＋</div><div><h4>作業開始／終了</h4><p>番号で製造種類を選んで開始。終了は2回押し</p></div></div>
+      <div class="ck"><div class="kk">1〜9</div><div><h4>不良を＋1</h4><p>種類の番号を押す。休憩中・停止中も数えられる（停止中ははじめに停止理由を選ぶ）</p></div></div>
+      <div class="ck"><div class="kk">Enter</div><div><h4>設備の停止／再開</h4><p>止まったら押す、動いたらもう一度</p></div></div>
+      <div class="ck"><div class="kk">0</div><div><h4>元に戻す</h4><p>直前の入力を取り消し。停止中は2回で停止を取り消し</p></div></div>
+      <div class="ck"><div class="kk">−</div><div><h4>1つ減らす</h4><p>押したあと3秒以内に種類の番号</p></div></div>
+      <div class="ck"><div class="kk">.</div><div><h4>製造種類を選ぶ</h4><p>作業していないときに使う</p></div></div>
+      <div class="ck"><div class="kk">/</div><div><h4>メニュー</h4><p>グラフ・生産数の入力・設定・全画面</p></div></div>
+      <div class="ck"><div class="kk" style="color:#82B1FF">*</div><div><h4>休憩 開始／終了</h4><p>休憩の時間は稼働・停止に入らない。間違いは 0 を2回</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="s-cases">
+  <div class="wrap">
+    <div class="ttl rv"><div class="en">IN CASE OF</div><h2>こんなときは</h2></div>
+    <div class="cases stag">
+      <div class="case"><div class="ic" style="background:#E3F2F2">↩</div><h4>押し間違えた</h4><p><b>0</b> で直前の入力を取り消し。前の入力は <b>−</b> → 番号で1つ減らす。</p></div>
+      <div class="case"><div class="ic" style="background:#FDECEA">■</div><h4>間違えて停止を押した</h4><p>停止中に <b>0</b> を2回。停止は記録に残りません。</p></div>
+      <div class="case"><div class="ic" style="background:#FEF5E7">⏰</div><h4>作業終了を押し忘れた</h4><p><b>＋</b> を2回で終了してから、「記録の修正」で終了時刻を直す。</p></div>
+      <div class="case"><div class="ic" style="background:#E8EEF7">?</div><h4>数えない・反応しない</h4><p>青い画面なら先に <b>＋</b> で作業開始。それ以外は画面を1回クリック。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="s-rules">
+  <div class="wrap">
+    <div class="ttl rv"><div class="en">3 RULES</div><h2>3つのお約束</h2></div>
+    <div class="rules stag">
+      <div class="rule"><h4>作業の始めと終わりは ＋</h4><p>始めるときに製造種類を選び、終わったら ＋ を2回。作業数も忘れずに。</p></div>
+      <div class="rule"><h4>不良はその場ですぐ入力</h4><p>あとでまとめて入れると、時間帯の集計がずれます。停止もすぐ Enter。</p></div>
+      <div class="rule"><h4>データを守る</h4><p>共有フォルダの自動保存を使います（設定 →「共有フォルダ」）。ないときは担当者が週に1回バックアップを保存してください。</p></div>
+    </div>
+  </div>
+</section>
+<footer>不良数カウンター かんたんガイド　｜　くわしくは「取扱説明書」を見てください　｜　お問い合わせ：○○課 ○○（内線 ○○○○）</footer>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* ---------- スクロールで現れる ---------- */
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add('in');
+    if (e.target.classList.contains('stag')) [...e.target.children].forEach((c, i) => { c.style.transitionDelay = (i * 90) + 'ms'; });
+    io.unobserve(e.target);
+  }), {threshold:.12}) : null;
+  document.querySelectorAll('.rv, .stag').forEach(el => io && !reduce ? io.observe(el) : el.classList.add('in'));
+  /* ヒーローの数字 */
+  let hn = 17; setInterval(() => { hn = hn >= 25 ? 17 : hn + 1; $('heroNum').textContent = hn; }, 1500);
+
+  /* ---------- デモ：画面とテンキー ---------- */
+  const TYPES = [['キズ', 'c-red'], ['汚れ', 'c-blue'], ['変形', 'c-green'], ['異物', 'c-coral'], ['寸法不良', 'c-purple']];
+  const PRODUCTS = [['101', '製品A'], ['102', '製品B'], ['103', '製品C'], ['201', '部品X'], ['202', '部品Y'], ['301', '試作品']];
+  const REASONS = ['段取り', '故障', '材料待ち', '品質確認', 'その他'];
+  $('tiles').innerHTML = TYPES.map(([n, c], i) => `<div class="tile" id="tile${i + 1}"><span class="kb" style="background:var(--${c})">${i + 1}</span><span class="tn">${n}</span><span class="tb"><i style="background:var(--${c})"></i></span><span class="tc">0</span></div>`).join('');
+  $('rs').innerHTML = REASONS.map((r, i) => `<span data-r="${i}"><i>${i + 1}</i>${r}</span>`).join('');
+  const PAD = [['NumLock', '', ''], ['/', 'メニュー', '#fff'], ['*', '休憩', '#fff'], ['−', '取消', '#fff'],
+    ['7', '', ''], ['8', '', ''], ['9', '', ''], ['+', '作業', '#FFD54F', 'tall'],
+    ['4', '異物', '#FB8C00'], ['5', '寸法', '#8E24AA'], ['6', '', ''],
+    ['1', 'キズ', '#E53935'], ['2', '汚れ', '#1E88E5'], ['3', '変形', '#43A047'], ['Enter', '停止', '#fff', 'tall'],
+    ['0', '元に戻す', '#fff', 'wide'], ['.', '製品', '#fff']];
+  $('pad').innerHTML = PAD.map(([k, l, col, cls]) => `<div class="k ${cls || ''}" data-k="${k}" style="${k === 'NumLock' ? 'font-size:11px' : ''}">${k}${l ? `<small style="background:${col};color:${['#fff', '#FFD54F'].includes(col) ? '#14325C' : '#fff'}">${l}</small>` : ''}</div>`).join('');
+
+  const S = {mode:'idle', counts:[0, 0, 0, 0, 0], buf:'', prod:'', job:null, reason:-1, stops:0, stopAt:0, cfm:false, zeroArm:0};
+  const show = id => ['ovIdle', 'ovPick', 'ovStop', 'ovBrk', 'ovCfm', 'ovEnd'].forEach(o => $(o).classList.toggle('on', o === id));
+  function render() {
+    const t = S.counts.reduce((a, b) => a + b, 0), max = Math.max(1, ...S.counts);
+    $('tot').textContent = t; $('stopN').textContent = S.stops;
+    S.counts.forEach((v, i) => { const el = $('tile' + (i + 1)); el.querySelector('.tc').textContent = v; el.querySelector('.tb i').style.width = (v / max * 100) + '%'; });
+    if (S.job) { $('bCd').textContent = S.job[0]; $('bNm').textContent = S.job[1]; }
+    show(S.mode === 'idle' ? 'ovIdle' : S.mode === 'pick' ? 'ovPick' : S.mode === 'stop' ? 'ovStop' : S.mode === 'brk' ? 'ovBrk' : S.mode === 'end' ? 'ovEnd' : S.cfm ? 'ovCfm' : null);
+    if (S.mode === 'pick') {
+      $('pkIn').textContent = S.buf || ' ';
+      const hits = PRODUCTS.filter(p => p[0].startsWith(S.buf));
+      $('pkList').innerHTML = PRODUCTS.map(p => `<div class="it ${S.buf && hits[0] === p ? 'hit' : ''} ${S.buf && !p[0].startsWith(S.buf) ? 'dim' : ''}"><b>${p[0]}</b>${p[1]}</div>`).join('');
+    }
+    document.querySelectorAll('#rs span').forEach(sp => sp.classList.toggle('on', Number(sp.dataset.r) === S.reason));
+    if (S.mode === 'end' && S.job) {
+      $('eCd').textContent = S.job[0]; $('eNm').textContent = S.job[1]; $('eTot').textContent = t; $('eStop').textContent = S.stops;
+      $('ePn').textContent = S.prod ? Number(S.prod).toLocaleString() : '未入力';
+      $('eRate').textContent = S.prodSaved && Number(S.prod) > 0 ? `不良率 ${(t / Number(S.prod) * 100).toFixed(2)}%` : '';
+    }
+  }
+  function flash(i, d) {
+    const f = $('flash'); f.style.setProperty('--fc', `var(--${TYPES[i][1]})`);
+    f.textContent = `${TYPES[i][0]} ${d > 0 ? '＋1' : '−1'} → ${S.counts[i]}件`;
+    f.classList.remove('show'); void f.offsetWidth; f.classList.add('show');
+    const tile = $('tile' + (i + 1)); tile.classList.add('hit'); setTimeout(() => tile.classList.remove('hit'), 250);
+    const tc = tile.querySelector('.tc'); tc.classList.remove('pop'); void tc.offsetWidth; tc.classList.add('pop');
+  }
+  function keyDown(k) {
+    const el = document.querySelector(`.pad .k[data-k="${k}"]`);
+    if (el) { el.classList.add('down'); setTimeout(() => el.classList.remove('down'), 180); }
+  }
+  // アプリと同じ動き（かんたん版）
+  function press(k) {
+    keyDown(k);
+    const d = /^[0-9]$/.test(k) ? Number(k) : null;
+    if (S.mode === 'idle' || (S.mode === 'end' && k === '+')) { if (k === '+') { S.mode = 'pick'; S.buf = ''; } render(); return; }
+    if (S.mode === 'end') {
+      if (d !== null) { S.prod = (S.prodSaved ? '' : S.prod) + k; S.prodSaved = false; }
+      if (k === 'Enter' && S.prod) S.prodSaved = true;
+      render(); return;
+    }
+    if (S.mode === 'pick') {
+      if (d !== null) S.buf += k; else if (k === '−') S.buf = S.buf.slice(0, -1); else if (k === '/') S.mode = 'idle';
+      else if (k === 'Enter') { const h = PRODUCTS.find(p => p[0].startsWith(S.buf)); if (h) { S.job = h; S.mode = 'run'; S.counts = [0, 0, 0, 0, 0]; S.stops = 0; S.prod = ''; S.prodSaved = false; } }
+      render(); return;
+    }
+    if (S.mode === 'stop') {
+      if (d !== null && d >= 1 && d <= REASONS.length) S.reason = S.reason === d - 1 ? -1 : d - 1;
+      else if (k === '0') { if (Date.now() - S.zeroArm < 4000) { S.mode = 'run'; S.stops--; S.zeroArm = 0; } else S.zeroArm = Date.now(); }
+      else if (k === 'Enter') S.mode = 'run';
+      else if (k === '*') { S.mode = 'brk'; S.brkAt = Date.now(); }
+      render(); return;
+    }
+    if (S.mode === 'brk') {
+      if (k === '*') S.mode = 'run';
+      else if (k === '0') { if (Date.now() - S.zeroArm < 4000) { S.mode = 'run'; S.zeroArm = 0; } else S.zeroArm = Date.now(); }
+      else if (k === '+') { S.mode = 'run'; S.cfm = true; }
+      render(); return;
+    }
+    // 作業中
+    if (S.cfm) { if (k === '+') { S.cfm = false; S.mode = 'end'; } else if (k === 'Enter') S.cfm = false; render(); return; }
+    if (k === '+') S.cfm = true;
+    else if (k === '*') { S.mode = 'brk'; S.brkAt = Date.now(); }
+    else if (k === 'Enter') { S.mode = 'stop'; S.reason = -1; S.stops++; S.stopAt = Date.now(); }
+    else if (d !== null && d >= 1 && d <= 5) { S.counts[d - 1]++; flash(d - 1, 1); }
+    else if (k === '0') { /* デモでは省略 */ }
+    render();
+  }
+  setInterval(() => { if (S.mode === 'brk') { const s = Math.floor((Date.now() - S.brkAt) / 1000) + (S.fakeBrk || 0); $('bkT').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; } }, 250);
+  setInterval(() => { if (S.mode === 'stop') { const s = Math.floor((Date.now() - S.stopAt) / 1000) + (S.fakeStop || 0); $('stT').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; } }, 250);
+
+  /* ---------- 自動再生の台本 ---------- */
+  const SCRIPT = [
+    {t:'作業していないときは、青い待機画面', k:'まず ＋ を押します', keys:[]},
+    {t:'＋ で作業開始。製造種類を番号で選ぶ', k:'＋ → 1 → 0 → 1 → Enter', keys:['+', '1', '0', '1', 'Enter']},
+    {t:'不良が出たら、種類の番号を押すだけ', k:'1（キズ）・2（汚れ）… 押した内容が大きく出る', keys:['1', '1', '2', '1', '3', '1', '2']},
+    {t:'設備が止まったら Enter。理由は数字で', k:'Enter → 2（故障）', keys:['Enter', '2'], fake:742},
+    {t:'直ったら、もう一度 Enter', k:'停止の時間と理由が記録される', keys:['Enter']},
+    {t:'休憩は * 。休憩の時間は稼働に入らない', k:'* → （休憩が終わったら）*', keys:['*', '*'], fakeBrk:2695},
+    {t:'作業が終わったら ＋ を2回', k:'＋ → ＋（押し間違い防止）', keys:['+', '+']},
+    {t:'作業数を入れて Enter。不良率もその場で', k:'8 → 6 → 0 → Enter', keys:['8', '6', '0', 'Enter']},
+  ];
+  $('prog').innerHTML = SCRIPT.map(() => '<i></i>').join('');
+  let step = 0, playing = !reduce, timers = [], tryMode = false, waiting = false;
+  const clear = () => { timers.forEach(clearTimeout); timers = []; };
+  function reset() { Object.assign(S, {mode:'idle', counts:[0, 0, 0, 0, 0], buf:'', prod:'', prodSaved:false, job:null, reason:-1, stops:0, cfm:false}); render(); }
+  function runStep(i) {
+    clear();
+    if (i >= SCRIPT.length) { timers.push(setTimeout(() => { reset(); runStep(0); }, 2500)); return; }
+    step = i;
+    const sc = SCRIPT[i], gap = 700, dur = 1600 + sc.keys.length * gap + 1400;
+    $('capS').textContent = `STEP ${i + 1} / ${SCRIPT.length}`; $('capT').textContent = sc.t; $('capK').textContent = sc.k;
+    [...$('prog').children].forEach((el, j) => { el.className = j < i ? 'done' : j === i ? 'on' : ''; el.style.setProperty('--d', dur + 'ms'); });
+    if (sc.fake) S.fakeStop = sc.fake;
+    if (sc.fakeBrk) S.fakeBrk = sc.fakeBrk;
+    sc.keys.forEach((k, j) => timers.push(setTimeout(() => press(k), 1100 + j * gap)));
+    waiting = false;
+    // 一時停止中は、このステップを最後まで見せてから止まる（再開すると次のステップへ）
+    timers.push(setTimeout(() => { if (playing) runStep(i + 1); else waiting = true; }, dur));
+  }
+  $('btnPlay').onclick = () => {
+    if (tryMode) { tryMode = false; $('btnTry').classList.remove('pri'); reset(); }
+    playing = !playing; $('btnPlay').textContent = playing ? '⏸ 一時停止' : '▶ 再生';
+    if (playing && (waiting || !timers.length)) runStep(waiting ? step + 1 : 0);
+  };
+  $('btnRestart').onclick = () => { tryMode = false; $('btnTry').classList.remove('pri'); playing = true; $('btnPlay').textContent = '⏸ 一時停止'; reset(); runStep(0); };
+  $('btnTry').onclick = () => {
+    clear(); playing = false; tryMode = true; $('btnPlay').textContent = '▶ 自動再生'; $('btnTry').classList.add('pri'); S.fakeStop = 0;
+    reset(); [...$('prog').children].forEach(el => el.className = '');
+    $('capS').textContent = 'やってみよう'; $('capT').textContent = 'テンキー（またはキーボード）で押してみてください'; $('capK').textContent = '＋ → 101 → Enter で作業開始。右のテンキーをクリックしてもOK';
+  };
+  // キーボードのテンキー、または画面のテンキーをクリック
+  const map = e => {
+    if (e.code === 'NumpadAdd' || e.key === '+') return '+';
+    if (e.code === 'NumpadSubtract' || e.key === '-') return '−';
+    if (e.code === 'NumpadEnter' || e.key === 'Enter') return 'Enter';
+    if (e.code === 'NumpadDivide' || e.key === '/') return '/';
+    if (e.code === 'NumpadMultiply' || e.key === '*') return '*';
+    const m = (e.code || '').match(/^(?:Numpad|Digit)([0-9])$/); if (m) return m[1];
+    return null;
+  };
+  addEventListener('keydown', e => { if (!tryMode) return; const k = map(e); if (!k) return; e.preventDefault(); if (e.repeat) return; press(k); });
+  $('pad').addEventListener('click', e => { const el = e.target.closest('.k'); if (!el) return; if (!tryMode) $('btnTry').click(); press(el.dataset.k); });
+  // 画面に入ったら再生（見えないときは止めて負荷を減らす）
+  reset();
+  const demo = $('s-demo');
+  if (io && !reduce) {
+    let started = false;
+    new IntersectionObserver(es => es.forEach(e => {
+      if (tryMode) return;
+      if (e.isIntersecting && !started) { started = true; runStep(0); }
+      else if (!e.isIntersecting && started && playing) { clear(); started = false; }
+    }), {threshold:.25}).observe(demo);
+  } else { S.mode = 'run'; S.job = PRODUCTS[0]; S.counts = [3, 2, 1, 0, 0]; render(); $('capT').textContent = '＋で作業開始、数字で不良、Enterで停止'; }
+})();
+</script>
+</body>
+</html>

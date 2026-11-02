@@ -1,0 +1,76 @@
+言語	Bahasa
+例：組立工程・第2検査	Contoh: Proses perakitan · Inspeksi ke-2
+今回で	ke-
+文字消す	hapus 1 huruf
+横軸：時	Sumbu datar: jam
+1日の不良数	Cacat per hari
+1日の停止時間	Waktu berhenti per hari
+1日あたり平均	Rata-rata per hari
+1日あたり停止	Berhenti per hari
+1日の計画稼働時間（休憩を除いた時間で入れてください）	Waktu operasi rencana per hari (isi tanpa waktu istirahat)
+日報（1日の実績を印刷）	Laporan harian (cetak hasil 1 hari)
+実績グラフを別タブで開く（2画面目用）	Buka grafik hasil di tab lain (untuk layar ke-2)
+（1枚あたり）	(per slide)
+（1行に1つ）	(1 per baris)
+Excelから取り込む	Impor dari Excel
+Excelの表をコピーして貼り付ける	Salin & tempel tabel Excel
+Excelファイル（.xlsx / .csv）を選ぶ	Pilih file Excel (.xlsx / .csv)
+Excelファイルに出力（今の条件で）	Ekspor ke file Excel (kondisi sekarang)
+Excelファイルに出力	Ekspor ke file Excel
+別のPCのデータを見る（閲覧用）	Lihat data PC lain (mode lihat)
+（−／＋ で1件ずつ直す）	(ubah per 1 dengan − / +)
+の記録です。変更はすぐに保存され、カウンター画面・実績グラフ・	— catatan tanggal ini. Perubahan langsung disimpan dan tampil di layar penghitung · grafik hasil ·
+「不良数カウンター_データ○○.json」	“不良数カウンター_データ○○.json”
+タブ	tab
+パソコン	PC
+1文字消す	hapus 1 huruf
+言語の切り替え（日本語／インドネシア語）	Ganti bahasa (Jepang / Indonesia)
+で言語の切り替え	ganti bahasa
+言語の切り替え	Ganti bahasa
+%以下	% ke bawah
+%以上	% ke atas
+不良 合計	Total cacat
+停止時間 合計	Total waktu berhenti
+Enter で保存（− で1文字消す）	Enter = simpan (− = hapus 1 huruf)
+読み取った形：1行に1件（日付・製造種類・数）	Format terbaca: 1 baris = 1 rencana (tanggal · produk · jumlah)
+だけをリセットします。	saja yang direset.
+日本語/ID	JP / ID
+1文字	Hapus
+0 と同じ	sama dengan 0
+作業数・製造種類の番号を入れているとき、1文字消す	Saat mengisi jumlah kerja / nomor produk: hapus 1 angka
+0 を1回押したのと同じ（元に戻すが2回にならない）。作業数を入れているときは 00	Sama dengan tekan 0 sekali (undo tidak terjadi 2 kali). Saat mengisi jumlah kerja = 00
+入力中の数字を1文字消す	hapus 1 angka saat mengisi
+は 0 と同じ	sama dengan 0
+空欄なら：	jika kosong:
+画面と同じ	Sama dengan layar
+スライドの言語	Bahasa slide
+スライド（グラフと見出し）だけの言語です。設定やボタンは画面の言語のままです。	Bahasa untuk slide saja (grafik dan judul). Pengaturan dan tombol tetap memakai bahasa layar.
+数字キー（1〜9）で不良を数えられます	Tombol angka (1–9) bisa untuk menghitung cacat
+数字キー（1〜9）で不良を数えられます　（. を押すと停止理由を選び直す）	Tombol angka (1–9) bisa untuk menghitung cacat  (tekan . untuk memilih ulang alasan berhenti)
+停止理由を選び直す（数字キー）	Pilih ulang alasan berhenti (tombol angka)
+次に押した数字で停止理由を選び直します	Angka berikutnya memilih ulang alasan berhenti
+停止理由の選び直しをやめました	Batal memilih ulang alasan berhenti
+設備停止中は、はじめに停止理由を選ぶ（停止画面の番号）。選んだあとは不良を数える。. で選び直す	Saat mesin berhenti: pertama pilih alasan berhenti (nomor di layar berhenti). Setelah itu angka menghitung cacat. Tekan . untuk memilih ulang
+休憩の開始／終了（休憩の時間は稼働・停止に入れない）。休憩中も 1〜9 で不良を数える。休憩中は 0 を2回で取り消し	Mulai / selesai istirahat (tidak dihitung operasi / berhenti). Saat istirahat 1–9 tetap menghitung cacat. Saat istirahat tekan 0 2 kali = batal
+休憩の時間は稼働時間に入りません	Waktu istirahat tidak dihitung operasi
+休憩中です。設備停止は * で休憩を終わってから Enter を押してください	Sedang istirahat. Untuk mesin berhenti, selesaikan istirahat dengan * lalu tekan Enter
+日報を表示	Lihat laporan harian
+停止 開始/終了	Mulai / selesai berhenti
+休憩 開始/終了	Mulai / selesai istirahat
+作業 開始/終了	Mulai / selesai kerja
+開始/終了	Mulai / selesai
+設備停止の開始/終了	Mulai / selesai mesin berhenti
+休憩の開始/終了(休憩の時間は稼働に入れない)	Mulai / selesai istirahat (waktu istirahat tidak dihitung operasi)
+Enterで停止開始/終了	Enter: mulai / selesai berhenti
+不良数を訂正	Koreksi jumlah cacat
+不良数の訂正	Koreksi jumlah cacat
+不良数の訂正中	Sedang mengoreksi jumlah cacat
+取消：次に押した数字キーが −1 されます	Batal: tombol angka berikutnya akan −1
+数字キーで ＋1　／　− のあと数字キーで −1　／　0 で1つ前に戻す　／　Enter か * で終わる	Tombol angka = +1 / − lalu tombol angka = −1 / 0 = kembali 1 langkah / Enter atau * = selesai
+訂正を終わる	Selesai koreksi
+不良数の訂正を保存しました	Koreksi jumlah cacat disimpan
+不良数は変えませんでした	Jumlah cacat tidak diubah
+1つ前に戻しました	Dikembalikan 1 langkah
+戻すものがありません	Tidak ada yang bisa dikembalikan
+不良数の訂正中です。Enter か * で終わります	Sedang mengoreksi jumlah cacat. Selesai dengan Enter atau *
+は 0 なので、これ以上減らせません	sudah 0, tidak bisa dikurangi lagi
