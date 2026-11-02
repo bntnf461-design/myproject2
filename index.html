@@ -875,6 +875,7 @@
       <li>「📅 計画」で取り込みたい月を表示し、「📄 雛形をダウンロード」を押します（今のライン名・部品・日付が入った Excel ファイルができます）。</li>
       <li>「部品」シートに部品名・作業人数・1カートンあたりの時間・単位（秒／分／時間）を入力します。人数で時間が変わる部品は、人数ごとに行を分けます。時間は Excel の時刻の形（例：0:01:30）でも入力できます。</li>
       <li>「計画」シートに「日付・ライン・部品名・作業人数・計画数量（カートン）」を1行ずつ入力します（作業人数が空欄なら、その部品の最初の人数）。同じ日・同じラインで複数の部品を作るときは、作る順番に行を並べます（行は挿入して増やせます。日付を省略すると上の行と同じ日）。</li>
+      <li>「人数」シートに「日付・ライン・開始時刻・作業人数」を入れると、人数の予定も取り込めます（例：8:30 2人、13:00 3人）。次の時刻の行がなければ、その日の終わりまで同じ人数です。</li>
       <li>「📥 Excelから取り込み」でそのファイルを選び、内容を確認して「OK」→「保存」を押します。</li>
     </ol>
     <p class="note">読み込めるのは .xlsx と .csv です。ファイルに入っている日の計画は、全ラインともファイルの内容に置き換わります。入力ミス（未登録の部品・登録していない人数・数字以外・マイナスなど）がある行は取り込まず、行番号を表示します。前の「品目」シートの雛形も取り込めます（部品名のない、さらに前の形式は取り込めません）。</p>
@@ -3079,6 +3080,54 @@
     return { plans, errors, warnings };
   }
 
+  // セルの時刻を 'HH:MM' に（Excel の時刻・8:30・8時30分・0.354 など）。読めなければ null
+  function cellToHM(v) {
+    let sec = null;
+    if (v && typeof v === 'object' && 'sec' in v) sec = v.sec;
+    else if (v instanceof Date) sec = v.getHours() * 3600 + v.getMinutes() * 60;
+    else if (typeof v === 'number' && v >= 0 && v < 1) sec = v * 86400;
+    else if (typeof v === 'string' || typeof v === 'number') {
+      const m = /^(\d{1,2})(?:[:：時](\d{1,2})?分?)?$/.exec(normText(v).replace(/\s+/g, ''));
+      if (m) sec = +m[1] * 3600 + (+m[2] || 0) * 60;
+    }
+    if (sec === null || !(sec >= 0 && sec < 86400 + 1)) return null;
+    const mins = Math.round(sec / 60) % 1440;
+    return `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+  }
+  // 「人数」シート（日付・ライン・開始時刻・作業人数）。{ staff: { 日付: [ライン順に [{ t, people }]] }, errors }
+  function parseStaffRows(rows) {
+    const staff = {}, errors = [];
+    const h = findHeader(rows, ['日付', 'ライン', '人数']);
+    if (h < 0) return { staff, errors: rows.some(r => (r || []).some(v => !isBlank(v))) ? ['人数シート：「日付・ライン・開始時刻・作業人数」の見出しがありません'] : [] };
+    const head = rows[h].map(hdr);
+    const cDate = head.findIndex(x => x.includes('日付'));
+    const cLine = head.findIndex(x => x.includes('ライン'));
+    const cTime = head.findIndex(x => x.includes('時刻') || x.includes('時間') || x.includes('から'));
+    const cPeople = head.findIndex(x => x.includes('人数'));
+    let lastDate = null;
+    for (let ri = h + 1; ri < rows.length; ri++) {
+      const r = rows[ri] || [], at = `人数シート ${ri + 1}行目`;
+      if (!isBlank(r[cDate])) {
+        lastDate = cellToDateKey(r[cDate]);
+        if (!lastDate) { errors.push(`${at}：日付「${r[cDate]}」を読み取れません`); continue; }
+      }
+      if ((cTime < 0 || isBlank(r[cTime])) && isBlank(r[cPeople])) continue;     // 時刻も人数も空欄の行は取り込まない
+      if (!lastDate) { errors.push(`${at}：日付がありません`); continue; }
+      const li = st.lines.findIndex(l => normName(l.name) === normName(r[cLine]));
+      if (li < 0) { errors.push(`${at}：ライン「${r[cLine] ?? ''}」がありません`); continue; }
+      const t = cTime >= 0 ? cellToHM(r[cTime]) : null;
+      if (!t) { errors.push(`${at}：開始時刻「${cTime >= 0 ? r[cTime] ?? '' : ''}」を読み取れません（例：8:30）`); continue; }
+      const people = toNum(r[cPeople]);
+      if (!(Number.isInteger(people) && people >= 1)) { errors.push(`${at}：作業人数「${r[cPeople] ?? ''}」は 1 以上の整数で入力してください`); continue; }
+      if (!staff[lastDate]) staff[lastDate] = st.lines.map(() => []);
+      const list = staff[lastDate][li];
+      if (list.some(x => x.t === t)) { errors.push(`${at}：${st.lines[li].name} ラインの ${t} が重複しています`); continue; }
+      list.push({ t, people });
+    }
+    for (const k of Object.keys(staff)) staff[k].forEach(list => list.sort((a, b) => parseHM(a.t) - parseHM(b.t)));
+    return { staff, errors };
+  }
+
   async function importPlanFile(file) {
     let sheets;
     try {
@@ -3102,13 +3151,15 @@
     };
 
     // 「部品」シートだけのファイルは部品の登録だけ行う
-    const others = Object.keys(sheets).filter(k => k !== itemSheet && k !== '説明');
+    const others = Object.keys(sheets).filter(k => k !== itemSheet && k !== '説明' && k !== '人数');
     const planRows = sheets['計画'] || (others.length ? sheets[others[0]] : null);
     const h = planRows ? findHeader(planRows, ['日付', 'ライン']) : -1;
     const res = !planRows ? { plans: {}, errors: [], warnings: [] }
       : h >= 0 ? parseLongPlanRows(planRows, h, knownItem, ratesByName)
         : { plans: {}, errors: ['「計画」シートに「日付・ライン・部品名・作業人数・計画数量」の見出しがありません。雛形の形式で入力してください（部品名のない前の形式は取り込めません）'], warnings: [] };
-    const errors = [...itemRes.errors, ...res.errors], warnings = res.warnings;
+    const staffRes = sheets['人数'] ? parseStaffRows(sheets['人数']) : { staff: {}, errors: [] };
+    const staffKeys = Object.keys(staffRes.staff).sort();
+    const errors = [...itemRes.errors, ...res.errors, ...staffRes.errors], warnings = res.warnings;
     const keys = Object.keys(res.plans).sort();
     const list = a => a.slice(0, 15).join('\n') + (a.length > 15 ? `\n…ほか ${a.length - 15} 件` : '');
 
@@ -3116,12 +3167,13 @@
     const rkey = it => JSON.stringify([it.perCarton || null, ratesOf(it).map(rt => [rt.people, Math.round(rt.ct * 1e4), unitOf(rt.unit)])]);
     const changed = [...fileItems.values()].filter(it => st.items.some(x => normText(x.name) === it.name && rkey(x) !== rkey(it)));
     const ratesText = it => (it.perCarton ? `1カートン${it.perCarton}個・` : '') + it.rates.map(rateLabel).join('・');
-    if (!keys.length && !newItems.length && !changed.length) {
+    if (!keys.length && !newItems.length && !changed.length && !staffKeys.length) {
       alert('取り込める計画がありませんでした。' + (errors.length ? '\n\n【エラー】\n' + list(errors) : ''));
       return;
     }
     let msg = '';
     if (keys.length) msg += `${keys[0]} 〜 ${keys[keys.length - 1]} の ${keys.length} 日分の計画を取り込みます。\n取り込む日の計画は、全ラインともファイルの内容に置き換わります。\n`;
+    if (staffKeys.length) msg += `\n人数の予定：${staffKeys[0]} 〜 ${staffKeys[staffKeys.length - 1]} の ${staffKeys.length} 日分（その日の人数の予定は、全ラインともファイルの内容に置き換わります）\n`;
     if (newItems.length) msg += `\n部品を追加：${newItems.map(it => `${it.name}（${ratesText(it)}）`).join('、')}`;
     if (changed.length) msg += `\n部品の登録内容を変更：${changed.map(it => `${it.name}（${ratesText(it)}）`).join('、')}`;
     if (errors.length) msg += `\n\n【エラー：この行は取り込みません】\n${list(errors)}`;
@@ -3138,14 +3190,16 @@
     save();
     const idOf = name => (name ? (st.items.find(x => normText(x.name) === name) || {}).id || null : null);
     for (const k of keys) calDraft[k] = res.plans[k].map(ln => ln.map(e => Object.assign({ item: idOf(e.itemName), qty: e.qty }, e.people ? { people: e.people } : {})));
-    if (keys.length) {
-      const d0 = keyToDate(keys[0]);
+    for (const k of staffKeys) calStaff[k] = staffRes.staff[k];
+    const firstKey = [...keys, ...staffKeys].sort()[0];
+    if (firstKey) {
+      const d0 = keyToDate(firstKey);
       calMonth = new Date(d0.getFullYear(), d0.getMonth(), 1);
-      calSel = keys[0];
+      calSel = firstKey;
     }
     renderCalendar();
     render();
-    banner(keys.length ? `${keys.length} 日分を取り込みました。「保存」で確定します` : '部品を登録しました');
+    banner(keys.length || staffKeys.length ? `${new Set([...keys, ...staffKeys]).size} 日分を取り込みました。「保存」で確定します` : '部品を登録しました');
   }
 
   // ---- .xlsx 雛形の作成 ----
@@ -3334,10 +3388,42 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       '4. 計画数量は小数も入力できます（例：10.5）。休みの日など、計画のない行は数量を空欄のままにします（取り込みません）。',
       '5. 保存するときは「Excel ブック（.xlsx）」形式にします。',
       '',
+      '【「人数」シート（人数の予定・なくても可）】',
+      '1行に「日付・ライン・開始時刻・作業人数」を入力します（例：2026/11/02・A・8:30・2 ／ 同じ日・A・13:00・3）。',
+      'その時刻から、その人数で作業する予定になります。次の行の時刻まで、または一日の終わりまで同じ人数で計算します（午後を書かなければ午後も同じ人数）。',
+      '日付を省略すると上の行と同じ日になります。ファイルに入っている日の人数の予定は、全ラインともファイルの内容に置き換わります。',
+      '',
       '【取り込みかた】',
       'アンドンの「📅 計画」→「📥 Excelから取り込み」でこのファイルを選び、内容を確認して「保存」を押します。',
       'ファイルに入っている日の計画は、全ラインともファイルの内容に置き換わります。',
     ];
+    // 「人数」シート：入力済みの人数の予定。なければ例として1日目の作業開始時刻の行を空欄で用意する
+    let staffXml = `<row r="1">${['日付', 'ライン', '開始時刻', '作業人数'].map((h, i) => strCell(colName(i) + '1', h, 1)).join('')}</row>`;
+    let sr = 1;
+    const hmToSerial = t => parseHM(t) / 86400000;
+    for (let d = 1; d <= days; d++) {
+      const dt = new Date(year, month, d);
+      const k = dateKey(dt.getTime());
+      const wd = dt.getDay();
+      const dateStyle = wd === 0 ? 3 : wd === 6 ? 4 : 2;
+      st.lines.forEach((l, i) => {
+        const c = cleanStaff(((calStaff[k] || [])[i]) || []);
+        (c.list || []).forEach(x => {
+          sr++;
+          staffXml += `<row r="${sr}">${numCell('A' + sr, dateToSerial(dt), dateStyle)}${strCell('B' + sr, l.name, 5)}${numCell('C' + sr, hmToSerial(x.t), 8)}${numCell('D' + sr, x.people, 5)}</row>`;
+        });
+      });
+    }
+    const slast = sr + 300;
+    const sheet4 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:D${Math.max(sr, 1)}"/>
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="18"/>
+<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="10" customWidth="1"/><col min="3" max="3" width="12" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/></cols>
+<sheetData>${staffXml}</sheetData>
+<dataValidations count="${lineDv ? 3 : 2}">${lineDv ? lineDv.replace(`sqref="B2:B${last}"`, `sqref="B2:B${slast}"`) : ''}<dataValidation type="time" operator="between" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="時刻を入力してください（例：8:30）" sqref="C2:C${slast}"><formula1>0</formula1><formula2>0.999988425925926</formula2></dataValidation><dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorTitle="入力エラー" error="作業人数は1以上の整数で入力してください" sqref="D2:D${slast}"><formula1>1</formula1></dataValidation></dataValidations>
+</worksheet>`;
     const sheet3 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <cols><col min="1" max="1" width="120" customWidth="1"/></cols>
@@ -3363,7 +3449,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
 <border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border>
 </borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="8">
+<cellXfs count="9">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
@@ -3372,6 +3458,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="20" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -3384,6 +3471,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`,
       '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -3393,7 +3481,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
       'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <bookViews><workbookView activeTab="0"/></bookViews>
-<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="部品" sheetId="2" r:id="rId2"/><sheet name="説明" sheetId="3" r:id="rId4"/></sheets>
+<sheets><sheet name="計画" sheetId="1" r:id="rId1"/><sheet name="部品" sheetId="2" r:id="rId2"/><sheet name="人数" sheetId="4" r:id="rId5"/><sheet name="説明" sheetId="3" r:id="rId4"/></sheets>
 </workbook>`,
       'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -3401,10 +3489,12 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
 <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>
 </Relationships>`,
       'xl/worksheets/sheet1.xml': sheet1,
       'xl/worksheets/sheet2.xml': sheet2,
       'xl/worksheets/sheet3.xml': sheet3,
+      'xl/worksheets/sheet4.xml': sheet4,
       'xl/styles.xml': styles,
     });
   }
