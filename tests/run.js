@@ -214,7 +214,7 @@ test("M3：カウンターの段取りを手で直しても、取り込み直し
   eq(evs[0].e, "09:25", "手で直した時刻が残る");
 });
 
-test("〃：上の行と同じ型式・ロットNo. は〃で表示（値はそのまま・選ぶと見える）", async ctx => {
+test("〃：上の行と同じ型式・ロットNo.・パレット形態・ローカルコードは〃で表示（値はそのまま・選ぶと見える）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await importMaster(p);
   await setDate(p, "2026-10-21");
@@ -229,6 +229,10 @@ test("〃：上の行と同じ型式・ロットNo. は〃で表示（値はそ�
   eq(await ditto("r3_lotCut"), false, "3行目の切面ロット（02NK に変わる）");
   eq(await ditto("r2_lotSoban"), true, "2行目の素板ロット");
   eq(await ditto("r3_lotSoban"), false, "3行目の素板ロット（変わる）");
+  eq(await ditto("r1_palletType"), false, "1行目のパレット形態");
+  eq(await ditto("r2_palletType"), true, "2行目のパレット形態");
+  eq(await ditto("r2_localCode"), true, "2行目のローカルコード");
+  eq(await v(p, "r2_palletType"), "赤PL", "パレット形態の値はそのまま");
   eq(await v(p, "r2_model"), MODEL, "値はそのまま");
   await p.click('[name="r2_model"]');
   const color = await p.evaluate(() => getComputedStyle(document.forms.nippo.elements.r2_model).color);

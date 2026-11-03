@@ -721,7 +721,7 @@
   // ---------- 合計などの計算 ----------
   // 歩留は紙と同じく小数1桁で切り捨て（例 270÷277 → 97.4%）
   function pct(g, q) { return Math.floor(g / q * 1000 + 1e-9) / 10 + "%"; }
-  var DITTO_KEYS = ["model", "lotCut", "lotSoban"];
+  var DITTO_KEYS = ["model", "lotCut", "lotSoban", "palletType", "localCode"];
   function markDitto() {
     for (var r = 1; r <= ROWS; r++) DITTO_KEYS.forEach(function (k) {
       var v = val("r" + r + "_" + k), same = r > 1 && v !== "" && v === val("r" + (r - 1) + "_" + k);
