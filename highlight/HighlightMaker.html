@@ -167,6 +167,20 @@ summary{cursor:pointer;color:var(--sub);font-size:13px;padding:6px 0}
 .style span{font-size:11px;color:var(--sub)}
 .style.sel{box-shadow:var(--glow);border-color:var(--accent);background:var(--surface)}
 .reroll{width:100%;margin-top:12px;font-weight:700}
+.themes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:420px){.themes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.theme{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px;border-radius:var(--radius-s);background:var(--surface2);border:1px solid var(--line);min-height:78px;position:relative;overflow:hidden}
+.theme .ico{font-size:24px;line-height:1;margin-bottom:4px}
+.theme b{font-size:13.5px}
+.theme span{font-size:11px;color:var(--sub)}
+.theme[aria-pressed="true"]{box-shadow:var(--glow);border-color:var(--accent);background:var(--surface)}
+.proposals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.proposals:empty{display:none}
+.prop{display:flex;flex-direction:column;gap:6px;padding:6px;border-radius:var(--radius-s);background:var(--surface2);border:1px solid var(--line);text-align:left;min-height:0}
+.prop img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:calc(var(--radius-s) - 4px);background:#000;display:block}
+.prop b{font-size:12.5px;padding:0 2px}
+.prop span{font-size:10.5px;color:var(--sub);padding:0 2px 2px;line-height:1.4}
+.prop[aria-pressed="true"]{box-shadow:var(--glow);border-color:var(--accent);background:var(--surface)}
 
 /* 4 タイトル */
 .tstyles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
@@ -232,7 +246,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
   <nav class="stepnav" aria-label="作る手順">
     <button data-step="1" aria-current="step"><span class="n"><span>1</span></span><span class="l">素材</span></button>
     <button data-step="2"><span class="n"><span>2</span></span><span class="l">音楽</span></button>
-    <button data-step="3"><span class="n"><span>3</span></span><span class="l">雰囲気</span></button>
+    <button data-step="3"><span class="n"><span>3</span></span><span class="l">テーマ</span></button>
     <button data-step="4"><span class="n"><span>4</span></span><span class="l">タイトル</span></button>
     <button data-step="5"><span class="n"><span>5</span></span><span class="l">仕上げ</span></button>
   </nav>
@@ -270,6 +284,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
     </div>
     <label class="check"><input type="checkbox" id="shuffle"> 順番をシャッフルする</label>
     <div class="panelnav"><button class="primary next" data-go="2">次へ：音楽を選ぶ →</button></div>
+    <button id="quickPropose" class="reroll" style="margin-top:8px">✨ 細かいことはおまかせ（3案から選ぶ）</button>
   </div>
 
   <div class="panel" data-panel="2" hidden>
@@ -292,12 +307,18 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <label class="field" id="tempoRow" style="display:none"><span>テンポの補正（自分の曲）</span>
         <select id="tempoAdj"><option value="1">自動のまま</option><option value="2">2倍（切り替えを速く）</option><option value="0.5">半分（切り替えをゆっくり）</option></select></label>
     </details>
-    <div class="panelnav"><button class="ghost" data-go="1">← 戻る</button><button class="primary next" data-go="3">次へ：雰囲気を選ぶ →</button></div>
+    <div class="panelnav"><button class="ghost" data-go="1">← 戻る</button><button class="primary next" data-go="3">次へ：テーマを選ぶ →</button></div>
   </div>
 
   <div class="panel" data-panel="3" hidden>
-    <h2>雰囲気を選ぶ</h2>
-    <p class="lead">切り替え方・色・動きのセットです。気に入らなければ 🎲 で何度でも作り直せます。</p>
+    <h2>テーマと雰囲気</h2>
+    <p class="lead">テーマを選ぶと、雰囲気・曲・タイトル・エンディング・ステッカーがまとめて決まります。迷ったら「おまかせ3案」から選ぶだけでOK。</p>
+    <button id="proposeBtn" class="primary reroll">✨ おまかせ3案をつくる</button>
+    <div id="proposals" class="proposals"></div>
+    <div class="sub-h">テーマ</div>
+    <div id="themes" class="themes"></div>
+    <label class="check" style="margin-top:10px"><input type="checkbox" id="stickerOn" checked> テーマのステッカーを出す</label>
+    <div class="sub-h">雰囲気だけ変える</div>
     <div id="styles" class="styles"></div>
     <button id="rerollBtn" class="primary reroll">🎲 別パターンを作る</button>
     <p class="hint" id="seedInfo"></p>
@@ -1603,6 +1624,7 @@ function drawOverlays(t, seg, b) {
     if (a > 0) { c.save(); c.globalAlpha = a; c.font = `${Math.round(30 * u)}px "Segoe UI",sans-serif`; c.fillStyle = '#fff'; c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 8; c.textBaseline = 'bottom'; const lb = fx.letterbox ? H * fx.letterbox : 0; c.fillText(dateText(seg.clip.date), 40 * u, H - 34 * u - lb); c.restore(); }
   }
   drawTitle(t);
+  drawStickers(t, seg, b);
   drawEnding(t);
   // 最後はフェードアウト
   const fade = Math.min(1.2, tl.per * 2);
@@ -2479,6 +2501,123 @@ function wipeAll() {
 function cancelExport() { if (S.recording) { S.recCancelled = true; if (S.rec) S.rec.stop(); } }
 
 /* ------------------------------ 画面の操作 ------------------------------ */
+/* ===================== テーマパック ===================== */
+const THEMES = [
+  { id: 'birthday', name: '誕生日', icon: '🎂', desc: 'カラフルにお祝い', styles: ['pop', 'zoom', 'polaroid'], songs: [['happy', 0], ['parade', 2], ['toybox', 1], ['pop', 3]], titles: ['pop', 'sparkle', 'stamp'], ending: 'thanks', stickers: ['🎂', '🎉', '🎈', '🎁', '✨', '🥳'], title: 'HAPPY BIRTHDAY', sub: 'date' },
+  { id: 'travel', name: '旅行', icon: '✈️', desc: 'スワイプで旅気分', styles: ['vlog', 'energetic', 'split'], songs: [['tropical', 0], ['ukulele', 1], ['house', 2], ['acoustic', 3]], titles: ['split', 'zoomthru', 'typewriter'], ending: 'theend', stickers: ['✈️', '🌴', '📍', '📸', '🗺️', '☀️'], title: 'TRIP', sub: 'date' },
+  { id: 'wedding', name: '結婚式', icon: '💍', desc: '上品でやさしく', styles: ['memories', 'cinematic', 'slow'], songs: [['ballad', 0], ['cinematic', 2], ['acoustic', 1]], titles: ['cinema', 'handwrite', 'sparkle'], ending: 'thanks', stickers: ['💍', '💐', '🕊️', '🤍', '✨'], title: 'Wedding Day', sub: 'date' },
+  { id: 'graduation', name: '卒業・入学', icon: '🌸', desc: '思い出をエモく', styles: ['memories', 'film', 'polaroid'], songs: [['ballad', 2], ['acoustic', 0], ['lofi', 1]], titles: ['handwrite', 'cinema', 'countdown'], ending: 'title', stickers: ['🌸', '🎓', '📚', '✨', '🏫'], title: '卒業おめでとう', sub: 'date' },
+  { id: 'sports', name: '部活・スポーツ', icon: '🏆', desc: '熱く、速く', styles: ['energetic', 'beat', 'zoom'], songs: [['rock', 0], ['edm', 1], ['dnb', 2], ['trap', 0]], titles: ['stamp', 'zoomthru', 'decode'], ending: 'theend', stickers: ['🔥', '⚡', '🏆', '💪', '📣'], title: '全力！', sub: 'date' },
+  { id: 'kids', name: '子ども', icon: '🧸', desc: '成長記録をかわいく', styles: ['polaroid', 'pop', 'grid'], songs: [['toybox', 0], ['picnic', 1], ['happy', 2], ['ukulele', 0]], titles: ['pop', 'sparkle', 'handwrite'], ending: 'thanks', stickers: ['🧸', '🌈', '⭐', '🍼', '🎈'], title: 'すくすく成長記録', sub: 'date' },
+  { id: 'pet', name: 'ペット', icon: '🐾', desc: 'うちの子が主役', styles: ['pop', 'polaroid', 'vlog'], songs: [['ukulele', 0], ['picnic', 0], ['funk', 1], ['happy', 4]], titles: ['sparkle', 'pop', 'stamp'], ending: 'thanks', stickers: ['🐾', '🦴', '💕', '🐶', '🐱'], title: 'うちの子', sub: '' },
+  { id: 'oshi', name: '推し活', icon: '💖', desc: 'キラキラ・ネオン', styles: ['neon', 'glitch', 'grid'], songs: [['synthwave', 0], ['disco', 1], ['edm', 3], ['house', 0]], titles: ['neon', 'sparkle', 'mask'], ending: 'thanks', stickers: ['💖', '✨', '🌟', '💜', '👑'], title: '推しが尊い', sub: '' },
+  { id: 'matsuri', name: '夏祭り・花火', icon: '🎆', desc: '和風でにぎやかに', styles: ['energetic', 'film', 'vhs'], songs: [['wafu', 0], ['wafu', 3], ['carnival', 1]], titles: ['stamp', 'cinema', 'countdown'], ending: 'theend', stickers: ['🎆', '🏮', '🍧', '🎇', '👘'], title: '夏祭り', sub: 'date' },
+  { id: 'xmas', name: 'クリスマス', icon: '🎄', desc: 'あたたかくキラキラ', styles: ['memories', 'pop', 'polaroid'], songs: [['parade', 1], ['happy', 5], ['ballad', 3]], titles: ['sparkle', 'handwrite', 'pop'], ending: 'thanks', stickers: ['🎄', '⭐', '🎁', '❄️', '🔔'], title: 'Merry Christmas', sub: 'date' },
+  { id: 'daily', name: '日常 vlog', icon: '☕', desc: 'おしゃれにゆるく', styles: ['minimal', 'vlog', 'split'], songs: [['lofi', 0], ['acoustic', 2], ['hiphop', 1], ['house', 3]], titles: ['typewriter', 'handwrite', 'split'], ending: 'none', stickers: ['☕', '🌿', '📷', '🍰', '🎧'], title: 'my days', sub: 'date' },
+  { id: 'game', name: 'ゲーム・友だち', icon: '🎮', desc: 'ノリよくにぎやか', styles: ['glitch', 'beat', 'vhs'], songs: [['chiptune', 0], ['ska', 1], ['funk', 0], ['trap', 2]], titles: ['decode', 'countdown', 'stamp'], ending: 'theend', stickers: ['🎮', '👾', '🕹️', '💥', '😂'], title: 'GAME NIGHT', sub: '' },
+];
+S.theme = null;
+/* 写真・動画の日付から「2026.08.12」や「2026.08.12 - 08.15」を作る */
+function dateRangeText() {
+  const ds = S.clips.map(c => c.date).filter(d => d && !isNaN(d)); if (!ds.length) return '';
+  const a = new Date(Math.min(...ds)), b = new Date(Math.max(...ds));
+  const f = d => dateText(d);
+  return a.toDateString() === b.toDateString() ? f(a) : `${f(a)} - ${String(b.getMonth() + 1).padStart(2, '0')}.${String(b.getDate()).padStart(2, '0')}`;
+}
+/* 設定（テーマ・雰囲気・曲・バージョン・タイトル・エンディング・並び）をまとめて反映 */
+let lastAutoTitle = '', lastAutoSub = '';
+async function applyConfig(cfg, opts = {}) {
+  if (cfg.style) S.style = cfg.style;
+  if (cfg.music && MUSIC[cfg.music]) { $('#musicSel').value = cfg.music; musicCat = MUSIC[cfg.music].cat; }
+  if (cfg.songVar !== undefined) S.songVar = cfg.songVar;
+  if (cfg.titleStyle) S.titleStyle = cfg.titleStyle;
+  if (cfg.ending) S.ending = cfg.ending;
+  if (cfg.seed) S.seed = cfg.seed;
+  S.theme = cfg.theme ? THEMES.find(t => t.id === cfg.theme) : S.theme;
+  const th = S.theme;
+  if (th) { // タイトルが空、または前にテーマが入れた文字なら、テーマの例に置きかえる
+    const ti = $('#title'), su = $('#subtitle');
+    if (!ti.value.trim() || ti.value === lastAutoTitle) { ti.value = cfg.titleText || th.title; lastAutoTitle = ti.value; }
+    const sub = th.sub === 'date' ? dateRangeText() : '';
+    if (!su.value.trim() || su.value === lastAutoSub) { su.value = sub; lastAutoSub = sub; }
+  }
+  buildStyleCards(); renderMusicUI(); renderThemeCards();
+  document.querySelectorAll('#titleStyles .tstyle').forEach(x => x.setAttribute('aria-pressed', x.dataset.id === S.titleStyle));
+  document.querySelectorAll('#endingSeg button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === S.ending));
+  updateSteps();
+  if (!opts.noBuild) await rebuild();
+}
+function themeConfig(th, k, rng) {
+  const pickK = (arr, j) => arr[((j % arr.length) + arr.length) % arr.length];
+  const [music, ver] = pickK(th.songs, k);
+  return { theme: th.id, style: pickK(th.styles, k), music, songVar: (ver + (k >= th.songs.length ? 3 : 0)) % SONG_VERSIONS, titleStyle: pickK(th.titles, k), ending: th.ending, seed: Math.floor(rng() * 999999) + 1 };
+}
+function renderThemeCards() {
+  const box = $('#themes'); if (!box) return; box.innerHTML = '';
+  const none = document.createElement('button'); none.className = 'theme'; none.setAttribute('aria-pressed', !S.theme);
+  none.innerHTML = '<span class="ico">🎨</span><b>テーマなし</b><span>自分で全部えらぶ</span>';
+  none.onclick = () => { S.theme = null; renderThemeCards(); drawFrame(S.pos || .001); };
+  box.appendChild(none);
+  for (const th of THEMES) {
+    const b = document.createElement('button'); b.className = 'theme'; b.setAttribute('aria-pressed', !!S.theme && S.theme.id === th.id);
+    b.innerHTML = `<span class="ico">${th.icon}</span><b>${th.name}</b><span>${th.desc}</span>`;
+    b.onclick = () => { $('#proposals').innerHTML = ''; applyConfig(themeConfig(th, 0, mulberry32(Date.now() & 0xffff))); };
+    box.appendChild(b);
+  }
+}
+/* テーマのステッカー：カットごとに角へポンと出て、拍で弾む */
+function drawStickers(t, seg, b) {
+  const th = S.theme; if (!th || !$('#stickerOn').checked || !S.tl) return;
+  const tl = S.tl, i = tl.segs.indexOf(seg), W = S.W, H = S.H, u = Math.min(W, H) / 720, c = octx;
+  const title = $('#title').value.trim(); if (title && t < titleDuration(titleStyleId(), tl.per)) return; // タイトル中は出さない
+  if (t > tl.total - Math.min(3.4, tl.total * .14) && S.ending !== 'none') return;
+  const r = mulberry32(i * 7919 + 17); if (r() > .7) return; // 7割のカットに出す
+  const em = th.stickers[Math.floor(r() * th.stickers.length)], corner = Math.floor(r() * 4);
+  const age = t - seg.s, k = ease.outBack(clamp(age / .35, 0, 1)), out = clamp((seg.e - t) / .15, 0, 1);
+  const size = (64 + r() * 40) * u * k * (1 + .12 * b.env), m = 46 * u + size * .5;
+  const x = corner % 2 ? W - m : m, y = corner < 2 ? H * .2 + size * .2 : H * .8 - size * .2;
+  c.save(); c.globalAlpha = out; c.translate(x, y); c.rotate((r() - .5) * .6 + Math.sin(t * 3 + i) * .08);
+  c.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 10 * u; c.shadowOffsetY = 4 * u; c.fillText(em, 0, 0); c.restore();
+}
+/* ===================== おまかせ3案 ===================== */
+async function makeProposals() {
+  if (!S.clips.length) { setStatus('先に ① で写真・動画を選んでください', 'busy'); goStep(1); return; }
+  if (S.playing) pause();
+  const box = $('#proposals'), rng = mulberry32((Date.now() & 0xffffff) + 1);
+  let cfgs;
+  if (S.theme) cfgs = [0, 1, 2].map(k => themeConfig(S.theme, k + Math.floor(rng() * 3), rng));
+  else { const ths = shuffleArr(rng, THEMES).slice(0, 3); cfgs = ths.map(th => themeConfig(th, Math.floor(rng() * 3), rng)); }
+  // テーマが同じ時は、曲・雰囲気がかぶらないように
+  for (let i = 1; i < cfgs.length; i++) while (cfgs.slice(0, i).some(c => c.music === cfgs[i].music && c.style === cfgs[i].style)) { const th = THEMES.find(t => t.id === cfgs[i].theme); cfgs[i] = themeConfig(th, Math.floor(rng() * 9), rng); }
+  box.innerHTML = cfgs.map((c, i) => `<button class="prop" data-i="${i}" disabled><img alt=""><b>${'ABC'[i]}案</b><span>作っています…</span></button>`).join('');
+  $('#proposeBtn').disabled = true; $('#quickPropose').disabled = true;
+  try {
+    for (let i = 0; i < cfgs.length; i++) {
+      setStatus(`おまかせ3案を作っています… ${i + 1} / 3`, 'busy');
+      const c = cfgs[i]; await applyConfig(c);
+      const tl = S.tl, th = THEMES.find(t => t.id === c.theme);
+      // 見本の絵：タイトルが出ている所
+      drawFrame(Math.min(tl.total * .5, titleDuration(titleStyleId(), tl.per) * .55));
+      const tc = document.createElement('canvas'); tc.width = 180; tc.height = Math.round(180 * S.H / S.W); tc.getContext('2d').drawImage(out, 0, 0, tc.width, tc.height);
+      c.thumb = tc.toDataURL('image/jpeg', .8);
+      const st = STYLES.find(x => x.id === c.style), tt = TITLE_STYLES.find(x => x.id === c.titleStyle);
+      const card = box.querySelector(`[data-i="${i}"]`);
+      card.querySelector('img').src = c.thumb; card.querySelector('b').textContent = `${'ABC'[i]}案：${th.icon} ${th.name}`;
+      card.querySelector('span').textContent = `${st.name}・${MUSIC[c.music].name} v${c.songVar + 1}・${tt ? tt.name : ''}`;
+    }
+  } finally { $('#proposeBtn').disabled = false; $('#quickPropose').disabled = false; }
+  box.querySelectorAll('.prop').forEach(card => {
+    card.disabled = false;
+    card.onclick = async () => {
+      box.querySelectorAll('.prop').forEach(x => x.setAttribute('aria-pressed', x === card));
+      await applyConfig(cfgs[+card.dataset.i]); play(true);
+    };
+  });
+  // 最初の案を選んだ状態にする
+  box.querySelector('.prop').setAttribute('aria-pressed', 'true'); await applyConfig(cfgs[0]);
+  setStatus('3案できました。タップで見比べられます', 'done');
+}
 function buildStyleCards() {
   const box = $('#styles'); box.innerHTML = '';
   for (const st of STYLES) {
@@ -2654,17 +2793,20 @@ $('#titlePreviewBtn').onclick = () => {
   play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4;
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.03b';
+const WEB_VER = '2026.11.04';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
+$('#proposeBtn').onclick = makeProposals;
+$('#quickPropose').onclick = () => { goStep(3); makeProposals(); };
+$('#stickerOn').onchange = () => { if (!S.playing && S.tl) drawFrame(S.pos || .001); };
 renderMusicUI(); renderTitleCards(); goStep(1);
 segFrom('#aspect', '#aspectSeg', [{ v: '9:16', html: shapeIcon(14, 24) + '縦長<small>スマホ</small>' }, { v: '16:9', html: shapeIcon(28, 16) + '横長<small>YouTube</small>' }, { v: '1:1', html: shapeIcon(20, 20) + '正方形' }, { v: '4:5', html: shapeIcon(18, 22) + '4:5<small>Instagram</small>' }]);
 segFrom('#length', '#lengthSeg', [{ v: '30', html: '<b>30秒</b>' }, { v: '45', html: '<b>45秒</b>' }, { v: '60', html: '<b>1分</b>' }]);
 segFrom('#quality', '#qualitySeg', [{ v: '720', html: '<b>720p</b><small>軽い・おすすめ</small>' }, { v: '1080', html: '<b>1080p</b><small>きれい・重い</small>' }]);
-buildStyleCards(); renderThumbs(); drawEmpty(); drawTimeline();
+buildStyleCards(); renderThemeCards(); renderThumbs(); drawEmpty(); drawTimeline();
 // テスト用
-window.HM = { S, STYLES, MUSIC, TITLE_STYLES, titleDuration, rebuild, drawFrame, analyzeMusic, genMusic, exportVideo, makeDemo, addFiles, TR };
+window.HM = { S, STYLES, MUSIC, THEMES, TITLE_STYLES, titleDuration, applyConfig, makeProposals, rebuild, drawFrame, analyzeMusic, genMusic, exportVideo, makeDemo, addFiles, TR };
 </script>
 </body>
 </html>
