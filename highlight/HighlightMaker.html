@@ -283,6 +283,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
     </select>
     <input id="musicIn" class="vh" type="file" accept="audio/*,video/*">
     <div class="row" id="musicPickRow" hidden><label for="musicIn" class="btn primary" id="musicPick" style="width:100%">🎵 曲のファイルを選ぶ</label></div>
+    <button id="songVarBtn" class="reroll" style="margin-top:10px">🔀 別のバージョンにする</button>
     <p id="musicInfo" class="hint"></p>
     <details>
       <summary>くわしい設定</summary>
@@ -328,7 +329,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <option value="9:16">縦長 9:16</option><option value="16:9">横長 16:9</option><option value="1:1">正方形</option><option value="4:5">縦 4:5</option>
     </select>
     <select id="length" class="vh" aria-hidden="true" tabindex="-1">
-      <option value="60">1分</option><option value="90">1分30秒</option><option value="120">2分</option><option value="full">曲に合わせる</option>
+      <option value="30">30秒</option><option value="45">45秒</option><option value="60" selected>1分</option>
     </select>
     <select id="quality" class="vh" aria-hidden="true" tabindex="-1"><option value="720">720p</option><option value="1080">1080p</option></select>
     <div class="privacy">
@@ -885,8 +886,33 @@ const MUSIC = {
     g: { k: 'x.....x...x.....', c: '....x.......x...', cExtra: '....x..x....x...', h: 'x.x.x.x.x.x.x.x.', hv: .07, bass: { p: 'x.....x...x...x.', w: 'square', cut: 700, v: .2, walk: true }, chord: { type: 'piano', p: 'x..x..x...x..x..', w: 'triangle', cut: 3000, v: .05, oct: 12 }, lead: { w: 'triangle', p: 'x.x.x...x.x.x...', v: .07, oct: 12 } } },
 };
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
-async function genMusic(kind, seconds, seed, onProgress) {
-  const M = MUSIC[kind], bpm = M.bpm, spb = 60 / bpm, bar = spb * 4;
+/* ---- 曲のバージョン：キー・テンポ・コード進行・リズム・展開を変える ---- */
+const PROG_MAJ = [[[0, 4, 7], [9, 12, 16], [5, 9, 12], [7, 11, 14]], [[5, 9, 12], [7, 11, 14], [4, 7, 11], [9, 12, 16]], [[9, 12, 16], [5, 9, 12], [0, 4, 7], [7, 11, 14]],
+  [[0, 4, 7], [4, 7, 11], [5, 9, 12], [7, 11, 14]], [[0, 4, 7], [5, 9, 12], [9, 12, 16], [7, 11, 14]], [[2, 5, 9], [7, 11, 14], [0, 4, 7], [9, 12, 16]], [[0, 4, 7], [7, 11, 14], [9, 12, 16], [4, 7, 11]], [[5, 9, 12], [0, 4, 7], [7, 11, 14], [9, 12, 16]]];
+const PROG_MIN = [[[0, 3, 7], [-2, 2, 5], [-4, 0, 3], [-5, -1, 2]], [[0, 3, 7], [5, 8, 12], [-2, 2, 5], [3, 7, 10]], [[0, 3, 7], [-4, 0, 3], [-7, -3, 0], [-5, -1, 2]], [[-4, 0, 3], [-2, 2, 5], [0, 3, 7], [0, 3, 7]],
+  [[0, 3, 7], [3, 7, 10], [-2, 2, 5], [5, 8, 12]], [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], [[0, 3, 7], [-2, 2, 5], [3, 7, 10], [-4, 0, 3]], [[5, 8, 12], [-2, 2, 5], [0, 3, 7], [3, 7, 10]]];
+const VAR_TP = [0, 2, -2, 3, -3, 5, 1, -1, 4, -4], VAR_TF = [1, 1.05, .95, 1.08, .97, 1.03, .92, 1.1, .98, 1.06];
+const SONG_VERSIONS = 10;
+function songVariant(M, v) {
+  v = ((v % SONG_VERSIONS) + SONG_VERSIONS) % SONG_VERSIONS;
+  let prog = M.prog;
+  if (v > 0) {
+    if (prog[0].length === 3 && !M.scale) { const bank = M.minor ? PROG_MIN : PROG_MAJ; prog = bank[(v - 1) % bank.length]; }
+    else { const k = v % prog.length; prog = prog.slice(k).concat(prog.slice(0, k)); } // 4和音・和風はコードの順番を変える
+  }
+  return { v, tp: VAR_TP[v], bpm: Math.round(M.bpm * VAR_TF[v]), prog, fills: v !== 1, hat16: v % 3 === 2, counter: v % 2 === 0 && v > 0, mod: v % 4 === 3 };
+}
+/* 4小節で「呼びかけ→少し変える→別の形→もとに戻って終わる」メロディ */
+function makeMelody(rng, penta) {
+  const motif = start => { const m = []; let i = start; for (let k = 0; k < 8; k++) { i = clamp(i + Math.floor(rng() * 5) - 2, 0, penta.length - 1); m.push(rng() < .18 ? null : penta[i]); } return m; };
+  const A = motif(2), B = motif(Math.min(4, penta.length - 1));
+  const A2 = A.map((x, k) => k >= 5 && x !== null ? penta[clamp(penta.indexOf(x) + (rng() < .5 ? 1 : -1), 0, penta.length - 1)] : x);
+  const A3 = A.slice(0, 4).concat(B.slice(4)); A3[7] = penta[0]; B[7] = penta[Math.min(2, penta.length - 1)];
+  return [...A, ...A2, ...B, ...A3];
+}
+async function genMusic(kind, seconds, variant = 0, onProgress) {
+  const M = MUSIC[kind], V = songVariant(M, variant), bpm = V.bpm, spb = 60 / bpm, bar = spb * 4;
+  const seed = V.v * 101 + 7;
   const bars = Math.max(4, Math.ceil(seconds / bar));
   const dur = bars * bar + 2.5, sr = 44100, TAIL = 2.6;
   const rng0 = mulberry32(seed);
@@ -894,8 +920,8 @@ async function genMusic(kind, seconds, seed, onProgress) {
   const rng = rng0;
   const scale = M.minor ? [0, 2, 3, 5, 7, 8, 10, 12] : [0, 2, 4, 5, 7, 9, 11, 12];
   const penta = M.scale || (M.minor ? [0, 3, 5, 7, 10, 12] : [0, 2, 4, 7, 9, 12]);
-  const melody = []; let mi = 2; for (let k = 0; k < 16; k++) { mi = clamp(mi + Math.floor(rng() * 5) - 2, 0, penta.length - 1); melody.push(rng() < .2 ? null : penta[mi]); }
-  const R = M.root;
+  const melody = makeMelody(rng, penta);
+  const RB = M.root + V.tp;
   // 曲の構成：イントロ → (Aメロ → 盛り上げ → サビ → 間奏) をくり返し → 終わり
   function section(b) {
     if (b < 0) return 'intro';
@@ -906,7 +932,10 @@ async function genMusic(kind, seconds, seed, onProgress) {
     return k < 6 ? 'verse' : k < 8 ? 'build' : k < 16 ? 'chorus' : k < 20 ? 'verse' : k < 22 ? 'break' : 'build';
   }
   // 1小節ずつ作って貼り合わせる（同じ内容の小節は1回だけ作る＝スマホでも速い）
-  const barKey = b => [section(b), b % 4, section(b + 1), section(b - 1), b === bars - 1].join('|');
+  // 最後のサビで1音上げる（転調）バージョン
+  let lastChorus = -1; if (V.mod && bars >= 16) for (let b = bars - 1; b > 2; b--) if (section(b) === 'chorus' && section(b - 1) !== 'chorus') { lastChorus = b; break; }
+  const isMod = b => lastChorus > 0 && b >= lastChorus;
+  const barKey = b => [section(b), b % 4, section(b + 1), section(b - 1), b === bars - 1, isMod(b)].join('|');
   async function renderBar(b) {
     const oc = new OfflineAudioContext(2, Math.ceil(sr * (bar + TAIL)), sr);
     const rng = mulberry32(seed * 7919 + (b % 4) * 131 + barKey(b).length * 17 + ['intro', 'verse', 'build', 'chorus', 'break', 'outro'].indexOf(section(b)) * 1009);
@@ -936,7 +965,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
       const g = oc.createGain(); g.gain.value = .22; const lp = oc.createBiquadFilter(); lp.frequency.value = 3500; ws.connect(lp).connect(g).connect(bus); dist = ws;
     }
     const power = (t, m, len) => { for (const mm of [m, m + 7, m + 12]) { const o = oc.createOscillator(), g = oc.createGain(); o.type = 'sawtooth'; o.frequency.value = mtof(mm); g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.01, t + len); o.connect(g).connect(dist); o.start(t); o.stop(t + len + .02); } };
-    const t0 = 0, ch = M.prog[b % M.prog.length];
+    const t0 = 0, ch = V.prog[b % V.prog.length], R = RB + (isMod(b) ? 2 : 0);
     const sec = section(b), last = b === bars - 1;
     const intro = sec === 'intro' || sec === 'break', build = sec === 'build' && section(b + 1) === 'chorus';
     const full = !intro, lead = sec === 'chorus' || sec === 'outro';
@@ -960,7 +989,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
         // コードの刻み
         for (const n of ch) tone(t + spb / 2, R + n, spb * .35, kind === 'happy' ? 'triangle' : 'square', kind === 'happy' ? .08 : .035, 2600);
       }
-      if (lead) for (let s = 0; s < 8; s++) { const mm = melody[(b * 8 + s) % 16]; if (mm !== null) tone(t0 + s * spb / 2, R + 12 + mm, spb / 2 - .03, kind === 'happy' ? 'sine' : 'square', kind === 'happy' ? .12 : .045, 3500); }
+      if (lead) for (let s = 0; s < 8; s++) { const mm = melody[(b * 8 + s) % 32]; if (mm !== null) tone(t0 + s * spb / 2, R + 12 + mm, spb / 2 - .03, kind === 'happy' ? 'sine' : 'square', kind === 'happy' ? .12 : .045, 3500); }
     } else if (kind === 'rock') {
       for (let q = 0; q < 4; q++) {
         const t = t0 + q * spb;
@@ -980,7 +1009,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
       for (const n of ch) tone(t0 + .02, R + n, bar * .9, 'sine', .07, 1800, .03, 6);
       for (const n of ch) tone(t0 + spb * 2.5, R + n + 12, spb, 'triangle', .025, 1600);
       if (full) { tone(t0, R - 12 + ch[0], spb * 1.8, 'sine', .3, 600); tone(t0 + spb * 2.5, R - 12 + ch[0] + 7, spb, 'sine', .25, 600); }
-      if (lead || sec === 'break') for (let s = 0; s < 4; s++) { const mm = melody[(b * 4 + s) % 16]; if (mm !== null && rng() < .6) tone(t0 + s * spb, R + 12 + mm, spb * .9, 'sine', .06, 2500, .02); }
+      if (lead || sec === 'break') for (let s = 0; s < 4; s++) { const mm = melody[(b * 4 + s) % 32]; if (mm !== null && rng() < .6) tone(t0 + s * spb, R + 12 + mm, spb * .9, 'sine', .06, 2500, .02); }
     } else if (kind === 'cinematic') {
       for (const n of ch) tone(t0, R + 12 + n, bar, 'sawtooth', .05, 1200, .5, 10);
       tone(t0, R - 12 + ch[0], bar, 'sawtooth', .12, 400, .3);
@@ -1030,7 +1059,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
         // リズムの決まった明るいメロディ（L.p）か、一定の間隔（L.step）で鳴らす
         const steps = L.p ? [...L.p].map((c, i) => c !== '.' ? i : -1).filter(i => i >= 0) : Array.from({ length: 16 / (L.step || 2) }, (_, j) => j * (L.step || 2));
         steps.forEach((i, j) => {
-          const mm = melody[(b * steps.length + j) % 16]; if (mm === null || (L.sparse && rng() < L.sparse)) return;
+          const mm = melody[(b * steps.length + j) % 32]; if (mm === null || (L.sparse && rng() < L.sparse)) return;
           const nxt = steps[j + 1] ?? 16, len = st16 * (nxt - i) * (L.len || .85);
           const m = R + (L.oct || 12) + mm;
           tone(at(i), m, L.bell ? Math.min(len, st16 * 1.2) : len, L.w, L.v, L.bell ? 6000 : 3500, L.flute || L.whistle ? .04 : .003, L.flute || L.whistle ? 7 : 0);
@@ -1038,6 +1067,14 @@ async function genMusic(kind, seconds, seed, onProgress) {
         });
       }
     }
+    // ---- バージョンごとの味付け ----
+    if (V.fills && full && b % 4 === 3 && !last && section(b + 1) !== 'break') { // 4小節ごとのフィルイン
+      for (let s2 = 12; s2 < 16; s2++) snare(t0 + s2 * spb / 4, .14 + .06 * (s2 - 12));
+      if (b % 8 === 7) { tom(t0 + spb * 3, 140, .45); tom(t0 + spb * 3.5, 100, .5); }
+    }
+    if (V.hat16 && sec === 'chorus') for (let s2 = 0; s2 < 16; s2++) hat(t0 + s2 * spb / 4, s2 % 4 === 2 ? .07 : .035);
+    if (V.counter && sec === 'chorus') { const top = ch[ch.length - 1]; tone(t0, R + 24 + top, bar * .48, 'triangle', .035, 2600, .15); tone(t0 + bar / 2, R + 24 + ch[1], bar * .48, 'triangle', .035, 2600, .15); }
+    if (isMod(b) && !isMod(b - 1)) crash(t0, .32);
     if (last) { crash(t0 + bar, .3); kick(t0 + bar, 1); for (const n of ch) tone(t0 + bar, R + n, 2, 'sawtooth', .05, 1500, .01, 8); }
     return oc.startRendering();
   }
@@ -1063,7 +1100,7 @@ async function genMusic(kind, seconds, seed, onProgress) {
   const beats = []; for (let t = 0; t < dur - .01; t += spb) beats.push(t);
   const EN = { intro: .25, verse: .5, build: .65, chorus: .95, break: .18, outro: .55 };
   const energy = beats.map(t => EN[section(Math.floor(t / bar))] ?? .5);
-  return { buf, analysis: { bpm, beats, downPhase: 0, energy, duration: dur } };
+  return { buf, variant: V, analysis: { bpm, beats, downPhase: 0, energy, duration: dur } };
 }
 
 /* ------------------------------ 組み立て（タイムライン） ------------------------------ */
@@ -1145,18 +1182,21 @@ async function rebuild() {
     an = adjustTempo(S.analysis, +$('#tempoAdj').value);
   }
   $('#tempoRow').style.display = sel === 'file' ? '' : 'none';
-  const bpmGuess = an ? an.bpm : MUSIC[sel].bpm, spb = 60 / bpmGuess; // 1拍の秒数
+  const bpmGuess = an ? an.bpm : songVariant(MUSIC[sel], S.songVar || 0).bpm, spb = 60 / bpmGuess; // 1拍の秒数
   let target;
   if (lenSel === 'full') target = an ? clamp(an.duration, 60, 120) : 90;
   else target = +lenSel;
   if (sel !== 'file') {
-    const key = sel + ':' + Math.ceil(target / (spb * 4)) + ':' + (S.seed % 7);
+    const key = sel + ':' + Math.ceil(target / (spb * 4)) + ':v' + (S.songVar || 0);
     if (S.musicKey !== key) {
       setStatus('BGM を作曲中…', 'busy');
-      const r = await genMusic(sel, target, S.seed % 7 + 1, q => setStatus(`BGM を作曲中… ${Math.round(q * 100)}%`, 'busy'));
+      const r = await genMusic(sel, target, S.songVar || 0, q => setStatus(`BGM を作曲中… ${Math.round(q * 100)}%`, 'busy'));
       if (token !== S.buildToken) return;
       S.music = r.buf; S.analysis = r.analysis; S.musicKey = key;
-      $('#musicInfo').textContent = `内蔵BGM「${MUSIC[sel].name}」（${MUSIC[sel].bpm} BPM）を ${fmt(r.buf.duration)} 分作曲しました。🎲 で曲のメロディも変わります。`;
+      const KEYN = ['ド', 'ド#', 'レ', 'レ#', 'ミ', 'ファ', 'ファ#', 'ソ', 'ソ#', 'ラ', 'ラ#', 'シ'];
+      $('#musicInfo').innerHTML = `「${MUSIC[sel].name}」バージョン ${r.variant.v + 1} / ${SONG_VERSIONS}：キー ${KEYN[(MUSIC[sel].root + r.variant.tp + 120) % 12]}${MUSIC[sel].minor ? '（マイナー）' : ''}・テンポ ${r.variant.bpm} BPM` +
+        (r.variant.mod ? '・最後のサビで転調' : '') + (r.variant.counter ? '・サビに裏メロ' : '') + (r.variant.hat16 ? '・細かいリズム' : '');
+      $('#songVarBtn').textContent = `🔀 別のバージョンにする（今 ${r.variant.v + 1} / ${SONG_VERSIONS}）`;
       setStatus('準備OK');
     }
     an = S.analysis;
@@ -1228,7 +1268,7 @@ async function rebuild() {
     if (st.adapt) { if (e > .78) nbeat = Math.max(1, nbeat / 2); else if (e < .25) nbeat *= 2; }
     else if (!st.layout) { if (e > .85 && nbeat >= 4) nbeat /= 2; else if (e < .22 && nbeat <= 4) nbeat *= 2; }
     if (atPeak) nbeat = MO.bars * 4; // サビの入りでメインを〇小節見せる
-    if (nbeat >= 4 && !atPeak) { // 長いカットは小節の頭で終わるように
+    if (nbeat >= 4 && !atPeak && nextPeak === undefined) { // 長いカットは小節の頭で終わるように（サビの入りの手前では揃えない）
       let j = k + nbeat - 1; while (bl[j] && !isDown(bl[j].i) && j < k + nbeat + 3) j++; if (bl[j] && isDown(bl[j].i)) nbeat = j - k + 1;
     }
     let endIdx = k + nbeat - 1, end;
@@ -2022,40 +2062,64 @@ function showExport(blob, name) {
   const box = $('#dlArea'); box.innerHTML = '';
   S.exportUrl = URL.createObjectURL(blob);
   const file = new File([blob], name, { type: blob.type });
-  if (APP) { // Android アプリ：ギャラリー（動画フォルダ）に直接保存
-    const sv = document.createElement('button'); sv.className = 'primary'; sv.textContent = '📲 ギャラリーに保存';
-    sv.onclick = async () => {
-      sv.disabled = true;
-      const ok = await saveToApp(blob, name);
-      sv.disabled = false;
-      if (ok) { sv.textContent = '✅ 保存しました'; const sh = document.createElement('button'); sh.textContent = '↗ 共有'; sh.onclick = () => { try { APP.shareLast(); } catch (e) { } }; box.insertBefore(sh, sv.nextSibling); }
+  const mb = (blob.size / 1048576).toFixed(1);
+  if (APP) { // Android アプリ：端末の「動画（ギャラリー）」または「ダウンロード」フォルダに保存
+    const mk = (label, target) => {
+      const bt = document.createElement('button'); bt.className = target === 'gallery' ? 'primary' : ''; bt.textContent = label;
+      bt.onclick = async () => {
+        box.querySelectorAll('button').forEach(x => x.disabled = true);
+        const where = await saveToApp(blob, name, target);
+        box.querySelectorAll('button').forEach(x => x.disabled = false);
+        if (where) {
+          bt.textContent = '✅ 保存しました';
+          if (!box.querySelector('.share')) { const sh = document.createElement('button'); sh.className = 'share'; sh.textContent = '↗ 共有（LINE など）'; sh.onclick = () => { try { APP.shareLast(); } catch (e) { } }; box.appendChild(sh); }
+          alert('保存しました。\n\n保存先：' + where);
+        }
+      };
+      box.appendChild(bt);
     };
-    box.appendChild(sv);
+    mk(`📲 ギャラリーに保存（${mb} MB）`, 'gallery');
+    mk('⬇ ダウンロードに保存', 'download');
+  } else {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      const sh = document.createElement('button'); sh.className = 'primary'; sh.textContent = '📲 写真に保存／共有';
+      sh.onclick = () => navigator.share({ files: [file] }).catch(() => { });
+      box.appendChild(sh);
+    }
+    const a = document.createElement('a'); a.href = S.exportUrl; a.download = name; a.className = 'btn'; a.id = 'dlLink'; a.textContent = `⬇ ダウンロード（${mb} MB）`;
+    box.appendChild(a);
   }
-  else if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    const sh = document.createElement('button'); sh.className = 'primary'; sh.textContent = '📲 写真に保存／共有';
-    sh.onclick = () => navigator.share({ files: [file] }).catch(() => { });
-    box.appendChild(sh);
-  }
-  const a = document.createElement('a'); a.href = S.exportUrl; a.download = name; a.className = 'btn'; a.id = 'dlLink'; a.textContent = `⬇ ダウンロード（${(blob.size / 1048576).toFixed(1)} MB）`;
-  box.appendChild(a);
   const del = document.createElement('button'); del.textContent = '🗑 この動画を消す'; del.onclick = () => { clearExport(); setStatus('完成動画をメモリから消しました'); };
   box.appendChild(del);
 }
 function blobToB64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(b); }); }
-async function saveToApp(blob, name) {
+/* Android アプリへ動画を渡して保存。成功したら保存先の説明、失敗したら null */
+async function saveToApp(blob, name, target = 'gallery') {
+  const label = target === 'gallery' ? 'ギャラリー' : 'ダウンロード';
   try {
-    const r = APP.beginSave(name, (blob.type || 'video/mp4').split(';')[0]);
-    if (r !== 'ok') { setStatus(r === 'permission' ? '保存の許可を「許可」にしてから、もう一度押してください' : '保存できませんでした（' + r + '）', 'busy'); return false; }
+    if (blob.size < 20000) throw new Error('書き出した動画が空です。もう一度「保存」からやり直してください');
+    const r = APP.beginSave(name, (blob.type || 'video/mp4').split(';')[0], target);
+    if (r !== 'ok') { const m = r === 'permission' ? '保存の許可を「許可」にしてから、もう一度押してください' : '保存できませんでした（' + r + '）'; setStatus(m, 'busy'); alert(m); return null; }
     const CH = 768 * 1024;
     for (let o = 0; o < blob.size; o += CH) {
-      if (!APP.appendChunk(await blobToB64(blob.slice(o, o + CH)))) throw new Error('書き込み失敗');
-      setStatus(`ギャラリーに保存中… ${Math.round(Math.min(1, (o + CH) / blob.size) * 100)}%`, 'busy');
+      if (!APP.appendChunk(await blobToB64(blob.slice(o, o + CH)))) throw new Error('書き込みに失敗しました（空き容量を確認してください）');
+      setStatus(`${label}に保存中… ${Math.round(Math.min(1, (o + CH) / blob.size) * 100)}%`, 'busy');
     }
-    const where = APP.finishSave();
-    if (where.startsWith('error')) throw new Error(where);
-    setStatus('ギャラリーに保存しました（' + where + '）', 'done'); return true;
-  } catch (e) { try { APP.abortSave(); } catch (_) { } setStatus('保存できませんでした：' + e.message, 'busy'); return false; }
+    let res = APP.finishSave();
+    if (res === 'pending') {
+      res = await new Promise(resolve => {
+        const to = setTimeout(() => resolve('error:時間がかかりすぎました'), 15 * 60 * 1000);
+        window.__appSaveProgress = text => setStatus(text, 'busy');
+        window.__appSaveDone = text => { clearTimeout(to); resolve(text); };
+      });
+    }
+    if (!res.startsWith('ok:')) throw new Error(res.replace(/^error:/, ''));
+    const where = res.slice(3);
+    setStatus(`${label}に保存しました`, 'done'); return where;
+  } catch (e) {
+    try { APP.abortSave(); } catch (_) { }
+    const m = '保存できませんでした：' + e.message; setStatus(m, 'busy'); alert(m); return null;
+  }
 }
 function clearExport() {
   if (S.exportUrl) { URL.revokeObjectURL(S.exportUrl); S.exportUrl = null; }
@@ -2154,6 +2218,7 @@ function renderMusicUI() {
     b.onclick = () => { musicCat = cat; renderMusicUI(); }; tabs.appendChild(b);
   }
   const box = $('#musicCards'); box.innerHTML = ''; const cur = $('#musicSel').value;
+  $('#songVarBtn').hidden = musicCat === '自分の曲';
   if (musicCat === '自分の曲') {
     $('#musicPickRow').hidden = false;
     const b = document.createElement('button'); b.className = 'card-btn'; b.setAttribute('aria-pressed', cur === 'file');
@@ -2165,7 +2230,7 @@ function renderMusicUI() {
   for (const [k, m] of Object.entries(MUSIC).filter(([, m]) => m.cat === musicCat)) {
     const b = document.createElement('button'); b.className = 'card-btn'; b.setAttribute('aria-pressed', cur === k);
     b.innerHTML = `<b>${m.name}</b><span>${m.mood}・${m.bpm} BPM</span>`;
-    b.onclick = () => { $('#musicSel').value = k; $('#musicSel').onchange(); renderMusicUI(); };
+    b.onclick = () => { if ($('#musicSel').value !== k) S.songVar = 0; $('#musicSel').value = k; $('#musicSel').onchange(); renderMusicUI(); };
     box.appendChild(b);
   }
 }
@@ -2238,19 +2303,23 @@ function startTitleThumbs() {
   thumbRaf = requestAnimationFrame(loop);
 }
 function stopTitleThumbs() { cancelAnimationFrame(thumbRaf); }
+$('#songVarBtn').onclick = () => {
+  if ($('#musicSel').value === 'file') { setStatus('自分の曲にはバージョンはありません', 'busy'); return; }
+  S.songVar = ((S.songVar || 0) + 1) % SONG_VERSIONS; rebuild();
+};
 $('#titlePreviewBtn').onclick = () => {
   if (!S.tl) { setStatus('先に ① で写真・動画を選んでください', 'busy'); return; }
   if (!$('#title').value.trim()) { $('#title').focus(); setStatus('タイトルを入れてください', 'busy'); return; }
   play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4;
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.02b';
+const WEB_VER = '2026.11.03';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
 renderMusicUI(); renderTitleCards(); goStep(1);
 segFrom('#aspect', '#aspectSeg', [{ v: '9:16', html: shapeIcon(14, 24) + '縦長<small>スマホ</small>' }, { v: '16:9', html: shapeIcon(28, 16) + '横長<small>YouTube</small>' }, { v: '1:1', html: shapeIcon(20, 20) + '正方形' }, { v: '4:5', html: shapeIcon(18, 22) + '4:5<small>Instagram</small>' }]);
-segFrom('#length', '#lengthSeg', [{ v: '60', html: '<b>1分</b>' }, { v: '90', html: '<b>1分半</b>' }, { v: '120', html: '<b>2分</b>' }, { v: 'full', html: '<b>曲に合わせる</b>' }]);
+segFrom('#length', '#lengthSeg', [{ v: '30', html: '<b>30秒</b>' }, { v: '45', html: '<b>45秒</b>' }, { v: '60', html: '<b>1分</b>' }]);
 segFrom('#quality', '#qualitySeg', [{ v: '720', html: '<b>720p</b><small>軽い・おすすめ</small>' }, { v: '1080', html: '<b>1080p</b><small>きれい・重い</small>' }]);
 buildStyleCards(); renderThumbs(); drawEmpty(); drawTimeline();
 // テスト用

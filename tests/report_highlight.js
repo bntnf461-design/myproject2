@@ -73,7 +73,7 @@ const idle = p => p.waitForFunction(() => HM.S.tl && !HM.S.building, null, { tim
   // ---- D/E. 全パターン × 長さ × 画面の形 ----
   await pick(p, '#musicSel', 'edm'); await idle(p);
   const styles = await p.evaluate(() => HM.STYLES.map(s => s.id));
-  for (const aspect of ['9:16', '16:9']) for (const len of ['60', '120']) {
+  for (const aspect of ['9:16', '16:9']) for (const len of ['30', '60']) {
     await pick(p, '#aspect', aspect); await pick(p, '#length', len); await idle(p);
     for (const st of styles) {
       const t0 = Date.now();

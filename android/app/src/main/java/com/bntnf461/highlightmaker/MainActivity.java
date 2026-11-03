@@ -81,10 +81,10 @@ public class MainActivity extends Activity {
 
     // 保存中の動画
     private OutputStream saveOut;
-    private Uri saveUri;
-    private File saveFile;
     private String saveMime;
     private Uri lastSaved;
+    private File saveTemp;
+    private String saveName, saveTarget;
     private String lastSavedMime;
 
     @Override
@@ -422,7 +422,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void deletePicked() { deleteTree(pickedDir()); }
+    private void deletePicked() { deleteTree(pickedDir()); deleteTree(new File(getCacheDir(), "export")); }
 
     private static void deleteTree(File f) {
         if (f == null || !f.exists()) return;
@@ -482,38 +482,33 @@ public class MainActivity extends Activity {
             });
         }
 
-        /** 保存を始める。"ok" / "permission"（許可待ち） / エラー文 を返す */
+        /** 保存を始める（target: "gallery"＝動画フォルダ / "download"＝ダウンロードフォルダ）。"ok" / "permission" / エラー文 */
         @JavascriptInterface
-        public synchronized String beginSave(String name, String mime) {
-            abortSave();
+        public synchronized String beginSave(String name, String mime, String target) {
+            MainActivity.this.abortSave();
             saveMime = mime == null || mime.isEmpty() ? "video/mp4" : mime;
+            saveName = name == null || name.isEmpty() ? "highlight.mp4" : name.replaceAll("[\\\\/:*?\"<>|]", "_");
+            saveTarget = "download".equals(target) ? "download" : "gallery";
             try {
-                if (Build.VERSION.SDK_INT >= 29) {
-                    ContentValues v = new ContentValues();
-                    v.put(MediaStore.Video.Media.DISPLAY_NAME, name);
-                    v.put(MediaStore.Video.Media.MIME_TYPE, saveMime);
-                    v.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/HighlightMaker");
-                    v.put(MediaStore.Video.Media.IS_PENDING, 1);
-                    ContentResolver cr = getContentResolver();
-                    saveUri = cr.insert(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
-                    if (saveUri == null) return "保存先を作れませんでした";
-                    saveOut = cr.openOutputStream(saveUri);
-                } else {
-                    if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                        runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_PERM));
-                        return "permission";
-                    }
-                    File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "HighlightMaker");
-                    if (!dir.exists() && !dir.mkdirs()) return "フォルダを作れませんでした";
-                    saveFile = new File(dir, name);
-                    saveOut = new FileOutputStream(saveFile);
+                if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_PERM));
+                    return "permission";
                 }
+                // いったんアプリ専用の一時フォルダに受け取る（MP4 への変換が必要な場合があるため）
+                File dir = new File(getCacheDir(), "export");
+                if (!dir.mkdirs() && !dir.isDirectory()) return "一時フォルダを作れませんでした";
+                saveTemp = new File(dir, "rec_" + System.nanoTime());
+                saveOut = new FileOutputStream(saveTemp);
                 return "ok";
             } catch (Exception e) {
-                abortSave();
+                MainActivity.this.abortSave();
                 return String.valueOf(e.getMessage());
             }
         }
+
+        /** 古いページ用（target なし＝ギャラリー） */
+        @JavascriptInterface
+        public String beginSave(String name, String mime) { return beginSave(name, mime, "gallery"); }
 
         @JavascriptInterface
         public synchronized boolean appendChunk(String b64) {
@@ -526,32 +521,25 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** 保存を終える。保存場所の説明、または "error:..." を返す */
+        /** 受け取り終わり。MP4 でなければ MP4 に変換してから保存する。
+            すぐには終わらないので "pending" を返し、終わったらページの __appSaveDone("ok:場所" / "error:理由") を呼ぶ */
         @JavascriptInterface
         public synchronized String finishSave() {
             try {
-                if (saveOut == null) return "error:保存が始まっていません";
+                if (saveOut == null || saveTemp == null) return "error:保存が始まっていません";
                 saveOut.close();
                 saveOut = null;
-                if (saveUri != null) {
-                    ContentValues v = new ContentValues();
-                    v.put(MediaStore.Video.Media.IS_PENDING, 0);
-                    getContentResolver().update(saveUri, v, null, null);
-                    lastSaved = saveUri;
-                } else if (saveFile != null) {
-                    MediaScannerConnection.scanFile(MainActivity.this, new String[]{saveFile.getAbsolutePath()}, new String[]{saveMime},
-                            (path, uri) -> lastSaved = uri);
-                }
-                lastSavedMime = saveMime;
-                saveUri = null;
-                saveFile = null;
-                return "動画フォルダ / HighlightMaker";
             } catch (Exception e) {
-                abortSave();
+                MainActivity.this.abortSave();
                 return "error:" + e.getMessage();
             }
+            final File src = saveTemp; final String mime = saveMime, name = saveName, target = saveTarget;
+            saveTemp = null;
+            boolean isMp4 = mime.contains("mp4");
+            if (isMp4) io.execute(() -> publish(src, "video/mp4", name, target, true));
+            else main.post(() -> toMp4ThenPublish(src, name, target));
+            return "pending";
         }
-
         @JavascriptInterface
         public synchronized void abortSave() {
             MainActivity.this.abortSave();
@@ -575,10 +563,106 @@ public class MainActivity extends Activity {
     private synchronized void abortSave() {
         try { if (saveOut != null) saveOut.close(); } catch (Exception ignored) { }
         saveOut = null;
-        if (saveUri != null) { try { getContentResolver().delete(saveUri, null, null); } catch (Exception ignored) { } }
-        if (saveFile != null) { try { saveFile.delete(); } catch (Exception ignored) { } }
-        saveUri = null;
-        saveFile = null;
+        if (saveTemp != null) { try { saveTemp.delete(); } catch (Exception ignored) { } }
+        saveTemp = null;
+    }
+
+    /** ページに保存の結果・途中経過を知らせる */
+    private void tellPage(String fn, String text) {
+        main.post(() -> { if (web != null) web.evaluateJavascript("window." + fn + "&&window." + fn + "(" + org.json.JSONObject.quote(text) + ")", null); });
+    }
+
+    /** WebM などで録画された時は、ギャラリーで再生できる MP4（H.264/AAC）に変換してから保存 */
+    private void toMp4ThenPublish(File src, String name, String target) {
+        final File out = new File(src.getParentFile(), "mp4_" + System.nanoTime() + ".mp4");
+        final String mp4Name = name.replaceAll("\\.[A-Za-z0-9]+$", "") + ".mp4";
+        tellPage("__appSaveProgress", "ギャラリーで見られる MP4 に変換しています…");
+        try {
+            Transformer tx = new Transformer.Builder(this)
+                    .setVideoMimeType(MimeTypes.VIDEO_H264)
+                    .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                    .addListener(new Transformer.Listener() {
+                        @Override
+                        public void onCompleted(Composition composition, ExportResult exportResult) {
+                            src.delete();
+                            io.execute(() -> publish(out, "video/mp4", mp4Name, target, true));
+                        }
+
+                        @Override
+                        public void onError(Composition composition, ExportResult exportResult, ExportException e) {
+                            out.delete();
+                            io.execute(() -> publish(src, "video/webm", name, target, true)); // 変換できない時はそのまま保存
+                        }
+                    }).build();
+            tx.start(MediaItem.fromUri(Uri.fromFile(src)), out.getAbsolutePath());
+            final ProgressHolder ph = new ProgressHolder();
+            main.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    int st = tx.getProgress(ph);
+                    if (st == Transformer.PROGRESS_STATE_NOT_STARTED) return;
+                    if (st == Transformer.PROGRESS_STATE_AVAILABLE) tellPage("__appSaveProgress", "MP4 に変換しています… " + ph.progress + "%");
+                    main.postDelayed(this, 500);
+                }
+            }, 500);
+        } catch (Exception e) {
+            out.delete();
+            io.execute(() -> publish(src, "video/webm", name, target, true));
+        }
+    }
+
+    /** 端末の「動画」または「ダウンロード」フォルダに書き込む（別スレッドで呼ぶ） */
+    private void publish(File src, String mime, String name, String target, boolean deleteSrc) {
+        String result;
+        try {
+            boolean dl = "download".equals(target);
+            String sub = (dl ? Environment.DIRECTORY_DOWNLOADS : Environment.DIRECTORY_MOVIES) + "/HighlightMaker";
+            Uri uri = null;
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentResolver cr = getContentResolver();
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                v.put(MediaStore.MediaColumns.RELATIVE_PATH, sub);
+                v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                Uri coll = dl ? MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                        : MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                try { uri = cr.insert(coll, v); } catch (Exception e) { uri = null; }
+                if (uri == null && !dl) { // 動画フォルダに入れられない時はダウンロードへ
+                    sub = Environment.DIRECTORY_DOWNLOADS + "/HighlightMaker"; v.put(MediaStore.MediaColumns.RELATIVE_PATH, sub);
+                    uri = cr.insert(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
+                }
+                if (uri == null) throw new Exception("保存先を作れませんでした");
+                try (InputStream in = new java.io.FileInputStream(src); OutputStream o = cr.openOutputStream(uri)) {
+                    if (o == null) throw new Exception("保存先に書けませんでした");
+                    byte[] buf = new byte[1 << 20]; int n;
+                    while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                } catch (Exception e) {
+                    try { cr.delete(uri, null, null); } catch (Exception ignored) { }
+                    throw e;
+                }
+                ContentValues done = new ContentValues();
+                done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                cr.update(uri, done, null, null);
+            } else {
+                File dir = new File(Environment.getExternalStoragePublicDirectory(dl ? Environment.DIRECTORY_DOWNLOADS : Environment.DIRECTORY_MOVIES), "HighlightMaker");
+                if (!dir.exists() && !dir.mkdirs()) throw new Exception("フォルダを作れませんでした");
+                File f = new File(dir, name);
+                try (InputStream in = new java.io.FileInputStream(src); OutputStream o = new FileOutputStream(f)) {
+                    byte[] buf = new byte[1 << 20]; int n;
+                    while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                }
+                MediaScannerConnection.scanFile(MainActivity.this, new String[]{f.getAbsolutePath()}, new String[]{mime}, (path, u) -> lastSaved = u);
+            }
+            if (uri != null) lastSaved = uri;
+            lastSavedMime = mime;
+            result = "ok:" + (sub.startsWith(Environment.DIRECTORY_DOWNLOADS) ? "ダウンロード" : "動画（ギャラリー）") + " / HighlightMaker / " + name;
+        } catch (Exception e) {
+            result = "error:" + e.getMessage();
+        } finally {
+            if (deleteSrc) src.delete();
+        }
+        tellPage("__appSaveDone", result);
     }
 
     @Override

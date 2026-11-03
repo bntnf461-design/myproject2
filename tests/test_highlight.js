@@ -58,9 +58,9 @@ const path = require('path');
     for (const ts of HM.TITLE_STYLES) { HM.S.titleStyle = ts.id; const D = ts.id === 'auto' ? 4 : HM.titleDuration(ts.id, HM.S.tl.per); for (let t = 0; t < D; t += .2) HM.drawFrame(t); n++; } HM.S.titleStyle = 'auto'; return n; });
   console.log(`OK  タイトル ${tOk} パターン`);
   // 2分の長さ
-  await pick('#length', '120');
-  await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 120) < 1);
-  console.log('OK  2分', await p.evaluate(() => HM.S.tl.segs.length), 'カット');
+  await pick('#length', '45');
+  await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 45) < 1);
+  console.log('OK  45秒', await p.evaluate(() => HM.S.tl.segs.length), 'カット');
   // 書き出し（1分・実時間）
   await pick('#length', '60');
   await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 60) < 1);
