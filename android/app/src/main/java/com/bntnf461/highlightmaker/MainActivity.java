@@ -535,7 +535,7 @@ public class MainActivity extends Activity {
             }
             final File src = saveTemp; final String mime = saveMime, name = saveName, target = saveTarget;
             saveTemp = null;
-            boolean isMp4 = mime.contains("mp4");
+            boolean isMp4 = mime.contains("mp4") && !mime.contains("opus"); // 音声が Opus の MP4 はギャラリーで鳴らない機種があるので AAC に変換
             if (isMp4) io.execute(() -> publish(src, "video/mp4", name, target, true));
             else main.post(() -> toMp4ThenPublish(src, name, target));
             return "pending";
@@ -591,7 +591,7 @@ public class MainActivity extends Activity {
                         @Override
                         public void onError(Composition composition, ExportResult exportResult, ExportException e) {
                             out.delete();
-                            io.execute(() -> publish(src, "video/webm", name, target, true)); // 変換できない時はそのまま保存
+                            io.execute(() -> publish(src, name.toLowerCase().endsWith(".mp4") ? "video/mp4" : "video/webm", name, target, true)); // 変換できない時はそのまま保存
                         }
                     }).build();
             tx.start(MediaItem.fromUri(Uri.fromFile(src)), out.getAbsolutePath());
@@ -607,7 +607,7 @@ public class MainActivity extends Activity {
             }, 500);
         } catch (Exception e) {
             out.delete();
-            io.execute(() -> publish(src, "video/webm", name, target, true));
+            io.execute(() -> publish(src, name.toLowerCase().endsWith(".mp4") ? "video/mp4" : "video/webm", name, target, true));
         }
     }
 
