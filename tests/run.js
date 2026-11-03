@@ -214,6 +214,27 @@ test("M3：カウンターの段取りを手で直しても、取り込み直し
   eq(evs[0].e, "09:25", "手で直した時刻が残る");
 });
 
+test("〃：上の行と同じ型式・ロットNo. は〃で表示（値はそのまま・選ぶと見える）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await setDate(p, "2026-10-21");
+  await pickModel(p, 1); await pickModel(p, 2); await pickModel(p, 3);
+  await fill(p, "r1_good", 100); await fill(p, "r2_good", 35);
+  await fill(p, "r1_lotSoban", "R7Z446SX061"); await fill(p, "r2_lotSoban", "R7Z446SX061"); await fill(p, "r3_lotSoban", "R7Z446SX042");
+  await p.waitForTimeout(200);
+  const ditto = (n) => p.evaluate(n => document.forms.nippo.elements[n].parentNode.classList.contains("ditto"), n);
+  eq(await ditto("r1_model"), false, "1行目の型式");
+  eq(await ditto("r2_model"), true, "2行目の型式");
+  eq(await ditto("r2_lotCut"), true, "2行目の切面ロット（同じ 01NK）");
+  eq(await ditto("r3_lotCut"), false, "3行目の切面ロット（02NK に変わる）");
+  eq(await ditto("r2_lotSoban"), true, "2行目の素板ロット");
+  eq(await ditto("r3_lotSoban"), false, "3行目の素板ロット（変わる）");
+  eq(await v(p, "r2_model"), MODEL, "値はそのまま");
+  await p.click('[name="r2_model"]');
+  const color = await p.evaluate(() => getComputedStyle(document.forms.nippo.elements.r2_model).color);
+  ok(color !== "rgba(0, 0, 0, 0)", "選ぶと値が見える");
+});
+
 // ---------- 実行 ----------
 (async () => {
   const only = process.argv.slice(2).map(s => s.toLowerCase());
