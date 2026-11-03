@@ -160,6 +160,32 @@
   dialog .note { font-size: 11px; color: #555; }
   dialog textarea { border: 1px solid #bbb; }
 
+  /* 画面で見るとき（印刷は下の @media print で A3 の配置に戻す） */
+  @media screen {
+    body { font-size: 14px; }
+    .inner { width: auto; }
+    .tablewrap { overflow-x: auto; margin: 0 -2px; padding-bottom: 4px; }
+    #main { width: max-content; }
+    #main td { height: 30px; }
+    #main input { font-size: 15px; padding: 3px 4px; }
+    #main th { font-size: 12px; padding: 3px 2px; }
+    #main td.no { font-size: 13px; }
+    #main .stk { position: sticky; z-index: 2; background: #fff; }
+    #main th.stk { background: #f3f5f8; }
+    #main td.stk.auto { background: var(--auto); }
+    #main .stk { box-shadow: inset -1px 0 0 var(--line), inset 0 -1px 0 var(--line); }
+    #main .stk-end { box-shadow: inset -2px 0 0 var(--line), inset 0 -1px 0 var(--line), 4px 0 5px -2px rgba(0,0,0,.25); }
+    #main tr.cur td { background: #fff6d1; }
+    #main tr.cur td.auto { background: #e8eedb; }
+    #main tr:hover td { background: #f7fafd; }
+    .lower { display: flex; flex-wrap: wrap; gap: 16px; }
+    .lower > .right { flex: 1 1 640px; min-width: 0; }
+    .carry { font-size: 13px; }
+    .carry input { font-size: 14px; }
+    .soban input, .time input, .core input { font-size: 14px; }
+    .kado-in, .kado-ev { font-size: 13px; }
+  }
+
   @media print {
     @page { size: A3 landscape; margin: 6mm; }
     body { background: #fff; padding: 0; font-size: 10px; }
@@ -198,10 +224,7 @@
   <button type="button" id="btnCounterFile" title="取り込むファイルを選び直します">ファイル変更</button>
   <label title="テンキー（数字・＋−＊／．・テンキーのEnter）を、同じパソコンで開いている不良数カウンターへ送ります"><input type="checkbox" id="chkFwd"> テンキー→カウンター</label>
   <span class="sep"></span>
-  <button type="button" id="btnSettings">設定（型式・作業者）</button>
-  <button type="button" id="btnExport">JSON書出し</button>
-  <label class="btn">JSON読込み<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
-  <button type="button" id="btnCsv">CSV書出し（明細）</button>
+  <button type="button" id="btnSettings">設定・データ</button>
   <span class="status" id="status"></span>
 </div>
 <div id="cntBar" class="noprint"></div>
@@ -247,11 +270,12 @@
   </div>
 
   <!-- 明細 -->
+  <div class="tablewrap">
   <table id="main">
     <colgroup id="mainCols"></colgroup>
     <thead>
       <tr>
-        <th colspan="4">製　品</th>
+        <th colspan="4" rowspan="2" class="stk stk-end" style="left:0">製　品</th>
         <th rowspan="3">作業枚数</th>
         <th rowspan="3">良品枚数<span class="prev"><input id="prevGoodHead" type="number" min="0" tabindex="-1" title="前日の良品端数"></span></th>
         <th rowspan="3">良品歩留</th>
@@ -264,7 +288,6 @@
         <th rowspan="3">ローカル<br>コード</th>
       </tr>
       <tr>
-        <th colspan="4"></th>
         <th rowspan="2" class="bt">割れ</th>
         <th rowspan="2">キズ</th>
         <th rowspan="2">切不良</th>
@@ -283,7 +306,7 @@
         <th rowspan="2">その他</th>
       </tr>
       <tr>
-        <th>PL</th><th>型式</th><th>切面ロットＮｏ，</th><th>素板ロットＮｏ</th>
+        <th class="stk" data-k="pl">PL</th><th class="stk" data-k="model">型式</th><th class="stk" data-k="lotCut">切面ロットＮｏ，</th><th class="stk stk-end" data-k="lotSoban">素板ロットＮｏ</th>
         <th>ハマ</th><th>ワレ</th><th>ハマ</th><th>ワレ</th>
         <th>１軸ハマ</th><th>１軸ワレ</th><th>２軸ハマ</th><th>２軸ワレ</th>
       </tr>
@@ -291,6 +314,7 @@
     <tbody id="mainBody"></tbody>
     <tfoot id="mainFoot"></tfoot>
   </table>
+  </div>
 
   <!-- 下段 -->
   <div class="lower">
@@ -403,6 +427,12 @@
         <input id="sTo" type="number" min="1" max="24" style="width:50px;border:1px solid #bbb">時</label>
     </div>
     <div class="row"><button type="button" id="dlgSave" style="font-weight:bold">保存して閉じる</button></div>
+    <h3>データの書出し・読込み</h3>
+    <div class="row">
+      <button type="button" id="btnExport">JSON書出し（表示中の日報）</button>
+      <label class="btn" style="border:1px solid #888;border-radius:3px">JSON読込み<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
+      <button type="button" id="btnCsv">CSV書出し（明細・Excelで開けます）</button>
+    </div>
     <h3>この日の日報</h3>
     <div class="row"><button type="button" id="btnNew" style="color:#b00">表示中の日報をクリア</button>
       <span class="note">表示中の作業日の入力をすべて消します（元に戻せません）。</span></div>
@@ -421,8 +451,8 @@
               "ana1_hama", "ana1_ware", "ana2_hama", "ana2_ware", "mark", "proc_other"];
   var SOBAN = ["kafusoku", "naiha", "awa", "ibutsu", "s_kizu", "yogore", "cullet", "soban_other"];
   var COLS = [].concat(
-    [{ k: "pl", w: 26 }, { k: "model", w: 140 }, { k: "lotCut", w: 100 }, { k: "lotSoban", w: 110 },
-     { k: "qty", w: 52, num: 1 }, { k: "good", w: 56, num: 1 }, { k: "yield", w: 46, calc: 1 },
+    [{ k: "pl", w: 26 }, { k: "model", w: 150 }, { k: "lotCut", w: 112 }, { k: "lotSoban", w: 118 },
+     { k: "qty", w: 52, num: 1 }, { k: "good", w: 56, num: 1 }, { k: "yield", w: 56, calc: 1 },
      { k: "procNg", w: 40, calc: 1 }, { k: "sobanNg", w: 40, calc: 1 }],
     PROC.map(function (k, i) { return { k: k, w: 32, num: 1, bt: i === 0 }; }),
     SOBAN.map(function (k, i) { return { k: k, w: 32, num: 1, bt: i === 0 }; }),
@@ -489,6 +519,10 @@
   }
 
   // ---------- 明細表 ----------
+  // 画面では左の4列（PL・型式・切面ロット・素板ロット）を固定し、横にスクロールしても見えるようにする
+  var STICKY = {}, leftPx = 0;
+  COLS.slice(0, 4).forEach(function (c) { STICKY[c.k] = leftPx; leftPx += c.w; });
+  Array.prototype.forEach.call(document.querySelectorAll("#main th[data-k]"), function (th) { th.style.left = STICKY[th.getAttribute("data-k")] + "px"; });
   var cg = document.getElementById("mainCols");
   COLS.forEach(function (c) { cg.appendChild(el("col", { style: "width:" + c.w + "px" })); });
   var body = document.getElementById("mainBody");
@@ -497,7 +531,8 @@
     COLS.forEach(function (c) {
       var td = el("td");
       if (c.bt) td.className = "bt";
-      if (c.k === "pl") { td.className = "no"; td.textContent = r; tr.appendChild(td); return; }
+      if (STICKY[c.k] != null) { td.classList.add("stk"); td.style.left = STICKY[c.k] + "px"; if (c.k === "lotSoban") td.classList.add("stk-end"); }
+      if (c.k === "pl") { td.classList.add("no"); td.textContent = r; tr.appendChild(td); return; }
       var inp = el("input", { name: "r" + r + "_" + c.k });
       if (c.num) { inp.type = "number"; inp.min = "0"; inp.step = "any"; }
       if (c.k === "model") inp.setAttribute("list", "modelList");
@@ -509,7 +544,7 @@
   }
   var foot = document.getElementById("mainFoot");
   var tot = el("tr", { "class": "total" });
-  tot.appendChild(el("td", { colspan: 4, "class": "lbl" }, "合計"));
+  tot.appendChild(el("td", { colspan: 4, "class": "lbl stk stk-end", style: "left:0" }, "合計"));
   COLS.slice(4).forEach(function (c) {
     var td = el("td", { "class": "auto" + (c.bt ? " bt" : "") });
     if (c.k === "yield" || SUM_KEYS.indexOf(c.k) >= 0) td.innerHTML = '<input name="t_' + c.k + '" readonly tabindex="-1">';
