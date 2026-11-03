@@ -9,7 +9,7 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   const c = await ctx.newPage(); c.on('pageerror', e => errs.push(e.message)); await c.goto(URL);
   const ev = f => c.evaluate(f), keys = async (...ks) => { for (const k of ks) { await c.keyboard.press(k); await c.waitForTimeout(120); } }; // 人が押す速さ
   await c.mouse.click(5, 5);
-  await keys('NumpadAdd', 'Numpad1', 'NumpadEnter');           // 作業開始（番号1の製造種類）
+  await keys('NumpadAdd', 'Numpad1', 'NumpadEnter', 'NumpadAdd');           // 作業開始（番号1の製造種類）
   ok(await ev(() => state.job.running), 'job started');
   await keys('Numpad1', 'Numpad2');
   await keys('NumpadEnter');

@@ -51,7 +51,7 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   ok((await r.textContent('#rpKeyNote')).includes('日報を表示') && await ev(() => dayOpen), 'Enter from the report tab: notice says 日報を表示 and the counter opens it');
   await ev(() => closeDay()); await r.close(); await c.bringToFront();
   // 次の作業を始めると消える
-  await key('NumpadAdd', 300); await key('Numpad1'); await key('NumpadEnter', 300);
+  await key('NumpadAdd', 300); await key('Numpad1'); await key('NumpadEnter', 300); await key('NumpadAdd', 300);
   ok(await ev(() => state.job.running) && !(await c.isVisible('.js-day')), 'next job started, button no longer shown');
   // インドネシア語
   await ev(() => setLang('id')); await key('NumpadAdd', 400); await key('NumpadAdd', 300); await key('Numpad7'); await key('NumpadEnter');

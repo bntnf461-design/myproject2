@@ -3,7 +3,7 @@
 export NODE_PATH=$(npm root -g)
 cd "$(dirname "$0")"
 out=brk/final.txt; : > $out
-for i in $(seq 3 46); do
+for i in $(seq 3 47); do
   if [ "$i" = 42 ]; then r=$(timeout 500 xvfb-run -a -s "-screen 0 1600x900x24" node t$i.js 2>&1); else r=$(timeout 500 node t$i.js 2>&1); fi; p=$(echo "$r" | grep -c '^PASS'); f=$(echo "$r" | grep -c '^FAIL')
   e=$(echo "$r" | grep -E '^(errors|JS errors)' | tail -1)
   bad=""; if [ -n "$e" ] && ! echo "$e" | grep -qE 'errors:? \[\]|JS errors: none'; then bad=" PAGE-ERRORS"; fi

@@ -74,3 +74,15 @@ Enterで停止開始/終了	Enter: mulai / selesai berhenti
 戻すものがありません	Tidak ada yang bisa dikembalikan
 不良数の訂正中です。Enter か * で終わります	Sedang mengoreksi jumlah cacat. Selesai dengan Enter atau *
 は 0 なので、これ以上減らせません	sudah 0, tidak bisa dikurangi lagi
+次の作業	Kerja berikutnya
+次の作業：	Kerja berikutnya:
+選び直す	Pilih ulang
+＋ 製造種類を選ぶ	+ Pilih produk
+＋ で作業開始（カウントは0から）。. で選び直し。	+ = mulai kerja (hitungan dari 0). . = pilih ulang.
+＋ で製造種類を選び、もう一度 ＋ で作業開始（カウントは0から）。	+ = pilih produk, tekan + lagi untuk mulai kerja (hitungan dari 0).
+＋ で作業開始	+ = mulai kerja
+直す	Ubah
+の不良数	: jumlah cacat
+作業数は0以上の数字で入れてください	Isi jumlah kerja dengan angka 0 atau lebih
+を1件減らす	 −1
+を1件増やす	 +1

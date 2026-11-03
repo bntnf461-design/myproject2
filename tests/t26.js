@@ -11,7 +11,7 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   const ev = (f, a) => c.evaluate(f, a), keys = async (...ks) => { for (const k of ks) await c.keyboard.press(k); };
   await ev(() => { state.features.reasons = true; state.features.rate = true; saveState(); renderAll(); });
   await c.mouse.click(5, 5);
-  await keys('NumpadAdd', 'Numpad1', 'NumpadEnter', 'Numpad1');
+  await keys('NumpadAdd', 'Numpad1', 'NumpadEnter', 'NumpadAdd', 'Numpad1');
   ok(await ev(() => state.job.running && total() === 1), 'job started, 1 defect');
 
   // ===== 停止理由をテンキーで =====
@@ -83,7 +83,7 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   await c.click('#fixClose');
 
   // ===== 実績グラフのタブの「修正」からも直せる =====
-  await keys('NumpadAdd', 'Numpad1', 'NumpadEnter'); await keys('NumpadAdd'); await c.waitForTimeout(300); await keys('NumpadAdd');
+  await keys('NumpadAdd', 'Numpad1', 'NumpadEnter', 'NumpadAdd'); await keys('NumpadAdd'); await c.waitForTimeout(300); await keys('NumpadAdd');
   const r = await ctx.newPage(); r.on('pageerror', e => errs.push('report: ' + e.message)); await r.goto(URL + '#report'); await r.waitForTimeout(400);
   await r.evaluate(() => openFix(dkey(Date.now())));
   ok(await r.locator('tr[data-ji]').count() === 1, 'report tab fix screen shows the job');

@@ -42,6 +42,8 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   await keys('Numpad9', 'NumpadSubtract', 'Numpad2');
   ok((await c.textContent('.pk-item.hit')).includes('部品B'), '− deletes a digit; 102 highlights 部品B');
   await keys('NumpadEnter');
+  ok(await ev(() => !state.job.running && nextShift === '部品B'), 'choosing only selects 部品B (job not started yet)');
+  await keys('NumpadAdd');
   ok(await ev(() => state.job.running && state.job.shift === '部品B' && state.currentShift === '部品B'), 'job started with 部品B');
   ok(!(await ev(() => document.body.classList.contains('job-idle'))) && (await c.textContent('#jobBar')).includes('102'), 'waiting screen gone, job bar shows 102 部品B');
   ok(!(await ev(() => state.downtime.running)), 'Enter in picker did not start a stop');
@@ -94,8 +96,8 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   await c.click('#pkSearch'); await c.keyboard.type('量産品3');
   const hits = await c.locator('.pk-item').count();
   ok(hits === 11, 'name search 量産品3 → 11 hits (3, 30-39): ' + hits);
-  await c.keyboard.press('Enter');
-  ok(await ev(() => state.job.running && state.job.shift === '量産品3'), 'Enter in name box starts the highlighted one');
+  await c.keyboard.press('Enter'); await keys('NumpadAdd');
+  ok(await ev(() => state.job.running && state.job.shift === '量産品3'), 'Enter in name box chooses the highlighted one, + starts it');
   ok(await ev(() => total()) === 0, 'new job starts counting from 0');
   await keys('Numpad3');
   await keys('NumpadAdd'); await c.waitForTimeout(300); await keys('NumpadAdd');
@@ -112,8 +114,8 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   // マウスでクリックして選ぶ
   await keys('NumpadAdd'); await c.waitForTimeout(300); await keys('NumpadAdd');
   ok((await c.textContent('.pk-sec')).includes('最近使った'), 'recently used shown first');
-  await c.click('.pk-item[data-pick="部品C"]');
-  ok(await ev(() => state.job.shift) === '部品C', 'click on a product starts it');
+  await c.click('.pk-item[data-pick="部品C"]'); await c.click('.js-go');
+  ok(await ev(() => state.job.shift) === '部品C', 'click on a product, then 作業開始 starts it');
   await keys('NumpadDivide');
   ok(await ev(() => menuOpen), '/ menu still works during a job');
   await keys('NumpadDivide');
@@ -128,7 +130,7 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   const [dl] = await Promise.all([r.waitForEvent('download'), r.click('#rpExcel')]);
   await dl.saveAs('xl_out/jobs.xlsx');
   await r.click('#rpPanelBtn'); // フォーカスは実績グラフ側
-  for (const k of ['NumpadAdd', 'NumpadAdd', 'Numpad1', 'Numpad0', 'Numpad1', 'NumpadEnter']) { await r.keyboard.press(k); await r.waitForTimeout(300); }
+  for (const k of ['NumpadAdd', 'NumpadAdd', 'Numpad1', 'Numpad0', 'Numpad1', 'NumpadEnter', 'NumpadAdd']) { await r.keyboard.press(k); await r.waitForTimeout(300); }
   await c.waitForTimeout(300);
   ok(await ev(() => state.job.running && state.job.shift === '部品A'), 'numpad on the report tab starts a job (forwarded)');
 
