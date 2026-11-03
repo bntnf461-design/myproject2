@@ -1,9 +1,14 @@
 """NG MONITOR のしくみを説明するアニメーション動画を作る。
 
 matplotlib.animation (FuncAnimation) で描き、ffmpeg で MP4 に保存する。
-使い方:  python make_animation.py   ->  ng_monitor_animation.mp4
+音声: pyopenjtalk(-plus) によるナレーション + 効果音 + リポジトリの BUZZER.wav。
+使い方:  pip install matplotlib numpy pyopenjtalk-plus
+         python make_animation.py   ->  ng_monitor_animation.mp4
 """
 import os
+import subprocess
+import tempfile
+import wave
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -17,8 +22,47 @@ for name in ("IPAGothic", "IPAexGothic", "Noto Sans CJK JP", "Yu Gothic", "Meiry
         plt.rcParams["font.family"] = name
         break
 
+HERE = os.path.dirname(os.path.abspath(__file__))
 FPS = 30
-T_TITLE, T_NG, T_ACK, T_END = 2.5, 7.0, 10.5, 13.0
+SR = 48000  # 音声のサンプリング周波数
+
+# ---------- ナレーション (読み上げ用の文, 字幕用の文) ----------
+LINES = [
+    ("エヌジーモニターのしくみ。", "NG MONITOR のしくみ"),
+    ("見張りたい場所をエリアとして登録すると、正常なときの見本と、いつも比べています。",
+     "見張りたい場所を「エリア」に登録すると、正常な時の見本といつも比べます"),
+    ("いつもと違う画面が出ると、エヌジーになり、ブザーで知らせます。",
+     "いつもと違う画面が出ると NG になり、ブザーで知らせます"),
+    ("エフ8キーで確認すると、記録を残して、監視に戻ります。",
+     "F8 キーで確認すると、記録を残して監視に戻ります"),
+]
+
+
+def synth(text):
+    try:
+        import pyopenjtalk
+    except ImportError:
+        return None
+    x, sr = pyopenjtalk.tts(text, speed=1.05)
+    x = np.asarray(x, dtype=np.float64) / 32768.0
+    if sr != SR:
+        x = np.interp(np.arange(int(len(x) * SR / sr)) * sr / SR, np.arange(len(x)), x)
+    return x
+
+
+VOICES = [synth(t) for t, _ in LINES]
+DUR = [len(v) / SR if v is not None else 2.5 for v in VOICES]
+
+# タイムライン (ナレーションの長さに合わせて決める)
+T_L1 = 0.4
+T_TITLE = max(2.5, T_L1 + DUR[0] + 0.6)
+T_L2 = T_TITLE + 0.3
+T_NG = T_L2 + DUR[1] + 0.8
+T_L3 = T_NG + 0.9
+T_ACK = T_L3 + DUR[2] + 1.0
+T_L4 = T_ACK + 0.4
+T_END = T_L4 + DUR[3] + 1.5
+CUES = [(T_L1, 0), (T_L2, 1), (T_L3, 2), (T_L4, 3)]
 N = int(T_END * FPS)
 THRESH = 0.35
 
@@ -113,6 +157,9 @@ flash = Rectangle((0.005, 0.005), 0.99, 0.99, transform=fig.transFigure, fill=Fa
                   ec=RED, lw=14, alpha=0.0)
 fig.patches.append(flash)
 
+caption = fig.text(0.5, 0.03, "", ha="center", va="center", fontsize=16, color="white",
+                   bbox=dict(boxstyle="round,pad=0.35", fc="black", ec="none", alpha=0.0))
+
 main_artists = [ax_scr, ax_ref, ax_g, ax_bar]
 
 
@@ -180,12 +227,97 @@ def update(i):
         status.set_text("● 監視中"); status.set_color(GREEN)
         bar_bg.set_facecolor(CARD); flash.set_alpha(0.0)
         info.set_text("見本と比べています…" if t < T_NG else "違いを検出…")
+    # 字幕
+    cap = ""
+    for start, k in CUES:
+        if start <= t < start + DUR[k] + 0.4 and k > 0:
+            cap = LINES[k][1]
+    caption.set_text(cap)
+    caption.get_bbox_patch().set_alpha(0.6 if cap else 0.0)
     return []
 
 
+# ---------- 音声 ----------
+def tone(freq, dur, vol=0.3, decay=6.0):
+    t = np.arange(int(dur * SR)) / SR
+    env = np.exp(-t * decay) * np.minimum(1, t * 200)
+    return vol * env * (np.sin(2 * np.pi * freq * t) + 0.3 * np.sin(4 * np.pi * freq * t))
+
+
+def add(buf, x, t):
+    i = int(t * SR)
+    n = min(len(x), len(buf) - i)
+    if n > 0:
+        buf[i:i + n] += x[:n]
+
+
+def load_buzzer():
+    path = os.path.join(HERE, "..", "BUZZER.wav")
+    if not os.path.exists(path):
+        return tone(880, 0.5, 0.4, 2)
+    with wave.open(path) as w:
+        sr, ch, sw = w.getframerate(), w.getnchannels(), w.getsampwidth()
+        x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16 if sw == 2 else np.uint8)
+    x = x.astype(np.float64)
+    x = (x - 128) / 128 if sw == 1 else x / 32768.0
+    if ch > 1:
+        x = x.reshape(-1, ch).mean(axis=1)
+    return np.interp(np.arange(int(len(x) * SR / sr)) * sr / SR, np.arange(len(x)), x)
+
+
+def make_audio(path):
+    total = int(T_END * SR)
+    t = np.arange(total) / SR
+    voice = np.zeros(total)
+    for start, k in CUES:
+        if VOICES[k] is not None:
+            add(voice, VOICES[k] / max(1e-9, np.abs(VOICES[k]).max()) * 0.8, start)
+
+    sfx = np.zeros(total)
+    # BGM: やわらかい和音 (監視中は穏やか、NG の間は止める)
+    pad = sum(np.sin(2 * np.pi * f * t) for f in (220.0, 277.18, 329.63)) / 3
+    pad *= 0.05 * (0.7 + 0.3 * np.sin(2 * np.pi * 0.25 * t))
+    gate = np.clip(np.minimum((t - 0.0) / 1.5, (T_END - t) / 1.5), 0, 1)
+    gate *= np.where((t >= T_NG) & (t < T_ACK), 0.0, 1.0)
+    sfx += pad * gate
+    # 監視スタートのチャイム
+    add(sfx, tone(659.25, 0.6, 0.25) , T_TITLE)
+    add(sfx, tone(987.77, 0.8, 0.25), T_TITLE + 0.15)
+    # 走査音 (小さなクリック)
+    for k in np.arange(T_TITLE, T_END, 1 / 0.6):
+        if not (T_NG <= k < T_ACK):
+            add(sfx, tone(1800, 0.05, 0.05, 60), k)
+    # NG: BUZZER.wav をくり返す
+    bz = load_buzzer()
+    k = T_NG + 0.3
+    while k < T_ACK:
+        add(sfx, bz[:int(min(len(bz), (T_ACK - k) * SR))] * 0.5, k)
+        k += 1.0
+    # 確認しました: ピポン
+    add(sfx, tone(880, 0.35, 0.3), T_ACK)
+    add(sfx, tone(1174.66, 0.6, 0.3), T_ACK + 0.18)
+
+    # ナレーション中は効果音を下げる (ダッキング)
+    env = np.convolve((np.abs(voice) > 0.01).astype(float), np.ones(SR // 5) / (SR // 5), "same")
+    duck = 1 - 0.6 * np.clip(env * 4, 0, 1)
+    mix = voice + sfx * duck
+    mix /= max(1.0, np.abs(mix).max() / 0.95)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+        w.writeframes((mix * 32767).astype(np.int16).tobytes())
+
+
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ng_monitor_animation.mp4")
-    anim = animation.FuncAnimation(fig, update, frames=N, interval=1000 / FPS)
-    anim.save(out, writer=animation.FFMpegWriter(fps=FPS, bitrate=2500,
-                                                 extra_args=["-pix_fmt", "yuv420p"]))
+    if VOICES[0] is None:
+        print("pyopenjtalk が無いのでナレーションなし (効果音のみ) で作ります")
+    out = os.path.join(HERE, "ng_monitor_animation.mp4")
+    with tempfile.TemporaryDirectory() as tmp:
+        silent = os.path.join(tmp, "video.mp4")
+        audio = os.path.join(tmp, "audio.wav")
+        anim = animation.FuncAnimation(fig, update, frames=N, interval=1000 / FPS)
+        anim.save(silent, writer=animation.FFMpegWriter(fps=FPS, bitrate=2500,
+                                                        extra_args=["-pix_fmt", "yuv420p"]))
+        make_audio(audio)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", silent, "-i", audio,
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", out], check=True)
     print("saved:", out)
