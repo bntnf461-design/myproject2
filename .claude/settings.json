@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "animate": {
+      "source": { "source": "github", "repo": "cth9191/animate" }
+    }
+  },
+  "enabledPlugins": {
+    "animate@animate": true
+  }
+}
