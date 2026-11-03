@@ -86,6 +86,10 @@
   #main .dispose td.lbl { font-size: 11px; }
   #main tr.cur td.no { background: #ffe9a8; font-weight: bold; }
   .bt { border-left: 2px solid var(--line); }
+  .dnav { font: inherit; padding: 2px 8px; margin: 0 2px; cursor: pointer; white-space: nowrap; }
+  input.over { background: #ffd6d6 !important; color: #b00 !important; font-weight: bold; }
+  input.neg { background: #ffd6d6 !important; color: #b00 !important; font-weight: bold; }
+  #msg button { font: inherit; margin-left: 8px; padding: 1px 8px; cursor: pointer; }
 
   /* 下段 */
   .lower { display: grid; grid-template-columns: 140mm 61mm 1fr; gap: 5mm; margin-top: 10px; }
@@ -169,6 +173,8 @@
     .seal .sz { display: none; }
     #main th .prev input { border: 0; }
     ::placeholder { color: transparent; }
+    input::-webkit-calendar-picker-indicator { display: none; }
+    input.blank-time { visibility: hidden; }
     /* A3 1枚に収める（シール欄の 55mm はそのまま） */
     #main td { height: 18px; }
     #main .total td { height: 22px; }
@@ -185,7 +191,6 @@
 <div class="toolbar">
   <strong>Nライン作業日報</strong>
   <button type="button" id="btnSave">保存</button>
-  <button type="button" id="btnNew">新規（クリア）</button>
   <button type="button" id="btnPrint">印刷</button>
   <span class="sep"></span>
   <input id="qrBox" placeholder="素板QR（ここで読取りも可）" autocomplete="off">
@@ -218,7 +223,11 @@
         <th style="width:60px">組</th>
       </tr>
       <tr>
-        <td><input type="date" name="workDate" style="text-align:center;font-size:14px"></td>
+        <td><div style="display:flex;align-items:center">
+          <button type="button" class="dnav noprint" data-day="-1" title="前の日">◀</button>
+          <input type="date" name="workDate" min="2000-01-01" max="2099-12-31" style="text-align:center;font-size:14px">
+          <button type="button" class="dnav noprint" data-day="1" title="次の日">▶</button>
+          <button type="button" class="dnav noprint" data-day="0">今日</button></div></td>
         <td><input name="shift"></td>
         <td><input name="team"></td>
       </tr>
@@ -394,6 +403,9 @@
         <input id="sTo" type="number" min="1" max="24" style="width:50px;border:1px solid #bbb">時</label>
     </div>
     <div class="row"><button type="button" id="dlgSave" style="font-weight:bold">保存して閉じる</button></div>
+    <h3>この日の日報</h3>
+    <div class="row"><button type="button" id="btnNew" style="color:#b00">表示中の日報をクリア</button>
+      <span class="note">表示中の作業日の入力をすべて消します（元に戻せません）。</span></div>
   </div>
 </dialog>
 
@@ -442,6 +454,16 @@
   function fmt(n) { return Math.round(n * 100) / 100 + ""; }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
   function msg(text, kind) { msgEl.textContent = text; msgEl.className = kind || ""; }
+  // 作業日として受け付けるのは 2000〜2099 年の実在する日付だけ（打っている途中の日付で読み込み・保存しない）
+  function validDate(d) {
+    var m = /^(20\d\d)-(\d\d)-(\d\d)$/.exec(d || "");
+    if (!m) return false;
+    var t = new Date(+m[1], m[2] - 1, +m[3]);
+    return t.getMonth() === m[2] - 1 && t.getDate() === +m[3];
+  }
+  function ymd(t) { return t.getFullYear() + "-" + pad2(t.getMonth() + 1) + "-" + pad2(t.getDate()); }
+  var curDate = "";   // いま表示している日報の作業日（保存先）
+  var readOnly = false;
   function parseJSON(s, d) { try { var v = JSON.parse(s); return v == null ? d : v; } catch (e) { return d; } }
 
   // ---------- マスタ ----------
@@ -572,31 +594,36 @@
   // onRow(r, info) は行ごとに、その行の良品枚数を足す前に呼ぶ（自動の良品枚数をその場で入れるため）
   function computeLots(get, date, prevLot, prevGood, av, onRow) {
     var out = {}, seq = 0, cur = null;
-    if (prevLot && prevGood > 0) cur = { lot: prevLot, filled: prevGood };
+    if (prevLot && prevGood > 0) cur = { lot: prevLot, filled: prevGood, model: null };
     var re = new RegExp("^" + yymmdd(date) + "-(\\d+)");
     for (var r = 1; r <= ROWS; r++) {
       var model = get("r" + r + "_model");
       if (!model) { if (rowActive(get, r)) out[r] = {}; continue; }
       var cap = (modelOf(model) || {}).cap || 0;
-      if (!cur || (cap && cur.filled >= cap)) { seq++; cur = { lot: yymmdd(date) + "-" + pad2(seq) + master.lotSuffix, filled: 0 }; }
+      // パレットが満タン、または型式が変わったら次の連番（前日の端数は最初の型式に続ける）
+      if (!cur || (cap && cur.filled >= cap) || (cur.model && cur.model !== model)) {
+        seq++; cur = { lot: yymmdd(date) + "-" + pad2(seq) + master.lotSuffix, filled: 0 };
+      }
+      cur.model = model;
       var autoLot = cur.lot, typed = get("r" + r + "_lotCut");
       // 手で別のロットNo. にした行は、そこから数え直す
       if (typed && typed !== autoLot && typed !== av["r" + r + "_lotCut"]) {
-        cur = { lot: typed, filled: 0 };
+        cur = { lot: typed, filled: 0, model: model };
         var m = re.exec(typed); if (m) seq = parseInt(m[1], 10);
       }
       var remain = cap ? cap - cur.filled : 0;
       out[r] = { lot: autoLot, good: cap ? (remain > 0 ? remain : cap) : "", cap: cap };
       if (onRow) onRow(r, out[r]);
       cur.filled += toNum(get("r" + r + "_good"));
+      out[r].over = cap > 0 && cur.filled > cap;
     }
     out.end = cur;
     return out;
   }
 
   function computeAuto() {
-    var date = val("workDate");
-    computeLots(val, date, val("prevLot"), num("prevGood"), autoVals, function (r, L) {
+    var date = curDate;
+    var lots = computeLots(val, date, val("prevLot"), num("prevGood"), autoVals, function (r, L) {
       setAuto("r" + r + "_lotCut", L.lot || "");
       setAuto("r" + r + "_good", L.good === "" || L.good == null ? "" : L.good);
     });
@@ -614,6 +641,12 @@
       setAuto(p + "qty", val(p + "model") && val(p + "good") !== "" ? fmt(num(p + "good") + ng) : "");
     }
     setAuto("wheel", wheels.join("／"));
+    // 1PL を超えた行は赤くする
+    for (var rr = 1; rr <= ROWS; rr++) {
+      var over = !!(lots[rr] && lots[rr].over), g = f("r" + rr + "_good");
+      g.classList.toggle("over", over);
+      g.title = over ? "1PL（" + lots[rr].cap + "枚）を超えています" : "";
+    }
     computeSoban();
   }
 
@@ -637,10 +670,13 @@
       var has = val(p + "name") !== "" || val(p + "mae") !== "" || list.length;
       var total = num(p + "mae") + counts.reduce(function (s, v) { return s + toNum(v); }, 0);
       setAuto(p + "to", has ? fmt(total - used[n]) : "");
+      f(p + "to").classList.toggle("neg", num(p + "to") < 0);
     });
   }
 
   // ---------- 合計などの計算 ----------
+  // 歩留は紙と同じく小数1桁で切り捨て（例 270÷277 → 97.4%）
+  function pct(g, q) { return Math.floor(g / q * 1000 + 1e-9) / 10 + "%"; }
   function recalc() {
     computeAuto();
     var totals = {};
@@ -653,12 +689,13 @@
       f(p + "procNg").value = hasProc ? fmt(PROC.reduce(function (s, k) { return s + num(p + k); }, 0)) : "";
       f(p + "sobanNg").value = hasSob ? fmt(SOBAN.reduce(function (s, k) { return s + num(p + k); }, 0)) : "";
       var q = num(p + "qty"), g = num(p + "good");
-      f(p + "yield").value = (q > 0 && val(p + "good") !== "") ? fmt(g / q * 100) + "%" : "";
+      f(p + "yield").value = (q > 0 && val(p + "good") !== "") ? pct(g, q) : "";
       SUM_KEYS.forEach(function (k) { totals[k] += num(p + k); });
       body.rows[r - 1].classList.toggle("cur", r === (last || 1));
     }
     SUM_KEYS.forEach(function (k) { f("t_" + k).value = totals[k] ? fmt(totals[k]) : ""; });
-    f("t_yield").value = totals.qty > 0 ? fmt(totals.good / totals.qty * 100) + "%" : "%";
+    f("t_yield").value = totals.qty > 0 ? pct(totals.good, totals.qty) : "%";
+    ["kadoS", "kadoE"].forEach(function (n) { f(n).classList.toggle("blank-time", !val(n)); });
     ["tonyu", "tenaoshi", "jogai"].forEach(function (row) {
       var names = ["itanose", "kensa", "stock"].map(function (c) { return row + "_" + c; });
       var any = names.some(function (n) { return val(n) !== ""; });
@@ -670,8 +707,14 @@
   }
 
   // ---------- 稼働状況 ----------
-  function events() { return parseJSON(val("kadoEvents"), []); }
-  function setEvents(list) { f("kadoEvents").value = list.length ? JSON.stringify(list) : ""; }
+  var evCache = null, evCacheSrc = null;
+  function events() {
+    var raw = val("kadoEvents");
+    if (raw !== evCacheSrc) { evCache = parseJSON(raw, []); evCacheSrc = raw; }
+    return evCache;
+  }
+  function visibleEvents() { return events().filter(function (ev) { return !ev.del; }); }
+  function setEvents(list) { f("kadoEvents").value = list.length ? JSON.stringify(list) : ""; evCache = list; evCacheSrc = f("kadoEvents").value; }
   function hm2min(s) { if (!s) return null; var m = /^(\d{1,2}):(\d{2})/.exec(s); return m ? +m[1] * 60 + +m[2] : null; }
   function drawKado() {
     var bar = document.getElementById("kadoBar"), from = master.kadoFrom * 60, to = master.kadoTo * 60;
@@ -683,7 +726,7 @@
       if (h) html += '<div class="lab" style="left:' + x(m) + '%">' + (m / 60) + '</div>';
     }
     var sum = {};
-    events().forEach(function (ev) {
+    visibleEvents().forEach(function (ev) {
       var s = hm2min(ev.s), e = hm2min(ev.e);
       if (s == null || e == null || e <= s) return;
       sum[ev.c] = (sum[ev.c] || 0) + (e - s);
@@ -699,7 +742,7 @@
     document.getElementById("kadoSum").textContent = parts.join("　");
   }
   function drawEvList() {
-    var t = document.getElementById("kadoEv"), list = events();
+    var t = document.getElementById("kadoEv"), list = visibleEvents();
     t.innerHTML = "";
     list.forEach(function (ev, i) {
       var tr = el("tr");
@@ -707,19 +750,24 @@
       tr.innerHTML = '<td><input type="time" data-i="' + i + '" data-k="s" value="' + esc(ev.s || "") + '"></td><td>〜</td>' +
         '<td><input type="time" data-i="' + i + '" data-k="e" value="' + esc(ev.e || "") + '"></td>' +
         '<td><select data-i="' + i + '" data-k="c">' + opts + '</select></td>' +
-        '<td style="color:#888">' + (ev.src === "counter" ? "カウンター" : "手入力") + '</td>' +
+        '<td style="color:#888">' + (ev.src === "counter" ? (ev.edited ? "カウンター（修正）" : "カウンター") : "手入力") + '</td>' +
         '<td><button type="button" data-del="' + i + '">削除</button></td>';
       t.appendChild(tr);
     });
   }
   document.getElementById("kadoEv").addEventListener("change", function (e) {
     var i = e.target.getAttribute("data-i"); if (i == null) return;
-    var list = events(); list[i][e.target.getAttribute("data-k")] = e.target.value; list[i].src = "manual";
+    var list = visibleEvents(), ev = list[i];
+    ev[e.target.getAttribute("data-k")] = e.target.value;
+    if (ev.src === "counter") ev.edited = true; else ev.src = "manual";
     setEvents(list); drawEvList(); changed();
   });
   document.getElementById("kadoEv").addEventListener("click", function (e) {
     var i = e.target.getAttribute("data-del"); if (i == null) return;
-    var list = events(); list.splice(+i, 1); setEvents(list); drawEvList(); changed();
+    // カウンターから取り込んだものは「消した」印を残し、次の取込で戻らないようにする
+    var ev = visibleEvents()[i];
+    if (ev.src === "counter") ev.del = true;
+    setEvents(events().filter(function (x) { return x !== ev || ev.del; })); drawEvList(); changed();
   });
   document.getElementById("btnAddEv").onclick = function () {
     var list = events(); list.push({ s: "", e: "", c: "P", src: "manual" }); setEvents(list); drawEvList();
@@ -731,14 +779,20 @@
     try {
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (k.indexOf(PREFIX) === 0 && /^\d{4}-\d{2}-\d{2}$/.test(k.slice(PREFIX.length))) out.push(k.slice(PREFIX.length));
+        if (k.indexOf(PREFIX) === 0 && validDate(k.slice(PREFIX.length))) out.push(k.slice(PREFIX.length));
       }
     } catch (e) {}
     return out.sort();
   }
   function loadData(date) { return parseJSON(localStorageGet(PREFIX + date), null); }
+  // 明細か使用素板に入力がある日報だけを、前日からの引継ぎ元にする
+  function hasContent(d) {
+    if (!d) return false;
+    var get = function (n) { return d[n] == null ? "" : String(d[n]); };
+    return lastActiveRow(get) > 0 || !!(get("sb1_name") || get("sb2_name"));
+  }
   function prevCarry(date) {
-    var ds = savedDates().filter(function (d) { return d < date; });
+    var ds = savedDates().filter(function (d) { return d < date && hasContent(loadData(d)); });
     if (!ds.length) return null;
     var pd = ds[ds.length - 1], d = loadData(pd) || {};
     var get = function (n) { return d[n] == null ? "" : String(d[n]); };
@@ -761,7 +815,7 @@
     return c;
   }
   function applyCarry(isNew) {
-    var c = prevCarry(val("workDate")), info = document.getElementById("prevInfo");
+    var c = prevCarry(curDate), info = document.getElementById("prevInfo");
     if (!c) { info.textContent = "（前日の日報がありません。手打ちできます）"; setAuto("prevLot", ""); setAuto("prevGood", ""); return; }
     info.textContent = "（" + c.date + " の日報から" + (c.lot ? "" : "：端数なし") + "）";
     setAuto("prevLot", c.lot || "");
@@ -791,6 +845,7 @@
   }
   function handleQR(raw) {
     var q = parseQR(raw);
+    if (readOnly) { msg("このタブは表示専用です。QRは入力中のタブで読み取ってください", "warn"); return; }
     if (!q) { msg("素板QRとして読めませんでした。もう一度読み取ってください（日本語入力がオンだと読めません）", "warn"); return; }
     var notes = [];
     // 使用素板：品種・サイズが同じ欄へ。なければ空いている欄へ
@@ -821,6 +876,10 @@
       if (target > 1 && val(tp + "model") === "") setAuto(tp + "model", val("r" + (target - 1) + "_model"));
       if (!modelOf(val(tp + "model")) && q.local) setAuto(tp + "localCode", q.local);
     }
+    if (target > 1 && target <= ROWS && target === last + 1) {
+      var pg = "r" + last + "_good";
+      if (val(pg) !== "" && autoVals[pg] === val(pg)) notes.push(last + "行目の良品枚数（自動の値 " + val(pg) + "）を確認してください");
+    }
     var row = target || last, mm = modelOf(val("r" + row + "_model"));
     if (mm && mm.local && q.local && mm.local !== q.local)
       notes.push("ローカルコードが型式（" + mm.local + "）と素板（" + q.local + "）で違います。確認してください");
@@ -829,10 +888,13 @@
     msg(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
   }
   // バーコードリーダーは、キーボードのように速く打って最後に Enter を送る。どの欄にいても QR として受け取る
-  var qb = { buf: "", t: 0, target: null, before: null };
+  var qb = { buf: "", t: -1e9, target: null, before: null };
   window.addEventListener("keydown", function (e) {
-    var now = Date.now();
-    if (now - qb.t > 80) { qb.buf = ""; qb.target = e.target; qb.before = "value" in e.target ? e.target.value : null; }
+    var now = performance.now(), inBurst = now - qb.t <= 80;
+    // リーダーの連続入力中は、ボタン・レ点などに文字（空白を含む）を渡さない（押されたり切り替わったりしないように）
+    var t = e.target, textual = t && ((t.tagName === "INPUT" && !/^(button|checkbox|radio|submit|reset|file)$/.test(t.type)) || t.tagName === "TEXTAREA");
+    if (inBurst && e.key.length === 1 && !textual) e.preventDefault();
+    if (!inBurst) { qb.buf = ""; qb.target = e.target; qb.before = "value" in e.target ? e.target.value : null; }
     qb.t = now;
     if (e.key === "Enter") {
       if (parseQR(qb.buf)) {
@@ -848,6 +910,12 @@
     }
     if (e.key.length === 1) qb.buf += e.key;
   }, true);
+
+  // ボタン・レ点はクリックのあとフォーカスを外す（キー入力やリーダーで押されないように）
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button, input[type=checkbox]");
+    if (b) setTimeout(function () { b.blur(); }, 0);
+  });
 
   // ---------- 不良数カウンターの取り込み ----------
   var idb = null;
@@ -892,7 +960,8 @@
     var d = parseJSON(text, null);
     var h = d && d.hist;
     if (!h || !Array.isArray(h.d) || !Array.isArray(h.shifts)) { msg("不良数カウンターのデータではありません（" + fname + "）", "warn"); return; }
-    var st = d.state || {}, date = val("workDate");
+    if (readOnly) return;
+    var st = d.state || {}, date = curDate;
     var dayOf = function (sec) { var t = new Date(sec * 1000); return t.getFullYear() + "-" + pad2(t.getMonth() + 1) + "-" + pad2(t.getDate()); };
     var hhmm = function (ms) { var t = new Date(ms); return pad2(t.getHours()) + ":" + pad2(t.getMinutes()); };
     // 日報の型式と同じ名前の製造種類だけ取り込む（型式が未入力なら全部）
@@ -931,14 +1000,17 @@
     }
     if (starts.length) setAuto("kadoS", hhmm(Math.min.apply(null, starts)));
     if (ends.length && !running) setAuto("kadoE", hhmm(Math.max.apply(null, ends)));
-    var evs = events().filter(function (ev) { return ev.src !== "counter"; });
+    // 手で直した・消したカウンターの記録はそのまま残し、ほかは取り込み直す
+    var evs = events().filter(function (ev) { return ev.src !== "counter" || ev.edited || ev.del; });
+    var kept = function (id) { return evs.some(function (ev) { return ev.id === id; }); };
     (h.w || []).forEach(function (x) {
       if (dayOf(x[0]) !== date || !okShift(x[2])) return;
-      evs.push({ s: hhmm(x[0] * 1000), e: hhmm(x[1] * 1000), c: REASON_CODE[x[5]] || "O", src: "counter" });
+      var id = x[3] || String(x[0]);
+      if (!kept(id)) evs.push({ s: hhmm(x[0] * 1000), e: hhmm(x[1] * 1000), c: REASON_CODE[x[5]] || "O", src: "counter", id: id });
     });
     var dt = st.downtime;
     if (dt && dt.running && dt.currentStart && dayOf(Date.parse(dt.currentStart) / 1000) === date)
-      evs.push({ s: hhmm(Date.parse(dt.currentStart)), e: hhmm(Date.now()), c: "O", src: "counter" });
+      if (!kept("running")) evs.push({ s: hhmm(Date.parse(dt.currentStart)), e: hhmm(Date.now()), c: "O", src: "counter", id: "running" });
     evs.sort(function (a, b) { return (a.s || "") < (b.s || "") ? -1 : 1; });
     setEvents(evs); drawEvList();
     recalc(); save();
@@ -970,7 +1042,7 @@
   function counterAlive() { var a = parseJSON(localStorageGet(CNT.active), null); return a && Date.now() - a.t < 6000 ? a : null; }
   function isToday() {
     var t = new Date();
-    return val("workDate") === t.getFullYear() + "-" + pad2(t.getMonth() + 1) + "-" + pad2(t.getDate());
+    return curDate === t.getFullYear() + "-" + pad2(t.getMonth() + 1) + "-" + pad2(t.getDate());
   }
   var keyNote = "", keyNoteTimer;
   function drawCntBar() {
@@ -1032,7 +1104,7 @@
     if (e.key === CNT.state || e.key === CNT.hist || e.key === CNT.active) {
       drawCntBar();
       // 今日の日報を開いているときは、カウンターで数えた不良をその場で今の行へ取り込む
-      if (e.key !== CNT.active && isToday()) {
+      if (e.key !== CNT.active && isToday() && !readOnly) {
         clearTimeout(autoTimer);
         autoTimer = setTimeout(function () { var c = counterLocal(); if (c) importCounter(JSON.stringify(c), "このパソコンのカウンター", true); }, 800);
       }
@@ -1061,30 +1133,58 @@
     });
     autoVals = parseJSON(d.autoVals, {});
   }
-  function key() { return PREFIX + (val("workDate") || "未設定"); }
+  function key() { return PREFIX + curDate; }
   function save() {
-    if (!val("workDate")) return;
-    if (localStorageSet(key(), JSON.stringify(collect()))) {
-      localStorageSet(PREFIX + "last", val("workDate"));
+    if (!validDate(curDate) || readOnly) return;
+    var d = collect(); d.workDate = curDate;
+    if (localStorageSet(key(), JSON.stringify(d))) {
+      localStorageSet(PREFIX + "last", curDate);
       statusEl.textContent = "保存済み " + new Date().toLocaleTimeString();
-    } else statusEl.textContent = "保存できませんでした";
+    } else {
+      statusEl.textContent = "保存できませんでした";
+      msg("⚠ 保存できませんでした。入力内容が残りません。「JSON書出し」でファイルに保存し、担当者に連絡してください", "warn");
+    }
   }
+  // 開いただけでは保存しない（何か入力したときに保存する）
   function load(date) {
-    var d = date ? loadData(date) : null;
+    clearTimeout(timer);
+    curDate = date;
+    var d = loadData(date);
     apply(d || { workDate: date });
-    f("workDate").value = date || "";
-    applyCarry(!d);
+    f("workDate").value = date;
+    applyCarry(!hasContent(d));   // まだ何も入っていない日は、前日の最後の型式などから始める
     drawEvList(); recalc();
-    if (!d) save();
+  }
+  function goDate(date, note) {
+    if (!validDate(date)) { f("workDate").value = curDate; return; }
+    if (date === curDate) return;
+    save();
+    load(date);
+    msg(note || ("作業日 " + date + " を表示しています"));
   }
   var timer;
   function changed() { recalc(); clearTimeout(timer); timer = setTimeout(save, 500); }
   form.addEventListener("input", function (e) {
-    if (e.target.name === "workDate" || e.target.id === "prevGoodHead") return;
+    if (e.target.name === "workDate" || e.target.id === "prevGoodHead" || readOnly) return;
     changed();
   });
   document.getElementById("prevGoodHead").addEventListener("input", function (e) { f("prevGood").value = e.target.value; changed(); });
-  f("workDate").addEventListener("change", function () { load(val("workDate")); msg("作業日 " + (val("workDate") || "未設定") + " を表示"); });
+  // 日付をキーボードで打っている途中は読み込まない。欄を離れたとき・Enter・少し手が止まったときに確定する
+  var dateTimer;
+  f("workDate").addEventListener("change", function () {
+    clearTimeout(dateTimer);
+    dateTimer = setTimeout(function () { if (document.activeElement !== f("workDate")) goDate(val("workDate")); }, 400);
+  });
+  f("workDate").addEventListener("blur", function () { clearTimeout(dateTimer); goDate(val("workDate")); });
+  f("workDate").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); goDate(val("workDate")); } });
+  Array.prototype.forEach.call(document.querySelectorAll(".dnav"), function (b) {
+    b.addEventListener("click", function () {
+      var n = +b.getAttribute("data-day"), t;
+      if (n === 0) t = new Date();
+      else { var m = /^(\d+)-(\d+)-(\d+)$/.exec(curDate); t = new Date(+m[1], m[2] - 1, +m[3] + n); }
+      goDate(ymd(t));
+    });
+  });
   // 型式を選んだら、前の行の素板ロットを引き継ぐ（同じ素板パレットの続き）
   form.addEventListener("change", function (e) {
     var m = /^r(\d+)_model$/.exec(e.target.name || "");
@@ -1107,10 +1207,9 @@
   document.getElementById("btnSave").onclick = save;
   document.getElementById("btnPrint").onclick = function () { window.print(); };
   document.getElementById("btnNew").onclick = function () {
-    if (!confirm("表示中の日報の入力内容をクリアします。よろしいですか？")) return;
-    var date = val("workDate");
-    try { localStorage.removeItem(PREFIX + date); } catch (e) {}
-    load(date);
+    if (!confirm(curDate + " の日報の入力内容をすべてクリアします。よろしいですか？")) return;
+    try { localStorage.removeItem(PREFIX + curDate); } catch (e) {}
+    load(curDate); dlg.close(); msg(curDate + " の日報をクリアしました");
   };
   function download(name, text, type) {
     if (window.showSaveFilePicker) {
@@ -1131,13 +1230,20 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
   document.getElementById("btnExport").onclick = function () {
-    download("Nライン日報_" + (val("workDate") || "未設定") + ".json", JSON.stringify(collect(), null, 2), "application/json");
+    var d = collect(); d.workDate = curDate;
+    download("Nライン日報_" + curDate + ".json", JSON.stringify(d, null, 2), "application/json");
   };
   document.getElementById("fileImport").onchange = function (e) {
     var file = e.target.files[0]; if (!file) return;
     file.text().then(function (t) {
-      var d = JSON.parse(t);
-      apply(d); f("workDate").value = d.workDate || val("workDate"); drawEvList(); recalc(); save(); msg("読み込みました", "ok");
+      var d = parseJSON(t, null);
+      var isNippo = d && typeof d === "object" && validDate(d.workDate) &&
+        Object.keys(d).every(function (k) { return f(k) || k === "workDate"; });
+      if (!isNippo) { msg("⚠ 日報のJSONファイルではありません（" + file.name + "）。何も変えていません", "warn"); return; }
+      if (loadData(d.workDate) && !confirm(d.workDate + " の日報はすでにあります。ファイルの内容で上書きしますか？")) return;
+      curDate = d.workDate; apply(d); f("workDate").value = d.workDate;
+      applyCarry(false); drawEvList(); recalc(); save();
+      msg(d.workDate + " の日報を読み込みました", "ok");
     }).catch(function () { alert("JSONファイルを読み込めませんでした"); });
     e.target.value = "";
   };
@@ -1149,9 +1255,9 @@
     for (var r = 1; r <= ROWS; r++) {
       var vals = COLS.slice(1).map(function (c) { return val("r" + r + "_" + c.k); });
       if (!vals.some(function (v) { return v !== ""; })) continue;
-      lines.push([val("workDate"), r].concat(vals).map(function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","));
+      lines.push([curDate, r].concat(vals).map(function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","));
     }
-    download("Nライン日報明細_" + (val("workDate") || "未設定") + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
+    download("Nライン日報明細_" + curDate + ".csv", "﻿" + lines.join("\r\n"), "text/csv");
   };
 
   // ---------- 設定（型式・作業者） ----------
@@ -1327,11 +1433,46 @@
 
   // ---------- 起動 ----------
   refreshLists();
-  var last = localStorageGet(PREFIX + "last");
-  var today = new Date(); today = today.getFullYear() + "-" + pad2(today.getMonth() + 1) + "-" + pad2(today.getDate());
-  load(last || today);
+  // 同じ日報を2つのタブで開いたときは、あとから開いたタブを表示専用にする（上書きで入力が消えないように）
+  var LOCK = "nline-nippo-tab", TAB = Math.random().toString(36).slice(2);
+  function lockInfo() { return parseJSON(localStorageGet(LOCK), null); }
+  function lockAlive(l) { return l && Date.now() - l.t < 5000; }
+  function claim() { localStorageSet(LOCK, JSON.stringify({ id: TAB, t: Date.now() })); }
+  function setReadOnly(on) {
+    readOnly = on;
+    Array.prototype.forEach.call(form.elements, function (e) { e.disabled = on; });
+    if (on) {
+      msg("⚠ この日報は別のタブで入力中です。このタブは表示専用です。", "warn");
+      var b = el("button", { type: "button" }, "このタブで入力する");
+      b.onclick = function () { claim(); setReadOnly(false); load(curDate); msg("このタブで入力できます", "ok"); };
+      msgEl.appendChild(b);
+    }
+  }
+  setInterval(function () {
+    var l = lockInfo();
+    if (!readOnly) claim();
+    else if (!lockAlive(l)) { claim(); setReadOnly(false); load(curDate); msg("このタブで入力できるようになりました", "ok"); }
+  }, 2000);
+  window.addEventListener("storage", function (e) {
+    if (e.key === LOCK && e.newValue && !readOnly) {
+      var l = parseJSON(e.newValue, null);
+      if (l && l.id !== TAB) { save(); setReadOnly(true); }
+    }
+    if (readOnly && e.key === PREFIX + curDate) load(curDate);
+  });
+  window.addEventListener("pagehide", function () { var l = lockInfo(); if (!readOnly && l && l.id === TAB) { save(); try { localStorage.removeItem(LOCK); } catch (err) {} } });
+
+  // 起動時はいつも今日の日報を開く
+  var last = localStorageGet(PREFIX + "last"), today = ymd(new Date());
+  load(today);
   drawCntBar();
-  if (!master.models.length) msg("はじめに「設定（型式・作業者）」で型式を登録してください（Excel の雛形から読み込めます）");
+  var lk = lockInfo();
+  if (lockAlive(lk) && lk.id !== TAB) setReadOnly(true); else claim();
+  if (!readOnly) {
+    if (!master.models.length) msg("はじめに「設定（型式・作業者）」で型式を登録してください（Excel の雛形から読み込めます）");
+    else if (validDate(last) && last !== today) msg("今日（" + today + "）の日報を表示しています。前回は " + last + " の日報でした。続きを入力するときは ◀ ▶ で作業日を変えてください");
+    else msg("今日（" + today + "）の日報を表示しています");
+  }
 })();
 </script>
 </body>
