@@ -76,7 +76,7 @@ test("見本10/21の再現（引継ぎ・QR・採番・合計・当残・歩留�
   await fill(p, "r1_good", 102);
   await p.click('[name="topics"]');
   await scanQR(p, QR_042);
-  eq(await v(p, "topics"), "", "QRの文字が欄に残らない");
+  eq(await v(p, "topics"), "", "QRの文字が欄に残らない" + p.errors.join(" / "));
   eq(await v(p, "r2_lotSoban"), "R7Z446SX042", "2行目の素板ロット");
   eq(await v(p, "r2_lotCut"), "261020-08NK", "2行目のロット");
   eq(await v(p, "r2_good"), "20", "2行目の良品");
@@ -237,6 +237,38 @@ test("〃：上の行と同じ型式・ロットNo.・パレット形態・ロ�
   await p.click('[name="r2_model"]');
   const color = await p.evaluate(() => getComputedStyle(document.forms.nippo.elements.r2_model).color);
   ok(color !== "rgba(0, 0, 0, 0)", "選ぶと値が見える");
+});
+
+// 本物の不良数カウンターとの連携。COUNTER_HTML=…/defect-counter.html を指定したときだけ動かす
+const COUNTER = process.env.COUNTER_HTML;
+if (COUNTER) test("カウンター連携：型式の追加・作業開始・不良の取込・休憩・型式の切り替え（作業数の入力）", async ctx => {
+  const c = await ctx.newPage(); c.errors = []; c.on("pageerror", e => c.errors.push(e.message));
+  await c.goto("file://" + path.resolve(COUNTER)); await c.waitForTimeout(800);
+  const n = await open(ctx);
+  await importMaster(n);
+  await addModel(n, { name: "TEST-B", pallet: "青PL", wheel: "", cap: 100, local: "" });
+  await n.reload(); await n.bringToFront(); await n.waitForTimeout(1200);
+  const cst = () => n.evaluate(() => JSON.parse(localStorage.getItem("defectCounterState")));
+  let st = await cst();
+  ok(st.shifts.includes(MODEL) && st.shifts.includes("TEST-B"), "カウンターに型式が追加されていない：" + st.shifts.join(","));
+  await pickModel(n, 1); await n.waitForTimeout(300);
+  await n.click('#cntBar button[data-cnt="start"]'); await n.waitForTimeout(2500);
+  st = await cst();
+  eq(st.job.running && st.job.shift, MODEL, "カウンターで作業開始");
+  await n.click("body");
+  for (const k of ["Numpad1", "Numpad1"]) { await n.keyboard.press(k); await n.waitForTimeout(250); }
+  await n.keyboard.press("NumpadMultiply"); await n.waitForTimeout(1300); await n.keyboard.press("NumpadMultiply");
+  await n.waitForTimeout(1500);
+  eq(await v(n, "r1_kizu"), "2", "不良が1行目に入る");
+  ok(JSON.parse((await v(n, "kadoEvents")) || "[]").some(e => e.c === "E"), "休憩が E として入る");
+  await fill(n, "r1_good", 100); await n.waitForTimeout(300);
+  eq(await v(n, "r1_qty"), "102", "1行目の作業枚数");
+  await pickModel(n, 2, "TEST-B");
+  await n.waitForTimeout(5000);
+  st = await cst();
+  eq(st.lastJob && st.lastJob.prod, 102, "前の作業の作業数");
+  eq(st.job.running && st.job.shift, "TEST-B", "カウンターが新しい型式で作業開始");
+  eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
 });
 
 // ---------- 実行 ----------

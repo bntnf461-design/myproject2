@@ -19,8 +19,9 @@
     font-family: "Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif;
     font-size: 12px; color: var(--fg); background: #f2f2f2;
   }
+  .topbar { position: sticky; top: 0; z-index: 10; margin: -12px -12px 0; }
+  .topbar .toolbar, .topbar #cntBar { margin-left: 0; margin-right: 0; margin-top: 0; }
   .toolbar {
-    position: sticky; top: 0; z-index: 10;
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
     padding: 8px; margin: -12px -12px 0; background: #2f4f6f; color: #fff;
   }
@@ -37,6 +38,8 @@
   #cntBar .st.run { background: #2e8b57; } #cntBar .st.stop { background: #c62828; }
   #cntBar .st.brk { background: #1e63b5; } #cntBar .st.idle { background: #666; }
   #cntBar .key { margin-left: auto; color: #ffd54f; font-weight: bold; }
+  #cntBar .warnx { color: #ffb4b4; font-weight: bold; }
+  #cntBar button { font: inherit; padding: 2px 10px; border: 0; border-radius: 3px; background: #ffd54f; color: #222; cursor: pointer; font-weight: bold; }
   #msg { margin: 0 -12px 12px; padding: 6px 12px; font-size: 12px; min-height: 28px; background: #e8eef4; }
   #msg.warn { background: #fde2e2; color: #900; font-weight: bold; }
   #msg.ok { background: #e3f4e1; color: #145214; }
@@ -223,6 +226,7 @@
 </head>
 <body>
 
+<div class="topbar">
 <div class="toolbar">
   <strong>Nライン作業日報</strong>
   <button type="button" id="btnSave">保存</button>
@@ -237,6 +241,7 @@
   <span class="status" id="status"></span>
 </div>
 <div id="cntBar" class="noprint"></div>
+</div>
 <div id="msg"></div>
 
 <form id="nippo" class="sheet" autocomplete="off" onsubmit="return false">
@@ -756,6 +761,7 @@
     document.getElementById("prevGoodHead").value = val("prevGood");
     Array.prototype.forEach.call(form.elements, function (e) { if (e.name && autoVals[e.name] != null) markAf(e); });
     drawKado();
+    if (chkFwd) drawCntBar();   // 起動の途中（カウンター連携の準備前）は描かない
   }
 
   // ---------- 稼働状況 ----------
@@ -790,7 +796,7 @@
     if (E != null) html += '<div class="mk" style="left:' + x(E) + '%">終</div>';
     bar.innerHTML = html;
     var parts = Object.keys(CODES).filter(function (k) { return sum[k]; }).map(function (k) { return k + "（" + CODES[k] + "）" + sum[k] + "分"; });
-    if (S != null && E != null && E > S) parts.unshift("稼働 " + (E - S) + "分");
+    if (S != null && E != null && E > S) parts.unshift("稼働 " + (E - S - (sum.E || 0)) + "分" + (sum.E ? "（除外 " + sum.E + "分を除く）" : ""));
     document.getElementById("kadoSum").textContent = parts.join("　");
   }
   function drawEvList() {
@@ -939,10 +945,10 @@
     var head = "素板QR：" + q.name + " " + q.inW + "×" + q.inH + "（" + q.mmW + "×" + q.mmH + "mm）" + q.qty + "枚　ロット " + q.lot;
     msg(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
   }
-  // バーコードリーダーは、キーボードのように速く打って最後に Enter を送る。どの欄にいても QR として受け取る
+  // バーコードリーダーは、キーボードのように速く打って最後に Enter を送る（文字の間が 150ms 以内を続けて届いたものとみなす）。どの欄にいても QR として受け取る
   var qb = { buf: "", t: -1e9, target: null, before: null };
   window.addEventListener("keydown", function (e) {
-    var now = performance.now(), inBurst = now - qb.t <= 80;
+    var now = performance.now(), inBurst = now - qb.t <= 150;
     // リーダーの連続入力中は、ボタン・レ点などに文字（空白を含む）を渡さない（押されたり切り替わったりしないように）
     var t = e.target, textual = t && ((t.tagName === "INPUT" && !/^(button|checkbox|radio|submit|reset|file)$/.test(t.type)) || t.tagName === "TEXTAREA");
     if (inBurst && e.key.length === 1 && !textual) e.preventDefault();
@@ -1060,6 +1066,14 @@
       var id = x[3] || String(x[0]);
       if (!kept(id)) evs.push({ s: hhmm(x[0] * 1000), e: hhmm(x[1] * 1000), c: REASON_CODE[x[5]] || "O", src: "counter", id: id });
     });
+    // 休憩は E（除外）
+    (h.b || []).forEach(function (x) {
+      if (dayOf(x[0]) !== date || !okShift(x[2])) return;
+      var id = "b:" + (x[3] || x[0]);
+      if (!kept(id)) evs.push({ s: hhmm(x[0] * 1000), e: hhmm(x[1] * 1000), c: "E", src: "counter", id: id });
+    });
+    if (st.brk && st.brk.running && st.brk.start && dayOf(Date.parse(st.brk.start) / 1000) === date && !kept("brk-running"))
+      evs.push({ s: hhmm(Date.parse(st.brk.start)), e: hhmm(Date.now()), c: "E", src: "counter", id: "brk-running" });
     var dt = st.downtime;
     if (dt && dt.running && dt.currentStart && dayOf(Date.parse(dt.currentStart) / 1000) === date)
       if (!kept("running")) evs.push({ s: hhmm(Date.parse(dt.currentStart)), e: hhmm(Date.now()), c: "O", src: "counter", id: "running" });
@@ -1105,11 +1119,26 @@
     else if (st.downtime && st.downtime.running) { cls = "stop"; txt = "停止中"; }
     else if (st.job && st.job.running) { cls = "run"; txt = "作業中　" + (st.job.shift || ""); }
     var counts = (st.types || []).map(function (t) { var n = (st.counts || {})[t.id]; return n ? t.name + " " + n : ""; }).filter(Boolean);
-    bar.innerHTML = "<span>不良数カウンター</span><span class=\"st " + cls + "\">" + esc(txt) + "</span>" +
+    var html = "<span>不良数カウンター</span><span class=\"st " + cls + "\">" + esc(txt) + "</span>" +
       "<span>" + esc(counts.join("　") || "不良 0") + "</span>" +
       "<span style=\"opacity:.75\">" + (alive ? (chkFwd.checked ? "テンキー入力はカウンターへ送ります" : "テンキーは日報で使います") : "⚠ カウンターの画面が開いていません") + "</span>" +
+      cntActionHtml(st, alive) +
       "<span class=\"key\">" + esc(keyNote) + "</span>";
+    // 中身が変わったときだけ描き直す（ボタンを押している途中に作り直されて、押したことが消えないように）
+    if (bar.innerHTML !== html && bar.getAttribute("data-html") !== html) { bar.innerHTML = html; bar.setAttribute("data-html", html); }
     bar.className = "on";
+  }
+  // 日報の型式とカウンターの製造種類が違うときに知らせ、ボタンで切り替えられるようにする
+  function cntActionHtml(st, alive) {
+    var m = currentModel();
+    if (!alive || !m || readOnly || !isToday() || !(st.features && st.features.jobs)) return "";
+    if (switching) return "<span class=\"warnx\">カウンターを切り替え中…</span>";
+    if (st.job && st.job.running) {
+      if (st.job.shift === m) return "";
+      return "<span class=\"warnx\">⚠ 日報は「" + esc(m) + "」、カウンターは「" + esc(st.job.shift || "") + "」</span>" +
+        "<button type=\"button\" data-cnt=\"switch\">カウンターを「" + esc(m) + "」に切り替える</button>";
+    }
+    return "<button type=\"button\" data-cnt=\"start\">カウンターで作業開始（" + esc(m) + "）</button>";
   }
   function showKey(t) { keyNote = t; drawCntBar(); clearTimeout(keyNoteTimer); keyNoteTimer = setTimeout(function () { keyNote = ""; drawCntBar(); }, 1500); }
   var KEY_LABEL = { NumpadAdd: "＋", NumpadSubtract: "−", NumpadMultiply: "＊", NumpadDivide: "／", NumpadDecimal: "．", NumpadEnter: "Enter", Backspace: "←" };
@@ -1162,7 +1191,100 @@
       }
     }
   });
-  setInterval(drawCntBar, 5000);
+  setInterval(function () { drawCntBar(); syncShifts(); }, 5000);
+
+  // ---------- 日報 → カウンター：型式（製造種類）の切り替え ----------
+  // カウンターの画面をテンキーで操作するのと同じ順番でキーを送る（カウンター側の変更は不要）。
+  //   作業中：＋ ＋（作業終了）→ 作業数 → Enter（保存）→ ．→ 製造種類の番号 → Enter（作業開始）
+  //   作業していない：．→ 番号 → Enter
+  var switching = false;
+  function cntState() { return parseJSON(localStorageGet(CNT.state), null); }
+  function sendKey(code, key) {
+    var a = counterAlive(); if (!a) return false;
+    localStorageSet(CNT.fwd, JSON.stringify({ to: a.id, code: code, key: key, shiftKey: false, t: Date.now(), n: Math.random() }));
+    return true;
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function waitFor(cond, ms) {
+    var t0 = Date.now();
+    return new Promise(function (res) {
+      (function poll() {
+        var st = cntState();
+        if (st && cond(st)) res(true); else if (Date.now() - t0 > ms) res(false); else setTimeout(poll, 100);
+      })();
+    });
+  }
+  function sendSeq(keys) {
+    return keys.reduce(function (p, k) { return p.then(function () { sendKey(k[0], k[1]); return sleep(180); }); }, Promise.resolve());
+  }
+  function digitKeys(s) { return String(s).split("").map(function (d) { return ["Numpad" + d, d]; }); }
+  // カウンターと同じ決め方で製造種類の番号を出す
+  function counterCode(st, name) {
+    var codes = st.shiftCodes || {}, used = {}, n = 1, map = {};
+    Object.keys(codes).forEach(function (k) { used[codes[k]] = 1; });
+    (st.shifts || []).forEach(function (sh) {
+      if (codes[sh]) { map[sh] = codes[sh]; return; }
+      while (used[String(n)]) n++;
+      map[sh] = String(n); used[String(n)] = 1;
+    });
+    return map[name];
+  }
+  // 日報の型式のうち、カウンターの製造種類にないものを足す（カウンターが作業していないときだけ）
+  function syncShifts(extra) {
+    var st = cntState();
+    if (!st || !counterAlive() || readOnly || (st.job && st.job.running) || !Array.isArray(st.shifts)) return false;
+    var names = master.models.map(function (m) { return m.name; }).concat(extra || []);
+    var missing = names.filter(function (n, i) { return n && names.indexOf(n) === i && st.shifts.indexOf(n) < 0; });
+    if (!missing.length) return false;
+    st.shifts = st.shifts.concat(missing);
+    localStorageSet(CNT.state, JSON.stringify(st)); // カウンターは別タブの変更を読み込む
+    showKey("カウンターに製造種類を追加：" + missing.join("、"));
+    return true;
+  }
+  function currentModel() { var r = lastActiveRow(); return r ? val("r" + r + "_model") : ""; }
+  // 前の作業（型式 shift）の作業枚数：いまの行の上に続いている、その型式の行の作業枚数の合計
+  function prevJobQty(shift) {
+    var r = lastActiveRow(), sum = 0;
+    for (var i = r - 1; i >= 1 && val("r" + i + "_model") === shift; i--) sum += num("r" + i + "_qty");
+    return Math.round(sum);
+  }
+  function switchCounter(model) {
+    var st = cntState();
+    if (switching || !st || !counterAlive()) return;
+    if (!(st.features && st.features.jobs)) { msg("カウンターの設定で「作業の開始・終了」がオフのため、型式を切り替えられません", "warn"); return; }
+    if (st.job && st.job.running && st.job.shift === model) return;
+    switching = true; drawCntBar();
+    var p = Promise.resolve(true), prev = st.job && st.job.running ? st.job.shift : null, qty = prev ? prevJobQty(prev) : 0;
+    if (prev) {
+      // カウンターの確認画面は、開いてから 0.25 秒以内の2回目の ＋ を受け付けない（押し間違い防止）ので間をあける
+      p = sendSeq([["NumpadAdd", "+"]]).then(function () { return sleep(450); }).then(function () { return sendSeq([["NumpadAdd", "+"]]); })
+        .then(function () { return waitFor(function (s) { return !s.job.running; }, 3000); })
+        .then(function (ok) {
+          if (!ok) throw new Error("カウンターの作業を終了できませんでした");
+          if (!qty) return true;
+          return sendSeq(digitKeys(qty).concat([["NumpadEnter", "Enter"]]))
+            .then(function () { return waitFor(function (s) { return s.lastJob && s.lastJob.prod === qty; }, 3000); });
+        });
+    }
+    p.then(function () {
+      syncShifts([model]);
+      return sleep(300);
+    }).then(function () {
+      var code = counterCode(cntState() || {}, model);
+      if (!code) throw new Error("カウンターに「" + model + "」が登録されていません");
+      return sendSeq([["NumpadDecimal", "."]].concat(digitKeys(code), [["NumpadEnter", "Enter"]]))
+        .then(function () { return waitFor(function (s) { return s.job.running && s.job.shift === model; }, 3000); });
+    }).then(function (ok) {
+      if (!ok) throw new Error("カウンターで作業を開始できませんでした");
+      msg("カウンターを「" + model + "」に切り替えました" + (prev ? "（「" + prev + "」の作業を終了" + (qty ? "・作業数 " + qty + " を入力" : "") + "）" : "（作業開始）"), "ok");
+    }).catch(function (err) {
+      msg("⚠ " + err.message + "。カウンターの画面で確認してください", "warn");
+    }).then(function () { switching = false; drawCntBar(); });
+  }
+  document.getElementById("cntBar").addEventListener("click", function (e) {
+    var a = e.target.getAttribute && e.target.getAttribute("data-cnt");
+    if (a) switchCounter(currentModel());
+  });
 
   // ---------- 保存 / 読込み ----------
   var hiddenExtra = ["cntImported", "autoVals"];
@@ -1240,6 +1362,14 @@
   // 型式を選んだら、前の行の素板ロットを引き継ぐ（同じ素板パレットの続き）
   form.addEventListener("change", function (e) {
     var m = /^r(\d+)_model$/.exec(e.target.name || "");
+    // いま入力している行の型式を変えたら、作業中のカウンターも切り替える
+    if (m && e.target.value && +m[1] === lastActiveRow() && isToday() && !readOnly) {
+      var cs = cntState();
+      if (cs && counterAlive() && cs.job && cs.job.running && cs.job.shift !== e.target.value) {
+        var target = e.target.value;
+        setTimeout(function () { switchCounter(target); }, 0);
+      }
+    }
     if (m && +m[1] > 1 && e.target.value && val("r" + m[1] + "_lotSoban") === "") setAuto("r" + m[1] + "_lotSoban", val("r" + (m[1] - 1) + "_lotSoban"));
     if (e.target.classList.contains("worker") && e.target.value.trim() && master.workers.indexOf(e.target.value.trim()) < 0) {
       master.workers.push(e.target.value.trim()); saveMaster();
@@ -1356,7 +1486,7 @@
     master.lotSuffix = document.getElementById("sSuffix").value.trim();
     var fr = parseInt(document.getElementById("sFrom").value, 10), to = parseInt(document.getElementById("sTo").value, 10);
     if (fr >= 0 && to > fr && to <= 24) { master.kadoFrom = fr; master.kadoTo = to; }
-    saveMaster(); dlg.close(); recalc(); save();
+    saveMaster(); dlg.close(); recalc(); save(); syncShifts();
     msg("設定を保存しました（型式 " + master.models.length + " 件・作業者 " + master.workers.length + " 人）", "ok");
   };
 
@@ -1518,6 +1648,7 @@
   var last = localStorageGet(PREFIX + "last"), today = ymd(new Date());
   load(today);
   drawCntBar();
+  setTimeout(syncShifts, 500);
   var lk = lockInfo();
   if (lockAlive(lk) && lk.id !== TAB) setReadOnly(true); else claim();
   if (!readOnly) {
