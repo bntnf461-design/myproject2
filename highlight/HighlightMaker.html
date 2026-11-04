@@ -1421,8 +1421,14 @@ async function rebuild() {
     const key = sel + ':' + Math.ceil(target / (spb * 4)) + ':v' + (S.songVar || 0);
     if (S.musicKey !== key) {
       setStatus('BGM を作曲中…', 'busy');
-      const r = await genMusic(sel, target, S.songVar || 0, q => setStatus(`BGM を作曲中… ${Math.round(q * 100)}%`, 'busy'));
-      if (token !== S.buildToken) return;
+      // 作った曲は3つまで覚えておく（おまかせ3案の切り替えをすぐにするため）
+      S.musicCache = S.musicCache || new Map();
+      let r = S.musicCache.get(key);
+      if (!r) {
+        r = await genMusic(sel, target, S.songVar || 0, q => setStatus(`BGM を作曲中… ${Math.round(q * 100)}%`, 'busy'));
+        if (token !== S.buildToken) return;
+        S.musicCache.set(key, r); while (S.musicCache.size > 3) S.musicCache.delete(S.musicCache.keys().next().value);
+      }
       S.music = r.buf; S.analysis = r.analysis; S.musicKey = key;
       const KEYN = ['ド', 'ド#', 'レ', 'レ#', 'ミ', 'ファ', 'ファ#', 'ソ', 'ソ#', 'ラ', 'ラ#', 'シ'];
       $('#musicInfo').innerHTML = `「${MUSIC[sel].name}」バージョン ${r.variant.v + 1} / ${SONG_VERSIONS}：キー ${KEYN[(MUSIC[sel].root + r.variant.tp + 120) % 12]}${MUSIC[sel].minor ? '（マイナー）' : ''}・テンポ ${r.variant.bpm} BPM` +
@@ -2726,7 +2732,7 @@ function wipeAll() {
   for (const c of S.clips) freeClip(c);
   for (const u of liveUrls) URL.revokeObjectURL(u); liveUrls.clear();
   try { if (window.HighlightApp && HighlightApp.clearPicked) HighlightApp.clearPicked(); } catch (e) { } // アプリ版：コピーした写真・動画も消す
-  S.clips = []; S.mainId = null; S.music = null; S.analysis = null; S.musicKey = ''; S.musicFile = null; S.tl = null;
+  S.clips = []; S.mainId = null; S.music = null; S.analysis = null; S.musicKey = ''; S.musicFile = null; S.tl = null; if (S.musicCache) S.musicCache.clear();
   clearExport();
   for (const k in pool) { pool[k].width = pool[k].height = 0; delete pool[k]; }
   overlayCache = {};
@@ -3068,7 +3074,7 @@ $('#titlePreviewBtn').onclick = () => {
   play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4;
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.04';
+const WEB_VER = '2026.11.05';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
