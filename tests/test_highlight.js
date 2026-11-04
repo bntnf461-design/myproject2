@@ -5,7 +5,8 @@ const { chromium } = require('playwright');
 const path = require('path');
 (async () => {
   const b = await chromium.launch();
-  const p = await b.newPage();
+  // アプリの通信禁止（CSP）がテスト道具の文字列実行も止めるので、テストの時だけ外す（アプリ自体の設定は変えない）
+  const p = await (await b.newContext({ bypassCSP: true })).newPage();
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));
   await p.goto('file://' + path.resolve(__dirname, '../highlight/HighlightMaker.html'));

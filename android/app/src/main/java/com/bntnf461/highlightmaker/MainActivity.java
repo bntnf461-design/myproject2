@@ -389,9 +389,9 @@ public class MainActivity extends Activity {
             // 撮影日だけを引き継ぐ（画面側が「撮影日」に使う。位置情報などほかの情報は引き継がない）
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in != null) {
-                    android.media.ExifInterface src = new android.media.ExifInterface(in);
-                    String dt = src.getAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL);
-                    if (dt == null) dt = src.getAttribute(android.media.ExifInterface.TAG_DATETIME);
+                    android.media.ExifInterface exifIn = new android.media.ExifInterface(in);
+                    String dt = exifIn.getAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL);
+                    if (dt == null) dt = exifIn.getAttribute(android.media.ExifInterface.TAG_DATETIME);
                     if (dt != null) {
                         android.media.ExifInterface dst = new android.media.ExifInterface(f.getAbsolutePath());
                         dst.setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, dt);
