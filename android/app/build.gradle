@@ -25,18 +25,35 @@ android {
     }
 
     signingConfigs {
-        // 毎回同じ署名にするための開発用の鍵（上書きインストールできるように）。Google Play 公開用ではありません
+        // 開発用の鍵（パスワードが公開されているので、配布用には使わないこと）
         devkey {
             storeFile file('highlight-dev.keystore')
             storePassword 'android'
             keyAlias 'highlight'
             keyPassword 'android'
         }
+        // 配布用の鍵：GitHub の Secrets（または環境変数）から読む。鍵とパスワードはリポジトリに置かない
+        //   RELEASE_KEYSTORE（鍵ファイルの場所）／RELEASE_STORE_PASSWORD／RELEASE_KEY_ALIAS／RELEASE_KEY_PASSWORD
+        def ks = System.getenv('RELEASE_KEYSTORE')
+        if (ks && file(ks).exists()) {
+            release {
+                storeFile file(ks)
+                storePassword System.getenv('RELEASE_STORE_PASSWORD')
+                keyAlias System.getenv('RELEASE_KEY_ALIAS')
+                keyPassword System.getenv('RELEASE_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug { signingConfig signingConfigs.devkey }
         release {
-            signingConfig signingConfigs.devkey
+            if (signingConfigs.findByName('release') != null) {
+                signingConfig signingConfigs.release
+            } else {
+                // 配布用の鍵がない時だけ開発用の鍵で署名する（その APK は配布しないこと）
+                logger.warn('警告: 配布用の鍵（RELEASE_KEYSTORE）がないので、開発用の鍵で署名します。この APK は配布しないでください。')
+                signingConfig signingConfigs.devkey
+            }
             minifyEnabled false
         }
     }

@@ -16,9 +16,28 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # 配布用の鍵：Secrets の ANDROID_KEYSTORE_BASE64（鍵ファイルを base64 にしたもの）と各パスワード。
+      # 登録していない時は開発用の鍵で署名されます（その APK は配布しないこと）
+      - name: Prepare release key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "RELEASE_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 がないので、開発用の鍵で署名します（配布しないこと）"
+          fi
       - name: Build APK
         working-directory: android
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleRelease
+      - name: Remove release key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
       - name: Collect APK
         run: |
           mkdir -p out

@@ -30,12 +30,12 @@
   color-scheme:dark;
 }
 :root[data-design="pop"]{
-  --bg:#fff7ef; --bg2:#ffeede; --surface:#ffffff; --surface2:#fff3e8; --line:#f2dcc9; --text:#2b1f33; --sub:#8a7584;
-  --accent:#ff6b4a; --accent2:#2bb8a6; --accentText:#fff; --ok:#1fa67a; --warn:#e58a00; --danger:#e5484d;
-  --grad:linear-gradient(135deg,#ffa63d 0%,#ff5f8f 55%,#8f6bff 100%);
+  --bg:#fff7ef; --bg2:#ffeede; --surface:#ffffff; --surface2:#fff3e8; --line:#f2dcc9; --text:#2b1f33; --sub:#6b5866;
+  --accent:#c8471b; --accent2:#1f8a7c; --accentText:#fff; --ok:#14805e; --warn:#a35f00; --danger:#c92a2a;
+  --grad:linear-gradient(135deg,#c8471b 0%,#c92a6a 55%,#6741d9 100%);
   --radius:24px; --radius-s:16px; --shadow:0 8px 0 rgba(43,31,51,.06),0 14px 30px rgba(255,107,74,.12);
   --font-head:"Hiragino Maru Gothic ProN","Rounded Mplus 1c","M PLUS Rounded 1c","Arial Rounded MT Bold",var(--font); --head-weight:800; --head-spacing:.02em;
-  --chip:#ffe6d6; --glow:0 0 0 2px #ff6b4a,0 8px 20px rgba(255,107,74,.25);
+  --chip:#ffe6d6; --glow:0 0 0 2px #c8471b,0 8px 20px rgba(200,71,27,.22);
   color-scheme:light;
 }
 :root[data-design="cinema"]{
@@ -132,7 +132,7 @@ select,input[type=text]{width:100%;background:var(--surface2);color:var(--text);
 .drop small{color:var(--sub)}
 .drop:hover,.drop.over{border-color:var(--accent)}
 .drop:active{transform:scale(.99)}
-.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;margin-top:12px}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:12px}
 .thumb{position:relative;aspect-ratio:1;border-radius:var(--radius-s);overflow:hidden;background:#000;border:1px solid var(--line)}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb .badge{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 5px;border-radius:6px}
@@ -209,6 +209,36 @@ summary{cursor:pointer;color:var(--sub);font-size:13px;padding:6px 0}
 .dlbox>*{flex:1}
 
 @media (max-width:440px){.brand small{display:none}.brand b{font-size:16px}.status{max-width:34vw}.status:not(.busy):not(.done){display:none}.design button{width:26px;height:26px}.design{gap:5px}.appbar{gap:8px}}
+/* 小さなボタンも、指で押せる範囲は 44px 以上にする（見た目は小さいまま） */
+.thumb .x::after,.thumb .star::after{content:"";position:absolute;inset:-8px}
+.design button{position:relative}
+.design button::after{content:"";position:absolute;inset:-7px}
+.thumb .x{width:28px;height:28px;font-size:13px}
+.thumb .star{height:28px}
+.thumb{cursor:pointer}
+/* スマホ：プレビューを上に固定して、設定を変えながら結果が見えるようにする */
+@media (max-width:980px) and (min-height:500px){
+  #stageSec{position:sticky;top:var(--appbarH,57px);z-index:15}
+  .stage{padding:8px;border-radius:0 0 var(--radius) var(--radius);margin:0 -12px;border-left:0;border-right:0;border-top:0}
+  .canvasWrap{height:min(30vh,320px)}
+  #timeline{height:30px;margin-top:6px}
+  .meta{margin-top:4px}
+  .meta span:last-child{display:none}
+  .info{margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+  .info.open{display:block}
+}
+@media (max-width:980px) and (min-height:500px) and (max-height:700px){
+  .canvasWrap{height:24vh} #timeline{height:22px} .info{-webkit-line-clamp:1}
+}
+.sheet .row button{font-size:14px;padding:8px 6px;white-space:nowrap}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:40;display:flex;gap:10px;align-items:center;background:var(--text);color:var(--bg);padding:8px 8px 8px 16px;border-radius:99px;box-shadow:var(--shadow);font-size:14px;max-width:calc(100vw - 24px)}
+.toast button{min-height:40px;background:var(--bg);color:var(--text);border:0;border-radius:99px;font-weight:700}
+.sheet-bg{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:min(560px,100%);background:var(--surface);color:var(--text);border-radius:var(--radius) var(--radius) 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:var(--shadow);max-height:85vh;overflow:auto}
+.sheet h3{margin:0 0 8px;font-size:17px;font-family:var(--font-head)}
+.sheet img{width:96px;height:96px;object-fit:cover;border-radius:var(--radius-s);float:right;margin:0 0 8px 8px}
+.sheet .row button{flex:1}
+.thumb .cap{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:9px;line-height:1.3;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 #hidden{position:fixed;left:0;bottom:0;width:2px;height:2px;overflow:hidden;opacity:.01;pointer-events:none;z-index:-1}
 #jsWarn{background:#5a1d1d;color:#fff;padding:14px 16px;line-height:1.7;font-size:15px}
 #jsWarn b{color:#ffd23f}
@@ -340,13 +370,14 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <button data-v="theend"><b>THE END</b><small>映画風</small></button>
       <button data-v="thanks"><b>ありがとう</b><small>やさしく</small></button>
     </div>
-    <label class="check" style="margin-top:12px"><input type="checkbox" id="showDate"> 写真ごとに日付を入れる（ファイルの日付）</label>
+    <label class="check" style="margin-top:12px"><input type="checkbox" id="showDate"> 動画に撮影日を入れる（写真ごと・テーマのサブタイトル）</label>
+    <p class="hint">撮影日は写真・動画の中の記録から読みます。分からない素材には入りません。オフの時は日付は一切入りません。</p>
     <div class="panelnav"><button class="ghost" data-go="3">← 戻る</button><button class="primary next" data-go="5">次へ：仕上げ →</button></div>
   </div>
 
   <div class="panel" data-panel="5" hidden>
     <h2>仕上げて保存</h2>
-    <p class="lead">形と長さを決めて、下の「保存」を押します。保存は再生と同じ時間がかかります。</p>
+    <p class="lead">形と長さを決めて、下の「⬇ 保存」を押します。保存にかかる時間は端末によって、動画の長さの半分〜2倍くらいです。終わるまでこの画面を開いたままにしてください。</p>
     <div class="sub-h">画面の形</div>
     <div class="seg" id="aspectSeg"></div>
     <div class="sub-h">長さ</div>
@@ -357,7 +388,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <option value="9:16">縦長 9:16</option><option value="16:9">横長 16:9</option><option value="1:1">正方形</option><option value="4:5">縦 4:5</option>
     </select>
     <select id="length" class="vh" aria-hidden="true" tabindex="-1">
-      <option value="30">30秒</option><option value="45">45秒</option><option value="60" selected>1分</option>
+      <option value="30">30秒</option><option value="45">45秒</option><option value="60" selected>1分</option><option value="90">1分30秒</option><option value="120">2分</option>
     </select>
     <select id="quality" class="vh" aria-hidden="true" tabindex="-1"><option value="720">720p</option><option value="1080">1080p</option></select>
     <div class="privacy">
@@ -514,8 +545,9 @@ const liveUrls = new Set();
 function trackUrl(u) { liveUrls.add(u); return u; }
 function freeClip(c) {
   c.file = null; c.mp4 = null;
+  const u = c.el.src; // src を外す前に一時アドレスを覚えておく（外した後だと空になり、解放できない）
   if (c.type === 'video') { c.el.pause(); c.el.removeAttribute('src'); c.el.load(); c.el.remove(); }
-  const u = c.el.src; if (liveUrls.has(u)) { URL.revokeObjectURL(u); liveUrls.delete(u); }
+  if (u && liveUrls.has(u)) { URL.revokeObjectURL(u); liveUrls.delete(u); }
   if (c.type === 'image') { if (c.el.tagName === 'CANVAS') c.el.width = c.el.height = 0; else c.el.removeAttribute('src'); }
 }
 let clipId = 0;
@@ -541,20 +573,59 @@ async function sniff(f) {
   if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(f.name)) return { kind: 'image', fmt: (f.name.split('.').pop() || '?').toUpperCase() };
   return null;
 }
+/* 撮影日を読む（写真：EXIF の撮影日時／動画：MP4・MOV の作成日時）。読めない時は null
+   ※ ファイルの更新日（lastModified）は「選んだ日」になることが多いので使わない */
+const EXIF_DATE = /((?:19|20)\d\d):([01]\d):([0-3]\d) ([0-2]\d):([0-5]\d):([0-5]\d)/;
+async function readMediaDate(f, kind) {
+  try {
+    if (kind === 'video') {
+      let off = 0;
+      for (let n = 0; n < 64 && off + 8 <= f.size; n++) {
+        const h = new DataView(await f.slice(off, off + 16).arrayBuffer());
+        let bs = h.getUint32(0); const type = String.fromCharCode(h.getUint8(4), h.getUint8(5), h.getUint8(6), h.getUint8(7));
+        if (bs === 1 && h.byteLength >= 16) bs = Number(h.getBigUint64(8)); else if (bs === 0) bs = f.size - off;
+        if (bs < 8) break;
+        if (type === 'moov') {
+          const dv = new DataView(await f.slice(off, Math.min(off + bs, off + 65536)).arrayBuffer());
+          for (let o = 8; o + 8 <= dv.byteLength;) {
+            const cs = dv.getUint32(o), ct = String.fromCharCode(dv.getUint8(o + 4), dv.getUint8(o + 5), dv.getUint8(o + 6), dv.getUint8(o + 7));
+            if (ct === 'mvhd') {
+              const v1 = dv.getUint8(o + 8) === 1, sec = v1 ? Number(dv.getBigUint64(o + 12)) : dv.getUint32(o + 12);
+              if (!sec) return null;
+              const d = new Date((sec - 2082844800) * 1000); // 1904年1月1日からの秒
+              return d.getFullYear() >= 1990 && d <= new Date(Date.now() + 864e5) ? d : null;
+            }
+            if (cs < 8) break; o += cs;
+          }
+          return null;
+        }
+        off += bs;
+      }
+      return null;
+    }
+    const head = new Uint8Array(await f.slice(0, 262144).arrayBuffer());
+    let s = ''; for (let i = 0; i < head.length; i += 8192) s += String.fromCharCode(...head.subarray(i, i + 8192));
+    const m = s.match(EXIF_DATE); if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    return isNaN(d) || d.getFullYear() < 1990 ? null : d;
+  } catch (e) { return null; }
+}
+const MAX_CLIPS = 60; // 素材の数の上限（スマホのメモリを守る）
 async function addFiles(files) {
   files = [...files];
   if (!files.length) return;
   setStatus('素材を読み込み中…', 'busy');
   const failed = [];
-  let i = 0;
+  let i = 0, skipped = 0;
   for (const f of files) {
     i++; setStatus(`素材を読み込み中… ${i}/${files.length}`, 'busy');
+    if (S.clips.length >= MAX_CLIPS) { skipped++; continue; }
     const label = f.name || ('ファイル' + i);
     const t = await sniff(f);
     if (!t) { failed.push(`・${label}：写真・動画ではないようです`); continue; }
     try {
       const clip = t.kind === 'video' ? await loadVideo(f, t) : await loadImage(f, t);
-      clip.id = ++clipId; clip.name = label; clip.date = new Date(f.lastModified || Date.now());
+      clip.id = ++clipId; clip.name = label; clip.date = await readMediaDate(f, t.kind);
       S.clips.push(clip);
       renderThumbs();
     } catch (e) {
@@ -564,17 +635,69 @@ async function addFiles(files) {
   }
   setStatus(failed.length ? `${failed.length} 個を読み込めませんでした` : '準備OK', failed.length ? 'busy' : '');
   if (failed.length) alert('読み込めなかったファイルがあります。\n\n' + failed.join('\n') + '\n\n（' + (APP_VER ? 'Android アプリ v' + APP_VER : 'Web 版') + '・画面 ' + WEB_VER + '）');
+  if (skipped) alert(`素材は ${MAX_CLIPS} 個までです（スマホのメモリを守るため）。${skipped} 個は追加しませんでした。`);
   rebuild();
 }
-const MAX_IMG = 2160; // 写真の長い辺の最大（出力 1080×1920 をズームしてもきれいな大きさ）
-/* 縮小して canvas に持つ（スマホの写真は 1200万〜4800万画素あり、そのままだと重くメモリも大量に使う） */
-function toClipImage(src, w0, h0) {
+const MAX_IMG = 1920; // 写真の長い辺の最大（出力 1080×1920 にちょうど足りる大きさ）
+/* 縮小して JPEG にし、画像（img）として持つ。
+   ・スマホの写真は 1200万〜4800万画素あり、そのままだと重くメモリも大量に使う
+   ・canvas のまま持つと iPhone の「canvas の合計メモリ上限」にすぐ届くので、圧縮した画像で持つ */
+async function toClipImage(src, w0, h0) {
   const k = Math.min(1, MAX_IMG / Math.max(w0, h0));
-  const el = document.createElement('canvas'); el.width = Math.max(1, Math.round(w0 * k)); el.height = Math.max(1, Math.round(h0 * k));
-  const x = el.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, el.width, el.height);
+  const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w0 * k)); cv.height = Math.max(1, Math.round(h0 * k));
+  const x = cv.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, cv.width, cv.height);
+  const look = analyzePhoto(cv);
+  // 顔を見つける機能がある端末（一部の Chrome など）では、顔の位置を注目点にする（端末の中だけで処理）
+  if (window.FaceDetector) {
+    try {
+      const faces = await new FaceDetector({ fastMode: true, maxDetectedFaces: 8 }).detect(cv);
+      if (faces.length) {
+        let ax = 0, ay = 0, aw = 0; for (const f of faces) { const b = f.boundingBox, a = b.width * b.height; ax += (b.x + b.width / 2) * a; ay += (b.y + b.height / 2) * a; aw += a; }
+        look.focus = { x: clamp(ax / aw / cv.width, .1, .9), y: clamp(ay / aw / cv.height, .1, .9) }; look.faces = faces.length;
+      }
+    } catch (e) { }
+  }
+  let el = cv;
+  try {
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', .9));
+    if (blob) {
+      const u = trackUrl(URL.createObjectURL(blob));
+      try { el = await imgFromUrl(u); if (el.decode) await el.decode().catch(() => { }); cv.width = cv.height = 0; }
+      catch (e) { URL.revokeObjectURL(u); liveUrls.delete(u); el = cv; }
+    }
+  } catch (e) { el = cv; }
+  const w = el === cv ? cv.width : el.naturalWidth, h = el === cv ? cv.height : el.naturalHeight;
+  return { type: 'image', el, w, h, thumb: thumbOf(el, w, h, look.focus), origW: w0, origH: h0, ...look };
+}
+/* 160×160 の見本（注目する位置を中心に切り取る） */
+function thumbOf(el, w, h, focus) {
   const tc = document.createElement('canvas'); tc.width = tc.height = 160;
-  drawCover(tc.getContext('2d'), el, el.width, el.height, 0, 0, 160, 160);
-  return { type: 'image', el, w: el.width, h: el.height, thumb: tc.toDataURL('image/jpeg', .7), origW: w0, origH: h0 };
+  const s = 160 / Math.min(w, h), f = focus || { x: .5, y: .5 };
+  const ox = clamp((.5 - f.x) * w * s, -(w * s - 160) / 2, (w * s - 160) / 2) / 160, oy = clamp((.5 - f.y) * h * s, -(h * s - 160) / 2, (h * s - 160) / 2) / 160;
+  drawCover(tc.getContext('2d'), el, w, h, 0, 0, 160, 160, 1, ox, oy);
+  const u = tc.toDataURL('image/jpeg', .7); tc.width = tc.height = 0; return u;
+}
+/* 写真の「見どころ」：注目する位置（顔の色・細かい模様が多い所）とピントの良さ。
+   小さく縮めた絵で計算するので速い（顔検出の機能がある端末では、あとで顔の位置で上書き） */
+function analyzePhoto(src) {
+  const N = 48, c = document.createElement('canvas'), sw = src.width, sh = src.height;
+  const gw = sw >= sh ? N : Math.max(8, Math.round(N * sw / sh)), gh = sw >= sh ? Math.max(8, Math.round(N * sh / sw)) : N;
+  c.width = gw; c.height = gh; const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(src, 0, 0, gw, gh);
+  const d = x.getImageData(0, 0, gw, gh).data, L = new Float32Array(gw * gh);
+  for (let i = 0; i < L.length; i++) L[i] = d[i * 4] * .3 + d[i * 4 + 1] * .59 + d[i * 4 + 2] * .11;
+  let sx = 0, sy = 0, sw2 = 0, lap = 0, lapN = 0, lapM = 0;
+  for (let y = 1; y < gh - 1; y++) for (let xx = 1; xx < gw - 1; xx++) {
+    const i = y * gw + xx, r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2];
+    const e = Math.abs(L[i - 1] - L[i + 1]) + Math.abs(L[i - gw] - L[i + gw]);
+    const lp = 4 * L[i] - L[i - 1] - L[i + 1] - L[i - gw] - L[i + gw]; lap += lp * lp; lapM += lp; lapN++;
+    const skin = r > 95 && g > 40 && b > 20 && r > g && r > b && r - Math.min(g, b) > 15 && Math.abs(r - g) > 15 ? 1 : 0; // 肌の色
+    const cx = xx / gw - .5, cy = y / gh - .45, center = Math.exp(-(cx * cx + cy * cy) * 4); // 中央・少し上を重視
+    const wgt = (e / 60 + skin * 1.5) * (.35 + center);
+    sx += xx / gw * wgt; sy += y / gh * wgt; sw2 += wgt;
+  }
+  const varLap = lapN ? lap / lapN - (lapM / lapN) ** 2 : 0;
+  const fx = sw2 ? clamp(sx / sw2, .2, .8) : .5, fy = sw2 ? clamp(sy / sw2, .2, .8) : .45;
+  return { focus: { x: fx, y: fy }, sharp: varLap };
 }
 function imgFromUrl(url) {
   return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = () => rej(new Error('画像として開けません')); img.src = url; });
@@ -582,15 +705,15 @@ function imgFromUrl(url) {
 function readDataUrl(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error || new Error('ファイルを読めません')); r.readAsDataURL(f); }); }
 /* 写真の読み込み：①直接デコード ②一時アドレス ③データとして読む の順に試す */
 async function loadImage(f, t = {}) {
-  if (typeof f === 'string') { const img = await imgFromUrl(f); return toClipImage(img, img.naturalWidth, img.naturalHeight); }
+  if (typeof f === 'string') { const img = await imgFromUrl(f); return await toClipImage(img, img.naturalWidth, img.naturalHeight); }
   const errs = [];
   if (window.createImageBitmap) {
-    try { const bm = await createImageBitmap(f, { imageOrientation: 'from-image' }); const c = toClipImage(bm, bm.width, bm.height); bm.close && bm.close(); return c; }
+    try { const bm = await createImageBitmap(f, { imageOrientation: 'from-image' }); const c = await toClipImage(bm, bm.width, bm.height); bm.close && bm.close(); return c; }
     catch (e) { errs.push('直接:' + (e.name || e.message)); }
   }
-  try { const u = URL.createObjectURL(f); try { const img = await imgFromUrl(u); return toClipImage(img, img.naturalWidth, img.naturalHeight); } finally { URL.revokeObjectURL(u); } }
+  try { const u = URL.createObjectURL(f); try { const img = await imgFromUrl(u); return await toClipImage(img, img.naturalWidth, img.naturalHeight); } finally { URL.revokeObjectURL(u); } }
   catch (e) { errs.push('URL:' + e.message); }
-  try { const img = await imgFromUrl(await readDataUrl(f)); return toClipImage(img, img.naturalWidth, img.naturalHeight); }
+  try { const img = await imgFromUrl(await readDataUrl(f)); return await toClipImage(img, img.naturalWidth, img.naturalHeight); }
   catch (e) { errs.push('データ:' + e.message); }
   if (t.fmt === 'HEIC') throw new Error('HEIC 形式はこの端末のブラウザで開けません。カメラの設定で「互換性優先（JPEG）」にするか、JPEG に変換してください');
   throw new Error('この端末では開けない画像です（' + errs.join(' / ') + '）');
@@ -647,6 +770,10 @@ async function loadVideo(file, t = {}) {
   // サムネイル
   const c = document.createElement('canvas'); c.width = 160; c.height = 160;
   await seekTo(v, clip.highlights[0]);
+  { // 注目する位置（見どころのコマで計算。縦横混在の画面でも被写体が切れにくくなる）
+    const fc = document.createElement('canvas'); [fc.width, fc.height] = fitDims(clip.w, clip.h, 192); fc.getContext('2d').drawImage(v, 0, 0, fc.width, fc.height);
+    clip.focus = analyzePhoto(fc).focus; fc.width = fc.height = 0;
+  }
   drawCover(c.getContext('2d'), v, clip.w, clip.h, 0, 0, 160, 160);
   clip.thumb = c.toDataURL('image/jpeg', .7);
   return clip;
@@ -711,23 +838,78 @@ function renderThumbs() {
     const isMain = c.id === S.mainId;
     const d = document.createElement('div'); d.className = 'thumb' + (isMain ? ' main' : ''); d.title = c.name;
     d.innerHTML = `<img src="${c.thumb}" alt=""><span class="badge">${i + 1}${c.type === 'video' ? ' ▶' : ''}</span>`;
+    if (c.caption) { const cp = document.createElement('span'); cp.className = 'cap'; cp.textContent = '💬 ' + c.caption; d.appendChild(cp); }
+    d.onclick = e => { if (e.target === d || e.target.tagName === 'IMG') openClipSheet(c); }; // 素材をタップ：並べ替え・文字・外す
     const st = document.createElement('button'); st.className = 'star'; st.textContent = isMain ? '★ メイン' : '☆';
     st.setAttribute('aria-pressed', isMain); st.setAttribute('aria-label', isMain ? 'メインをやめる' : 'メインにする');
     st.onclick = () => { S.mainId = isMain ? null : c.id; renderThumbs(); rebuild(); };
     d.appendChild(st);
-    const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.title = '外す';
-    x.onclick = () => { S.clips.splice(i, 1); if (c.id === S.mainId) S.mainId = null; freeClip(c); renderThumbs(); rebuild(); };
+    const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.title = '外す'; x.setAttribute('aria-label', '外す');
+    x.onclick = () => removeClips([c]);
     d.appendChild(x); box.appendChild(d);
   });
   $('#drop').innerHTML = S.clips.length
-    ? `<span class="big">➕</span><b>${S.clips.length} 個えらびました</b><small>タップでさらに追加</small>`
+    ? `<span class="big">➕</span><b>${S.clips.length} 個えらびました</b><small>タップでさらに追加（素材をタップすると並べ替え・文字入れ）</small>`
     : '<span class="big">📷</span><b>タップして選ぶ</b><small>写真・動画（JPG / PNG / MP4 / MOV など）</small>';
   const mh = $('#mainHint'); mh.hidden = !S.clips.length;
   renderMainOpts(!!S.clips.find(c => c.id === S.mainId));
   const m = S.clips.find(c => c.id === S.mainId);
-  mh.innerHTML = m ? `★ メインは「${m.name.replace(/[<>&]/g, '')}」。下で使い方を選べます。プレビュー下の帯の<b style="color:#e0a800">黄色い線</b>がメインの場所です。` : '☆ をタップすると、その写真・動画が<b>メイン</b>（主役）になります。最初・最後・一番盛り上がる所で長めに使います。';
+  mh.innerHTML = m ? '★ メインは「<span></span>」。下で使い方を選べます。プレビュー下の帯の<b style="color:#e0a800">黄色い線</b>がメインの場所です。' : '☆ をタップすると、その写真・動画が<b>メイン</b>（主役）になります。最初・最後・一番盛り上がる所で長めに使います。';
+  if (m) mh.querySelector('span').textContent = m.name;
   updateSteps();
 }
+/* 素材を外す（5秒間は「元に戻す」ができる。戻さなければメモリから消す） */
+let undoState = null;
+function removeClips(list) {
+  if (undoState) finishUndo();
+  const removed = list.map(c => ({ c, i: S.clips.indexOf(c), main: c.id === S.mainId })).filter(r => r.i >= 0).sort((a, b) => a.i - b.i);
+  if (!removed.length) return;
+  S.clips = S.clips.filter(c => !list.includes(c)); if (removed.some(r => r.main)) S.mainId = null;
+  renderThumbs(); rebuild();
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+  t.innerHTML = `<span>${removed.length === 1 ? '1 個はずしました' : removed.length + ' 個はずしました'}</span>`;
+  const bt = document.createElement('button'); bt.textContent = '元に戻す'; t.appendChild(bt); document.body.appendChild(t);
+  undoState = { removed, toast: t, timer: setTimeout(finishUndo, 5000) };
+  bt.onclick = () => {
+    const u = undoState; if (!u) return; clearTimeout(u.timer); u.toast.remove(); undoState = null;
+    for (const r of u.removed) { S.clips.splice(Math.min(r.i, S.clips.length), 0, r.c); if (r.main) S.mainId = r.c.id; }
+    renderThumbs(); rebuild();
+  };
+}
+function finishUndo() {
+  const u = undoState; if (!u) return; undoState = null; clearTimeout(u.timer); u.toast.remove();
+  for (const r of u.removed) if (!S.clips.includes(r.c)) freeClip(r.c);
+  if (!S.clips.length) { try { if (window.HighlightApp && HighlightApp.clearPicked) HighlightApp.clearPicked(); } catch (e) { } } // アプリ版：コピーした写真・動画も消す
+}
+/* 素材ごとの編集：順番・この素材に出す文字・メイン・外す */
+function openClipSheet(c) {
+  closeClipSheet();
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.id = 'clipSheet';
+  const sh = document.createElement('div'); sh.className = 'sheet'; sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-label', '素材の編集');
+  sh.innerHTML = `<img alt=""><h3></h3><p class="hint" style="margin:0 0 8px"></p>
+    <label class="field"><span>この素材に出す文字（字幕・なくてもOK）</span><input type="text" maxlength="30" placeholder="例：はじめての海"></label>
+    <div class="sub-h">順番（「シャッフル」がオフの時、この順で使います）</div>
+    <div class="row"><button data-a="first">⏮ 最初</button><button data-a="prev">← 前</button><button data-a="next">後 →</button><button data-a="last">最後 ⏭</button></div>
+    <div class="row"><button data-a="main"></button><button data-a="remove">✕ 外す</button></div>
+    <div class="row"><button data-a="close" class="primary">閉じる</button></div>`;
+  sh.querySelector('img').src = c.thumb; sh.querySelector('h3').textContent = c.name;
+  const idx = () => S.clips.indexOf(c);
+  const info = () => { sh.querySelector('.hint').textContent = `${idx() + 1} 番目 ／ ${c.type === 'video' ? '動画 ' + fmt(c.duration) : '写真'}` + (c.date ? ' ／ 撮影 ' + dateText(c.date) : '') + (c.type === 'image' && c.blurry ? ' ／ 少しぼやけているので控えめに使います' : ''); sh.querySelector('[data-a="main"]').textContent = c.id === S.mainId ? '★ メインをやめる' : '☆ メインにする'; };
+  info();
+  const inp = sh.querySelector('input'); inp.value = c.caption || '';
+  inp.oninput = () => { c.caption = inp.value.trim(); if (!S.playing && S.tl) { const sg = S.tl.segs.find(x => x.clip === c); if (sg) { S.pos = Math.min(sg.s + .5, S.tl.total); drawFrame(S.pos); } } };
+  const move = to => { const i = idx(); if (i < 0) return; to = clamp(to, 0, S.clips.length - 1); if (to === i) return; S.clips.splice(i, 1); S.clips.splice(to, 0, c); info(); renderThumbs(); rebuild(); };
+  sh.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+    const a = b.dataset.a;
+    if (a === 'first') move(0); else if (a === 'prev') move(idx() - 1); else if (a === 'next') move(idx() + 1); else if (a === 'last') move(S.clips.length - 1);
+    else if (a === 'main') { S.mainId = c.id === S.mainId ? null : c.id; info(); renderThumbs(); rebuild(); }
+    else if (a === 'remove') { closeClipSheet(); removeClips([c]); }
+    else closeClipSheet();
+  });
+  bg.onclick = e => { if (e.target === bg) closeClipSheet(); };
+  bg.appendChild(sh); document.body.appendChild(bg);
+}
+function closeClipSheet() { const s0 = $('#clipSheet'); if (s0) { s0.remove(); renderThumbs(); } }
 
 /* サンプル素材：色とりどりの絵を作る */
 async function makeDemo() {
@@ -914,6 +1096,9 @@ const MUSIC = {
   clap: { cat: '楽しい', name: 'ハンドクラップ', mood: 'みんなで手拍子', bpm: 108, root: 58, prog: [[0, 4, 7, 10], [5, 9, 12, 15], [0, 4, 7, 10], [7, 11, 14, 17]],
     g: { k: 'x.....x...x.....', c: '....x.......x...', cExtra: '....x..x....x...', h: 'x.x.x.x.x.x.x.x.', hv: .07, bass: { p: 'x.....x...x...x.', w: 'square', cut: 700, v: .2, walk: true }, chord: { type: 'piano', p: 'x..x..x...x..x..', w: 'triangle', cut: 3000, v: .05, oct: 12 }, lead: { w: 'triangle', p: 'x.x.x...x.x.x...', v: .07, oct: 12 } } },
 };
+// 曲ごとの響きの量（しっとりした曲は多め、速い・重い曲は少なめ）
+Object.assign(MUSIC.ballad, { wet: .36 }); Object.assign(MUSIC.cinematic, { wet: .34 }); Object.assign(MUSIC.acoustic, { wet: .26 }); Object.assign(MUSIC.wafu, { wet: .3 });
+Object.assign(MUSIC.lofi, { wet: .14 }); Object.assign(MUSIC.dnb, { wet: .12 }); Object.assign(MUSIC.trap, { wet: .1 }); Object.assign(MUSIC.rock, { wet: .14 }); Object.assign(MUSIC.chiptune, { wet: .1 });
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 /* ---- 曲のバージョン：キー・テンポ・コード進行・リズム・展開を変える ---- */
 const PROG_MAJ = [[[0, 4, 7], [9, 12, 16], [5, 9, 12], [7, 11, 14]], [[5, 9, 12], [7, 11, 14], [4, 7, 11], [9, 12, 16]], [[9, 12, 16], [5, 9, 12], [0, 4, 7], [7, 11, 14]],
@@ -964,18 +1149,30 @@ async function genMusic(kind, seconds, variant = 0, onProgress) {
   // 最後のサビで1音上げる（転調）バージョン
   let lastChorus = -1; if (V.mod && bars >= 16) for (let b = bars - 1; b > 2; b--) if (section(b) === 'chorus' && section(b - 1) !== 'chorus') { lastChorus = b; break; }
   const isMod = b => lastChorus > 0 && b >= lastChorus;
+  // 残響の元（左右で少しちがうノイズが減衰していく）。1曲で1回だけ作る
+  const vLen = Math.round(sr * 1.6), vL = new Float32Array(vLen), vR = new Float32Array(vLen); { const r = mulberry32(seed + 99);
+    for (let i = 0; i < vLen; i++) { const e = Math.pow(1 - i / vLen, 3.2) * (i < sr * .012 ? i / (sr * .012) : 1); vL[i] = (r() * 2 - 1) * e; vR[i] = (r() * 2 - 1) * e; } }
+  const verb = oc => { const b = oc.createBuffer(2, vLen, sr); b.getChannelData(0).set(vL); b.getChannelData(1).set(vR); return b; };
   const barKey = b => [section(b), b % 4, section(b + 1), section(b - 1), b === bars - 1, isMod(b)].join('|');
   async function renderBar(b) {
     const oc = new OfflineAudioContext(2, Math.ceil(sr * (bar + TAIL)), sr);
     const rng = mulberry32(seed * 7919 + (b % 4) * 131 + barKey(b).length * 17 + ['intro', 'verse', 'build', 'chorus', 'break', 'outro'].indexOf(section(b)) * 1009);
     const comp = oc.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.connect(oc.destination);
     const master = oc.createGain(); master.gain.value = .75; master.connect(comp);
+    // 残響（リバーブ）：部屋の響きを足して、電子音っぽさをやわらげる。低音は響かせない（こもらないように）
+    if (verb) {
+      const send = oc.createBiquadFilter(); send.type = 'highpass'; send.frequency.value = 350;
+      const cv = oc.createConvolver(); cv.buffer = verb(oc); const wet = oc.createGain(); wet.gain.value = M.wet ?? .22;
+      master.connect(send).connect(cv).connect(wet).connect(comp);
+    }
     let bus = master;
     if (kind === 'lofi' || M.lp) { const lp = oc.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2800; lp.connect(master); bus = lp; }
     const nb = oc.createBuffer(1, sr, sr); nb.getChannelData(0).set(noiseData);
     const env = (g, t, a, peak, d) => { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); };
     const kick = (t, v = 1) => { const o = oc.createOscillator(), g = oc.createGain(); o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(42, t + .13); env(g, t, .003, v, .38); o.connect(g).connect(bus); o.start(t); o.stop(t + .45); };
-    const noise = (t, type, freq, v, d, q = .7) => { const s = oc.createBufferSource(); s.buffer = nb; const f = oc.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; const g = oc.createGain(); env(g, t, .002, v, d); s.connect(f).connect(g).connect(bus); s.start(t, rng() * .5); s.stop(t + d + .05); };
+    // 高い音（ハイハットなど）は左右に少し散らして広がりを出す
+    const panTo = (node, p) => { if (!p || !oc.createStereoPanner) return node.connect(bus); const pn = oc.createStereoPanner(); pn.pan.value = p; node.connect(pn).connect(bus); };
+    const noise = (t, type, freq, v, d, q = .7) => { const s = oc.createBufferSource(); s.buffer = nb; const f = oc.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; const g = oc.createGain(); env(g, t, .002, v, d); s.connect(f).connect(g); panTo(g, type === 'highpass' && freq >= 5000 ? (rng() * 2 - 1) * .3 : 0); s.start(t, rng() * .5); s.stop(t + d + .05); };
     const snare = (t, v = .6) => { noise(t, 'highpass', 1500, v, .18); const o = oc.createOscillator(), g = oc.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(140, t + .08); env(g, t, .002, v * .6, .1); o.connect(g).connect(bus); o.start(t); o.stop(t + .15); };
     const clap = (t, v = .5) => { for (let k = 0; k < 3; k++) noise(t + k * .012, 'bandpass', 1400, v, .09, 1.2); noise(t + .03, 'bandpass', 1400, v * .7, .2, 1.2); };
     const hat = (t, v = .18, open = false) => noise(t, 'highpass', 8000, v, open ? .22 : .04);
@@ -984,7 +1181,7 @@ async function genMusic(kind, seconds, variant = 0, onProgress) {
     const tone = (t, m, len, type, v, cutoff = 2000, a = .005, det = 0) => {
       const g = oc.createGain(); const f = oc.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(cutoff, t); f.frequency.exponentialRampToValueAtTime(Math.max(200, cutoff * .3), t + len);
       g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + a); g.gain.setValueAtTime(v, t + Math.max(a, len - .05)); g.gain.exponentialRampToValueAtTime(0.0001, t + len + .12);
-      f.connect(g).connect(bus);
+      f.connect(g); panTo(g, m >= RB + 12 ? (rng() * 2 - 1) * .25 : 0); // 高い音（コード・メロディ）は少し左右に
       const os = det ? [-det, det] : [0];
       for (const d of os) { const o = oc.createOscillator(); o.type = type; o.frequency.value = mtof(m); o.detune.value = d; o.connect(f); o.start(t); o.stop(t + len + .15); }
     };
@@ -1175,15 +1372,13 @@ function setSegSource(seg, used) {
   }
   seg.src = best; used.push([best, best + L]);
 }
-function repeatNote(segs, n) {
-  // 同じ場面（写真の同じ見え方・動画の重なる区間）の出た回数
-  let same = 0; const seen = new Map();
-  for (const s of segs) {
-    const key = s.clip.type === 'video' ? null : s.clip.id + ':' + (s.fz || 1);
-    if (key) { if (seen.has(key)) same++; seen.set(key, 1); }
-  }
-  const per = segs.length / n;
-  return per > 4 ? ` ／ <span style="color:var(--warn)">素材が少ないので同じ素材が多めです（あと ${Math.ceil(segs.length / 3 - n)} 個くらい足すと自然です）</span>` : '';
+/* 同じ場面のくり返しが多い時の案内。scenes＝使える場面の数（写真は寄り方を変えて2場面、動画は長さに応じて） */
+function repeatNote(segs, n, scenes) {
+  const warn = t => ` ／ <span style="color:var(--warn)">${t}</span>`;
+  if (n < 3) return warn(`素材が ${n} 個だけなので、同じ場面がくり返されます。5 個以上がおすすめです`);
+  if (segs.length / Math.max(1, scenes) <= 3) return '';
+  const more = Math.min(30, Math.ceil(segs.length / 3 - scenes));
+  return more > 0 ? warn(`同じ場面が多めです（写真・動画をあと ${more} 個くらい足すと自然です）`) : '';
 }
 function eligibleBeats(an, from, to) { return an.beats.map((b, i) => ({ t: b, i })).filter(o => o.t > from + .05 && o.t < to - .05); }
 function avgBeats(st) { return st.cut.reduce((a, b) => a + b, 0) / st.cut.length; }
@@ -1196,7 +1391,14 @@ async function rebuild() {
   ['#playBtn', '#exportBtn'].forEach(s => $(s).disabled = !ok);
   if (!ok) { S.building = false; S.tl = null; drawEmpty(); drawTimeline(); return; }
   const rng = mulberry32(S.seed);
-  const st = resolveStyle(rng);
+  let st = resolveStyle(rng);
+  // 素材が1〜2個の時は、同じ絵を何枚も並べる画面（4分割・2画面・アルバム）にしない
+  if (S.clips.length <= 2 && st.layout && st.layout !== 'framed') st = Object.assign({}, st, { layout: null, cut: [4, 8], trans: [['crossfade', 2], ['zoomIn', 1], ['fadeBlack', 1]], big: ['crossfade'], td: 1, motions: KB });
+  // 写真1枚だけの時は、ゆっくり寄ったり動いたりして、カットを長めにする
+  if (S.clips.length === 1 && S.clips[0].type === 'image') st = Object.assign({}, st, { cut: [8, 16], adapt: false, motions: KB, motionMul: 1.2 });
+  // ピンぼけ気味の写真（ほかの写真よりずっとぼやけている）は、くり返しを控えめにする
+  { const sh = S.clips.filter(c => c.type === 'image' && c.sharp >= 0).map(c => c.sharp).sort((a, b) => a - b), med = sh[sh.length >> 1] || 0;
+    for (const c of S.clips) c.blurry = c.type === 'image' && sh.length >= 3 && c.sharp < med * .3 && c.sharp < 40; }
   const [ar, br] = $('#aspect').value.split(':').map(Number);
   const q = +$('#quality').value;
   if (ar >= br) { S.H = q; S.W = Math.round(q * ar / br / 2) * 2; } else { S.W = q; S.H = Math.round(q * br / ar / 2) * 2; }
@@ -1281,6 +1483,7 @@ async function rebuild() {
       let sc = stat[i].used === 0 ? 1000 - (shuffleOn ? rng() * 50 : i) : 0; // まず全部を1回ずつ
       sc += fresh(i) * 4 + Math.min(gap, 3 * n) * .6 + rng() * .9;
       if (hasMain && i === mainIdx && !plainMain) sc += MO.freq * 3;
+      if (S.clips[i].blurry && stat[i].used > 0) sc -= 6; // ぼやけた写真は2回目以降を控えめに
       if (sc > bs) { bs = sc; best = i; }
     }
     return best >= 0 ? best : (prevClip + 1) % n;
@@ -1344,7 +1547,7 @@ async function rebuild() {
   S.pos = 0;
   const trs = st.layout && st.layout !== 'framed' ? [] : [...new Set(segs.map(s => TR_NAMES[s.trans]).filter(Boolean))];
   $('#info').innerHTML = `<b>${st.icon || ''} ${st.name}</b> ／ ${fmt(total)} ／ ${segs.length} カット ／ テンポ ${Math.round(an.bpm)} BPM` +
-    (sel === 'file' ? ` ／ 曲の ${fmt(mStart)} から` : '') + (total < target - 1 ? ` ／ <span style="color:var(--warn)">曲が短いので ${fmt(total)} になりました</span>` : '') + ` ／ 素材1つあたり平均 ${(segs.length / n).toFixed(1)} 回` + repeatNote(segs, n) + (hasMain ? ` ／ ★メインは ${segs.filter(x => x.main).length} 回（${segs.filter(x => x.main).reduce((a, x) => a + x.e - x.s, 0).toFixed(0)} 秒）` : '') + `<br>切り替え：${trs.join('・') || (st.layout ? '画面分割' : 'カット')}`;
+    (sel === 'file' ? ` ／ 曲の ${fmt(mStart)} から` : '') + (total < target - 1 ? ` ／ <span style="color:var(--warn)">曲が短いので ${fmt(total)} になりました</span>` : '') + ` ／ 素材1つあたり平均 ${(segs.length / n).toFixed(1)} 回` + repeatNote(segs, n, S.clips.reduce((a, c, i) => a + (c.type === 'video' ? capacity(i) : 2), 0)) + (hasMain ? ` ／ ★メインは ${segs.filter(x => x.main).length} 回（${segs.filter(x => x.main).reduce((a, x) => a + x.e - x.s, 0).toFixed(0)} 秒）` : '') + `<br>切り替え：${trs.join('・') || (st.layout ? '画面分割' : 'カット')}`;
   S.building = false;
   $('#seedInfo').textContent = 'パターン番号 #' + S.seed;
   $('#time').textContent = `0:00 / ${fmt(total)}`;
@@ -1415,7 +1618,12 @@ function renderSeg(c, seg, t, x, y, w, h) {
     c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip(); c.translate(x + w / 2 + ox * w, y + h / 2 + oy * h); c.rotate(rot * Math.PI / 180);
     c.drawImage(img, -cl.w * s / 2, -cl.h * s / 2, cl.w * s, cl.h * s); c.restore();
   } else {
-    drawCover(c, img, cl.w, cl.h, x, y, w, h, sc, ox, oy, rot);
+    // 注目する位置（顔・被写体）が画面に入るようにずらす。はみ出して黒い所が出ない範囲で
+    let fx = ox, fy = oy;
+    const f = cl.focus;
+    const s0 = Math.max(w / cl.w, h / cl.h) * sc, mx = (cl.w * s0 - w) / 2 / w, my = (cl.h * s0 - h) / 2 / h;
+    if (f) { const k = cl.type === 'video' ? .5 : 1; fx += (.5 - f.x) * cl.w * s0 / w * k; fy += (.5 - f.y) * cl.h * s0 / h * k; } // 動画は被写体が動くので控えめに
+    drawCover(c, img, cl.w, cl.h, x, y, w, h, sc, clamp(fx, -mx, mx), clamp(fy, -my, my), rot);
   }
   if (FILTER_OK) c.filter = 'none'; else applyLook(c, seg.look, x, y, w, h);
 }
@@ -1557,7 +1765,7 @@ function drawFrame(t) {
       fc.globalAlpha = q; fc.shadowColor = 'rgba(0,0,0,.45)'; fc.shadowBlur = pw * .06; fc.shadowOffsetY = pw * .02;
       fc.fillStyle = '#fbfbf8'; fc.fillRect(-pw / 2 - bd, -ph / 2 - bd, pw + bd * 2, ph + bd * 4.2); fc.shadowColor = 'transparent';
       renderSeg(fc, sg, Math.min(t, sg.e + 3), -pw / 2, -ph / 2, pw, ph);
-      if (fx.date && S.showDate) { fc.fillStyle = '#555'; fc.font = `${Math.round(bd * 1.3)}px "Segoe Print","Comic Sans MS",cursive`; fc.textAlign = 'center'; fc.textBaseline = 'middle'; fc.fillText(dateText(sg.clip.date), 0, ph / 2 + bd * 1.6); }
+      if (fx.date && S.showDate && sg.clip.date) { fc.fillStyle = '#555'; fc.font = `${Math.round(bd * 1.3)}px "Segoe Print","Comic Sans MS",cursive`; fc.textAlign = 'center'; fc.textBaseline = 'middle'; fc.fillText(dateText(sg.clip.date), 0, ph / 2 + bd * 1.6); }
       fc.restore();
     }
   }
@@ -1615,20 +1823,37 @@ function drawOverlays(t, seg, b) {
     c.save(); c.font = `bold ${Math.round(34 * u)}px "Consolas","Courier New",monospace`; c.fillStyle = '#fff'; c.shadowColor = '#000'; c.shadowBlur = 4; c.textBaseline = 'top';
     c.fillText('PLAY ▶', 40 * u, 36 * u);
     c.textAlign = 'right'; const tt = t; c.fillText(`${String(Math.floor(tt / 3600)).padStart(1, '0')}:${String(Math.floor(tt / 60) % 60).padStart(2, '0')}:${String(Math.floor(tt) % 60).padStart(2, '0')}`, W - 40 * u, 36 * u);
-    c.textBaseline = 'bottom'; if (S.showDate) c.fillText(dateText(seg.clip.date).replace(/\./g, ' . '), W - 40 * u, H - 36 * u);
+    c.textBaseline = 'bottom'; if (S.showDate && seg.clip.date) c.fillText(dateText(seg.clip.date).replace(/\./g, ' . '), W - 40 * u, H - 36 * u);
     if (Math.floor(t * 2) % 2 === 0) { c.textAlign = 'left'; c.fillStyle = '#ff3b3b'; c.fillText('● REC', 40 * u, H - 36 * u); }
     c.restore();
   }
-  if (fx.date && S.showDate && st.layout !== 'polaroid') {
+  if (fx.date && S.showDate && seg.clip.date && st.layout !== 'polaroid') {
     const a = clamp((t - seg.s) / .4, 0, 1) * clamp((seg.e - t) / .3, 0, 1);
     if (a > 0) { c.save(); c.globalAlpha = a; c.font = `${Math.round(30 * u)}px "Segoe UI",sans-serif`; c.fillStyle = '#fff'; c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 8; c.textBaseline = 'bottom'; const lb = fx.letterbox ? H * fx.letterbox : 0; c.fillText(dateText(seg.clip.date), 40 * u, H - 34 * u - lb); c.restore(); }
   }
+  drawCaption(t, seg, u);
   drawTitle(t);
   drawStickers(t, seg, b);
   drawEnding(t);
   // 最後はフェードアウト
   const fade = Math.min(1.2, tl.per * 2);
   if (t > tl.total - fade) { c.fillStyle = '#000'; c.globalAlpha = clamp((t - (tl.total - fade)) / fade, 0, 1); c.fillRect(0, 0, W, H); c.globalAlpha = 1; }
+}
+/* 素材ごとの文字（字幕）：そのカットの間、下の方に出す */
+function drawCaption(t, seg, u) {
+  const text = seg.clip.caption; if (!text) return;
+  const tl = S.tl, title = $('#title').value.trim();
+  if (title && t < titleDuration(titleStyleId(), tl.per)) return; // タイトル中は出さない
+  const a = clamp((t - seg.s) / .3, 0, 1) * clamp((seg.e - t) / .25, 0, 1); if (a <= 0) return;
+  const W = S.W, H = S.H, c = octx, fx = tl.style.fx || {};
+  const lb = fx.letterbox ? H * fx.letterbox * (W >= H ? 1 : .5) : 0;
+  const size = fitFont(c, text, 700, FONT_SANS, W * .82, 46 * u);
+  c.save(); c.globalAlpha = a; c.font = `700 ${size}px ${FONT_SANS}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  const tw = c.measureText(text).width, ph = size * 1.7, y = H - lb - (W >= H ? 70 : 150) * u - ph / 2 + (1 - ease.out(a)) * 12 * u;
+  c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath();
+  const x0 = W / 2 - tw / 2 - size * .7, w0 = tw + size * 1.4, r = ph / 2;
+  if (c.roundRect) c.roundRect(x0, y - ph / 2, w0, ph, r); else c.rect(x0, y - ph / 2, w0, ph);
+  c.fill(); c.fillStyle = '#fff'; c.fillText(text, W / 2, y + size * .04); c.restore();
 }
 /* ===================== オープニングタイトル（12パターン） =====================
    どれも「時刻 t だけで絵が決まる」作り（途中から再生・書き出しでも同じ絵になる） */
@@ -2088,6 +2313,8 @@ const FX = {
     try { return (await VideoDecoder.isConfigSupported({ codec: info.codec, description: info.desc, codedWidth: info.width, codedHeight: info.height })).supported; } catch (e) { return false; }
   },
 };
+/* 縦横比を保ったまま、長い辺を max 以下にする（書き出しでは出力より大きな絵はいらない） */
+function fitDims(w, h, max) { const k = Math.min(1, max / Math.max(w, h)); return [Math.max(2, Math.round(w * k)), Math.max(2, Math.round(h * k))]; }
 /* 動画素材を、指定の時刻のコマを順番に取り出す（回転も直した canvas で返す） */
 class ClipStream {
   constructor(file, info, dispW, dispH) { this.file = file; this.info = info; this.cv = document.createElement('canvas'); this.cv.width = dispW; this.cv.height = dispH; this.cx = this.cv.getContext('2d'); }
@@ -2132,7 +2359,7 @@ class ClipStream {
     }
     return this.cv;
   }
-  snapshot() { const c = document.createElement('canvas'); c.width = this.cv.width; c.height = this.cv.height; c.getContext('2d').drawImage(this.cv, 0, 0); return c; }
+  snapshot(k = 1) { const c = document.createElement('canvas'); c.width = Math.max(2, Math.round(this.cv.width * k)); c.height = Math.max(2, Math.round(this.cv.height * k)); c.getContext('2d').drawImage(this.cv, 0, 0, c.width, c.height); return c; }
   close() {
     this.closed = true;
     try { this.dec && this.dec.state !== 'closed' && this.dec.close(); } catch (e) { }
@@ -2259,10 +2486,13 @@ async function exportOffline(onProgress, isCancelled) {
         const a = sg.s - (sg.tdIn || 0) - .002, b = sg.e + (sg.td || 0) + .002;
         if (t >= a && t <= b) {
           let st = streams.get(sg);
-          if (!st) { st = new ClipStream(sg.clip.file, sg.clip.mp4, sg.clip.w, sg.clip.h); await st.start(srcTime(sg, Math.max(t, sg.s))); streams.set(sg, st); }
+          if (!st) { const [dw, dh] = fitDims(sg.clip.w, sg.clip.h, Math.max(W, H)); st = new ClipStream(sg.clip.file, sg.clip.mp4, dw, dh); await st.start(srcTime(sg, Math.max(t, sg.s))); streams.set(sg, st); }
           const fr = await st.frameAt(srcTime(sg, t)); if (fr) sg.__frame = fr;
-        } else if (t > b && streams.has(sg)) { const st = streams.get(sg); sg.__frame = st.snapshot(); st.close(); streams.delete(sg); } // 終わったカットは最後のコマを残す
+        } else if (t > b && streams.has(sg)) { const st = streams.get(sg); sg.__frame = st.snapshot(.5); st.close(); streams.delete(sg); } // 終わったカットは最後のコマを残す（重ねる画面用・半分の大きさ）
       }
+      // 画面に出なくなった古いカットの絵はすぐ捨てる（重ねる画面でも直前4カットまでしか使わない）
+      const cur = segAt(t);
+      for (let j = 0; j < cur - 4; j++) { const old = tl.segs[j]; if (old.__frame) { if (old.__frame.width) old.__frame.width = old.__frame.height = 0; delete old.__frame; } }
       drawFrame(t);
       const vf = new VideoFrame(out, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) });
       enc.encode(vf, { keyFrame: f % (fps * 2) === 0 }); vf.close();
@@ -2273,7 +2503,7 @@ async function exportOffline(onProgress, isCancelled) {
     await enc.flush(); enc.close();
   } finally {
     for (const st of streams.values()) st.close();
-    for (const sg of tl.segs) delete sg.__frame;
+    for (const sg of tl.segs) { if (sg.__frame && sg.__frame.width && !streams.has(sg)) sg.__frame.width = sg.__frame.height = 0; delete sg.__frame; }
   }
   if (verr) throw verr;
   if (!vdesc) throw new Error('映像の設定が取れませんでした');
@@ -2439,13 +2669,19 @@ function showExport(blob, name) {
     mk(`📲 ギャラリーに保存（${mb} MB）`, 'gallery');
     mk('⬇ ダウンロードに保存', 'download');
   } else {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      const sh = document.createElement('button'); sh.className = 'primary'; sh.textContent = '📲 写真に保存／共有';
-      sh.onclick = () => navigator.share({ files: [file] }).catch(() => { });
+    const canShare = navigator.canShare && navigator.canShare({ files: [file] });
+    if (canShare) {
+      const sh = document.createElement('button'); sh.className = 'primary'; sh.textContent = '📲 写真に保存／共有（LINE・Instagram など）';
+      const title = $('#title').value.trim();
+      sh.onclick = () => navigator.share(title ? { files: [file], title } : { files: [file] }).catch(() => { });
       box.appendChild(sh);
     }
     const a = document.createElement('a'); a.href = S.exportUrl; a.download = name; a.className = 'btn'; a.id = 'dlLink'; a.textContent = `⬇ ダウンロード（${mb} MB）`;
     box.appendChild(a);
+    const hint = document.createElement('p'); hint.className = 'hint'; hint.style.flexBasis = '100%';
+    hint.textContent = canShare ? '「写真に保存／共有」→「ビデオを保存」で写真アプリに入ります。SNS へもそのまま送れます。'
+      : /iPhone|iPad/.test(navigator.userAgent) ? 'ダウンロードした動画は「ファイル」アプリの「ダウンロード」に入ります。共有 →「ビデオを保存」で写真アプリへ移せます。' : 'ダウンロードした動画は「ダウンロード」フォルダに入ります。';
+    box.appendChild(hint);
   }
   const del = document.createElement('button'); del.textContent = '🗑 この動画を消す'; del.onclick = () => { clearExport(); setStatus('完成動画をメモリから消しました'); };
   box.appendChild(del);
@@ -2486,6 +2722,7 @@ function clearExport() {
 /* 個人データの消去：素材・曲・完成動画・画面を全部メモリから消す */
 function wipeAll() {
   try { if (S.recording) cancelExport(); pause(); } catch (e) { }
+  try { finishUndo(); closeClipSheet(); } catch (e) { }
   for (const c of S.clips) freeClip(c);
   for (const u of liveUrls) URL.revokeObjectURL(u); liveUrls.clear();
   try { if (window.HighlightApp && HighlightApp.clearPicked) HighlightApp.clearPicked(); } catch (e) { } // アプリ版：コピーした写真・動画も消す
@@ -2493,7 +2730,13 @@ function wipeAll() {
   clearExport();
   for (const k in pool) { pool[k].width = pool[k].height = 0; delete pool[k]; }
   overlayCache = {};
-  $('#title').value = ''; $('#musicInfo').textContent = '消去しました。';
+  $('#title').value = ''; $('#subtitle').value = ''; $('#musicInfo').textContent = '消去しました。';
+  lastAutoTitle = ''; lastAutoSub = ''; S.theme = null;
+  $('#proposals').innerHTML = ''; // おまかせ3案の見本画像（写真から作った絵）も消す
+  $('#info').textContent = '① で写真・動画を選ぶと、自動でハイライト動画を組み立てます。';
+  $('#time').textContent = '0:00 / 0:00';
+  octx.clearRect(0, 0, out.width, out.height);
+  try { renderThemeCards(); } catch (e) { }
   if ($('#musicSel').value === 'file') $('#musicSel').value = 'edm';
   $('#musicPickRow').hidden = true; $('#musicPick').textContent = '🎵 曲のファイルを選ぶ';
   if (S.actx) { S.actx.close().catch(() => { }); S.actx = null; }
@@ -2538,7 +2781,7 @@ async function applyConfig(cfg, opts = {}) {
   if (th) { // タイトルが空、または前にテーマが入れた文字なら、テーマの例に置きかえる
     const ti = $('#title'), su = $('#subtitle');
     if (!ti.value.trim() || ti.value === lastAutoTitle) { ti.value = cfg.titleText || th.title; lastAutoTitle = ti.value; }
-    const sub = th.sub === 'date' ? dateRangeText() : '';
+    const sub = th.sub === 'date' && S.showDate ? dateRangeText() : ''; // 日付は「撮影日を入れる」がオンの時だけ
     if (!su.value.trim() || su.value === lastAutoSub) { su.value = sub; lastAutoSub = sub; }
   }
   buildStyleCards(); renderMusicUI(); renderThemeCards();
@@ -2641,8 +2884,29 @@ document.addEventListener('drop', e => {
 $('#demoBtn').onclick = makeDemo;
 $('#wipeBtn').onclick = () => { if (!confirm('選んだ写真・動画・曲と、作った動画を全部消します。よろしいですか？')) return; wipeAll(); renderThumbs(); rebuild(); setStatus('全部消しました', 'done'); };
 window.addEventListener('pagehide', wipeAll); // ページを閉じたら必ず消す
-$('#showDate').onchange = () => { S.showDate = $('#showDate').checked; if (!S.playing && S.tl) drawFrame(S.pos || .001); };
-$('#clearBtn').onclick = () => { for (const c of S.clips) freeClip(c); S.clips = []; S.mainId = null; try { if (window.HighlightApp && HighlightApp.clearPicked) HighlightApp.clearPicked(); } catch (e) { } renderThumbs(); rebuild(); };
+// 作業中にページを閉じる・再読み込みする前に確認（素材は保存されないので、消えてしまう）
+window.addEventListener('beforeunload', e => { if (S.clips.length || S.recording || S.exportUrl) { e.preventDefault(); e.returnValue = ''; } });
+// ほかのアプリに切り替えた時：録画方式の保存は正しく録れないので中止する。なめらか方式は戻ると続きから進む
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (S.recording && S.rec) { S.recCancelled = true; S.rec.stop(); pause(); S.hiddenCancel = true; }
+    else if (S.recording) setStatus('書き出しを一時停止中（画面に戻ると続きます）', 'busy');
+    else if (S.playing) pause();
+  } else if (S.hiddenCancel) {
+    S.hiddenCancel = false;
+    setStatus('ほかのアプリに切り替えたので、保存を中止しました', 'busy');
+    alert('保存の途中でほかのアプリに切り替えたため、保存を中止しました。\nもう一度「⬇ 保存」を押し、終わるまでこの画面を開いたままにしてください。');
+  }
+});
+$('#showDate').onchange = () => {
+  S.showDate = $('#showDate').checked;
+  // テーマのサブタイトル（日付）も、オンなら入れる・オフなら自動で入れた日付を消す
+  const su = $('#subtitle');
+  if (S.theme && S.theme.sub === 'date' && (!su.value.trim() || su.value === lastAutoSub)) { su.value = S.showDate ? dateRangeText() : ''; lastAutoSub = su.value; }
+  if (S.showDate && !S.clips.some(c => c.date)) setStatus('撮影日が分かる写真・動画がありません', 'busy');
+  if (!S.playing && S.tl) drawFrame(S.pos || .001);
+};
+$('#clearBtn').onclick = () => { if (!S.clips.length) return; $('#proposals').innerHTML = ''; removeClips(S.clips.slice()); }; // 5秒間は「元に戻す」できる
 $('#musicSel').onchange = () => {
   const isFile = $('#musicSel').value === 'file';
   if (isFile) { if (!S.musicKey.startsWith('file:')) { $('#musicInfo').textContent = '下の「🎵 曲のファイルを選ぶ」をタップして曲を選んでください。'; return; } }
@@ -2697,7 +2961,11 @@ function renderMusicUI() {
   if (musicCat === '自分の曲') {
     $('#musicPickRow').hidden = false;
     const b = document.createElement('button'); b.className = 'card-btn'; b.setAttribute('aria-pressed', cur === 'file');
-    b.innerHTML = `<span class="ico">🎧</span><b>${S.musicKey.startsWith('file:') ? S.musicKey.slice(5) : 'まだ選んでいません'}</b><span>${S.musicKey.startsWith('file:') ? 'テンポ ' + Math.round(S.analysis.bpm) + ' BPM' : '下のボタンから mp3・m4a・wav を選びます'}</span>`;
+    // ファイル名は利用者が付けた文字なので、HTML として扱わない（textContent）
+    const hasFile = S.musicKey.startsWith('file:');
+    b.innerHTML = '<span class="ico">🎧</span><b></b><span></span>';
+    b.querySelector('b').textContent = hasFile ? S.musicKey.slice(5) : 'まだ選んでいません';
+    b.querySelector('span:last-child').textContent = hasFile ? 'テンポ ' + Math.round(S.analysis.bpm) + ' BPM' : '下のボタンから mp3・m4a・wav を選びます';
     b.onclick = () => { if (S.musicKey.startsWith('file:')) { $('#musicSel').value = 'file'; $('#musicSel').onchange(); } else $('#musicPick').click(); };
     box.appendChild(b); return;
   }
@@ -2717,8 +2985,15 @@ function goStep(n) {
   document.querySelectorAll('[data-panel]').forEach(p => p.hidden = +p.dataset.panel !== n);
   updateSteps();
   if (n === 4) startTitleThumbs(); else stopTitleThumbs();
-  if (window.innerWidth <= 980) $('#steps').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (window.innerWidth <= 980) { // 上に固定したプレビューの下に、手順の頭が来るようにする
+    const stuck = getComputedStyle($('#stageSec')).position === 'sticky';
+    const top = $('#steps').getBoundingClientRect().top + scrollY - $('.appbar').offsetHeight - (stuck ? $('#stageSec').offsetHeight : 0) - 6;
+    if (Math.abs(scrollY - top) > 4) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
 }
+function measureBars() { document.documentElement.style.setProperty('--appbarH', $('.appbar').offsetHeight + 'px'); }
+window.addEventListener('resize', measureBars); measureBars();
+$('#info').onclick = () => $('#info').classList.toggle('open');
 function updateSteps() {
   const done = { 1: S.clips.length > 0, 2: visited.has(2), 3: visited.has(3), 4: visited.has(4) && ($('#title').value.trim() !== '' || visited.has(5)), 5: false };
   document.querySelectorAll('.stepnav button').forEach(b => {
@@ -2802,7 +3077,7 @@ $('#quickPropose').onclick = () => { goStep(3); makeProposals(); };
 $('#stickerOn').onchange = () => { if (!S.playing && S.tl) drawFrame(S.pos || .001); };
 renderMusicUI(); renderTitleCards(); goStep(1);
 segFrom('#aspect', '#aspectSeg', [{ v: '9:16', html: shapeIcon(14, 24) + '縦長<small>スマホ</small>' }, { v: '16:9', html: shapeIcon(28, 16) + '横長<small>YouTube</small>' }, { v: '1:1', html: shapeIcon(20, 20) + '正方形' }, { v: '4:5', html: shapeIcon(18, 22) + '4:5<small>Instagram</small>' }]);
-segFrom('#length', '#lengthSeg', [{ v: '30', html: '<b>30秒</b>' }, { v: '45', html: '<b>45秒</b>' }, { v: '60', html: '<b>1分</b>' }]);
+segFrom('#length', '#lengthSeg', [{ v: '30', html: '<b>30秒</b><small>SNS向け</small>' }, { v: '45', html: '<b>45秒</b>' }, { v: '60', html: '<b>1分</b>' }, { v: '90', html: '<b>1分30秒</b>' }, { v: '120', html: '<b>2分</b><small>素材多めに</small>' }]);
 segFrom('#quality', '#qualitySeg', [{ v: '720', html: '<b>720p</b><small>軽い・おすすめ</small>' }, { v: '1080', html: '<b>1080p</b><small>きれい・重い</small>' }]);
 buildStyleCards(); renderThemeCards(); renderThumbs(); drawEmpty(); drawTimeline();
 // テスト用

@@ -70,11 +70,40 @@ const path = require('path');
   const exOk = ex && ex.size > 100000;
   if (!exOk) fail++;
   console.log(`${exOk ? 'OK ' : 'NG '} 書き出し ${ex && ex.name} ${ex && (ex.size / 1048576).toFixed(1)}MB`);
+  // 個人データ：撮影日オフなら、テーマを選んでも日付は入らない／オンにすると撮影日（サンプルは 2026.07）が入る
+  const dt = await p.evaluate(async () => {
+    document.querySelector('#subtitle').value = ''; const cb = document.querySelector('#showDate'); cb.checked = false; cb.onchange();
+    await HM.applyConfig({ theme: 'travel', noBuild: true }, { noBuild: true }); const off = document.querySelector('#subtitle').value;
+    cb.checked = true; cb.onchange(); const on = document.querySelector('#subtitle').value;
+    cb.checked = false; cb.onchange(); const off2 = document.querySelector('#subtitle').value; return { off, on, off2 };
+  });
+  const dtOk = dt.off === '' && dt.on.startsWith('2026.07') && dt.off2 === '';
+  if (!dtOk) fail++;
+  console.log(`${dtOk ? 'OK ' : 'NG '} 撮影日オフでは日付を入れない ${JSON.stringify(dt)}`);
+  // 自分の曲のファイル名に HTML を入れても、そのまま文字として出る（実行されない）
+  const xss = await p.evaluate(async () => {
+    HM.S.musicKey = 'file:<img src=y onerror="window.__xss=1">.mp3'; HM.S.analysis = HM.S.analysis || { bpm: 120 };
+    [...document.querySelectorAll('#musicTabs button')].pop().click(); await new Promise(r => setTimeout(r, 300));
+    const shown = document.querySelector('#musicCards b').textContent; HM.S.musicKey = ''; return { ran: !!window.__xss, shown };
+  });
+  const xssOk = !xss.ran && xss.shown.includes('<img');
+  if (!xssOk) fail++;
+  console.log(`${xssOk ? 'OK ' : 'NG '} ファイル名を HTML として扱わない ${JSON.stringify(xss)}`);
+  // ✕ で外しても「元に戻す」で戻せる
+  const undo = await p.evaluate(async () => { const n = HM.S.clips.length; document.querySelector('.thumb .x').click(); const after = HM.S.clips.length;
+    document.querySelector('.toast button').click(); return { n, after, back: HM.S.clips.length }; });
+  const undoOk = undo.after === undo.n - 1 && undo.back === undo.n;
+  if (!undoOk) fail++;
+  console.log(`${undoOk ? 'OK ' : 'NG '} 外す→元に戻す ${JSON.stringify(undo)}`);
+  await p.waitForFunction(() => !HM.S.building && HM.S.tl);
+  // おまかせ3案（見本画像が写真から作られる）→ 全部消す で見本画像も消えること
+  await p.evaluate(() => HM.makeProposals());
   // 全部消す（個人データが残らないこと）
   p.on('dialog', d => d.accept());
   await tap('#wipeBtn');
-  const left = await p.evaluate(() => ({ clips: HM.S.clips.length, music: !!HM.S.music, dl: !!document.querySelector('#dlLink'), vids: document.querySelectorAll('#hidden video').length, storage: localStorage.length + sessionStorage.length + document.cookie.length }));
-  const wipeOk = !left.clips && !left.music && !left.dl && !left.vids && !left.storage;
+  const left = await p.evaluate(() => ({ clips: HM.S.clips.length, music: !!HM.S.music, dl: !!document.querySelector('#dlLink'), vids: document.querySelectorAll('#hidden video').length, storage: localStorage.length + sessionStorage.length + document.cookie.length,
+    imgs: [...document.querySelectorAll('img')].filter(i => /^(data|blob):/.test(i.src)).length, title: document.querySelector('#title').value + document.querySelector('#subtitle').value, theme: !!HM.S.theme }));
+  const wipeOk = !left.clips && !left.music && !left.dl && !left.vids && !left.storage && !left.imgs && !left.title && !left.theme;
   if (!wipeOk) fail++;
   console.log(`${wipeOk ? 'OK ' : 'NG '} 全部消す ${JSON.stringify(left)}`);
   if (errs.length) { fail++; console.log('エラー:', errs); }
