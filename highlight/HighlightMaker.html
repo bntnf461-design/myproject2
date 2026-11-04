@@ -1496,7 +1496,7 @@ async function rebuild() {
   };
   // 素材が少ない時は、1カットを少し長くして繰り返しを減らす（最大2倍）
   const totalCap = S.clips.reduce((a, c, i) => a + capacity(i), 0), expectCuts = total / shotLen;
-  const lenMul = !st.layout && expectCuts > totalCap * 1.1 ? 2 : 1;
+  const lenMul = !st.layout && expectCuts > totalCap * 1.1 && expectCuts / 2 >= n * 1.3 ? 2 : 1; // 長くしても全部の素材を使える時だけ
   while (t < total - .05) {
     let nbeat = pick(rng, st.cut) * lenMul;
     const atPeak = hasMain && peaks.includes(k);
