@@ -507,7 +507,7 @@
 </dialog>
 
 <dialog id="chk">
-  <div class="dh"><span>印刷の前に：まだ入っていない欄があります</span></div>
+  <div class="dh"><span>印刷の前に：まだ入っていない欄・確認が必要な所があります</span></div>
   <div class="db">
     <div class="note" style="font-size:13px;color:#333">項目を押すと、その欄へ移ります。</div>
     <ul id="chkList"></ul>
@@ -872,22 +872,44 @@
   });
 
   // ---------- 入れ忘れやすい欄（印刷の前に確かめる） ----------
-  var NEED = [["worker_itanose", "作業者（板乗せ）"], ["worker_kensa", "作業者（検査）"], ["worker_stock", "作業者（ストック）"],
-    ["tonyu_itanose", "投入時間（板乗せ）"], ["tonyu_kensa", "投入時間（検査）"], ["tonyu_stock", "投入時間（ストック）"],
-    ["kadoS", "稼働状況の開始(S)"], ["kadoE", "稼働状況の終了"],
+  // 作業者・投入時間は、板乗せ・検査・ストックのどれか1つに入っていればよい（担当がいない欄は斜線で空ける）
+  var NEED_ANY = [[["worker_itanose", "worker_kensa", "worker_stock"], "作業者（板乗せ・検査・ストックのどれか）"],
+    [["tonyu_itanose", "tonyu_kensa", "tonyu_stock"], "投入時間（板乗せ・検査・ストックのどれか）"]];
+  var NEED = [["kadoS", "稼働状況の開始(S)"], ["kadoE", "稼働状況の終了"],
     ["m1_mark", "マーク仕様確認の年月度マーク"], ["m1_checker", "マーク仕様確認の確認者"],
     ["m1_mark2", "ダブルチェックの年月度マーク"], ["m1_checker2", "ダブルチェックの確認者"],
     ["kenshidai", "検視台 高さ調整実施"]];
   function missing() {
     var out = [];
     for (var r = 1; r <= ROWS; r++) if (rowActive(val, r) && !val("r" + r + "_pallet").trim()) out.push(["r" + r + "_pallet", r + "行目のパレット№"]);
+    if (lastActiveRow()) NEED_ANY.forEach(function (g) {
+      if (!g[0].some(function (n) { return val(n).trim(); })) g[0].forEach(function (n, i) { out.push([n, g[1], i > 0]); });
+    });
     NEED.forEach(function (x) { if (!val(x[0]).trim()) out.push(x); });
+    return out;
+  }
+  // 印刷の前に確かめる、入れ忘れ以外のこと（値のおかしいところ）
+  var DEF_LBL = { ware: "割れ", kizu: "キズ", kiri: "切不良", ori_hama: "折不良ハマ", ori_ware: "折不良ワレ", men_hama: "面取不良ハマ",
+    men_ware: "面取不良ワレ", ana1_hama: "孔明1軸ハマ", ana1_ware: "孔明1軸ワレ", ana2_hama: "孔明2軸ハマ", ana2_ware: "孔明2軸ワレ",
+    mark: "マーク外観", proc_other: "工程不良その他", kafusoku: "過不足", naiha: "内破", awa: "泡", ibutsu: "異物", s_kizu: "素板キズ",
+    yogore: "汚れ", cullet: "カレット", soban_other: "素板不良その他" };
+  function oddities() {
+    var out = [];
+    for (var r = 1; r <= ROWS; r++) {
+      var mv = val("r" + r + "_model");
+      if (mv && !modelOf(mv)) out.push(["r" + r + "_model", r + "行目の型式「" + mv + "」が登録されていません"]);
+      if (f("r" + r + "_good").classList.contains("over")) out.push(["r" + r + "_good", r + "行目の良品枚数が1PLを超えています"]);
+    }
+    PROC.concat(SOBAN).forEach(function (k) {
+      if (num("t_" + k) > 0 && !f("dispose_" + k).checked) out.push(["dispose_" + k, "不良品処置廃棄のレ点（" + DEF_LBL[k] + "）"]);
+    });
+    [1, 2].forEach(function (n) { if (num("sb" + n + "_to") < 0) out.push(["sb" + n + "_to", "使用素板の当残がマイナスです"]); });
     return out;
   }
   function markNeed() {
     var miss = {};
     missing().forEach(function (x) { miss[x[0]] = 1; });
-    NEED.map(function (x) { return x[0]; }).concat(Array.apply(null, Array(ROWS)).map(function (_, i) { return "r" + (i + 1) + "_pallet"; }))
+    NEED.map(function (x) { return x[0]; }).concat(NEED_ANY[0][0], NEED_ANY[1][0]).concat(Array.apply(null, Array(ROWS)).map(function (_, i) { return "r" + (i + 1) + "_pallet"; }))
       .forEach(function (n) { var e = f(n); if (e) e.classList.toggle("need", !!miss[n]); });
   }
   var chk = document.getElementById("chk");
@@ -897,11 +919,11 @@
     e.focus();
   }
   function printWithCheck() {
-    var miss = missing();
-    if (!miss.length || readOnly) { window.print(); return; }
+    var miss = missing().filter(function (x) { return !x[2]; }), odd = oddities();
+    if ((!miss.length && !odd.length) || readOnly) { window.print(); return; }
     var ul = document.getElementById("chkList");
     ul.innerHTML = "";
-    miss.forEach(function (x) {
+    miss.concat(odd.map(function (x) { return [x[0], "⚠ " + x[1]]; })).forEach(function (x) {
       var li = el("li"), b = el("button", { type: "button" }, esc(x[1]));
       b.onclick = function () { chk.close(); focusField(x[0]); };
       li.appendChild(b); ul.appendChild(li);

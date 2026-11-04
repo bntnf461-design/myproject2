@@ -328,6 +328,24 @@ test("U5：印刷の前に入れ忘れを知らせ、項目からその欄へ移
   eq(await p.evaluate(() => document.activeElement.name), "kenshidai", "押した項目の欄へ移る");
 });
 
+test("U5b：作業者・投入時間はどれか1つでよい／レ点・1PL超過・未登録の型式も印刷の前に知らせる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.evaluate(() => { window.print = () => {}; });
+  await importMaster(p);
+  await setDate(p, "2026-10-21");
+  await pickModel(p, 1); await fill(p, "r1_good", 140); await fill(p, "r1_kizu", 2);
+  await pickModel(p, 2, "ZC45PN-ARD");
+  await fill(p, "worker_kensa", "鈴木"); await fill(p, "tonyu_kensa", 3);
+  await p.waitForTimeout(200);
+  await p.click("#btnPrint");
+  const items = await p.$$eval("#chkList button", b => b.map(x => x.textContent));
+  const has = t => items.some(x => x.includes(t));
+  ok(!has("作業者") && !has("投入時間"), "検査に入っていれば作業者・投入時間は出ない：" + items.join("、"));
+  ok(has("処置廃棄のレ点（キズ）"), "レ点：" + items.join("、"));
+  ok(has("1行目の良品枚数が1PLを超えています"), "1PL超過");
+  ok(has("2行目の型式「ZC45PN-ARD」が登録されていません"), "未登録の型式");
+});
+
 test("U6：設定を保存しないで閉じるときは確かめる", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   p.removeAllListeners("dialog");
