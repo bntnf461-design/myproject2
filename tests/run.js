@@ -9,7 +9,9 @@ const { chromium } = require("playwright");
 
 const ROOT = path.resolve(__dirname, "..");
 const URL = "file://" + path.join(ROOT, "index.html");
-const TEMPLATE = path.join(ROOT, "templates", "マスタ登録_雛形.xlsx");
+// Playwright は日本語名のファイルを setInputFiles で渡せないことがあるので、英数字名にコピーして使う
+const TEMPLATE = path.join(os.tmpdir(), "nippo-master-template.xlsx");
+fs.copyFileSync(path.join(ROOT, "templates", "マスタ登録_雛形.xlsx"), TEMPLATE);
 const QR_042 = "A0DGL35TS    ,A3I,A7813   ,A8508   ,AA32.00 ,AB20.00 ,AD175 ,B0R7Z446SX042,B42,BB2026/10/18,BR2N9A,00271A21261061,010020";
 const MODEL = "ZC45PN-ARDR";
 
@@ -146,6 +148,7 @@ test("H3：ボタンやレ点の上でQRを読んでも、ボタンが押され�
   const p = await open(ctx, "2026-10-21T08:00:00");
   await p.evaluate(() => { window.__prints = 0; window.print = () => { window.__prints++; }; });
   await p.click("#btnPrint");
+  await p.click("#chkPrint");   // 入れ忘れの確認が出るので「このまま印刷」
   await scanQR(p, QR_042);
   eq(await p.evaluate(() => window.__prints), 1, "印刷の回数（クリックの1回だけ）");
   eq(await v(p, "r1_lotSoban"), "R7Z446SX042", "QRは読めている");
@@ -237,6 +240,122 @@ test("〃：上の行と同じ型式・ロットNo.・パレット形態・ロ�
   await p.click('[name="r2_model"]');
   const color = await p.evaluate(() => getComputedStyle(document.forms.nippo.elements.r2_model).color);
   ok(color !== "rgba(0, 0, 0, 0)", "選ぶと値が見える");
+});
+
+// ---------- 使いやすさの査定で直したところ ----------
+// カウンターの画面が開いているように見せる（このパソコンのカウンターの保存データの代わり）
+async function fakeCounter(p, state) {
+  await p.evaluate(st => {
+    localStorage.setItem("defectCounterState", JSON.stringify(st));
+    localStorage.setItem("defectCounterHistory", JSON.stringify({ d: [], shifts: st.shifts, j: [], w: [], b: [] }));
+    const alive = () => localStorage.setItem("defectCounterActiveTab", JSON.stringify({ id: "x", t: Date.now() }));
+    alive(); setInterval(alive, 1000);
+  }, state);
+}
+
+test("U1：数字の欄はホイールや↑↓で値が変わらない（↑↓は上下の行へ）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await fill(p, "r2_ware", 5);
+  const b = await p.locator('[name="r2_ware"]').boundingBox();
+  await p.mouse.move(b.x + 10, b.y + 10); await p.mouse.wheel(0, 300); await p.waitForTimeout(200);
+  eq(await v(p, "r2_ware"), "5", "ホイールのあとの値");
+  await p.click('[name="r2_ware"]'); await p.keyboard.press("ArrowUp");
+  eq(await v(p, "r2_ware"), "5", "↑のあとの値");
+  eq(await p.evaluate(() => document.activeElement.name), "r1_ware", "↑で上の行へ");
+});
+
+test("U2：登録されていない型式では、カウンターを切り替えず製造種類にも足さない", async ctx => {
+  const p = await open(ctx, "2026-10-22T09:00:00");
+  await importMaster(p);
+  await fakeCounter(p, { features: { jobs: true }, shifts: [MODEL], types: [], counts: {}, job: { running: true, shift: MODEL } });
+  await p.reload(); await p.waitForTimeout(800);
+  await pickModel(p, 1, "ZC45PN-ARD");
+  await p.waitForTimeout(5500);
+  const st = await p.evaluate(() => JSON.parse(localStorage.getItem("defectCounterState")));
+  ok(!st.shifts.includes("ZC45PN-ARD"), "打ち間違いの型式がカウンターに足された");
+  eq(await p.locator('#cntBar button[data-cnt]').count(), 0, "切り替えボタンが出ない");
+  ok(await p.evaluate(() => document.forms.nippo.elements.r1_model.classList.contains("unreg")), "未登録の型式が赤くならない");
+});
+
+test("U3：素板QRの読み取りを取り消せる（使用素板・明細とも元に戻る）／読んだ素板を一覧から外せる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await setDate(p, "2026-10-21");
+  await pickModel(p, 1);
+  await scanQR(p, QR_042);
+  await scanQR(p, QR_042.replace("SX042", "SX043"));
+  eq(await v(p, "r2_lotSoban"), "R7Z446SX043", "2つ目のQRで2行目");
+  await p.click("#msg button");
+  await p.waitForTimeout(200);
+  eq(await v(p, "r2_lotSoban"), "", "取り消すと2行目が空に戻る");
+  eq(JSON.parse(await v(p, "sb1_lots")).length, 1, "使用素板も1パレットに戻る");
+  await p.click('#lotList button[data-lb="1"]');
+  await p.waitForTimeout(200);
+  eq(await v(p, "sb1_lots"), "", "一覧の取消で使用素板から外れる");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
+test("U4：行を消す・行を入れる（取り消しもできる）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await setDate(p, "2026-10-21");
+  await pickModel(p, 1); await fill(p, "r1_good", 50);
+  await pickModel(p, 2); await fill(p, "r2_kizu", 3); await fill(p, "r2_pallet", "P2");
+  await p.click('[name="r1_good"]');
+  await p.click('#rowTools button[data-rt="del"]'); await p.waitForTimeout(200);
+  eq(await v(p, "r1_kizu"), "3", "下の行が上へ");
+  eq(await v(p, "r1_pallet"), "P2", "パレット№も上へ");
+  eq(await v(p, "r2_model"), "", "2行目は空");
+  await p.click("#msg button"); await p.waitForTimeout(200);
+  eq(await v(p, "r2_kizu"), "3", "取り消しで元に戻る");
+  await p.click('[name="r2_kizu"]');
+  await p.click('#rowTools button[data-rt="ins"]'); await p.waitForTimeout(200);
+  eq(await v(p, "r2_model"), "", "入れた行は空");
+  eq(await v(p, "r3_kizu"), "3", "下へずれる");
+});
+
+test("U5：印刷の前に入れ忘れを知らせ、項目からその欄へ移れる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.evaluate(() => { window.__prints = 0; window.print = () => { window.__prints++; }; });
+  await importMaster(p);
+  await setDate(p, "2026-10-21");
+  await pickModel(p, 1);
+  await p.click("#btnPrint");
+  const items = await p.$$eval("#chkList button", b => b.map(x => x.textContent));
+  ok(items.includes("1行目のパレット№") && items.includes("検視台 高さ調整実施"), "入れ忘れの一覧：" + items.join("、"));
+  eq(await p.evaluate(() => window.__prints), 0, "確認中は印刷しない");
+  await p.click("#chkList button >> text=検視台 高さ調整実施");
+  eq(await p.evaluate(() => document.activeElement.name), "kenshidai", "押した項目の欄へ移る");
+});
+
+test("U6：設定を保存しないで閉じるときは確かめる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  p.removeAllListeners("dialog");
+  let asked = "";
+  p.on("dialog", d => { asked += d.message(); d.type() === "confirm" ? d.dismiss() : d.accept(); });
+  await p.click("#btnSettings");
+  await p.setInputFiles("#mImport", TEMPLATE); await p.waitForTimeout(300);
+  await p.click("#dlgClose");
+  ok(/保存しないで閉じますか/.test(asked), "確認が出ない");
+  ok(await p.evaluate(() => document.getElementById("dlg").open), "キャンセルしたら開いたまま");
+});
+
+test("U7：カウンターが開いていないときは、テンキーの数字を日報に入れない", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.click('[name="r1_kizu"]');
+  await p.keyboard.press("Numpad5");
+  eq(await v(p, "r1_kizu"), "", "日報に入らない");
+  ok(/カウンターの画面が開いていない/.test(await p.textContent("#msg")), "知らせが出る");
+});
+
+test("U8：Enter で次の欄へ／作業日の Enter で型式へ／F2 でいまの行へ", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.click('[name="worker_itanose"]'); await p.keyboard.press("Enter");
+  eq(await p.evaluate(() => document.activeElement.name), "worker_kensa", "Enter で次の欄");
+  await p.click('[name="workDate"]'); await p.keyboard.press("Enter");
+  eq(await p.evaluate(() => document.activeElement.name), "r1_model", "作業日の Enter で型式");
+  await p.click('[name="topics"]'); await p.keyboard.press("F2");
+  eq(await p.evaluate(() => document.activeElement.name), "r1_model", "F2 でいまの行");
 });
 
 // 本物の不良数カウンターとの連携。COUNTER_HTML=…/defect-counter.html を指定したときだけ動かす

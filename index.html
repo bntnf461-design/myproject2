@@ -19,8 +19,8 @@
     font-family: "Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif;
     font-size: 12px; color: var(--fg); background: #f2f2f2;
   }
-  .topbar { position: sticky; top: 0; z-index: 10; margin: -12px -12px 0; }
-  .topbar .toolbar, .topbar #cntBar { margin-left: 0; margin-right: 0; margin-top: 0; }
+  .topbar { position: sticky; top: 0; z-index: 10; margin: -12px -12px 12px; }
+  .topbar .toolbar, .topbar #cntBar, .topbar #msg, .topbar #rowTools { margin-left: 0; margin-right: 0; margin-top: 0; margin-bottom: 0; }
   .toolbar {
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
     padding: 8px; margin: -12px -12px 0; background: #2f4f6f; color: #fff;
@@ -31,7 +31,13 @@
   }
   .toolbar .sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.4); margin: 0 4px; }
   .toolbar #qrBox { width: 190px; padding: 5px 6px; border-radius: 4px; background: #fff; color: #111; }
-  .toolbar .status { margin-left: auto; font-size: 11px; opacity: .85; }
+  .toolbar .status { margin-left: auto; font-size: 13px; }
+  .toolbar #btnPrint { font-weight: bold; padding: 5px 18px; }
+  .toolbar label.fwd { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; background: rgba(255,255,255,.12); cursor: pointer; }
+  .toolbar label.fwd input { width: 20px; height: 20px; margin: 0; }
+  .toolbar label.fwd.off { background: #c62828; font-weight: bold; }
+  .toolbar button.pulse { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,213,79,.9); } 50% { box-shadow: 0 0 0 6px rgba(255,213,79,.2); } }
   #cntBar { margin: 0 -12px; padding: 4px 12px; font-size: 13px; background: #1f3346; color: #fff; display: none; gap: 14px; align-items: center; }
   #cntBar.on { display: flex; }
   #cntBar .st { padding: 1px 8px; border-radius: 3px; font-weight: bold; }
@@ -40,8 +46,13 @@
   #cntBar .key { margin-left: auto; color: #ffd54f; font-weight: bold; }
   #cntBar .warnx { color: #ffb4b4; font-weight: bold; }
   #cntBar button { font: inherit; padding: 2px 10px; border: 0; border-radius: 3px; background: #ffd54f; color: #222; cursor: pointer; font-weight: bold; }
-  #msg { margin: 0 -12px 12px; padding: 6px 12px; font-size: 12px; min-height: 28px; background: #e8eef4; }
-  #msg.warn { background: #fde2e2; color: #900; font-weight: bold; }
+  #msg { margin: 0 -12px 12px; padding: 6px 12px; font-size: 14px; min-height: 32px; background: #e8eef4; }
+  #msg.warn { background: #fde2e2; color: #900; font-weight: bold; animation: flash .4s ease-in-out 3; }
+  @keyframes flash { 50% { background: #f7a8a8; } }
+  #rowTools { display: none; gap: 8px; align-items: center; padding: 4px 12px; background: #fff6d1; border-bottom: 1px solid #e0c97a; font-size: 13px; }
+  #rowTools.on { display: flex; }
+  #rowTools button { font: inherit; padding: 2px 10px; cursor: pointer; }
+  #rowTools .hint { margin-left: auto; color: #555; }
   #msg.ok { background: #e3f4e1; color: #145214; }
   .sheet {
     background: var(--bg); padding: 10px; overflow-x: auto;
@@ -102,6 +113,14 @@
   input.over { background: #ffd6d6 !important; color: #b00 !important; font-weight: bold; }
   input.neg { background: #ffd6d6 !important; color: #b00 !important; font-weight: bold; }
   #msg button { font: inherit; margin-left: 8px; padding: 1px 8px; cursor: pointer; }
+  .lotlist { margin-top: 4px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+  .lotlist span.lot { white-space: nowrap; }
+  .lotlist button { font: inherit; font-size: 12px; padding: 0 6px; margin-left: 3px; cursor: pointer; }
+  input.unreg { background: #ffd6d6 !important; color: #b00 !important; }
+  #chk ul { margin: 6px 0; padding-left: 0; list-style: none; }
+  #chk li button { font: inherit; display: block; width: 100%; text-align: left; padding: 6px 8px; margin: 3px 0; border: 1px solid #e0c97a; background: #fffbe6; border-radius: 3px; cursor: pointer; }
+  #chk .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+  #chk .acts button { padding: 6px 16px; }
 
   /* 下段 */
   .lower { display: grid; grid-template-columns: 140mm 61mm 1fr; gap: 5mm; margin-top: 10px; }
@@ -170,6 +189,11 @@
   dialog .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
   dialog button, dialog label.btn { font: inherit; padding: 4px 10px; cursor: pointer; }
   dialog .note { font-size: 11px; color: #555; }
+  dialog .df { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 10px 14px; background: #f3f5f8; border-top: 1px solid #ccc; }
+  dialog .df .primary { font-weight: bold; background: #2f4f6f; color: #fff; border: 0; border-radius: 4px; padding: 8px 20px; }
+  dialog .df .dirty { color: #b00; font-weight: bold; margin-right: auto; }
+  #dlg[open] { display: flex; flex-direction: column; }
+  #dlg .db { flex: 1; min-height: 0; }
   dialog textarea { border: 1px solid #bbb; }
 
   /* 画面で見るとき（印刷は下の @media print で A3 の配置に戻す） */
@@ -196,12 +220,32 @@
     .carry input { font-size: 14px; }
     .soban input, .time input, .core input { font-size: 14px; }
     .kado-in, .kado-ev { font-size: 13px; }
+    /* 右の3列（パレット№・形態・ローカルコード）も固定して、横に動かさずに入れられるようにする */
+    #main .stkr { position: sticky; z-index: 2; background: #fff; }
+    #main th.stkr { background: #f3f5f8; }
+    #main .stkr-start { box-shadow: -4px 0 5px -2px rgba(0,0,0,.25), inset 2px 0 0 var(--line); }
+    #main tr.cur td.stkr { background: #fff6d1; }
+    #main tr.cur td.stkr.auto, #main td.stkr.auto { background: var(--auto); }
+    /* 小さすぎる欄を大きくする（印刷は元の大きさ） */
+    .soban .mm { font-size: 12px; }
+    .soban .mm input { width: 44px; font-size: 13px; height: 22px; }
+    .mark .side { width: 34mm; }
+    .side-cap { width: 34mm !important; }
+    .mark .side input { height: 30px; font-size: 15px; background: #fff; box-shadow: inset 0 0 0 1px #bbb; }
+    .mark .side .l { font-size: 12px; }
+    /* 入れ忘れやすい欄（空のとき）を目立たせる */
+    .need { background: #fffbe6 !important; box-shadow: inset 0 0 0 2px #f0b400; }
+    /* 画面では入力欄を先に、シール欄（画面では入力しない）をあとに小さく出す */
+    .lower > .right { order: -1; flex-basis: 100%; }
+    /* 一覧から選べる欄は、いつも ▼ を見せる */
+    input[list]::-webkit-calendar-picker-indicator { opacity: 1; display: block; }
+    .seal { height: 30mm; gap: 3mm; }
   }
 
   @media print {
     @page { size: A3 landscape; margin: 6mm; }
     body { background: #fff; padding: 0; font-size: 10px; }
-    .toolbar, #msg, .noprint { display: none !important; }
+    .toolbar, #msg, #rowTools, .noprint { display: none !important; }
     .sheet { box-shadow: none; padding: 0; overflow: visible; }
     .auto { background: none; }
     input.af, textarea.af { color: inherit; }
@@ -221,6 +265,9 @@
     .stamp td { height: 40px; }
     .lower { margin-top: 6px; }
     .mark, .final { margin-bottom: 2mm; }
+    textarea { resize: none; }
+    .need { background: none !important; box-shadow: none !important; }
+    input.unreg { background: none !important; color: inherit !important; }
   }
 </style>
 </head>
@@ -233,16 +280,15 @@
   <button type="button" id="btnPrint">印刷</button>
   <span class="sep"></span>
   <input id="qrBox" placeholder="素板QR（ここで読取りも可）" autocomplete="off">
-  <button type="button" id="btnCounter" title="不良数カウンターのデータから、不良数と稼働状況を取り込みます">カウンター取込</button>
-  <button type="button" id="btnCounterFile" title="取り込むファイルを選び直します">ファイル変更</button>
-  <label title="テンキー（数字・＋−＊／．・テンキーのEnter）を、同じパソコンで開いている不良数カウンターへ送ります"><input type="checkbox" id="chkFwd"> テンキー→カウンター</label>
+  <label class="fwd" id="fwdLabel" title="テンキー（数字・＋−＊／．・テンキーのEnter）を、同じパソコンで開いている不良数カウンターへ送ります"><input type="checkbox" id="chkFwd"> <span id="fwdText">テンキー→カウンター</span></label>
   <span class="sep"></span>
   <button type="button" id="btnSettings">設定・データ</button>
   <span class="status" id="status"></span>
 </div>
 <div id="cntBar" class="noprint"></div>
+<div id="msg" class="noprint"></div>
+<div id="rowTools" class="noprint"></div>
 </div>
-<div id="msg"></div>
 
 <form id="nippo" class="sheet" autocomplete="off" onsubmit="return false">
 <div class="inner">
@@ -291,15 +337,15 @@
       <tr>
         <th colspan="4" rowspan="2" class="stk stk-end" style="left:0">製　品</th>
         <th rowspan="3">作業枚数</th>
-        <th rowspan="3">良品枚数<span class="prev"><input id="prevGoodHead" type="number" min="0" tabindex="-1" title="前日の良品端数"></span></th>
+        <th rowspan="3">良品枚数<span class="prev"><input id="prevGoodHead" readonly tabindex="-1" title="前日の良品端数（上の「前日からの引継ぎ」で入れます）"></span></th>
         <th rowspan="3">良品歩留</th>
         <th rowspan="3">工程不良</th>
         <th rowspan="3">素板不良</th>
         <th colspan="13" class="bt">工程不良</th>
         <th colspan="8" class="bt">素板不良</th>
-        <th rowspan="3" class="bt">パレット№</th>
-        <th rowspan="3">パレット<br>形態</th>
-        <th rowspan="3">ローカル<br>コード</th>
+        <th rowspan="3" class="bt stkr stkr-start" data-kr="pallet">パレット№</th>
+        <th rowspan="3" class="stkr" data-kr="palletType">パレット<br>形態</th>
+        <th rowspan="3" class="stkr" data-kr="localCode">ローカル<br>コード</th>
       </tr>
       <tr>
         <th rowspan="2" class="bt">割れ</th>
@@ -339,6 +385,7 @@
       <div>
         <div style="font-size:11px">使用素板</div>
         <div class="soban" id="sobanArea"></div>
+        <div class="lotlist noprint" id="lotList"></div>
       </div>
 
       <div class="flex">
@@ -416,7 +463,7 @@
 <datalist id="workerList"></datalist>
 
 <dialog id="dlg">
-  <div class="dh"><span>設定</span><button type="button" id="dlgClose">閉じる</button></div>
+  <div class="dh"><span>設定・データ</span><button type="button" id="dlgClose">保存しないで閉じる</button></div>
   <div class="db">
     <h3>型式（日報で選ぶと、パレット形態・使用面取りホイール・1PL良品数・ローカルコードが自動で入ります）</h3>
     <div class="row">
@@ -440,7 +487,12 @@
       <label>稼働状況の目盛り <input id="sFrom" type="number" min="0" max="23" style="width:50px;border:1px solid #bbb">時 〜
         <input id="sTo" type="number" min="1" max="24" style="width:50px;border:1px solid #bbb">時</label>
     </div>
-    <div class="row"><button type="button" id="dlgSave" style="font-weight:bold">保存して閉じる</button></div>
+    <h3>不良数カウンター</h3>
+    <div class="row">
+      <button type="button" id="btnCounter" title="不良数カウンターのデータから、不良数と稼働状況を取り込みます">カウンターから取込</button>
+      <button type="button" id="btnCounterFile" title="取り込むファイルを選び直します">取込ファイルを選び直す</button>
+      <span class="note">同じパソコンでカウンターを開いているときは、自動で取り込むので押さなくてかまいません。</span>
+    </div>
     <h3>データの書出し・読込み</h3>
     <div class="row">
       <button type="button" id="btnExport">JSON書出し（表示中の日報）</button>
@@ -450,6 +502,16 @@
     <h3>この日の日報</h3>
     <div class="row"><button type="button" id="btnNew" style="color:#b00">表示中の日報をクリア</button>
       <span class="note">表示中の作業日の入力をすべて消します（元に戻せません）。</span></div>
+  </div>
+  <div class="df"><span class="dirty" id="dlgDirty"></span><button type="button" id="dlgSave" class="primary">保存して閉じる</button></div>
+</dialog>
+
+<dialog id="chk">
+  <div class="dh"><span>印刷の前に：まだ入っていない欄があります</span></div>
+  <div class="db">
+    <div class="note" style="font-size:13px;color:#333">項目を押すと、その欄へ移ります。</div>
+    <ul id="chkList"></ul>
+    <div class="acts"><button type="button" id="chkBack">戻って入力する</button><button type="button" id="chkPrint">このまま印刷</button></div>
   </div>
 </dialog>
 
@@ -537,6 +599,15 @@
   var STICKY = {}, leftPx = 0;
   COLS.slice(0, 4).forEach(function (c) { STICKY[c.k] = leftPx; leftPx += c.w; });
   Array.prototype.forEach.call(document.querySelectorAll("#main th[data-k]"), function (th) { th.style.left = STICKY[th.getAttribute("data-k")] + "px"; });
+  // 右の3列（パレット№・形態・ローカルコード）も画面では固定する
+  var STICKYR = {}, rightPx = 0;
+  COLS.slice(-3).reverse().forEach(function (c) { STICKYR[c.k] = rightPx; rightPx += c.w; });
+  Array.prototype.forEach.call(document.querySelectorAll("#main th[data-kr]"), function (th) { th.style.right = STICKYR[th.getAttribute("data-kr")] + "px"; });
+  function stickRight(td, k) {
+    if (STICKYR[k] == null) return;
+    td.classList.add("stkr"); td.style.right = STICKYR[k] + "px";
+    if (k === "pallet") td.classList.add("stkr-start");
+  }
   var cg = document.getElementById("mainCols");
   COLS.forEach(function (c) { cg.appendChild(el("col", { style: "width:" + c.w + "px" })); });
   var body = document.getElementById("mainBody");
@@ -546,6 +617,7 @@
       var td = el("td");
       if (c.bt) td.className = "bt";
       if (STICKY[c.k] != null) { td.classList.add("stk"); td.style.left = STICKY[c.k] + "px"; if (c.k === "lotSoban") td.classList.add("stk-end"); }
+      stickRight(td, c.k);
       if (c.k === "pl") { td.classList.add("no"); td.textContent = r; tr.appendChild(td); return; }
       var inp = el("input", { name: "r" + r + "_" + c.k });
       if (c.num) { inp.type = "number"; inp.min = "0"; inp.step = "any"; }
@@ -563,6 +635,7 @@
     var td = el("td", { "class": "auto" + (c.bt ? " bt" : "") });
     if (c.k === "yield" || SUM_KEYS.indexOf(c.k) >= 0) td.innerHTML = '<input name="t_' + c.k + '" readonly tabindex="-1">';
     else td.className = c.bt ? "bt" : "";
+    stickRight(td, c.k);
     tot.appendChild(td);
   });
   foot.appendChild(tot);
@@ -574,13 +647,13 @@
     td.innerHTML = '<input type="checkbox" name="dispose_' + k + '" title="処置廃棄">';
     disp.appendChild(td);
   });
-  disp.appendChild(el("td", { colspan: 3, style: "border:0" }));
+  disp.appendChild(el("td", { colspan: 3, "class": "stkr", style: "border:0;right:0;background:transparent" }));
   foot.appendChild(disp);
 
   // ---------- 打刻マーク仕様／ダブルチェック／マーク交換前（シール 55×55mm） ----------
   var markArea = document.getElementById("markArea"), finalArea = document.getElementById("finalArea");
   markArea.appendChild(el("div", { style: "display:flex" },
-    '<div class="cap" style="width:26mm"></div><div class="cap" style="width:55mm">打刻マーク仕様</div><div class="cap" style="width:55mm">ダブルチェック</div>'));
+    '<div class="cap side-cap" style="width:26mm"></div><div class="cap" style="width:55mm">打刻マーク仕様</div><div class="cap" style="width:55mm">ダブルチェック</div>'));
   finalArea.appendChild(el("div", { "class": "cap" }, "マーク交換前・最終チェック"));
   [1, 2].forEach(function (n) {
     markArea.appendChild(el("div", { "class": "mark" },
@@ -665,11 +738,13 @@
       if (onRow) onRow(r, out[r]);
       cur.filled += toNum(get("r" + r + "_good"));
       out[r].over = cap > 0 && cur.filled > cap;
+      if (out[r].over) out[r].overBy = cur.filled - cap;
     }
     out.end = cur;
     return out;
   }
 
+  var overKey = "", quietOver = false;
   function computeAuto() {
     var date = curDate;
     var lots = computeLots(val, date, val("prevLot"), num("prevGood"), autoVals, function (r, L) {
@@ -690,12 +765,21 @@
       setAuto(p + "qty", val(p + "model") && val(p + "good") !== "" ? fmt(num(p + "good") + ng) : "");
     }
     setAuto("wheel", wheels.join("／"));
-    // 1PL を超えた行は赤くする
+    // 1PL を超えた行は赤くし、新しく超えたときは上に知らせる
+    var overs = [];
     for (var rr = 1; rr <= ROWS; rr++) {
       var over = !!(lots[rr] && lots[rr].over), g = f("r" + rr + "_good");
       g.classList.toggle("over", over);
       g.title = over ? "1PL（" + lots[rr].cap + "枚）を超えています" : "";
+      if (over) overs.push(rr + "行目の良品枚数が 1PL（" + lots[rr].cap + "枚）を " + lots[rr].overBy + " 枚超えています");
+      // 登録されていない型式は赤くする
+      var mi = f("r" + rr + "_model");
+      mi.classList.toggle("unreg", mi.value !== "" && !modelOf(mi.value));
+      mi.title = mi.classList.contains("unreg") ? "この型式は登録されていません（設定・データで登録できます）" : "";
     }
+    var ok2 = overs.join("／");
+    if (!quietOver && ok2 && ok2 !== overKey && overs.some(function (t) { return overKey.indexOf(t) < 0; })) { msg("⚠ " + ok2, "warn"); beep(false); }
+    overKey = ok2;
     computeSoban();
   }
 
@@ -761,8 +845,145 @@
     document.getElementById("prevGoodHead").value = val("prevGood");
     Array.prototype.forEach.call(form.elements, function (e) { if (e.name && autoVals[e.name] != null) markAf(e); });
     drawKado();
+    drawLotList();
+    markNeed();
     if (chkFwd) drawCntBar();   // 起動の途中（カウンター連携の準備前）は描かない
   }
+
+  // ---------- 読んだ素板の一覧（取消できる） ----------
+  function drawLotList() {
+    var box = document.getElementById("lotList"), html = "";
+    [1, 2].forEach(function (n) {
+      blockLots(n).forEach(function (x, i) {
+        html += '<span class="lot">' + (n === 1 ? "左" : "右") + "：" + esc(x.lot) + "（" + esc(x.qty || "?") + "枚）" +
+          '<button type="button" data-lb="' + n + '" data-li="' + i + '">取消</button></span>';
+      });
+    });
+    box.innerHTML = html ? "<span>読んだ素板：</span>" + html : "";
+  }
+  document.getElementById("lotList").addEventListener("click", function (e) {
+    var n = e.target.getAttribute("data-lb"); if (!n || readOnly) return;
+    var list = blockLots(n), x = list[+e.target.getAttribute("data-li")]; if (!x) return;
+    snapshot("素板 " + x.lot + " の取消");
+    list.splice(+e.target.getAttribute("data-li"), 1);
+    f("sb" + n + "_lots").value = list.length ? JSON.stringify(list) : "";
+    changed();
+    msgUndo("読んだ素板 " + x.lot + "（" + x.qty + "枚）を使用素板から外しました。明細の素板ロットNo. は必要なら直してください", "ok");
+  });
+
+  // ---------- 入れ忘れやすい欄（印刷の前に確かめる） ----------
+  var NEED = [["worker_itanose", "作業者（板乗せ）"], ["worker_kensa", "作業者（検査）"], ["worker_stock", "作業者（ストック）"],
+    ["tonyu_itanose", "投入時間（板乗せ）"], ["tonyu_kensa", "投入時間（検査）"], ["tonyu_stock", "投入時間（ストック）"],
+    ["kadoS", "稼働状況の開始(S)"], ["kadoE", "稼働状況の終了"],
+    ["m1_mark", "マーク仕様確認の年月度マーク"], ["m1_checker", "マーク仕様確認の確認者"],
+    ["m1_mark2", "ダブルチェックの年月度マーク"], ["m1_checker2", "ダブルチェックの確認者"],
+    ["kenshidai", "検視台 高さ調整実施"]];
+  function missing() {
+    var out = [];
+    for (var r = 1; r <= ROWS; r++) if (rowActive(val, r) && !val("r" + r + "_pallet").trim()) out.push(["r" + r + "_pallet", r + "行目のパレット№"]);
+    NEED.forEach(function (x) { if (!val(x[0]).trim()) out.push(x); });
+    return out;
+  }
+  function markNeed() {
+    var miss = {};
+    missing().forEach(function (x) { miss[x[0]] = 1; });
+    NEED.map(function (x) { return x[0]; }).concat(Array.apply(null, Array(ROWS)).map(function (_, i) { return "r" + (i + 1) + "_pallet"; }))
+      .forEach(function (n) { var e = f(n); if (e) e.classList.toggle("need", !!miss[n]); });
+  }
+  var chk = document.getElementById("chk");
+  function focusField(name) {
+    var e = f(name); if (!e) return;
+    e.scrollIntoView({ block: "center", inline: "nearest" });
+    e.focus();
+  }
+  function printWithCheck() {
+    var miss = missing();
+    if (!miss.length || readOnly) { window.print(); return; }
+    var ul = document.getElementById("chkList");
+    ul.innerHTML = "";
+    miss.forEach(function (x) {
+      var li = el("li"), b = el("button", { type: "button" }, esc(x[1]));
+      b.onclick = function () { chk.close(); focusField(x[0]); };
+      li.appendChild(b); ul.appendChild(li);
+    });
+    chk.showModal();
+    document.getElementById("chkBack").focus();
+  }
+  document.getElementById("chkBack").onclick = function () { chk.close(); if (missing()[0]) focusField(missing()[0][0]); };
+  document.getElementById("chkPrint").onclick = function () { chk.close(); window.print(); };
+
+  // ---------- 取り消し（ひとつ前の操作を元に戻す） ----------
+  var undoSnap = null;
+  function snapshot(label) { undoSnap = { label: label, date: curDate, d: collect() }; }
+  function doUndo() {
+    if (!undoSnap || readOnly || undoSnap.date !== curDate) return;
+    var u = undoSnap; undoSnap = null;
+    apply(u.d); f("workDate").value = curDate;
+    drawEvList(); recalc(); save();
+    msg("「" + u.label + "」を取り消しました", "ok");
+  }
+  function msgUndo(text, kind) {
+    msg(text, kind);
+    var b = el("button", { type: "button" }, "取り消す（元に戻す）");
+    b.onclick = doUndo;
+    msgEl.appendChild(b);
+  }
+
+  // ---------- 行を消す・入れる ----------
+  var ROW_KEYS = COLS.filter(function (c) { return c.k !== "pl" && !c.calc; }).map(function (c) { return c.k; });
+  function rowGet(r) {
+    var o = {};
+    ROW_KEYS.forEach(function (k) { var n = "r" + r + "_" + k; o[k] = { v: val(n), a: autoVals[n] }; });
+    return o;
+  }
+  function rowSet(r, o) {
+    ROW_KEYS.forEach(function (k) {
+      var n = "r" + r + "_" + k, x = o ? o[k] : { v: "" };
+      f(n).value = x.v;
+      if (x.a == null) delete autoVals[n]; else autoVals[n] = x.a;
+    });
+  }
+  function deleteRow(r) {
+    if (readOnly) return;
+    snapshot(r + "行目を消す");
+    for (var i = r; i < ROWS; i++) rowSet(i, rowGet(i + 1));
+    rowSet(ROWS, null);
+    changed();
+    msgUndo(r + "行目を消しました（下の行を1つずつ上へ）", "ok");
+  }
+  function insertRow(r) {
+    if (readOnly) return;
+    if (rowActive(val, ROWS)) { msg("⚠ いちばん下（" + ROWS + "行目）が使われているので、行を入れられません", "warn"); return; }
+    snapshot(r + "行目に行を入れる");
+    for (var i = ROWS; i > r; i--) rowSet(i, rowGet(i - 1));
+    rowSet(r, null);
+    changed();
+    msgUndo(r + "行目に空の行を入れました（下の行を1つずつ下へ）", "ok");
+  }
+  var rowTools = document.getElementById("rowTools"), toolRow = 0;
+  form.addEventListener("focusin", function (e) {
+    var m = /^r(\d+)_/.exec(e.target.name || "");
+    if (!m || readOnly) { rowTools.classList.remove("on"); toolRow = 0; return; }
+    if (+m[1] === toolRow) return;
+    toolRow = +m[1];
+    rowTools.innerHTML = "<b>" + toolRow + "行目</b>" +
+      '<button type="button" data-rt="del">この行を消す</button>' +
+      '<button type="button" data-rt="ins">この行の上に1行入れる</button>' +
+      '<span class="hint">F2：いま入力中の行へ／↑↓：上下の行へ</span>';
+    rowTools.classList.add("on");
+  });
+  rowTools.addEventListener("click", function (e) {
+    var a = e.target.getAttribute && e.target.getAttribute("data-rt");
+    if (!a || !toolRow) return;
+    if (a === "del") deleteRow(toolRow); else insertRow(toolRow);
+  });
+  // F2：いま入力している行へ（型式が空なら型式、入っていれば良品枚数）
+  window.addEventListener("keydown", function (e) {
+    if (e.key !== "F2" || dlg.open || chk.open) return;
+    e.preventDefault();
+    var r = lastActiveRow() || 1;
+    focusField("r" + r + (val("r" + r + "_model") ? "_good" : "_model"));
+  });
 
   // ---------- 稼働状況 ----------
   var evCache = null, evCacheSrc = null;
@@ -904,7 +1125,8 @@
   function handleQR(raw) {
     var q = parseQR(raw);
     if (readOnly) { msg("このタブは表示専用です。QRは入力中のタブで読み取ってください", "warn"); return; }
-    if (!q) { msg("素板QRとして読めませんでした。もう一度読み取ってください（日本語入力がオンだと読めません）", "warn"); return; }
+    if (!q) { msg("⚠ 素板QRとして読めませんでした。もう一度読み取ってください（日本語入力がオンだと読めません）", "warn"); beep(false); return; }
+    snapshot("素板QR " + q.lot + " の読み取り");
     var notes = [];
     // 使用素板：品種・サイズが同じ欄へ。なければ空いている欄へ
     var k = 0;
@@ -943,7 +1165,13 @@
       notes.push("ローカルコードが型式（" + mm.local + "）と素板（" + q.local + "）で違います。確認してください");
     recalc(); save();
     var head = "素板QR：" + q.name + " " + q.inW + "×" + q.inH + "（" + q.mmW + "×" + q.mmH + "mm）" + q.qty + "枚　ロット " + q.lot;
-    msg(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
+    msgUndo(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
+    beep(!notes.length);
+  }
+  // 読み取りの成功は短く高い音、確認が要るときは低い音2回
+  function beep(good) {
+    if (good) tone(1760, 0.08, 0, 0.15);
+    else { tone(330, 0.18, 0, 0.25); tone(330, 0.18, 0.25, 0.25); }
   }
   // バーコードリーダーは、キーボードのように速く打って最後に Enter を送る（文字の間が 150ms 以内を続けて届いたものとみなす）。どの欄にいても QR として受け取る
   var qb = { buf: "", t: -1e9, target: null, before: null };
@@ -1007,7 +1235,7 @@
     }).then(function (h) {
       if (!h) return;
       return h.getFile().then(function (file) { return file.text(); }).then(function (t) { importCounter(t, h.name); })
-        .catch(function () { msg("カウンターのファイルが読めません。「ファイル変更」で選び直してください", "warn"); });
+        .catch(function () { msg("カウンターのファイルが読めません。「設定・データ」の「取込ファイルを選び直す」で選び直してください", "warn"); });
     });
   }
   var fb = el("input", { type: "file", accept: ".json,application/json", id: "counterFallback", hidden: "" });
@@ -1086,10 +1314,11 @@
     msg(note + (unknown.length ? "　⚠ 日報に対応のない不良の種類：" + unknown.join("、") : ""), unknown.length ? "warn" : "ok");
   }
   document.getElementById("btnCounter").onclick = function () {
+    if (!dlgDirty) dlg.close();
     var c = counterLocal();
     if (c) importCounter(JSON.stringify(c), "このパソコンのカウンター"); else readCounter(false);
   };
-  document.getElementById("btnCounterFile").onclick = function () { readCounter(true); };
+  document.getElementById("btnCounterFile").onclick = function () { if (!dlgDirty) dlg.close(); readCounter(true); };
 
   // ---------- 同じパソコンの不良数カウンターとの連携 ----------
   // カウンターも日報もパソコンのファイルを Edge / Chrome で開くと、同じ保存場所（localStorage）を使う。
@@ -1100,7 +1329,12 @@
   var FWD_KEY = "nline-nippo-fwd";
   var chkFwd = document.getElementById("chkFwd");
   chkFwd.checked = localStorageGet(FWD_KEY) !== "0";
-  chkFwd.onchange = function () { localStorageSet(FWD_KEY, chkFwd.checked ? "1" : "0"); drawCntBar(); };
+  function drawFwd() {
+    document.getElementById("fwdLabel").classList.toggle("off", !chkFwd.checked);
+    document.getElementById("fwdText").textContent = chkFwd.checked ? "テンキー→カウンター" : "テンキーは日報に入ります";
+  }
+  chkFwd.onchange = function () { localStorageSet(FWD_KEY, chkFwd.checked ? "1" : "0"); drawFwd(); drawCntBar(); };
+  drawFwd();
   function counterLocal() {
     var h = parseJSON(localStorageGet(CNT.hist), null);
     return h && Array.isArray(h.d) ? { hist: h, state: parseJSON(localStorageGet(CNT.state), {}) || {} } : null;
@@ -1132,6 +1366,7 @@
   function cntActionHtml(st, alive) {
     var m = currentModel();
     if (!alive || !m || readOnly || !isToday() || !(st.features && st.features.jobs)) return "";
+    if (!modelOf(m)) return "<span class=\"warnx\">⚠ 型式「" + esc(m) + "」は登録されていないため、カウンターは切り替えません</span>";
     if (switching) return "<span class=\"warnx\">カウンターを切り替え中…</span>";
     if (st.job && st.job.running) {
       if (st.job.shift === m) return "";
@@ -1148,10 +1383,14 @@
     var code = e.code || "";
     // テンキーのキーだけ送る。← はどの欄にもいないときだけ（日報の文字消しと区別するため）
     if (!(code.indexOf("Numpad") === 0 || (code === "Backspace" && !editable(e.target)))) return;
-    if (dlg.open) return;
+    if (dlg.open || chk.open) return;
     var a = counterAlive();
-    if (!a) { showKey("カウンターが開いていないため、日報に入力しました"); return; }
     e.preventDefault(); e.stopImmediatePropagation();
+    if (!a) {
+      // 不良の数が日報の欄に紛れ込まないよう、日報にも入れない
+      if (!e.repeat) msg("⚠ 不良数カウンターの画面が開いていないため、テンキーの入力はカウンターへ送れませんでした（日報にも入れていません）。カウンターを開くか、上の「テンキー→カウンター」を外してください", "warn");
+      return;
+    }
     if (e.repeat) return;
     localStorageSet(CNT.fwd, JSON.stringify({ to: a.id, code: code, key: e.key, shiftKey: e.shiftKey, t: Date.now(), n: Math.random() }));
     var m = /^Numpad(\d)$/.exec(code);
@@ -1251,6 +1490,7 @@
   function switchCounter(model) {
     var st = cntState();
     if (switching || !st || !counterAlive()) return;
+    if (!modelOf(model)) { msg("⚠ 型式「" + model + "」は登録されていないため、カウンターは切り替えません。型式を直すか、設定で登録してください", "warn"); return; }
     if (!(st.features && st.features.jobs)) { msg("カウンターの設定で「作業の開始・終了」がオフのため、型式を切り替えられません", "warn"); return; }
     if (st.job && st.job.running && st.job.shift === model) return;
     switching = true; drawCntBar();
@@ -1327,7 +1567,8 @@
     apply(d || { workDate: date });
     f("workDate").value = date;
     applyCarry(!hasContent(d));   // まだ何も入っていない日は、前日の最後の型式などから始める
-    drawEvList(); recalc();
+    undoSnap = null;
+    quietOver = true; drawEvList(); recalc(); quietOver = false;
   }
   function goDate(date, note) {
     if (!validDate(date)) { f("workDate").value = curDate; return; }
@@ -1342,7 +1583,6 @@
     if (e.target.name === "workDate" || e.target.id === "prevGoodHead" || readOnly) return;
     changed();
   });
-  document.getElementById("prevGoodHead").addEventListener("input", function (e) { f("prevGood").value = e.target.value; changed(); });
   // 日付をキーボードで打っている途中は読み込まない。欄を離れたとき・Enter・少し手が止まったときに確定する
   var dateTimer;
   f("workDate").addEventListener("change", function () {
@@ -1363,7 +1603,7 @@
   form.addEventListener("change", function (e) {
     var m = /^r(\d+)_model$/.exec(e.target.name || "");
     // いま入力している行の型式を変えたら、作業中のカウンターも切り替える
-    if (m && e.target.value && +m[1] === lastActiveRow() && isToday() && !readOnly) {
+    if (m && e.target.value && modelOf(e.target.value) && +m[1] === lastActiveRow() && isToday() && !readOnly) {
       var cs = cntState();
       if (cs && counterAlive() && cs.job && cs.job.running && cs.job.shift !== e.target.value) {
         var target = e.target.value;
@@ -1374,24 +1614,49 @@
     if (e.target.classList.contains("worker") && e.target.value.trim() && master.workers.indexOf(e.target.value.trim()) < 0) {
       master.workers.push(e.target.value.trim()); saveMaster();
     }
-    if (m && e.target.value && !modelOf(e.target.value)) msg("型式「" + e.target.value + "」は登録されていません。設定で登録すると自動入力されます", "warn");
+    if (m && e.target.value && !modelOf(e.target.value)) { msg("⚠ 型式「" + e.target.value + "」は登録されていません。一覧から選び直してください（新しい型式は「設定・データ」で登録します）", "warn"); beep(false); }
     changed();
   });
   // Enter で下のセルへ（Shift+Enter で上へ）
+  // 明細の外では Enter で次の欄へ。作業日を確定したら、いま入力中の行の型式へ
+  // 数字の欄では ↑↓ で数字を変えない（明細では上下の行へ移る）
+  function focusables() {
+    return Array.prototype.filter.call(form.elements, function (x) {
+      return !x.disabled && !x.readOnly && x.type !== "hidden" && x.tabIndex >= 0 && x.tagName !== "BUTTON" && x.tagName !== "FIELDSET" && x.offsetParent !== null;
+    });
+  }
   form.addEventListener("keydown", function (e) {
-    if (e.key !== "Enter" || e.target.tagName === "TEXTAREA" || e.isComposing) return;
     var m = /^r(\d+)_(.+)$/.exec(e.target.name || "");
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.target.type === "number") {
+      e.preventDefault();
+      var nx = m && f("r" + (+m[1] + (e.key === "ArrowUp" ? -1 : 1)) + "_" + m[2]);
+      if (nx) nx.focus();
+      return;
+    }
+    if (e.key !== "Enter" || e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON" || e.isComposing) return;
     e.preventDefault();
-    var next = m && f("r" + (+m[1] + (e.shiftKey ? -1 : 1)) + "_" + m[2]);
-    if (next) next.focus();
+    if (e.target.name === "workDate") { var r0 = lastActiveRow() || 1; focusField("r" + r0 + (val("r" + r0 + "_model") ? "_good" : "_model")); return; }
+    if (m) {
+      var next = f("r" + (+m[1] + (e.shiftKey ? -1 : 1)) + "_" + m[2]);
+      if (next) next.focus();
+      return;
+    }
+    var list = focusables(), i = list.indexOf(e.target);
+    var to = list[i + (e.shiftKey ? -1 : 1)];
+    if (i >= 0 && to) to.focus();
   });
+  // ホイールで画面を動かしたとき、選んでいる数字の欄の値が変わらないようにする
+  document.addEventListener("wheel", function (e) {
+    var t = e.target;
+    if (t && t.type === "number" && t === document.activeElement) t.blur();
+  }, { passive: true });
 
   document.getElementById("btnSave").onclick = save;
-  document.getElementById("btnPrint").onclick = function () { window.print(); };
+  document.getElementById("btnPrint").onclick = printWithCheck;
   document.getElementById("btnNew").onclick = function () {
     if (!confirm(curDate + " の日報の入力内容をすべてクリアします。よろしいですか？")) return;
     try { localStorage.removeItem(PREFIX + curDate); } catch (e) {}
-    load(curDate); dlg.close(); msg(curDate + " の日報をクリアしました");
+    load(curDate); setDirty(false); dlg.close(); msg(curDate + " の日報をクリアしました");
   };
   function download(name, text, type) {
     if (window.showSaveFilePicker) {
@@ -1443,7 +1708,17 @@
   };
 
   // ---------- 設定（型式・作業者） ----------
-  var dlg = document.getElementById("dlg"), mBody = document.getElementById("mBody"), draft = [];
+  var dlg = document.getElementById("dlg"), mBody = document.getElementById("mBody"), draft = [], dlgDirty = false;
+  function setDirty(on) {
+    dlgDirty = on;
+    document.getElementById("dlgDirty").textContent = on ? "変更があります（まだ保存していません）" : "";
+  }
+  ["wList", "sSuffix", "sFrom", "sTo"].forEach(function (id) { document.getElementById(id).addEventListener("input", function () { setDirty(true); }); });
+  function closeSettings() {
+    if (dlgDirty && !confirm("設定の変更を保存しないで閉じますか？\n（保存するときは「キャンセル」を押して、下の「保存して閉じる」を押してください）")) return false;
+    setDirty(false); dlg.close(); return true;
+  }
+  dlg.addEventListener("cancel", function (e) { e.preventDefault(); closeSettings(); });
   function drawModels() {
     mBody.innerHTML = "";
     draft.forEach(function (m, i) {
@@ -1462,12 +1737,13 @@
     var i = e.target.getAttribute("data-i"); if (i == null) return;
     var k = e.target.getAttribute("data-k");
     draft[i][k] = k === "cap" ? (parseInt(e.target.value, 10) || "") : e.target.value;
+    setDirty(true);
   });
   mBody.addEventListener("click", function (e) {
     var i = e.target.getAttribute("data-mdel"); if (i == null) return;
-    draft.splice(+i, 1); drawModels();
+    draft.splice(+i, 1); drawModels(); setDirty(true);
   });
-  document.getElementById("mAdd").onclick = function () { draft.push({ name: "", pallet: "", wheel: "", cap: "", local: "" }); drawModels(); };
+  document.getElementById("mAdd").onclick = function () { draft.push({ name: "", pallet: "", wheel: "", cap: "", local: "" }); drawModels(); setDirty(true); };
   document.getElementById("btnSettings").onclick = function () {
     draft = master.models.map(function (m) { return Object.assign({}, m); });
     drawModels();
@@ -1475,9 +1751,10 @@
     document.getElementById("sSuffix").value = master.lotSuffix;
     document.getElementById("sFrom").value = master.kadoFrom;
     document.getElementById("sTo").value = master.kadoTo;
+    setDirty(false);
     dlg.showModal();
   };
-  document.getElementById("dlgClose").onclick = function () { dlg.close(); };
+  document.getElementById("dlgClose").onclick = closeSettings;
   document.getElementById("dlgSave").onclick = function () {
     master.models = draft.filter(function (m) { return String(m.name || "").trim(); })
       .map(function (m) { return { name: String(m.name).trim(), pallet: m.pallet || "", wheel: m.wheel || "", cap: parseInt(m.cap, 10) || "", local: m.local || "" }; });
@@ -1486,7 +1763,8 @@
     master.lotSuffix = document.getElementById("sSuffix").value.trim();
     var fr = parseInt(document.getElementById("sFrom").value, 10), to = parseInt(document.getElementById("sTo").value, 10);
     if (fr >= 0 && to > fr && to <= 24) { master.kadoFrom = fr; master.kadoTo = to; }
-    saveMaster(); dlg.close(); recalc(); save(); syncShifts();
+    saveMaster(); setDirty(false); dlg.close(); recalc(); save(); syncShifts();
+    document.getElementById("btnSettings").classList.toggle("pulse", !master.models.length);
     msg("設定を保存しました（型式 " + master.models.length + " 件・作業者 " + master.workers.length + " 人）", "ok");
   };
 
@@ -1596,7 +1874,8 @@
     e.target.value = "";
     var done = function (n) {
       drawModels();
-      alert(n < 0 ? "「型式」の見出しが見つかりませんでした。雛形の1行目の見出しを変えずに使ってください。" : n + " 件の型式を読み込みました。「保存して閉じる」で確定します。");
+      if (n > 0) setDirty(true);
+      alert(n < 0 ? "「型式」の見出しが見つかりませんでした。雛形の1行目の見出しを変えずに使ってください。" : n + " 件の型式を読み込みました。画面の下の「保存して閉じる」を押すと確定します。");
     };
     file.arrayBuffer().then(function (buf) {
       if (/\.xlsx$/i.test(file.name)) {
@@ -1645,16 +1924,17 @@
   window.addEventListener("pagehide", function () { var l = lockInfo(); if (!readOnly && l && l.id === TAB) { save(); try { localStorage.removeItem(LOCK); } catch (err) {} } });
 
   // 起動時はいつも今日の日報を開く
-  var last = localStorageGet(PREFIX + "last"), today = ymd(new Date());
+  var today = ymd(new Date());
   load(today);
   drawCntBar();
   setTimeout(syncShifts, 500);
   var lk = lockInfo();
   if (lockAlive(lk) && lk.id !== TAB) setReadOnly(true); else claim();
   if (!readOnly) {
-    if (!master.models.length) msg("はじめに「設定（型式・作業者）」で型式を登録してください（Excel の雛形から読み込めます）");
-    else if (validDate(last) && last !== today) msg("今日（" + today + "）の日報を表示しています。前回は " + last + " の日報でした。続きを入力するときは ◀ ▶ で作業日を変えてください");
-    else msg("今日（" + today + "）の日報を表示しています");
+    if (!master.models.length) {
+      msg("はじめに、上の「設定・データ」で型式を登録してください（Excel の雛形から読み込めます）");
+      document.getElementById("btnSettings").classList.add("pulse");
+    } else msg("今日（" + today + "）の日報を表示しています");
   }
 })();
 </script>
