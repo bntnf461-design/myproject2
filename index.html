@@ -1532,7 +1532,8 @@
       h += '<div class="sec"><h4>② 素板の当残（数えた残りの枚数）</h4>';
       sb.forEach(function (n) {
         h += '<div class="rowx">' + esc(val("sb" + n + "_name")) + "（" + esc(val("sb" + n + "_inW")) + "×" + esc(val("sb" + n + "_inH")) + "）" +
-          " 当残 " + inp("sb" + n + "_to", "", "", "number") + ' 枚 <span class="hint">計算では ' + (sobanCalc[n] != null ? fmt(sobanCalc[n]) : "―") + " 枚</span></div>";
+          " 当残 " + inp("sb" + n + "_to", "", "数えた枚数", "number").replace(manualOf("sb" + n + "_to") ? "" : ' value="' + esc(val("sb" + n + "_to")) + '"', manualOf("sb" + n + "_to") ? "" : ' value=""') +
+          ' 枚 <span class="hint">計算では ' + (sobanCalc[n] != null ? fmt(sobanCalc[n]) : "―") + " 枚（数えた枚数を入れてください）</span></div>";
       });
       h += "</div>";
     }
