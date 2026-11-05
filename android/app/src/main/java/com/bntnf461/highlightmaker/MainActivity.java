@@ -329,6 +329,7 @@ public class MainActivity extends Activity {
     }
 
     private void transcode(Uri uri, Info info, String label, java.util.function.Consumer<File> done) {
+        if (prepCancelled || prepDone) return; // 中止した直後に順番が来た変換は始めない
         File dir = new File(pickedDir(), String.valueOf(System.nanoTime()));
         if (!dir.mkdirs() && !dir.isDirectory()) { done.accept(null); return; }
         String base = info.name.replaceAll("[\\\\/:*?\"<>|]", "_").replaceAll("\\.[A-Za-z0-9]+$", "");
