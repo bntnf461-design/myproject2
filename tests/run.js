@@ -489,11 +489,23 @@ test("端数の素板があるときだけ、バーコード付きの紙を一�
   ok(await p.evaluate(() => document.body.classList.contains("with-label")), "端数があれば印刷する");
   const t = await p.textContent("#labelPage");
   ok(t.includes("R7Z446SX042") && t.includes("75") && t.includes("DGL35TS") && t.includes("2N9A"), "中身：" + t);
-  ok(await p.evaluate(() => !!document.querySelector("#labelPage svg rect")), "バーコード");
+  ok(await p.evaluate(() => !!document.querySelector("#labelPage .bc svg rect")), "バーコード");
+  ok(await p.evaluate(() => !!document.querySelector("#labelPage .qr svg path")), "QRコード");
   const pdf = path.join(os.tmpdir(), "nippo-label-test.pdf");
   await p.pdf({ path: pdf, preferCSSPageSize: true });
   const pages = (fs.readFileSync(pdf, "latin1").match(/\/Type\s*\/Page[^s]/g) || []).length;
   eq(pages, 2, "日報（A3）＋端数の紙（A4）");
+});
+
+test("次の日に端数の紙のQRを読むと、新しいパレットにせず前日から続く素板として確かめる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, "A0DGL35TS    ,A3I,A7813   ,A8508   ,AA32.00 ,AB20.00 ,AD102 ,B0R7Z446SX061,B42,BR2N9A,ZH1");
+  ok((await p.textContent("#msg")).includes("前日から続く素板"), "確かめた知らせ");
+  eq(await v(p, "sb1_lots"), "", "新しいパレットとして足さない");
+  await p.click("body"); await scanQR(p, "A0DGL35TS    ,A3I,A7813   ,A8508   ,AA32.00 ,AB20.00 ,AD90  ,B0R7Z446SX061,B42,BR2N9A,ZH1");
+  ok((await p.textContent("#msg")).includes("前残（102 枚）と違います"), "枚数が違えば知らせる");
 });
 
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
