@@ -69,6 +69,16 @@
   .picklist button { display: block; width: 100%; text-align: left; font: inherit; font-size: 15px; padding: 8px 10px; margin: 4px 0; cursor: pointer; }
   .picklist button.rec { border: 2px solid #2e8b57; font-weight: bold; }
   .fixarea { margin-top: 8px; font-size: 12px; }
+  .gtot { margin: 4px 0 8px; padding: 6px 8px; background: #eef6ee; border: 1px solid #b7d7b7; border-radius: 4px; font-size: 13px; }
+  .gtot .gt-note { color: #555; margin-left: 8px; font-size: 12px; }
+  .gtot .gt-rows { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 4px; }
+  .gtot label { display: flex; align-items: center; gap: 3px; }
+  .gtot input { border: 1px solid #bbb; background: #fff; font-size: 14px; }
+  .gtot input[name$="_model"] { width: 150px; }
+  .gtot input[name$="_good"] { width: 80px; text-align: right; }
+  .gtot button { font: inherit; padding: 3px 12px; cursor: pointer; }
+  .gtot .gt-info { margin-top: 4px; font-size: 12px; color: #145214; }
+  .gtot .gt-info.warn { color: #b00; font-weight: bold; }
   .fixarea h4 { margin: 0 0 4px; font-size: 13px; }
   .fixarea ul { margin: 0; padding-left: 18px; }
   #rowTools button { font: inherit; padding: 2px 10px; cursor: pointer; }
@@ -370,6 +380,18 @@
     <label>切面ロットNo. <input name="prevLot"></label>
     <label>良品端数 <input name="prevGood" type="number" min="0" class="s"></label>
     <span id="prevInfo" style="color:#666"></span>
+  </div>
+  <div class="gtot noprint" id="gtot">
+    <b>今日の良品の合計</b>
+    <span class="gt-note">型式ごとに、作った順に入れると、明細の行（パレット満タン・素板の切り替わりで分ける）を自動で作ります</span>
+    <div class="gt-rows">
+      <label>①<input name="gt1_model" list="modelList" placeholder="型式"><input name="gt1_good" type="number" min="0" placeholder="良品">枚</label>
+      <label>②<input name="gt2_model" list="modelList" placeholder="型式"><input name="gt2_good" type="number" min="0" placeholder="良品">枚</label>
+      <label>③<input name="gt3_model" list="modelList" placeholder="型式"><input name="gt3_good" type="number" min="0" placeholder="良品">枚</label>
+      <label>④<input name="gt4_model" list="modelList" placeholder="型式"><input name="gt4_good" type="number" min="0" placeholder="良品">枚</label>
+      <button type="button" id="btnBuild">明細を作り直す</button>
+    </div>
+    <div id="gtInfo" class="gt-info"></div>
   </div>
 
   <!-- 明細 -->
@@ -841,7 +863,9 @@
       var used = 0, first = 0, rows = [];
       for (var r = 1; r <= ROWS; r++) {
         if (val("r" + r + "_lotSoban") !== lot) continue;
-        rows.push(r); used += num("r" + r + "_qty");
+        rows.push(r);
+        // 良品枚数がまだ自動の値（1PL の残り）だけの行は、使った枚数に数えない
+        if (manualOf("r" + r + "_good")) used += num("r" + r + "_qty");
         if (!first && used > caps[lot]) first = r;
       }
       out.push({ lot: lot, cap: caps[lot], used: used, firstOver: first, rows: rows });
@@ -1069,6 +1093,14 @@
       out.push(["prevGood", "前日の良品端数：入力は " + val("prevGood") + " 枚、前日の日報では " + (carryVals.good || 0) + " 枚"]);
     if (manualOf("prevLot") && carryVals.lot !== undefined && carryVals.lot !== val("prevLot"))
       out.push(["prevLot", "前日の切面ロットNo.：入力は " + val("prevLot") + "、前日の日報では " + (carryVals.lot || "（端数なし）")]);
+    // 良品の合計と明細の良品枚数
+    var byM = {};
+    gtEntries().forEach(function (e) { byM[e.m] = (byM[e.m] || 0) + e.g; });
+    Object.keys(byM).forEach(function (m) {
+      var sum = 0;
+      for (var r = 1; r <= ROWS; r++) if (val("r" + r + "_model") === m) sum += num("r" + r + "_good");
+      if (sum !== byM[m]) out.push(["gt1_good", "良品の合計（" + m + "）：入力は " + byM[m] + " 枚、明細の良品枚数の合計は " + sum + " 枚"]);
+    });
     var imp = parseJSON(val("cntImported"), {});
     Object.keys(imp).forEach(function (col) {
       var mine = num("t_" + col);
@@ -1103,7 +1135,7 @@
 
   // ---------- 完成（提出）と訂正 ----------
   var locked = false, fixing = false;
-  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog"];
+  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig"];
   function snapData() { var d = collect(); META.forEach(function (k) { delete d[k]; }); return d; }
   var COL_NAME = { model: "型式", lotCut: "切面ロットNo.", lotSoban: "素板ロットNo", qty: "作業枚数", good: "良品枚数", pallet: "パレット№", palletType: "パレット形態", localCode: "ローカルコード" };
   var OTHER_NAME = { shift: "出", team: "組", prevLot: "前日の切面ロットNo.", prevGood: "前日の良品端数", wheel: "使用面取りホイール",
@@ -1268,6 +1300,106 @@
     box.appendChild(keep);
     pickDlg.showModal();
   }
+
+  // ---------- 良品の合計から明細を作る ----------
+  // 製品パレットが 1PL で満タンになったところと、素板パレットが切り替わったところ（素板の枚数で数える）で行を分ける。
+  // 前日の端数は最初の型式に続ける。不良はすべて最後の行。パレット№ は行の順に残す。
+  function gtEntries() {
+    var out = [];
+    for (var k = 1; k <= 4; k++) {
+      var m = val("gt" + k + "_model").trim(), g = val("gt" + k + "_good");
+      if (m && g !== "") out.push({ m: m, g: Math.max(0, Math.round(toNum(g))) });
+    }
+    return out;
+  }
+  function sobanSegs() {
+    var segs = [], scanned = [];
+    [1, 2].forEach(function (n) {
+      var c = val("sb" + n + "_carryLot");
+      if (c && num("sb" + n + "_mae") > 0) segs.push({ lot: c, sheets: num("sb" + n + "_mae") });
+      blockLots(n).forEach(function (x, i) { scanned.push({ lot: x.lot, sheets: toNum(x.qty), t: x.t || 0, o: n * 1000 + i }); });
+    });
+    scanned.sort(function (a, b) { return (a.t - b.t) || (a.o - b.o); });
+    return segs.concat(scanned);
+  }
+  var lastGtKey = "";
+  function gtKey() { return JSON.stringify([gtEntries(), sobanSegs(), val("prevLot"), val("prevGood")]) + "#" + genRowsNow(); }
+  function genRowsNow() {
+    var out = [];
+    for (var r = 1; r <= ROWS; r++) if (rowActive(val, r)) out.push([val("r" + r + "_model"), val("r" + r + "_lotSoban"), val("r" + r + "_good")].join("|"));
+    return out.join(";");
+  }
+  // 自動で作ったあとに、型式・素板ロット・良品枚数を手で直した行があるか
+  function genEdited() { var g = val("genSig"); return !!g && g !== genRowsNow(); }
+  function buildRows(force) {
+    var ent = gtEntries(), info = document.getElementById("gtInfo");
+    if (!ent.length || readOnly || locked) return false;
+    if (!force && genEdited()) {
+      info.className = "gt-info warn";
+      info.textContent = "⚠ 明細を手で直した行があるため、自動では作り直していません。作り直すときは「明細を作り直す」を押してください";
+      return false;
+    }
+    var unreg = ent.filter(function (e) { return !modelOf(e.m); }).map(function (e) { return e.m; });
+    var segs = sobanSegs();
+    if (!segs.length) segs.push({ lot: "", sheets: Infinity });
+    var rows = [], si = 0, left = segs[0].sheets, fill = val("prevLot") ? num("prevGood") : 0, prevM = null;
+    ent.forEach(function (e, ei) {
+      var cap = (modelOf(e.m) || {}).cap || Infinity, g = e.g;
+      if (ei > 0 && e.m !== prevM) fill = 0;              // 型式が変わったら新しいパレット
+      while (g > 0) {
+        if (fill >= cap) fill = 0;
+        while (left <= 0 && si < segs.length - 1) { si++; left = segs[si].sheets; }
+        var lastSeg = si === segs.length - 1;
+        var chunk = Math.min(g, cap - fill, lastSeg ? Infinity : left);
+        rows.push({ m: e.m, lot: segs[si].lot, good: chunk });
+        g -= chunk; fill += chunk; left -= chunk;
+      }
+      prevM = e.m;
+    });
+    if (rows.length > ROWS) {
+      info.className = "gt-info warn";
+      info.textContent = "⚠ 明細が " + rows.length + " 行になり、" + ROWS + " 行に入りません。良品の合計を確かめてください";
+      return false;
+    }
+    snapshot("良品の合計から明細を作る");
+    // 不良（列ごとの合計）とパレット№ を取っておく
+    var def = {}, pallets = [], log = parseJSON(val("cntLog"), []);
+    for (var r = 1; r <= ROWS; r++) {
+      PROC.concat(SOBAN).forEach(function (k) { def[k] = (def[k] || 0) + num("r" + r + "_" + k); });
+      pallets.push(val("r" + r + "_pallet"));
+    }
+    for (r = 1; r <= ROWS; r++) rowSet(r, null);
+    rows.forEach(function (x, i) {
+      var p = "r" + (i + 1) + "_";
+      // 型式・素板ロットは自動の印（青い字）を付ける。良品枚数は自動計算（1PL の残り）に上書きされないよう、ふつうの値として入れる
+      [["model", x.m], ["lotSoban", x.lot]].forEach(function (kv) { f(p + kv[0]).value = kv[1]; autoVals[p + kv[0]] = kv[1]; });
+      f(p + "good").value = String(x.good);
+      if (pallets[i]) f(p + "pallet").value = pallets[i];
+    });
+    var last = rows.length;
+    PROC.concat(SOBAN).forEach(function (k) { if (def[k]) f("r" + last + "_" + k).value = def[k]; });
+    if (log.length) f("cntLog").value = JSON.stringify(log.map(function (e) { return [e[0], e[1], last]; }));
+    changed();
+    f("genSig").value = genRowsNow();
+    lastGtKey = gtKey();
+    save();
+    info.className = unreg.length ? "gt-info warn" : "gt-info";
+    info.textContent = (unreg.length ? "⚠ 登録されていない型式があります：" + unreg.join("、") + "（1PL がわからないため、パレットで分けていません）。" : "") +
+      "明細を " + rows.length + " 行作りました（" + ent.map(function (e) { return e.m + " " + e.g + "枚"; }).join("、") + "）。手で直した行は、自動では作り直しません";
+    return true;
+  }
+  ["gt1_good", "gt2_good", "gt3_good", "gt4_good", "gt1_model", "gt2_model", "gt3_model", "gt4_model"].forEach(function (n) {
+    f(n).addEventListener("change", function () {
+      if (!gtEntries().length || gtKey() === lastGtKey) return;
+      if (genEdited() && !confirm("明細を手で直した行があります。良品の合計から明細を作り直しますか？（手で直した型式・素板ロット・良品枚数は作り直されます）")) return;
+      if (buildRows(true)) msgUndo("良品の合計から明細を作りました", "ok");
+    });
+  });
+  document.getElementById("btnBuild").onclick = function () {
+    if (!gtEntries().length) { msg("⚠ 先に「今日の良品の合計」に型式と良品の枚数を入れてください", "warn"); return; }
+    if (genEdited() && !confirm("明細を手で直した行があります。作り直しますか？")) return;
+    if (buildRows(true)) msgUndo("良品の合計から明細を作り直しました", "ok");
+  };
 
   // ---------- 取り消し（ひとつ前の操作を元に戻す） ----------
   var undoSnap = null;
@@ -1493,6 +1625,7 @@
       setAuto(p + "mae", b.to);
       if (isNew) { ["name", "inW", "inH", "mmW", "mmH"].forEach(function (k) { setAuto(p + k, b[k]); }); f(p + "carryLot").value = b.carryLot || ""; }
     });
+    if (isNew && c.model) setAuto("gt1_model", c.model);
     // 新しい日は、前日の最後の型式・素板ロット（素板が残っているとき）から始める
     if (isNew && c.model) {
       setAuto("r1_model", c.model);
@@ -1532,7 +1665,7 @@
       ["name", "inW", "inH", "mmW", "mmH"].forEach(function (key) { if (val(p + key) === "") setAuto(p + key, q[key]); });
       var list = blockLots(k);
       if (list.some(function (x) { return x.lot === q.lot; })) notes.push("このパレットは読み取り済みです");
-      else { list.push({ lot: q.lot, qty: q.qty }); f(p + "lots").value = JSON.stringify(list); }
+      else { list.push({ lot: q.lot, qty: q.qty, t: Date.now() }); f(p + "lots").value = JSON.stringify(list); }
     }
     // 明細：素板ロットが変わったら次の行へ
     var last = lastActiveRow(), target = 0, prevLotSoban = last ? val("r" + last + "_lotSoban") : "";
@@ -1548,14 +1681,16 @@
     }
     if (target > 1 && target <= ROWS && target === last + 1) {
       var pg = "r" + last + "_good";
-      if (val(pg) !== "" && autoVals[pg] === val(pg)) notes.push(last + "行目の良品枚数（自動の値 " + val(pg) + "）を確認してください");
+      if (val(pg) !== "" && autoVals[pg] === val(pg) && !val("gt1_model")) notes.push(last + "行目の良品枚数（自動の値 " + val(pg) + "）を確認してください");
     }
     var row = target || last, mm = modelOf(val("r" + row + "_model"));
     if (mm && mm.local && q.local && mm.local !== q.local)
       notes.push("ローカルコードが型式（" + mm.local + "）と素板（" + q.local + "）で違います。確認してください");
     recalc(); save();
     // 前の素板の枚数を超えてから読んだときは、どの行から新しい素板だったかを聞く
-    if (target && target === last + 1 && prevLotSoban && prevLotSoban !== q.lot) setTimeout(function () { askLateQR(target, prevLotSoban, q.lot); }, 0);
+    // 良品の合計から明細を作っているときは、素板が増えたら明細を作り直す。そうでなければ、遅れて読んだかを確かめる
+    if (gtEntries().length) setTimeout(function () { buildRows(false); }, 0);
+    else if (target && target === last + 1 && prevLotSoban && prevLotSoban !== q.lot) setTimeout(function () { askLateQR(target, prevLotSoban, q.lot); }, 0);
     var head = "素板QR：" + q.name + " " + q.inW + "×" + q.inH + "（" + q.mmW + "×" + q.mmH + "mm）" + q.qty + "枚　ロット " + q.lot;
     msgUndo(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
     beep(!notes.length);
@@ -1938,7 +2073,7 @@
   });
 
   // ---------- 保存 / 読込み ----------
-  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog"];
+  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig"];
   hiddenExtra.forEach(function (n) { form.appendChild(el("input", { type: "hidden", name: n })); });
   function collect() {
     f("autoVals").value = JSON.stringify(autoVals);

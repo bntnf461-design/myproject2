@@ -360,6 +360,48 @@ test("完成すると入力できなくなり、訂正すると元の値つき�
   ok(await p.evaluate(() => document.forms.nippo.elements.r1_good.disabled), "開き直しても完成のまま");
 });
 
+// ---------- 良品の合計から明細を作る ----------
+test("良品の合計から明細を作る：見本10/21（パレット満タン・素板の切り替わりで分け、不良は最後の行）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  eq(await v(p, "gt1_model"), MODEL, "最初の型式は前日から");
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "gt1_good", 270); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  const row = async r => [await v(p, `r${r}_lotSoban`), await v(p, `r${r}_lotCut`), await v(p, `r${r}_good`)].join(" ");
+  eq(await row(1), "R7Z446SX061 261020-08NK 102", "1行目");
+  eq(await row(2), "R7Z446SX042 261020-08NK 20", "2行目");
+  eq(await row(3), "R7Z446SX042 261021-01NK 135", "3行目");
+  eq(await row(4), "R7Z446SX042 261021-02NK 13", "4行目");
+  eq(await v(p, "r5_model"), "", "5行目は無い");
+  await fill(p, "r2_kizu", 1); await fill(p, "r3_ori_hama", 1); await fill(p, "r4_proc_other", 5);
+  await p.click("#btnBuild"); await p.waitForTimeout(300);
+  eq([await v(p, "r4_kizu"), await v(p, "r4_ori_hama"), await v(p, "r4_proc_other"), await v(p, "r2_kizu")].join(","), "1,1,5,", "不良は最後の行へまとめる");
+  eq(await v(p, "r4_qty"), "20", "最後の行の作業枚数");
+  eq(await v(p, "t_qty") + "/" + await v(p, "t_good"), "277/270", "合計");
+  eq(await v(p, "sb1_to"), "0", "当残");
+});
+
+test("良品の合計：手で直した行は作り直さない／型式が変わると新しい連番", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await addModel(p, { name: "TEST-B", pallet: "青PL", wheel: "", cap: 100, local: "" });
+  await p.reload(); await setDate(p, "2026-10-21");
+  await fill(p, "gt1_model", MODEL); await fill(p, "gt1_good", 200);
+  await fill(p, "gt2_model", "TEST-B"); await fill(p, "gt2_good", 50);
+  await p.dispatchEvent('[name="gt2_good"]', "change"); await p.waitForTimeout(300);
+  const row = async r => [await v(p, `r${r}_model`), await v(p, `r${r}_lotCut`), await v(p, `r${r}_good`)].join(" ");
+  eq(await row(1), MODEL + " 261021-01NK 135", "1行目");
+  eq(await row(2), MODEL + " 261021-02NK 65", "2行目");
+  eq(await row(3), "TEST-B 261021-03NK 50", "型式が変わると次の連番");
+  await fill(p, "r2_good", 60); await p.waitForTimeout(200);
+  await p.click("body"); await scanQR(p, qrOf("LOTZ", 175)); await p.waitForTimeout(300);
+  eq(await v(p, "r2_good"), "60", "手で直した値は残る");
+  ok((await p.textContent("#gtInfo")).includes("手で直した行"), "作り直さないことを知らせる");
+  await p.click("#btnDone");
+  ok((await p.textContent("#doneList")).includes("良品の合計（" + MODEL + "）：入力は 200 枚、明細の良品枚数の合計は 195 枚"), "合計の食い違いを知らせる");
+});
+
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
