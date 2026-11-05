@@ -410,6 +410,8 @@ test("前日と違う型式から始める日は、端数を引き継がず新�
   await p.reload(); await setDate(p, "2026-10-21");
   await fill(p, "gt1_model", "TEST-B"); await fill(p, "gt1_good", 50); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
   eq(await v(p, "r1_model") + " " + await v(p, "r1_lotCut") + " " + await v(p, "r1_good"), "TEST-B 261021-01NK 50", "端数を引き継がない");
+  eq(await p.inputValue("#prevGoodHead"), "", "見出し（印刷）に前日の端数を出さない");
+  ok((await p.textContent("#prevInfo")).includes("引き継ぎません"), "引き継がないことを表示");
 });
 
 test("当残を数えて入れると、最後の素板の使用数を超えた不良を前の素板の行へ移す", async ctx => {

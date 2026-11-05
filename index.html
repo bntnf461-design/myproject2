@@ -1013,7 +1013,13 @@
       var any = names.some(function (n) { return val(n) !== ""; });
       f(row + "_total").value = any ? fmt(names.reduce(function (s, n) { return s + num(n); }, 0)) : "";
     });
-    document.getElementById("prevGoodHead").value = val("prevGood");
+    // 前日の端数は、前日と同じ型式から始めるときだけ続ける。続けないときは見出し（印刷にも出る）に出さない
+    var firstM = val("gt1_model").trim() || val("r1_model"), pmod = val("prevModel");
+    var carryOn = val("prevLot") !== "" && num("prevGood") > 0 && (!pmod || !firstM || pmod === firstM);
+    document.getElementById("prevGoodHead").value = carryOn ? val("prevGood") : "";
+    var pinfo = document.getElementById("prevInfo");
+    if (pinfo) pinfo.dataset.off = !carryOn && val("prevLot") !== "" && num("prevGood") > 0 ? "1" : "";
+    if (pinfo && pinfo.dataset.off) pinfo.textContent = "（前日の型式 " + pmod + " と今日の最初の型式 " + firstM + " が違うため、前日の端数は引き継ぎません）";
     Array.prototype.forEach.call(form.elements, function (e) { if (e.name && autoVals[e.name] != null) markAf(e); });
     drawKado();
     drawLotList();
