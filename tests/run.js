@@ -402,6 +402,100 @@ test("良品の合計：手で直した行は作り直さない／型式が変�
   ok((await p.textContent("#doneList")).includes("良品の合計（" + MODEL + "）：入力は 200 枚、明細の良品枚数の合計は 195 枚"), "合計の食い違いを知らせる");
 });
 
+// ---------- 前日と違う型式・当残・カウンターの作業数・共有フォルダ・端数の紙 ----------
+test("前日と違う型式から始める日は、端数を引き継がず新しい連番", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await addModel(p, { name: "TEST-B", pallet: "青PL", wheel: "", cap: 100, local: "" });
+  await p.reload(); await setDate(p, "2026-10-21");
+  await fill(p, "gt1_model", "TEST-B"); await fill(p, "gt1_good", 50); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  eq(await v(p, "r1_model") + " " + await v(p, "r1_lotCut") + " " + await v(p, "r1_good"), "TEST-B 261021-01NK 50", "端数を引き継がない");
+});
+
+test("当残を数えて入れると、最後の素板の使用数を超えた不良を前の素板の行へ移す", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "gt1_good", 270); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  await fill(p, "r4_kizu", 1); await fill(p, "r4_ori_hama", 1); await fill(p, "r4_proc_other", 5);
+  await fill(p, "sb1_to", 2); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(300);
+  eq(await v(p, "r1_kizu") + "," + await v(p, "r1_ori_hama"), "1,1", "2個が前の素板（1行目）へ");
+  eq(await v(p, "r4_qty"), "18", "最後の行の作業枚数");
+  ok((await p.textContent("#gtInfo")).includes("前の素板の行へ移しました"), "知らせる");
+});
+
+test("良品の合計を、カウンターのその作業の作業数へあとから書き込む", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await addModel(p, { name: "TEST-B", pallet: "", wheel: "", cap: 100, local: "" });
+  const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+  await p.evaluate(({ a, b, c, d }) => {
+    localStorage.setItem("defectCounterHistory", JSON.stringify({ shifts: ["ZC45PN-ARDR", "TEST-B"], types: {}, w: [], b: [], p: {},
+      j: [[a, b, 0, "j1", null], [b, c, 1, "j2", null]], d: [[a + 60, "t1", 1, 0, 0], [a + 120, "t1", 1, 0, 0], [b + 60, "t1", 1, 1, 0]] }));
+    localStorage.setItem("defectCounterState", JSON.stringify({ types: [], shifts: ["ZC45PN-ARDR", "TEST-B"], job: { running: false }, lastJob: { id: "j2", prod: null } }));
+  }, { a: sec(8, 45), b: sec(10, 0), c: sec(12, 0), d: 0 });
+  await p.reload(); await setDate(p, "2026-10-21");
+  await fill(p, "gt1_model", MODEL); await fill(p, "gt1_good", 100); await p.dispatchEvent('[name="gt1_good"]', "change");
+  await fill(p, "gt2_model", "TEST-B"); await fill(p, "gt2_good", 50); await p.dispatchEvent('[name="gt2_good"]', "change");
+  await p.waitForTimeout(400);
+  const h = await p.evaluate(() => JSON.parse(localStorage.getItem("defectCounterHistory")));
+  eq(h.j[0][4] + "," + h.j[1][4], "102,51", "作業数＝良品＋その作業の不良");
+  eq(h.p["2026-10-21|" + MODEL], 102, "日ごとの生産数");
+  eq(await p.evaluate(() => JSON.parse(localStorage.getItem("defectCounterState")).lastJob.prod), 51, "最後の作業の作業数も");
+});
+
+test("良品の合計の②に型式を入れると、作業中のカウンターを切り替える", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await addModel(p, { name: "TEST-B", pallet: "", wheel: "", cap: 100, local: "" });
+  await p.evaluate(() => {
+    localStorage.setItem("defectCounterState", JSON.stringify({ types: [], shifts: ["ZC45PN-ARDR", "TEST-B"], features: { jobs: true }, job: { running: true, shift: "ZC45PN-ARDR" }, counts: {}, downtime: {}, brk: {} }));
+    localStorage.setItem("defectCounterHistory", JSON.stringify({ d: [], w: [], j: [], b: [], shifts: [] }));
+  });
+  await p.reload();
+  await p.evaluate(() => localStorage.setItem("defectCounterActiveTab", JSON.stringify({ id: "x", t: Date.now() })));
+  await fill(p, "gt1_model", MODEL); await fill(p, "gt2_model", "TEST-B"); await p.dispatchEvent('[name="gt2_model"]', "change");
+  await p.waitForTimeout(300);
+  const k = await p.evaluate(() => JSON.parse(localStorage.getItem("defectCounterKeyForward") || "null"));
+  ok(k && k.code === "NumpadAdd", "カウンターへ作業終了のキーを送る：" + JSON.stringify(k));
+});
+
+test("共有フォルダに日報を1日1ファイルで保存する", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.evaluate(() => {
+    window.__files = {};
+    const dir = { name: "共有", getFileHandle: async (n) => ({ createWritable: async () => { let buf = ""; return { write: async (t) => { buf += t; }, close: async () => { window.__files[n] = buf; } }; } }) };
+    window.showDirectoryPicker = async () => dir;
+  });
+  await p.click("#btnSettings"); await p.click("#btnShareDir"); await p.waitForTimeout(100);
+  await p.click("#dlgSave");
+  await fill(p, "topics", "共有テスト"); await p.waitForTimeout(2600);
+  const f = await p.evaluate(() => window.__files["Nライン日報_2026-10-21.json"] || "");
+  ok(f.includes("共有テスト"), "ファイルに書かれる");
+  ok((await p.textContent("#shareStatus")).includes("共有フォルダ ✓"), "状態の表示");
+});
+
+test("端数の素板があるときだけ、バーコード付きの紙を一緒に印刷する（A3＋A4）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.evaluate(() => { window.print = () => {}; });
+  await p.click("#btnPrint"); await p.waitForTimeout(100);
+  eq(await p.evaluate(() => document.body.classList.contains("with-label")), false, "端数がなければ印刷しない");
+  await p.evaluate(() => { const c = document.getElementById("chk"); if (c.open) c.close(); });
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "r1_good", 100); await fill(p, "r1_qty", 100); await p.waitForTimeout(200);
+  await p.click("#btnPrint"); await p.waitForTimeout(100);
+  await p.evaluate(() => { const c = document.getElementById("chk"); if (c.open) c.close(); });
+  ok(await p.evaluate(() => document.body.classList.contains("with-label")), "端数があれば印刷する");
+  const t = await p.textContent("#labelPage");
+  ok(t.includes("R7Z446SX042") && t.includes("75") && t.includes("DGL35TS") && t.includes("2N9A"), "中身：" + t);
+  ok(await p.evaluate(() => !!document.querySelector("#labelPage svg rect")), "バーコード");
+  const pdf = path.join(os.tmpdir(), "nippo-label-test.pdf");
+  await p.pdf({ path: pdf, preferCSSPageSize: true });
+  const pages = (fs.readFileSync(pdf, "latin1").match(/\/Type\s*\/Page[^s]/g) || []).length;
+  eq(pages, 2, "日報（A3）＋端数の紙（A4）");
+});
+
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
