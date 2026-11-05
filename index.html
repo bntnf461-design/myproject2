@@ -51,6 +51,26 @@
   @keyframes flash { 50% { background: #f7a8a8; } }
   #rowTools { display: none; gap: 8px; align-items: center; padding: 4px 12px; background: #fff6d1; border-bottom: 1px solid #e0c97a; font-size: 13px; }
   #rowTools.on { display: flex; }
+  #doneBar { display: none; gap: 10px; align-items: center; padding: 6px 12px; font-size: 14px; font-weight: bold; }
+  #doneBar.done { display: flex; background: #dff3df; color: #145214; border-bottom: 1px solid #9fd09f; }
+  #doneBar.fixing { display: flex; background: #ffe7c2; color: #7a4100; border-bottom: 1px solid #e3b066; }
+  #doneBar button { font: inherit; padding: 3px 14px; cursor: pointer; }
+  .toolbar button.done { background: #2e8b57; color: #fff; font-weight: bold; }
+  .donestamp { color: #145214; font-weight: bold; }
+  .dlist { margin: 0; padding-left: 0; list-style: none; max-height: 55vh; overflow: auto; }
+  .dlist li { margin: 4px 0; }
+  .dlist li button { width: 100%; text-align: left; font: inherit; font-size: 14px; padding: 6px 10px; border: 1px solid #e0c97a; background: #fff8dc; border-radius: 4px; cursor: pointer; }
+  .dlist li.bad button { border-color: #e39a9a; background: #ffeaea; }
+  .dlist li.okline { color: #145214; font-weight: bold; padding: 8px 0; }
+  .dlist h4 { margin: 10px 0 4px; font-size: 13px; color: #444; }
+  #doneDlg .acts, #pickDlg .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+  #doneDlg .acts button, #pickDlg .acts button { font: inherit; font-size: 14px; padding: 6px 16px; cursor: pointer; }
+  #doneDlg .acts button.main { background: #2e8b57; color: #fff; border: 0; border-radius: 4px; font-weight: bold; }
+  .picklist button { display: block; width: 100%; text-align: left; font: inherit; font-size: 15px; padding: 8px 10px; margin: 4px 0; cursor: pointer; }
+  .picklist button.rec { border: 2px solid #2e8b57; font-weight: bold; }
+  .fixarea { margin-top: 8px; font-size: 12px; }
+  .fixarea h4 { margin: 0 0 4px; font-size: 13px; }
+  .fixarea ul { margin: 0; padding-left: 18px; }
   #rowTools button { font: inherit; padding: 2px 10px; cursor: pointer; }
   #rowTools .hint { margin-left: auto; color: #555; }
   #msg.ok { background: #e3f4e1; color: #145214; }
@@ -277,6 +297,7 @@
 <div class="toolbar">
   <strong>Nライン作業日報</strong>
   <button type="button" id="btnSave">保存</button>
+  <button type="button" id="btnDone" class="done">完成（提出）</button>
   <button type="button" id="btnPrint">印刷</button>
   <span class="sep"></span>
   <input id="qrBox" placeholder="素板QR（ここで読取りも可）" autocomplete="off">
@@ -288,13 +309,35 @@
 <div id="cntBar" class="noprint"></div>
 <div id="msg" class="noprint"></div>
 <div id="rowTools" class="noprint"></div>
+<div id="doneBar" class="noprint"></div>
 </div>
+<dialog id="doneDlg">
+  <div class="dh"><span id="doneTitle">日報を完成（提出）する前の確認</span></div>
+  <div class="db">
+    <div id="doneHead" style="font-size:14px;margin-bottom:6px"></div>
+    <ul id="doneList" class="dlist"></ul>
+    <div class="acts">
+      <button type="button" id="doneBack">戻って直す</button>
+      <button type="button" id="doneOnly">完成する</button>
+      <button type="button" id="donePrint" class="main">完成して印刷する</button>
+    </div>
+  </div>
+</dialog>
+<dialog id="pickDlg">
+  <div class="dh"><span id="pickTitle"></span></div>
+  <div class="db">
+    <div id="pickHead" style="font-size:14px;margin-bottom:6px"></div>
+    <div id="pickList" class="picklist"></div>
+    <label id="pickAllWrap" style="display:block;margin-top:8px"><input type="checkbox" id="pickAll" checked> 下に続く、同じ素板ロットの行もまとめて変える</label>
+    <div class="acts"><button type="button" id="pickCancel">やめる</button></div>
+  </div>
+</dialog>
 
 <form id="nippo" class="sheet" autocomplete="off" onsubmit="return false">
 <div class="inner">
 
   <div class="top">
-    <span>品質記録：№5-(7)-10</span>
+    <span>品質記録：№5-(7)-10　<span id="doneStamp" class="donestamp"></span></span>
     <span>ビューテック株式会社　豊橋工場</span>
   </div>
 
@@ -453,6 +496,7 @@
             <tr><th style="text-align:left;padding:2px 4px">トピックス</th></tr>
             <tr><td><textarea name="topics" rows="5"></textarea></td></tr>
           </table>
+          <div id="fixArea" class="fixarea noprint"></div>
         </div>
       </div>
     </div>
@@ -781,9 +825,42 @@
     if (!quietOver && ok2 && ok2 !== overKey && overs.some(function (t) { return overKey.indexOf(t) < 0; })) { msg("⚠ " + ok2, "warn"); beep(false); }
     overKey = ok2;
     computeSoban();
+    checkLotOver();
   }
 
   function blockLots(n) { return parseJSON(val("sb" + n + "_lots"), []); }
+  // 素板ロットごとの枚数（QR で読んだ枚数。前日から続くロットは前残）と、明細で使った枚数
+  function lotUsage() {
+    var caps = {}, out = [];
+    [1, 2].forEach(function (n) {
+      blockLots(n).forEach(function (x) { caps[x.lot] = (caps[x.lot] || 0) + toNum(x.qty); });
+      var c = val("sb" + n + "_carryLot");
+      if (c && val("sb" + n + "_mae") !== "") caps[c] = (caps[c] || 0) + num("sb" + n + "_mae");
+    });
+    Object.keys(caps).forEach(function (lot) {
+      var used = 0, first = 0, rows = [];
+      for (var r = 1; r <= ROWS; r++) {
+        if (val("r" + r + "_lotSoban") !== lot) continue;
+        rows.push(r); used += num("r" + r + "_qty");
+        if (!first && used > caps[lot]) first = r;
+      }
+      out.push({ lot: lot, cap: caps[lot], used: used, firstOver: first, rows: rows });
+    });
+    return out;
+  }
+  var lotOverKey = "";
+  function checkLotOver() {
+    var overs = lotUsage().filter(function (u) { return u.firstOver; });
+    var key = overs.map(function (u) { return u.lot + ":" + u.firstOver; }).join(",");
+    if (key && key !== lotOverKey && !quietOver) {
+      var u = overs[0];
+      msg("⚠ 素板 " + u.lot + " は " + u.cap + " 枚ですが、明細の作業枚数の合計が " + u.used + " 枚になりました。素板QRの読み忘れ（または読む順番の間違い）ではありませんか？ " +
+        u.firstOver + "行目あたりから、次の素板の可能性があります", "warn");
+      beep(false);
+    }
+    lotOverKey = key;
+  }
+  var sobanCalc = {}, carryVals = {};
   function computeSoban() {
     var lots1 = blockLots(1).map(function (x) { return x.lot; }), lots2 = blockLots(2).map(function (x) { return x.lot; });
     var c1 = val("sb1_carryLot"), c2 = val("sb2_carryLot");
@@ -802,6 +879,7 @@
       setAuto(p + "pl", list.length ? list.length : "");
       var has = val(p + "name") !== "" || val(p + "mae") !== "" || list.length;
       var total = num(p + "mae") + counts.reduce(function (s, v) { return s + toNum(v); }, 0);
+      sobanCalc[n] = has ? total - used[n] : null;
       setAuto(p + "to", has ? fmt(total - used[n]) : "");
       f(p + "to").classList.toggle("neg", num(p + "to") < 0);
     });
@@ -958,8 +1036,8 @@
     e.focus();
   }
   function printWithCheck() {
-    var miss = missing().filter(function (x) { return !x[2]; }), odd = oddities();
-    if ((!miss.length && !odd.length) || readOnly) { window.print(); return; }
+    var iss = allIssues(), miss = iss.miss, odd = iss.odd.concat(iss.cons);
+    if ((!miss.length && !odd.length) || readOnly || locked) { window.print(); return; }
     var ul = document.getElementById("chkList");
     ul.innerHTML = "";
     miss.concat(odd.map(function (x) { return [x[0], "⚠ " + x[1]]; })).forEach(function (x) {
@@ -972,6 +1050,224 @@
   }
   document.getElementById("chkBack").onclick = function () { chk.close(); if (missing()[0]) focusField(missing()[0][0]); };
   document.getElementById("chkPrint").onclick = function () { chk.close(); window.print(); };
+
+  // ---------- 計算が合っているかの確認（完成・印刷の前） ----------
+  function manualOf(n) { return val(n) !== "" && autoVals[n] !== val(n); }
+  function consistency() {
+    var out = [];
+    lotUsage().forEach(function (u) {
+      if (u.firstOver) out.push(["r" + u.firstOver + "_lotSoban", "素板 " + u.lot + "：素板は " + u.cap + " 枚なのに、作業枚数の合計が " + u.used + " 枚です（QRの読み忘れ・読む順番の間違いの可能性）"]);
+    });
+    [1, 2].forEach(function (n) {
+      var p = "sb" + n + "_", side = n === 1 ? "左" : "右";
+      if (manualOf(p + "to") && sobanCalc[n] != null && num(p + "to") !== sobanCalc[n])
+        out.push([p + "to", "使用素板（" + side + "）の当残：入力は " + val(p + "to") + " 枚、計算では " + fmt(sobanCalc[n]) + " 枚（差 " + fmt(num(p + "to") - sobanCalc[n]) + "）"]);
+      if (manualOf(p + "mae") && carryVals.mae && carryVals.mae[n] != null && num(p + "mae") !== toNum(carryVals.mae[n]))
+        out.push([p + "mae", "使用素板（" + side + "）の前残：入力は " + val(p + "mae") + " 枚、前日の日報の当残は " + carryVals.mae[n] + " 枚"]);
+    });
+    if (manualOf("prevGood") && carryVals.good !== undefined && String(carryVals.good) !== val("prevGood"))
+      out.push(["prevGood", "前日の良品端数：入力は " + val("prevGood") + " 枚、前日の日報では " + (carryVals.good || 0) + " 枚"]);
+    if (manualOf("prevLot") && carryVals.lot !== undefined && carryVals.lot !== val("prevLot"))
+      out.push(["prevLot", "前日の切面ロットNo.：入力は " + val("prevLot") + "、前日の日報では " + (carryVals.lot || "（端数なし）")]);
+    var imp = parseJSON(val("cntImported"), {});
+    Object.keys(imp).forEach(function (col) {
+      var mine = num("t_" + col);
+      if (imp[col] !== mine) out.push(["r" + (lastActiveRow() || 1) + "_" + col, "不良数（" + (DEF_LBL[col] || col) + "）：不良数カウンターでは " + imp[col] + " 個、日報では " + mine + " 個"]);
+    });
+    return out;
+  }
+  // 入れ忘れ・おかしな値・計算の食い違いをまとめる
+  function allIssues() {
+    return {
+      miss: missing().filter(function (x) { return !x[2]; }),
+      odd: oddities(),
+      cons: consistency()
+    };
+  }
+  function issueList(ul, iss, onPick) {
+    ul.innerHTML = "";
+    var sec = function (title, list, cls) {
+      if (!list.length) return;
+      ul.appendChild(el("li", null, "<h4>" + esc(title) + "</h4>"));
+      list.forEach(function (x) {
+        var li = el("li", { "class": cls || "" }), b = el("button", { type: "button" }, esc(x[1]));
+        b.onclick = function () { onPick(x[0]); };
+        li.appendChild(b); ul.appendChild(li);
+      });
+    };
+    sec("まだ入っていない欄", iss.miss);
+    sec("値がおかしいところ", iss.odd, "bad");
+    sec("計算が合わないところ（素板・端数・カウンター）", iss.cons, "bad");
+    if (!iss.miss.length && !iss.odd.length && !iss.cons.length) ul.appendChild(el("li", { "class": "okline" }, "✅ 入れ忘れ・計算の食い違いは見つかりませんでした"));
+  }
+
+  // ---------- 完成（提出）と訂正 ----------
+  var locked = false, fixing = false;
+  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog"];
+  function snapData() { var d = collect(); META.forEach(function (k) { delete d[k]; }); return d; }
+  var COL_NAME = { model: "型式", lotCut: "切面ロットNo.", lotSoban: "素板ロットNo", qty: "作業枚数", good: "良品枚数", pallet: "パレット№", palletType: "パレット形態", localCode: "ローカルコード" };
+  var OTHER_NAME = { shift: "出", team: "組", prevLot: "前日の切面ロットNo.", prevGood: "前日の良品端数", wheel: "使用面取りホイール",
+    tenaoshiReason: "手直しの理由", tenaoshiCount: "手直し枚数", kadoS: "稼働の開始(S)", kadoE: "稼働の終了", kadoEvents: "稼働状況の停止・休憩",
+    kenshidai: "検視台の高さ", topics: "トピックス", m1_mark: "年月度マーク", m1_checker: "確認者", m1_mark2: "ダブルチェックの年月度マーク",
+    m1_checker2: "ダブルチェックの確認者", m2_mark: "年月度マーク（2段目）", m2_checker: "確認者（2段目）", m2_mark2: "ダブルチェックの年月度マーク（2段目）",
+    m2_checker2: "ダブルチェックの確認者（2段目）" };
+  var SB_NAME = { name: "品種", inW: "インチ（縦）", inH: "インチ（横）", mmW: "mm（縦）", mmH: "mm（横）", qty: "枚数", pl: "PL数", mae: "前残", to: "当残", lots: "読んだ素板", carryLot: "前日から続く素板" };
+  var TIME_ROW = { worker: "作業者", tonyu: "投入時間", tenaoshi: "手直し時間", jogai: "除外" }, TIME_COL = { itanose: "板乗せ", kensa: "検査", stock: "ストック" };
+  function fieldLabel(n) {
+    var m;
+    if ((m = /^r(\d+)_(.+)$/.exec(n))) return m[1] + "行目 " + (COL_NAME[m[2]] || DEF_LBL[m[2]] || m[2]);
+    if ((m = /^dispose_(.+)$/.exec(n))) return "処置廃棄のレ点（" + (DEF_LBL[m[1]] || m[1]) + "）";
+    if ((m = /^sb(\d)_(.+)$/.exec(n))) return "使用素板（" + (m[1] === "1" ? "左" : "右") + "）" + (SB_NAME[m[2]] || m[2]);
+    if ((m = /^(worker|tonyu|tenaoshi|jogai)_(.+)$/.exec(n))) return TIME_ROW[m[1]] + "（" + (TIME_COL[m[2]] || m[2]) + "）";
+    if ((m = /^core(\d)$/.exec(n))) return "コアドリル径" + "①②③④⑤⑥⑦".charAt(m[1] - 1);
+    return OTHER_NAME[n] || n;
+  }
+  function showVal(n, v) {
+    if (v == null || v === "") return "（空）";
+    if (v === true) return "レ点あり";
+    if (n === "kadoEvents" || /_lots$/.test(n)) return "（変更あり）";
+    return String(v);
+  }
+  function diffs(a, b) {
+    var keys = Object.keys(a).concat(Object.keys(b)).filter(function (k, i, arr) { return arr.indexOf(k) === i && k !== "workDate"; });
+    return keys.filter(function (k) { return String(a[k] == null ? "" : a[k]) !== String(b[k] == null ? "" : b[k]); })
+      .map(function (k) { return { n: k, label: fieldLabel(k), from: showVal(k, a[k]), to: showVal(k, b[k]) }; });
+  }
+  function nowText() { var t = new Date(); return ymd(t).replace(/-/g, "/") + " " + pad2(t.getHours()) + ":" + pad2(t.getMinutes()); }
+  function fixLog() { return parseJSON(val("fixLog"), []); }
+  function applyLock() {
+    locked = !!val("doneAt") && !fixing;
+    if (!readOnly) Array.prototype.forEach.call(form.elements, function (e) {
+      e.disabled = locked && !(e.name === "workDate" || e.classList.contains("dnav"));
+    });
+    var bar = document.getElementById("doneBar"), fl = fixLog();
+    bar.className = ""; bar.innerHTML = "";
+    if (val("doneAt") && !fixing) {
+      bar.className = "done";
+      bar.innerHTML = "✅ この日報は完成済みです（" + esc(val("doneAt")) + "）" + (fl.length ? "　訂正 " + fl.length + " 回" : "") +
+        '<button type="button" id="btnFix">訂正する</button><span style="font-weight:normal">直すと、元の値と一緒に訂正の記録が残ります</span>';
+    } else if (fixing) {
+      bar.className = "fixing";
+      bar.innerHTML = "✏ 訂正中です。直し終えたら「訂正を完成する」を押してください" +
+        '<button type="button" id="btnFixDone">訂正を完成する</button><button type="button" id="btnFixCancel">訂正をやめる（元に戻す）</button>';
+    }
+    document.getElementById("doneStamp").textContent = val("doneAt") ? "完成 " + val("doneAt") + (fl.length ? "　訂正 " + fl.length + " 回（最終 " + fl[fl.length - 1].at + "）" : "") : "";
+    document.getElementById("btnDone").textContent = fixing ? "訂正を完成する" : val("doneAt") ? "完成済み" : "完成（提出）";
+    document.getElementById("btnDone").disabled = !!val("doneAt") && !fixing;
+    var fa = document.getElementById("fixArea");
+    fa.innerHTML = fl.length ? "<h4>訂正の記録</h4><ul>" + fl.map(function (x) {
+      return "<li>" + esc(x.at) + "：" + x.items.map(function (i) { return esc(i.label) + " " + esc(i.from) + " → " + esc(i.to); }).join("、") + "</li>";
+    }).join("") + "</ul>" : "";
+  }
+  document.getElementById("doneBar").addEventListener("click", function (e) {
+    if (e.target.id === "btnFix") { fixing = true; applyLock(); msg("訂正できるようにしました。直し終えたら「訂正を完成する」を押してください"); }
+    if (e.target.id === "btnFixDone") openDone();
+    if (e.target.id === "btnFixCancel") {
+      if (!confirm("訂正をやめて、完成したときの内容に戻しますか？")) return;
+      var keep = { doneAt: val("doneAt"), doneSnap: val("doneSnap"), fixLog: val("fixLog") };
+      var d = parseJSON(val("doneSnap"), {}); d.autoVals = val("autoVals");
+      apply(d); Object.keys(keep).forEach(function (k) { f(k).value = keep[k]; });
+      f("workDate").value = curDate; fixing = false; drawEvList(); recalc(); save(true); applyLock();
+      msg("訂正をやめて、完成したときの内容に戻しました", "ok");
+    }
+  });
+  var doneDlg = document.getElementById("doneDlg");
+  function openDone() {
+    var iss = allIssues(), n = iss.miss.length + iss.odd.length + iss.cons.length;
+    document.getElementById("doneTitle").textContent = fixing ? "訂正を完成する前の確認" : "日報を完成（提出）する前の確認";
+    var ch = fixing ? diffs(parseJSON(val("doneSnap"), {}), snapData()) : [];
+    document.getElementById("doneHead").innerHTML = (n ? "⚠ 確認が必要なところが " + n + " 件あります。項目を押すと、その欄へ移ります。" : "") +
+      (fixing ? "<div style=\"margin-top:6px\">訂正する内容：" + (ch.length ? ch.map(function (i) { return esc(i.label) + " " + esc(i.from) + " → " + esc(i.to); }).join("、") : "（変更なし）") + "</div>" : "");
+    issueList(document.getElementById("doneList"), iss, function (name) { doneDlg.close(); focusField(name); });
+    document.getElementById("doneOnly").textContent = fixing ? "訂正を完成する" : (n ? "このまま完成する" : "完成する");
+    document.getElementById("donePrint").textContent = fixing ? "訂正を完成して印刷する" : (n ? "このまま完成して印刷する" : "完成して印刷する");
+    doneDlg.showModal();
+  }
+  function complete(andPrint) {
+    var snap = snapData(), at = nowText();
+    if (fixing) {
+      var ch = diffs(parseJSON(val("doneSnap"), {}), snap);
+      if (ch.length) { var fl = fixLog(); fl.push({ at: at, items: ch }); f("fixLog").value = JSON.stringify(fl); }
+    } else f("doneAt").value = at;
+    f("doneSnap").value = JSON.stringify(snap);
+    fixing = false;
+    save(true); applyLock();
+    msg(val("fixLog") && fixLog().length && fixLog()[fixLog().length - 1].at === at ? "訂正を記録しました（" + at + "）" : "日報を完成しました（" + at + "）", "ok");
+    if (andPrint) setTimeout(function () { window.print(); }, 50);
+  }
+  document.getElementById("btnDone").onclick = function () { if (!readOnly) openDone(); };
+  document.getElementById("doneBack").onclick = function () { doneDlg.close(); };
+  document.getElementById("doneOnly").onclick = function () { doneDlg.close(); complete(false); };
+  document.getElementById("donePrint").onclick = function () { doneDlg.close(); complete(true); };
+
+  // ---------- 素板ロットを、読んだ素板から選ぶ（読み忘れ・読む順番の間違いを直す） ----------
+  var pickDlg = document.getElementById("pickDlg"), pickFn = null;
+  function allLots() {
+    var out = [];
+    var add = function (lot, note) { if (lot && !out.some(function (x) { return x.lot === lot; })) out.push({ lot: lot, note: note }); };
+    [1, 2].forEach(function (n) {
+      add(val("sb" + n + "_carryLot"), "前日から続く素板");
+      blockLots(n).forEach(function (x) { add(x.lot, val("sb" + n + "_name") + "・" + x.qty + "枚"); });
+    });
+    for (var r = 1; r <= ROWS; r++) add(val("r" + r + "_lotSoban"), "明細に入っている素板");
+    return out;
+  }
+  function openLotPick(r) {
+    var cur = val("r" + r + "_lotSoban"), lots = allLots();
+    document.getElementById("pickTitle").textContent = r + "行目の素板ロットを選ぶ";
+    document.getElementById("pickHead").textContent = "いまは " + (cur || "（空）") + " です。この行で使った素板を選んでください。";
+    document.getElementById("pickAllWrap").style.display = "";
+    var box = document.getElementById("pickList"); box.innerHTML = "";
+    if (!lots.length) box.textContent = "読んだ素板がありません。先に素板のQRを読んでください。";
+    lots.forEach(function (x) {
+      var b = el("button", { type: "button" }, esc(x.lot) + "　<small>（" + esc(x.note) + "）</small>" + (x.lot === cur ? "　← いま" : ""));
+      b.onclick = function () {
+        pickDlg.close();
+        if (x.lot === cur) return;
+        snapshot(r + "行目の素板ロットを選び直す");
+        var all = document.getElementById("pickAll").checked, n = 0;
+        for (var i = r; i <= ROWS; i++) {
+          if (i > r && (!all || val("r" + i + "_lotSoban") !== cur)) break;
+          f("r" + i + "_lotSoban").value = x.lot; n++;
+        }
+        changed();
+        msgUndo((n > 1 ? r + "〜" + (r + n - 1) + "行目" : r + "行目") + "の素板ロットを " + x.lot + " にしました", "ok");
+      };
+      box.appendChild(b);
+    });
+    pickDlg.showModal();
+  }
+  document.getElementById("pickCancel").onclick = function () { pickDlg.close(); };
+  // QR を遅れて読んだとき：前の素板の枚数を超えていたら、どの行から新しい素板だったかを聞く
+  function askLateQR(newRow, prevLot, newLot) {
+    var u = lotUsage().filter(function (x) { return x.lot === prevLot; })[0];
+    if (!u || !u.firstOver || newRow < 2) return;
+    var rows = u.rows.filter(function (r) { return r < newRow; });
+    if (!rows.length) return;
+    document.getElementById("pickTitle").textContent = "新しい素板 " + newLot + " は、どの行から使いましたか？";
+    document.getElementById("pickHead").textContent = "前の素板 " + prevLot + " は " + u.cap + " 枚ですが、明細では " + u.used + " 枚使ったことになっています。QRを読むのが遅れた可能性があります。";
+    document.getElementById("pickAllWrap").style.display = "none";
+    var box = document.getElementById("pickList"); box.innerHTML = "";
+    rows.filter(function (r) { return r >= u.firstOver; }).forEach(function (r) {
+      var b = el("button", { type: "button", "class": r === u.firstOver ? "rec" : "" },
+        r + "行目から（" + (r === newRow - 1 ? r + "行目" : r + "〜" + (newRow - 1) + "行目") + "を " + esc(newLot) + " にして、" + newRow + "行目は消す）" + (r === u.firstOver ? "　おすすめ" : ""));
+      b.onclick = function () {
+        pickDlg.close();
+        snapshot("素板 " + newLot + " を " + r + "行目からにする");
+        for (var i = r; i < newRow; i++) f("r" + i + "_lotSoban").value = newLot;
+        // QR で新しく作った行に、自分で入れた値がなければ消す
+        var manual = ["qty", "good", "pallet"].concat(PROC, SOBAN).some(function (k) { return manualOf("r" + newRow + "_" + k); });
+        if (!manual) rowSet(newRow, null);
+        changed();
+        msgUndo("素板 " + newLot + " を " + r + "行目からにしました", "ok");
+      };
+      box.appendChild(b);
+    });
+    var keep = el("button", { type: "button" }, newRow + "行目から（いまのまま）");
+    keep.onclick = function () { pickDlg.close(); };
+    box.appendChild(keep);
+    pickDlg.showModal();
+  }
 
   // ---------- 取り消し（ひとつ前の操作を元に戻す） ----------
   var undoSnap = null;
@@ -1040,13 +1336,14 @@
     rowTools.innerHTML = "<b>" + toolRow + "行目</b>" +
       '<button type="button" data-rt="del">この行を消す</button>' +
       '<button type="button" data-rt="ins">この行の上に1行入れる</button>' +
+      '<button type="button" data-rt="lot">素板ロットを選ぶ</button>' +
       '<span class="hint">F2：いま入力中の行へ／↑↓：上下の行へ</span>';
     rowTools.classList.add("on");
   });
   rowTools.addEventListener("click", function (e) {
     var a = e.target.getAttribute && e.target.getAttribute("data-rt");
     if (!a || !toolRow) return;
-    if (a === "del") deleteRow(toolRow); else insertRow(toolRow);
+    if (a === "del") deleteRow(toolRow); else if (a === "lot") openLotPick(toolRow); else insertRow(toolRow);
   });
   // F2：いま入力している行へ（型式が空なら型式、入っていれば良品枚数）
   window.addEventListener("keydown", function (e) {
@@ -1185,6 +1482,8 @@
   }
   function applyCarry(isNew) {
     var c = prevCarry(curDate), info = document.getElementById("prevInfo");
+    carryVals = c ? { lot: c.lot || "", good: c.good || "", mae: {} } : {};
+    if (c) c.blocks.forEach(function (b, i) { carryVals.mae[i + 1] = b.to; });
     if (!c) { info.textContent = "（前日の日報がありません。手打ちできます）"; setAuto("prevLot", ""); setAuto("prevGood", ""); return; }
     info.textContent = "（" + c.date + " の日報から" + (c.lot ? "" : "：端数なし") + "）";
     setAuto("prevLot", c.lot || "");
@@ -1215,6 +1514,7 @@
   function handleQR(raw) {
     var q = parseQR(raw);
     if (readOnly) { msg("このタブは表示専用です。QRは入力中のタブで読み取ってください", "warn"); return; }
+    if (locked) { msg("⚠ この日報は完成済みです。素板を足すときは、上の「訂正する」を押してから読み取ってください", "warn"); beep(false); return; }
     if (!q) { msg("⚠ 素板QRとして読めませんでした。もう一度読み取ってください（日本語入力がオンだと読めません）", "warn"); beep(false); return; }
     snapshot("素板QR " + q.lot + " の読み取り");
     var notes = [];
@@ -1235,7 +1535,7 @@
       else { list.push({ lot: q.lot, qty: q.qty }); f(p + "lots").value = JSON.stringify(list); }
     }
     // 明細：素板ロットが変わったら次の行へ
-    var last = lastActiveRow(), target = 0;
+    var last = lastActiveRow(), target = 0, prevLotSoban = last ? val("r" + last + "_lotSoban") : "";
     if (!last) target = 1;
     else if (val("r" + last + "_lotSoban") === "") target = last;
     else if (val("r" + last + "_lotSoban") !== q.lot) target = last + 1;
@@ -1254,6 +1554,8 @@
     if (mm && mm.local && q.local && mm.local !== q.local)
       notes.push("ローカルコードが型式（" + mm.local + "）と素板（" + q.local + "）で違います。確認してください");
     recalc(); save();
+    // 前の素板の枚数を超えてから読んだときは、どの行から新しい素板だったかを聞く
+    if (target && target === last + 1 && prevLotSoban && prevLotSoban !== q.lot) setTimeout(function () { askLateQR(target, prevLotSoban, q.lot); }, 0);
     var head = "素板QR：" + q.name + " " + q.inW + "×" + q.inH + "（" + q.mmW + "×" + q.mmH + "mm）" + q.qty + "枚　ロット " + q.lot;
     msgUndo(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
     beep(!notes.length);
@@ -1533,7 +1835,7 @@
     if (e.key === CNT.state || e.key === CNT.hist || e.key === CNT.active) {
       drawCntBar();
       // 今日の日報を開いているときは、カウンターで数えた不良をその場で今の行へ取り込む
-      if (e.key !== CNT.active && isToday() && !readOnly) {
+      if (e.key !== CNT.active && isToday() && !readOnly && !locked) {
         clearTimeout(autoTimer);
         autoTimer = setTimeout(function () { var c = counterLocal(); if (c) importCounter(JSON.stringify(c), "このパソコンのカウンター", true); }, 800);
       }
@@ -1636,7 +1938,7 @@
   });
 
   // ---------- 保存 / 読込み ----------
-  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip"];
+  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog"];
   hiddenExtra.forEach(function (n) { form.appendChild(el("input", { type: "hidden", name: n })); });
   function collect() {
     f("autoVals").value = JSON.stringify(autoVals);
@@ -1657,8 +1959,8 @@
     autoVals = parseJSON(d.autoVals, {});
   }
   function key() { return PREFIX + curDate; }
-  function save() {
-    if (!validDate(curDate) || readOnly) return;
+  function save(force) {
+    if (!validDate(curDate) || readOnly || (locked && !force)) return;
     var d = collect(); d.workDate = curDate;
     if (localStorageSet(key(), JSON.stringify(d))) {
       localStorageSet(PREFIX + "last", curDate);
@@ -1676,8 +1978,9 @@
     apply(d || { workDate: date });
     f("workDate").value = date;
     applyCarry(!hasContent(d));   // まだ何も入っていない日は、前日の最後の型式などから始める
-    undoSnap = null;
+    undoSnap = null; fixing = false;
     quietOver = true; drawEvList(); recalc(); quietOver = false;
+    applyLock();
   }
   function goDate(date, note) {
     if (!validDate(date)) { f("workDate").value = curDate; return; }

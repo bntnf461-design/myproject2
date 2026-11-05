@@ -44,7 +44,7 @@ async function importMaster(p) {
 async function addModel(p, m) {
   await p.evaluate(m => { const k = "nline-nippo-master"; const d = JSON.parse(localStorage.getItem(k) || "{}"); d.models = (d.models || []).concat([m]); localStorage.setItem(k, JSON.stringify(d)); }, m);
 }
-async function scanQR(p, s) { await p.keyboard.type(s, { delay: 3 }); await p.keyboard.press("Enter"); await p.waitForTimeout(250); }
+async function scanQR(p, s) { await p.keyboard.type(s, { delay: 1 }); await p.keyboard.press("Enter"); await p.waitForTimeout(250); }
 const savedKeys = p => p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith("nline-nippo:") && k !== "nline-nippo:last").sort());
 const saved = (p, d) => p.evaluate(d => JSON.parse(localStorage.getItem("nline-nippo:" + d) || "null"), d);
 function eq(actual, expected, label) {
@@ -277,6 +277,87 @@ test("最後のロットで良品＋不良が作業枚数を超えたら、先�
   await fill(p, "r2_qty", 14); await p.waitForTimeout(300);
   eq(await v(p, "r1_ori_hama") + "," + await v(p, "r1_kizu"), "1,3", "数を変えると、先に数えた順に2個移す");
   eq(await v(p, "r2_proc_other"), "1", "最後に数えたものは残る");
+});
+
+// ---------- 読み忘れ・読む順番の間違い・計算の食い違い・完成と訂正 ----------
+const qrOf = (lot, qty) => `A0DGL35TS    ,A3I,A7813   ,A8508   ,AA32.00 ,AB20.00 ,AD${qty} ,B0${lot},B42,BR2N9A`;
+
+test("素板の枚数を超えたら、QRの読み忘れを知らせる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p); await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, qrOf("LOTA", 175));
+  await pickModel(p, 1); await fill(p, "r1_good", 130); await fill(p, "r1_qty", 130);
+  await pickModel(p, 2); await fill(p, "r2_good", 60); await fill(p, "r2_qty", 60);
+  await p.waitForTimeout(200);
+  const m = await p.textContent("#msg");
+  ok(m.includes("読み忘れ") && m.includes("2行目"), "知らせ：" + m);
+});
+
+test("QRを遅れて読んだら、どの行から新しい素板かを選べる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p); await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, qrOf("LOTA", 175));
+  await pickModel(p, 1); await fill(p, "r1_good", 130); await fill(p, "r1_qty", 130);
+  await pickModel(p, 2); await fill(p, "r2_good", 60); await fill(p, "r2_qty", 60);
+  await pickModel(p, 3); await fill(p, "r3_good", 20); await fill(p, "r3_qty", 20);
+  await p.click("body"); await scanQR(p, qrOf("LOTB", 175));
+  ok(await p.evaluate(() => document.getElementById("pickDlg").open), "選ぶ画面が出る");
+  ok((await p.textContent("#pickList .rec")).includes("2行目から"), "おすすめは2行目から");
+  await p.click("#pickList .rec"); await p.waitForTimeout(200);
+  eq(await v(p, "r1_lotSoban") + "," + await v(p, "r2_lotSoban") + "," + await v(p, "r3_lotSoban") + "," + await v(p, "r4_lotSoban"), "LOTA,LOTB,LOTB,", "2〜3行目がLOTB、4行目は作らない");
+});
+
+test("読む順番を間違えたら、読んだ素板から選び直せる（手打ちなし）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.click("body"); await scanQR(p, qrOf("LOTB", 175));
+  await p.click("body"); await scanQR(p, qrOf("LOTA", 175));
+  eq(await v(p, "r1_lotSoban") + "," + await v(p, "r2_lotSoban"), "LOTB,LOTA", "間違えた順");
+  await p.focus('[name="r1_good"]');
+  await p.click('#rowTools [data-rt="lot"]');
+  await p.uncheck("#pickAll");
+  await p.click("#pickList button >> text=LOTA"); await p.waitForTimeout(100);
+  await p.focus('[name="r2_good"]');
+  await p.click('#rowTools [data-rt="lot"]');
+  await p.click("#pickList button >> text=LOTB"); await p.waitForTimeout(100);
+  eq(await v(p, "r1_lotSoban") + "," + await v(p, "r2_lotSoban"), "LOTA,LOTB", "入れ替わる");
+});
+
+test("完成の前に、計算の食い違い（当残・前日の端数・カウンターの不良数）を知らせる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await fill(p, "prevGood", 10);
+  await fill(p, "r1_good", 102);
+  await fill(p, "sb1_to", 5);
+  await p.evaluate(() => { const f = document.forms.nippo.elements; f.cntImported.value = JSON.stringify({ kizu: 3 }); f.r1_kizu.value = 2; f.r1_kizu.dispatchEvent(new Event("input", { bubbles: true })); });
+  await p.waitForTimeout(300);
+  await p.click("#btnDone");
+  const t = await p.textContent("#doneList");
+  ok(t.includes("当残：入力は 5 枚、計算では"), "当残：" + t);
+  ok(t.includes("前日の良品端数：入力は 10 枚、前日の日報では 13 枚"), "端数");
+  ok(t.includes("不良数（キズ）：不良数カウンターでは 3 個、日報では 2 個"), "カウンター");
+});
+
+test("完成すると入力できなくなり、訂正すると元の値つきで記録が残る", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await fill(p, "r1_lotSoban", "A"); await fill(p, "r1_good", 102);
+  await p.waitForTimeout(200);
+  await p.click("#btnDone"); await p.click("#doneOnly"); await p.waitForTimeout(200);
+  ok(await p.evaluate(() => document.forms.nippo.elements.r1_good.disabled), "完成後は入力できない");
+  ok((await p.textContent("#doneBar")).includes("完成済み"), "完成済みの表示");
+  ok((await p.textContent("#doneStamp")).includes("完成"), "印刷にも完成の日時");
+  await p.click("#btnFix");
+  await fill(p, "r1_good", 100); await p.waitForTimeout(200);
+  await p.click("#btnDone"); await p.click("#doneOnly"); await p.waitForTimeout(200);
+  ok((await p.textContent("#fixArea")).includes("1行目 良品枚数 102 → 100"), "訂正の記録：" + await p.textContent("#fixArea"));
+  ok(await p.evaluate(() => document.forms.nippo.elements.r1_good.disabled), "訂正の完成でまた入力できなくなる");
+  // 訂正をやめると、完成したときの値に戻る
+  await p.click("#btnFix"); await fill(p, "r1_good", 50); await p.waitForTimeout(200);
+  await p.click("#btnFixCancel"); await p.waitForTimeout(200);
+  eq(await v(p, "r1_good"), "100", "訂正をやめると元に戻る");
+  // 保存されていて、開き直しても完成のまま
+  await p.reload(); await p.waitForTimeout(300);
+  ok(await p.evaluate(() => document.forms.nippo.elements.r1_good.disabled), "開き直しても完成のまま");
 });
 
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
