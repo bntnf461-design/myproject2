@@ -8,7 +8,8 @@ const os = require("os");
 const { chromium } = require("playwright");
 
 const ROOT = path.resolve(__dirname, "..");
-const URL = "file://" + path.join(ROOT, "index.html");
+// ふだんの起動は作業画面。帳票の欄を直接さわるテストのため、#form を付けて帳票のタブで開く
+const URL = "file://" + path.join(ROOT, "index.html") + "#form";
 // Playwright は日本語名のファイルを setInputFiles で渡せないことがあるので、英数字名にコピーして使う
 const TEMPLATE = path.join(os.tmpdir(), "nippo-master-template.xlsx");
 fs.copyFileSync(path.join(ROOT, "templates", "マスタ登録_雛形.xlsx"), TEMPLATE);
@@ -22,7 +23,7 @@ const test = (name, fn) => tests.push({ name, fn });
 async function open(ctx, now) {
   const p = await ctx.newPage();
   p.errors = [];
-  p.on("pageerror", e => p.errors.push(e.message));
+  p.on("pageerror", e => { p.errors.push(e.message); if (process.env.SHOWERR) console.log("PAGEERR", e.message); });
   p.on("dialog", d => d.accept());
   if (now) await p.clock.setFixedTime(new Date(now));
   await p.goto(URL);
@@ -566,6 +567,29 @@ test("終業ボタン：最後に入れる数字を1つの画面で入れ、確�
   ok(await p.evaluate(() => document.getElementById("doneDlg").open), "完成の確認へ進む");
 });
 
+// ---------- 作業画面 ----------
+test("作業画面：ふだんは作業画面で開き、良品の合計・当残を入れると明細と「あと入れるもの」が出る", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await p.goto(URL.replace("#form", "#work")); await p.waitForTimeout(300);
+  ok(await p.evaluate(() => document.body.classList.contains("view-work")), "作業画面で開く");
+  ok(!(await p.isVisible("#nippo")), "帳票は隠れている");
+  await p.fill('#work [data-bind="gt1_good"]', "270"); await p.dispatchEvent('#work [data-bind="gt1_good"]', "change"); await p.waitForTimeout(300);
+  eq(await v(p, "r4_lotCut") + " " + await v(p, "r4_good"), "261021-02NK 13", "帳票の明細ができる");
+  ok((await p.textContent("#wRows")).includes("261021-02NK"), "作業画面に明細の要約");
+  ok((await p.textContent("#wTodo")).includes("パレット№"), "あと入れるもの");
+  await p.fill('#work [data-bind="sb1_to"]', "0"); await p.dispatchEvent('#work [data-bind="sb1_to"]', "change"); await p.waitForTimeout(200);
+  eq(await v(p, "sb1_to"), "0", "当残が帳票に入る");
+  await p.click("#wTodo button >> text=1行目のパレット№"); await p.waitForTimeout(200);
+  ok(await p.evaluate(() => document.body.classList.contains("view-form")), "帳票の欄へ移るときはタブを切り替える");
+  await p.click('#viewTabs [data-view="work"]');
+  await p.click("#wDone"); await p.waitForTimeout(200);
+  ok(await p.evaluate(() => document.getElementById("doneDlg").open), "完成の確認へ");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
@@ -759,6 +783,7 @@ if (COUNTER) test("カウンター連携：型式の追加・作業開始・不�
   let fail = 0;
   for (const t of list) {
     const ctx = await browser.newContext({ viewport: { width: 1700, height: 1000 } });
+
     try { await t.fn(ctx); console.log("✔ " + t.name); }
     catch (e) { fail++; console.log("✘ " + t.name + "\n    " + e.message.split("\n")[0]); }
     await ctx.close();
