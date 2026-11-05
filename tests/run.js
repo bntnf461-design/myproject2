@@ -253,6 +253,36 @@ async function fakeCounter(p, state) {
   }, state);
 }
 
+test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+  const data = { state: { types: [], job: {}, downtime: {} },
+    hist: { shifts: ["X"], types: {}, d: [], j: [[sec(8, 45), sec(12, 30), 0, "j1", 1]], b: [],
+      w: [[sec(10, 0), sec(11, 0), 0, "w1", 0, "段取り"], [sec(11, 30), sec(11, 40), 0, "w2", 0, "故障"]] } };
+  const fpath = path.join(os.tmpdir(), "counter-adjust.json");
+  fs.writeFileSync(fpath, JSON.stringify(data));
+  await p.setInputFiles("#counterFallback", fpath); await p.waitForTimeout(300);
+  ok((await p.textContent("#kadoSum")).includes("P（段取り）60分"), "取込直後は60分");
+  await p.fill('#kadoEv input[data-k="min"]', "30");
+  await p.dispatchEvent('#kadoEv input[data-k="min"]', "change"); await p.waitForTimeout(100);
+  let evs = JSON.parse(await v(p, "kadoEvents"));
+  const e1 = evs.find(e => e.id === "w1");
+  eq(e1.e, "10:30", "終了が 10:30 に");
+  eq(e1.os + "-" + e1.oe, "10:00-11:00", "元の値を残す");
+  ok((await p.textContent("#kadoEv")).includes("元 10:00〜11:00・60分"), "元の値を表示");
+  // 2件目を削除してから1件目をもう一度直しても、削除は残る
+  await p.click('#kadoEv button[data-del="1"]'); await p.waitForTimeout(100);
+  await p.fill('#kadoEv input[data-k="min"]', "25");
+  await p.dispatchEvent('#kadoEv input[data-k="min"]', "change"); await p.waitForTimeout(100);
+  await p.setInputFiles("#counterFallback", fpath); await p.waitForTimeout(300);
+  evs = JSON.parse(await v(p, "kadoEvents")).filter(e => !e.del);
+  eq(evs.length, 1, "削除したものは戻らない");
+  eq(evs[0].e, "10:25", "直した値は取り込み直しでも残る");
+  ok((await p.textContent("#kadoSum")).includes("P（段取り）25分"), "集計も25分");
+  await p.click('#kadoEv button[data-revert="0"]'); await p.waitForTimeout(100);
+  eq(JSON.parse(await v(p, "kadoEvents")).find(e => e.id === "w1").e, "11:00", "カウンターの値に戻せる");
+});
+
 test("U1：数字の欄はホイールや↑↓で値が変わらない（↑↓は上下の行へ）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await fill(p, "r2_ware", 5);

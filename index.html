@@ -1042,28 +1042,47 @@
     if (S != null && E != null && E > S) parts.unshift("稼働 " + (E - S - (sum.E || 0)) + "分" + (sum.E ? "（除外 " + sum.E + "分を除く）" : ""));
     document.getElementById("kadoSum").textContent = parts.join("　");
   }
+  function evMin(ev) { var a = hm2min(ev.s), b = hm2min(ev.e); return a != null && b != null && b >= a ? b - a : null; }
   function drawEvList() {
     var t = document.getElementById("kadoEv"), list = visibleEvents();
     t.innerHTML = "";
     list.forEach(function (ev, i) {
       var tr = el("tr");
       var opts = Object.keys(CODES).map(function (k) { return '<option value="' + k + '"' + (k === ev.c ? " selected" : "") + '>' + k + " " + CODES[k] + "</option>"; }).join("");
+      var mins = evMin(ev);
+      var src = ev.src !== "counter" ? "手入力"
+        : !ev.edited ? "カウンター"
+        : "カウンターから修正（元 " + esc(ev.os || "") + "〜" + esc(ev.oe || "") + (evMin({ s: ev.os, e: ev.oe }) != null ? "・" + evMin({ s: ev.os, e: ev.oe }) + "分" : "") + "）";
       tr.innerHTML = '<td><input type="time" data-i="' + i + '" data-k="s" value="' + esc(ev.s || "") + '"></td><td>〜</td>' +
         '<td><input type="time" data-i="' + i + '" data-k="e" value="' + esc(ev.e || "") + '"></td>' +
+        '<td><input type="number" min="0" step="1" data-i="' + i + '" data-k="min" value="' + (mins == null ? "" : mins) + '" style="width:60px;text-align:right" title="分で直すと、終了の時刻が変わります">分</td>' +
         '<td><select data-i="' + i + '" data-k="c">' + opts + '</select></td>' +
-        '<td style="color:#888">' + (ev.src === "counter" ? (ev.edited ? "カウンター（修正）" : "カウンター") : "手入力") + '</td>' +
-        '<td><button type="button" data-del="' + i + '">削除</button></td>';
+        '<td style="color:' + (ev.edited ? "#b35c00" : "#888") + '">' + src + '</td>' +
+        '<td>' + (ev.edited ? '<button type="button" data-revert="' + i + '">カウンターの値に戻す</button> ' : "") +
+        '<button type="button" data-del="' + i + '">削除</button></td>';
       t.appendChild(tr);
     });
   }
   document.getElementById("kadoEv").addEventListener("change", function (e) {
     var i = e.target.getAttribute("data-i"); if (i == null) return;
-    var list = visibleEvents(), ev = list[i];
-    ev[e.target.getAttribute("data-k")] = e.target.value;
+    var ev = visibleEvents()[i], k = e.target.getAttribute("data-k");
+    // カウンターの記録を初めて直すときは、元の時刻を残しておく（何を直したか後でわかるように）
+    if (ev.src === "counter" && !ev.edited) { ev.os = ev.s; ev.oe = ev.e; }
+    if (k === "min") {
+      // 分で直したときは、開始はそのままで終了を動かす（例：60分 → 30分）
+      var sm = hm2min(ev.s), n = parseInt(e.target.value, 10);
+      if (sm != null && n >= 0) { var em = Math.min(sm + n, 24 * 60 - 1); ev.e = pad2(Math.floor(em / 60)) + ":" + pad2(em % 60); }
+    } else ev[k] = e.target.value;
     if (ev.src === "counter") ev.edited = true; else ev.src = "manual";
-    setEvents(list); drawEvList(); changed();
+    setEvents(events()); drawEvList(); changed();   // 削除の印が付いたものも残す
   });
   document.getElementById("kadoEv").addEventListener("click", function (e) {
+    var rv = e.target.getAttribute("data-revert");
+    if (rv != null) {
+      var rev = visibleEvents()[rv];
+      rev.s = rev.os; rev.e = rev.oe; delete rev.edited; delete rev.os; delete rev.oe;
+      setEvents(events()); drawEvList(); changed(); return;
+    }
     var i = e.target.getAttribute("data-del"); if (i == null) return;
     // カウンターから取り込んだものは「消した」印を残し、次の取込で戻らないようにする
     var ev = visibleEvents()[i];
