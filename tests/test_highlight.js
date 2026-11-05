@@ -65,6 +65,7 @@ const path = require('path');
   // 書き出し（1分・実時間）
   await pick('#length', '60');
   await p.waitForFunction(() => !HM.S.building && Math.abs(HM.S.tl.total - 60) < 1);
+  await tap('.stepnav button[data-step="5"]'); // 再生・保存は ⑤ 仕上げの画面だけ
   await p.click('#exportBtn');
   await p.waitForSelector('#dlLink', { timeout: 120000 });
   const ex = await p.evaluate(() => window.__lastExport);
@@ -114,6 +115,14 @@ const path = require('path');
     const keep = before.split(':')[0] === after.split(':')[0];
     if (!(jpOk && keep)) fail++;
     console.log(`${jpOk && keep ? 'OK ' : 'NG '} 壊れた曲・無音の曲 {"知らせ":${msgs.length},"日本語":${jpOk},"前の曲のまま":${keep}}`);
+  }
+  // 再生プレイヤーは ⑤ 仕上げの時だけ出る
+  {
+    const vis = [];
+    for (const st of [1, 2, 3, 4, 5]) { await tap(`.stepnav button[data-step="${st}"]`); vis.push(await p.evaluate(() => getComputedStyle(document.querySelector('#stageSec')).display !== 'none' && getComputedStyle(document.querySelector('.dock')).display !== 'none')); }
+    const okp = vis.slice(0, 4).every(v => !v) && vis[4];
+    if (!okp) fail++;
+    console.log(`${okp ? 'OK ' : 'NG '} 再生プレイヤーは ⑤ だけ ${JSON.stringify(vis)}`);
   }
   // 全部消す（個人データが残らないこと）
   p.on('dialog', d => d.accept());
