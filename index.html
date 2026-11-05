@@ -70,6 +70,18 @@
   .picklist button { display: block; width: 100%; text-align: left; font: inherit; font-size: 15px; padding: 8px 10px; margin: 4px 0; cursor: pointer; }
   .picklist button.rec { border: 2px solid #2e8b57; font-weight: bold; }
   .fixarea { margin-top: 8px; font-size: 12px; }
+  td.slash { background: linear-gradient(to top right, transparent calc(50% - 0.7px), #333 calc(50% - 0.7px), #333 calc(50% + 0.7px), transparent calc(50% + 0.7px)) !important;
+             -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #endDlg .sec { border: 1px solid #ccc; border-radius: 4px; padding: 6px 10px; margin: 8px 0; }
+  #endDlg .sec h4 { margin: 0 0 6px; font-size: 14px; }
+  #endDlg .sec .rowx { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 4px 0; font-size: 14px; }
+  #endDlg .sec input { font: inherit; font-size: 15px; padding: 3px 6px; border: 1px solid #aaa; width: 110px; }
+  #endDlg .sec input.w { width: 170px; }
+  #endDlg .sec .hint { color: #666; font-size: 12px; }
+  #endDlg .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+  #endDlg .acts button { font: inherit; font-size: 15px; padding: 6px 16px; cursor: pointer; }
+  #endDlg .acts button.main { background: #2e8b57; color: #fff; border: 0; border-radius: 4px; font-weight: bold; }
+  .toolbar button.end { background: #1e63b5; color: #fff; font-weight: bold; }
   .gtot { margin: 4px 0 8px; padding: 6px 8px; background: #eef6ee; border: 1px solid #b7d7b7; border-radius: 4px; font-size: 13px; }
   .gtot .gt-note { color: #555; margin-left: 8px; font-size: 12px; }
   .gtot .gt-rows { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 4px; }
@@ -326,6 +338,7 @@
 <div class="toolbar">
   <strong>Nライン作業日報</strong>
   <button type="button" id="btnSave">保存</button>
+  <button type="button" id="btnEnd" class="end">終業</button>
   <button type="button" id="btnDone" class="done">完成（提出）</button>
   <button type="button" id="btnPrint">印刷</button>
   <span class="sep"></span>
@@ -341,6 +354,10 @@
 <div id="rowTools" class="noprint"></div>
 <div id="doneBar" class="noprint"></div>
 </div>
+<dialog id="endDlg">
+  <div class="dh"><span>終業：今日の最後に入れる数字</span></div>
+  <div class="db" id="endBody"></div>
+</dialog>
 <dialog id="doneDlg">
   <div class="dh"><span id="doneTitle">日報を完成（提出）する前の確認</span></div>
   <div class="db">
@@ -965,6 +982,10 @@
     var ng = PROC.concat(SOBAN).reduce(function (s2, k) { return s2 + num(p + k); }, 0);
     var excess = num(p + "good") + ng - toNum(q);
     if (excess <= 0 || val("rebalSkip") === rebalSig(r)) return;
+    // 移す先は、前の素板パレットの最後の行（素板ロットNo. が違う、いちばん近い上の行）
+    var to = 0, myLot = val(p + "lotSoban");
+    for (var ri = r - 1; ri >= 1 && !to; ri--) if (rowActive(val, ri) && val("r" + ri + "_lotSoban") !== myLot) to = ri;
+    if (!to) return;
     var log = parseJSON(val("cntLog"), []);
     var cand = log.filter(function (e) { return e[2] === r; }).sort(function (a, b) { return a[0] - b[0]; });
     if (!cand.length) return;
@@ -972,10 +993,10 @@
     var moved = {}, n = 0;
     cand.forEach(function (e) {
       if (n >= excess || num(p + e[1]) <= 0) return;
-      var a = p + e[1], b = "r" + (r - 1) + "_" + e[1];
+      var a = p + e[1], b = "r" + to + "_" + e[1];
       f(a).value = num(a) - 1 ? num(a) - 1 : "";
       f(b).value = num(b) + 1;
-      e[2] = r - 1; moved[e[1]] = (moved[e[1]] || 0) + 1; n++;
+      e[2] = to; moved[e[1]] = (moved[e[1]] || 0) + 1; n++;
     });
     if (!n) { undoSnap = null; return; }
     f("cntLog").value = JSON.stringify(log);
@@ -983,7 +1004,7 @@
     var what = Object.keys(moved).map(function (k) { return (DEF_LBL[k] || k) + " " + moved[k]; }).join("・");
     var rest = excess - n;
     setTimeout(function () {
-      msgUndo(r + "行目は良品＋不良が作業枚数（" + q + "枚）を超えたため、先に数えた不良 " + n + "個（" + what + "）を前のロット（" + (r - 1) + "行目）へ移しました" +
+      msgUndo(r + "行目は良品＋不良が作業枚数（" + q + "枚）を超えたため、先に数えた不良 " + n + "個（" + what + "）を前の素板（" + to + "行目・" + val("r" + to + "_lotSoban") + "）へ移しました" +
         (rest > 0 ? "。⚠ まだ " + rest + "枚 合いません（手で入れた不良は移していません）" : ""), rest > 0 ? "warn" : "ok");
     }, 0);
   }
@@ -1008,6 +1029,21 @@
     SUM_KEYS.forEach(function (k) { f("t_" + k).value = totals[k] ? fmt(totals[k]) : ""; });
     f("t_yield").value = totals.qty > 0 ? pct(totals.good, totals.qty) : "%";
     ["kadoS", "kadoE"].forEach(function (n) { f(n).classList.toggle("blank-time", !val(n)); });
+    // 投入時間：稼働の開始(S)〜終了から、休憩など除外（E）の時間を引いた時間（0.1時間単位）を、作業者が入っている欄に入れる
+    var S0 = hm2min(val("kadoS")), E0 = hm2min(val("kadoE")), work = null;
+    if (S0 != null && E0 != null && E0 > S0) {
+      work = E0 - S0;
+      visibleEvents().forEach(function (ev) {
+        var a = hm2min(ev.s), b = hm2min(ev.e);
+        if (ev.c === "E" && a != null && b != null && b > a) work -= Math.max(0, Math.min(b, E0) - Math.max(a, S0));
+      });
+    }
+    ["itanose", "kensa", "stock"].forEach(function (c) {
+      setAuto("tonyu_" + c, work != null && val("worker_" + c).trim() ? String(Math.round(work / 6) / 10) : "");
+    });
+    // 板乗せはふだんロボットなので、作業者も時間も入っていなければ斜線にする（紙と同じ）
+    var itaEmpty = ["worker", "tonyu", "tenaoshi", "jogai"].every(function (r2) { return !val(r2 + "_itanose"); });
+    ["worker", "tonyu", "tenaoshi", "jogai"].forEach(function (r2) { f(r2 + "_itanose").parentNode.classList.toggle("slash", itaEmpty); });
     ["tonyu", "tenaoshi", "jogai"].forEach(function (row) {
       var names = ["itanose", "kensa", "stock"].map(function (c) { return row + "_" + c; });
       var any = names.some(function (n) { return val(n) !== ""; });
@@ -1476,6 +1512,64 @@
     if (buildRows(true)) msgUndo("良品の合計から明細を作り直しました", "ok");
   };
 
+  // ---------- 終業：最後に入れる数字だけを、順番に1つの画面で聞く ----------
+  var endDlg = document.getElementById("endDlg");
+  function openEnd() {
+    if (readOnly || locked) return;
+    var b = document.getElementById("endBody"), h = "";
+    var inp = function (name, cls, ph, type) {
+      return '<input data-bind="' + name + '"' + (type ? ' type="' + type + '"' : "") + (cls ? ' class="' + cls + '"' : "") +
+        (ph ? ' placeholder="' + esc(ph) + '"' : "") + ' value="' + esc(val(name)) + '"' + (name.indexOf("_model") > 0 || name.indexOf("worker") === 0 ? ' list="' + (name.indexOf("worker") === 0 ? "workerList" : "modelList") + '"' : "") + ">";
+    };
+    h += '<div class="sec"><h4>① 今日の良品の合計（型式ごと・作った順）</h4>';
+    for (var k = 1; k <= 4; k++) {
+      if (k > 1 && !val("gt" + k + "_model") && !val("gt" + (k - 1) + "_model")) break;
+      h += '<div class="rowx">' + "①②③④".charAt(k - 1) + " " + inp("gt" + k + "_model", "w", "型式") + " 良品 " + inp("gt" + k + "_good", "", "枚", "number") + " 枚</div>";
+    }
+    h += '<div class="hint">入れると明細を自動で作ります</div></div>';
+    var sb = [1, 2].filter(function (n) { return val("sb" + n + "_name"); });
+    if (sb.length) {
+      h += '<div class="sec"><h4>② 素板の当残（数えた残りの枚数）</h4>';
+      sb.forEach(function (n) {
+        h += '<div class="rowx">' + esc(val("sb" + n + "_name")) + "（" + esc(val("sb" + n + "_inW")) + "×" + esc(val("sb" + n + "_inH")) + "）" +
+          " 当残 " + inp("sb" + n + "_to", "", "", "number") + ' 枚 <span class="hint">計算では ' + (sobanCalc[n] != null ? fmt(sobanCalc[n]) : "―") + " 枚</span></div>";
+      });
+      h += "</div>";
+    }
+    h += '<div class="sec"><h4>③ 作業者と投入時間</h4>' +
+      '<div class="rowx">検査 ' + inp("worker_kensa", "w", "名前") + " " + inp("tonyu_kensa", "", "時間", "number") + " 時間</div>" +
+      '<div class="rowx">ストック ' + inp("worker_stock", "w", "名前") + " " + inp("tonyu_stock", "", "時間", "number") + " 時間</div>" +
+      '<div class="rowx">板乗せ ' + inp("worker_itanose", "w", "ロボットのときは空") + " " + inp("tonyu_itanose", "", "時間", "number") + " 時間</div>" +
+      '<div class="hint">投入時間は、稼働の開始〜終了から休憩を引いた時間を自動で入れています（直せます）</div></div>';
+    h += '<div class="sec"><h4>④ 確認の欄</h4>' +
+      '<div class="rowx">年月度マーク ' + inp("m1_mark") + " 確認者 " + inp("m1_checker") + "</div>" +
+      '<div class="rowx">ダブルチェック 年月度マーク ' + inp("m1_mark2") + " 確認者 " + inp("m1_checker2") + "</div>" +
+      '<div class="rowx">検視台の高さ ' + inp("kenshidai") + " 稼働 開始 " + inp("kadoS", "", "", "time") + " 終了 " + inp("kadoE", "", "", "time") + "</div></div>";
+    h += '<div class="acts"><button type="button" id="endClose">閉じる（あとで）</button><button type="button" id="endGo" class="main">確認して完成・印刷へ</button></div>';
+    b.innerHTML = h;
+    endDlg.showModal();
+    var first = b.querySelector('input[data-bind$="_good"]'); if (first) first.focus();
+  }
+  // 終業の画面の欄は、日報の同じ欄に書き込む
+  document.getElementById("endBody").addEventListener("input", function (e) {
+    var n = e.target.getAttribute("data-bind"); if (!n) return;
+    f(n).value = e.target.value;
+    f(n).dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  document.getElementById("endBody").addEventListener("change", function (e) {
+    var n = e.target.getAttribute("data-bind"); if (!n) return;
+    f(n).dispatchEvent(new Event("change", { bubbles: true }));
+    // 自動で変わった欄（投入時間など）を、終業の画面にも映す
+    Array.prototype.forEach.call(document.querySelectorAll("#endBody [data-bind]"), function (x) {
+      if (x !== e.target && document.activeElement !== x) x.value = val(x.getAttribute("data-bind"));
+    });
+  });
+  document.getElementById("endBody").addEventListener("click", function (e) {
+    if (e.target.id === "endClose") endDlg.close();
+    if (e.target.id === "endGo") { endDlg.close(); openDone(); }
+  });
+  document.getElementById("btnEnd").onclick = openEnd;
+
   // ---------- 取り消し（ひとつ前の操作を元に戻す） ----------
   var undoSnap = null;
   function snapshot(label) { undoSnap = { label: label, date: curDate, d: collect() }; }
@@ -1678,6 +1772,12 @@
       if (cap && lots.end.filled > 0 && lots.end.filled < cap) { c.lot = lastLot; c.good = lots.end.filled; }
     }
     if (last) { c.model = get("r" + last + "_model"); c.lotSoban = get("r" + last + "_lotSoban"); c.pallet = get("r" + last + "_pallet"); }
+    // 毎日同じことが多い欄は、前日の値を初期値にする（年月度マークは月が同じときだけ）
+    c.copy = {};
+    var sameMonth = pd.slice(0, 7) === date.slice(0, 7);
+    ["worker_itanose", "worker_kensa", "worker_stock", "m1_checker", "m1_checker2", "kenshidai",
+     "core1", "core2", "core3", "core4", "core5", "core6", "core7"].concat(sameMonth ? ["m1_mark", "m1_mark2"] : [])
+      .forEach(function (n) { if (get(n)) c.copy[n] = get(n); });
     c.blocks = [1, 2].map(function (n) {
       var p = "sb" + n + "_", list = parseJSON(get(p + "lots"), []);
       var to = toNum(get(p + "to"));
@@ -1702,6 +1802,7 @@
       if (isNew) { ["name", "inW", "inH", "mmW", "mmH"].forEach(function (k) { setAuto(p + k, b[k]); }); f(p + "carryLot").value = b.carryLot || ""; }
     });
     if (isNew && c.model) setAuto("gt1_model", c.model);
+    if (isNew) Object.keys(c.copy || {}).forEach(function (n) { setAuto(n, c.copy[n]); });
     // 新しい日は、前日の最後の型式・素板ロット（素板が残っているとき）から始める
     if (isNew && c.model) {
       setAuto("r1_model", c.model);

@@ -271,7 +271,7 @@ test("最後のロットで良品＋不良が作業枚数を超えたら、先�
   eq(await v(p, "r2_ori_hama"), "", "先に数えたハマが2行目から消える");
   eq(await v(p, "r1_ori_hama"), "1", "前のロット（1行目）へ移る");
   eq(await v(p, "r2_kizu") + "," + await v(p, "r2_proc_other"), "1,1", "あとの不良は残る");
-  ok((await p.textContent("#msg")).includes("前のロット"), "知らせる");
+  ok((await p.textContent("#msg")).includes("前の素板"), "知らせる");
   await p.click("#msg button"); await p.waitForTimeout(300);
   eq(await v(p, "r2_ori_hama") + "," + await v(p, "r1_ori_hama"), "1,", "取り消すと元に戻り、また移さない");
   await fill(p, "r2_qty", 14); await p.waitForTimeout(300);
@@ -508,6 +508,62 @@ test("次の日に端数の紙のQRを読むと、新しいパレットにせず
   eq(await v(p, "sb1_lots"), "", "新しいパレットとして足さない");
   await p.click("body"); await scanQR(p, "A0DGL35TS    ,A3I,A7813   ,A8508   ,AA32.00 ,AB20.00 ,AD90  ,B0R7Z446SX061,B42,BR2N9A,ZH1");
   ok((await p.textContent("#msg")).includes("前残（102 枚）と違います"), "枚数が違えば知らせる");
+});
+
+// ---------- 前の素板へ・前日の値・投入時間・板乗せの斜線・終業 ----------
+test("作業枚数を手で入れたときも、超えた不良は前の素板パレットの最後の行へ移す（1つ上の行ではない）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+  const fp = path.join(os.tmpdir(), "counter-rebal2.json");
+  fs.writeFileSync(fp, JSON.stringify({ state: { types: [], job: {}, downtime: {} }, hist: { shifts: ["X"], types: { t1: { n: "キズ" } },
+    d: [[sec(10, 0), "t1", 1, 0, 0], [sec(10, 5), "t1", 1, 0, 0]], w: [], j: [], b: [] } }));
+  await fill(p, "r1_lotSoban", "A"); await fill(p, "r1_good", 100);
+  await fill(p, "r2_lotSoban", "B"); await fill(p, "r2_good", 135);
+  await fill(p, "r3_lotSoban", "B");
+  await p.setInputFiles("#counterFallback", fp); await p.waitForTimeout(300);
+  eq(await v(p, "r3_kizu"), "2", "3行目にキズ2");
+  await fill(p, "r3_good", 13); await fill(p, "r3_qty", 14); await p.waitForTimeout(300);
+  eq(await v(p, "r1_kizu") + "," + await v(p, "r2_kizu") + "," + await v(p, "r3_kizu"), "1,,1", "前の素板（1行目・A）へ移す");
+});
+
+test("新しい日は、作業者・確認者・検視台などを前日の値から入れる（年月度マークは同じ月だけ）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  for (const [n, x] of [["worker_kensa", "鈴木"], ["worker_stock", "アルクナ"], ["m1_mark", "2026.10"], ["m1_checker", "佐々木"], ["kenshidai", "78.9"]]) await fill(p, n, x);
+  await p.waitForTimeout(700);
+  await setDate(p, "2026-10-21");
+  eq([await v(p, "worker_kensa"), await v(p, "worker_stock"), await v(p, "m1_mark"), await v(p, "m1_checker"), await v(p, "kenshidai")].join(","), "鈴木,アルクナ,2026.10,佐々木,78.9", "前日の値");
+  await setDate(p, "2026-11-02");
+  eq(await v(p, "m1_mark") + "|" + await v(p, "m1_checker"), "|佐々木", "月が変わったら年月度マークは入れない");
+});
+
+test("投入時間を、稼働の時間から休憩を引いて自動で入れる／板乗せが空なら斜線", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await fill(p, "worker_kensa", "鈴木");
+  await fill(p, "kadoS", "08:45"); await fill(p, "kadoE", "12:30");
+  await p.evaluate(() => { const f = document.forms.nippo.elements; f.kadoEvents.value = JSON.stringify([{ s: "12:00", e: "12:30", c: "E", src: "manual" }]); f.kadoS.dispatchEvent(new Event("input", { bubbles: true })); });
+  await p.waitForTimeout(200);
+  eq(await v(p, "tonyu_kensa") + "|" + await v(p, "tonyu_stock"), "3.3|", "検査だけ 3.3 時間（195 分）");
+  ok(await p.evaluate(() => document.forms.nippo.elements.worker_itanose.parentNode.classList.contains("slash")), "板乗せは斜線");
+  await fill(p, "worker_itanose", "田中"); await p.waitForTimeout(100);
+  ok(!(await p.evaluate(() => document.forms.nippo.elements.worker_itanose.parentNode.classList.contains("slash"))), "入れたら斜線を消す");
+});
+
+test("終業ボタン：最後に入れる数字を1つの画面で入れ、確認・完成へ進む", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await p.click("#btnEnd");
+  ok(await p.evaluate(() => document.getElementById("endDlg").open), "終業の画面が出る");
+  await p.fill('#endBody [data-bind="gt1_good"]', "270"); await p.dispatchEvent('#endBody [data-bind="gt1_good"]', "change");
+  await p.fill('#endBody [data-bind="sb1_to"]', "0"); await p.dispatchEvent('#endBody [data-bind="sb1_to"]', "change");
+  await p.fill('#endBody [data-bind="kenshidai"]', "78.9");
+  await p.waitForTimeout(300);
+  eq(await v(p, "r4_lotCut") + " " + await v(p, "r4_good"), "261021-02NK 13", "明細ができる");
+  eq(await v(p, "kenshidai"), "78.9", "日報の欄に入る");
+  await p.click("#endGo"); await p.waitForTimeout(200);
+  ok(await p.evaluate(() => document.getElementById("doneDlg").open), "完成の確認へ進む");
 });
 
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
