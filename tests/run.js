@@ -253,6 +253,32 @@ async function fakeCounter(p, state) {
   }, state);
 }
 
+test("最後のロットで良品＋不良が作業枚数を超えたら、先に数えた不良から前のロットへ移す（取り消しもできる）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+  const types = { t1: { n: "キズ" }, t2: { n: "ハマ" }, t3: { n: "その他" } };
+  const write = (d) => { const fp = path.join(os.tmpdir(), "counter-rebal.json");
+    fs.writeFileSync(fp, JSON.stringify({ state: { types: [], job: {}, downtime: {} }, hist: { shifts: ["X"], types, d, w: [], j: [], b: [] } })); return fp; };
+  const d1 = [[sec(9, 0), "t1", 1, 0, 0], [sec(9, 5), "t1", 1, 0, 0]];
+  const d2 = d1.concat([[sec(10, 0), "t2", 1, 0, 0], [sec(10, 5), "t1", 1, 0, 0], [sec(10, 10), "t3", 1, 0, 0]]);
+  await fill(p, "r1_lotSoban", "A"); await fill(p, "r1_good", 100);
+  await p.setInputFiles("#counterFallback", write(d1)); await p.waitForTimeout(300);
+  eq(await v(p, "r1_kizu"), "2", "1行目にキズ2");
+  await fill(p, "r2_lotSoban", "B");
+  await p.setInputFiles("#counterFallback", write(d2)); await p.waitForTimeout(300);
+  eq([await v(p, "r2_ori_hama"), await v(p, "r2_kizu"), await v(p, "r2_proc_other")].join(","), "1,1,1", "2行目に3個");
+  await fill(p, "r2_good", 13); await fill(p, "r2_qty", 15); await p.waitForTimeout(300);
+  eq(await v(p, "r2_ori_hama"), "", "先に数えたハマが2行目から消える");
+  eq(await v(p, "r1_ori_hama"), "1", "前のロット（1行目）へ移る");
+  eq(await v(p, "r2_kizu") + "," + await v(p, "r2_proc_other"), "1,1", "あとの不良は残る");
+  ok((await p.textContent("#msg")).includes("前のロット"), "知らせる");
+  await p.click("#msg button"); await p.waitForTimeout(300);
+  eq(await v(p, "r2_ori_hama") + "," + await v(p, "r1_ori_hama"), "1,", "取り消すと元に戻り、また移さない");
+  await fill(p, "r2_qty", 14); await p.waitForTimeout(300);
+  eq(await v(p, "r1_ori_hama") + "," + await v(p, "r1_kizu"), "1,3", "数を変えると、先に数えた順に2個移す");
+  eq(await v(p, "r2_proc_other"), "1", "最後に数えたものは残る");
+});
+
 test("カウンターの停止を日報で直す（60分→30分）：元の値を残し、取り込み直しても戻らない／削除も戻らない", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);

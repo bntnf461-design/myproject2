@@ -817,8 +817,45 @@
       f("r" + r + "_" + k).parentNode.classList.toggle("ditto", same);
     });
   }
+  // 最後のロット（いちばん下の行）で、良品＋不良が作業枚数（手で入れた使用数）を超えたら、
+  // 超えた分の不良を、カウンターで先に数えたものから前のロット（1つ上の行）へ移す
+  var REBAL_LABEL = "不良を前のロットへ移す";
+  function rebalSig(r) {
+    var p = "r" + r + "_";
+    return [r, val(p + "qty"), val(p + "good")].concat(PROC.concat(SOBAN).map(function (k) { return val(p + k); })).join("|");
+  }
+  function rebalance() {
+    var r = lastActiveRow(); if (r < 2 || readOnly) return;
+    var p = "r" + r + "_", q = val(p + "qty");
+    if (q === "" || autoVals[p + "qty"] === q) return;          // 作業枚数を手で入れたときだけ
+    var ng = PROC.concat(SOBAN).reduce(function (s2, k) { return s2 + num(p + k); }, 0);
+    var excess = num(p + "good") + ng - toNum(q);
+    if (excess <= 0 || val("rebalSkip") === rebalSig(r)) return;
+    var log = parseJSON(val("cntLog"), []);
+    var cand = log.filter(function (e) { return e[2] === r; }).sort(function (a, b) { return a[0] - b[0]; });
+    if (!cand.length) return;
+    snapshot(REBAL_LABEL);
+    var moved = {}, n = 0;
+    cand.forEach(function (e) {
+      if (n >= excess || num(p + e[1]) <= 0) return;
+      var a = p + e[1], b = "r" + (r - 1) + "_" + e[1];
+      f(a).value = num(a) - 1 ? num(a) - 1 : "";
+      f(b).value = num(b) + 1;
+      e[2] = r - 1; moved[e[1]] = (moved[e[1]] || 0) + 1; n++;
+    });
+    if (!n) { undoSnap = null; return; }
+    f("cntLog").value = JSON.stringify(log);
+    computeAuto();
+    var what = Object.keys(moved).map(function (k) { return (DEF_LBL[k] || k) + " " + moved[k]; }).join("・");
+    var rest = excess - n;
+    setTimeout(function () {
+      msgUndo(r + "行目は良品＋不良が作業枚数（" + q + "枚）を超えたため、先に数えた不良 " + n + "個（" + what + "）を前のロット（" + (r - 1) + "行目）へ移しました" +
+        (rest > 0 ? "。⚠ まだ " + rest + "枚 合いません（手で入れた不良は移していません）" : ""), rest > 0 ? "warn" : "ok");
+    }, 0);
+  }
   function recalc() {
     computeAuto();
+    rebalance();
     markDitto();
     var totals = {};
     SUM_KEYS.forEach(function (k) { totals[k] = 0; });
@@ -899,6 +936,8 @@
       var mv = val("r" + r + "_model");
       if (mv && !modelOf(mv)) out.push(["r" + r + "_model", r + "行目の型式「" + mv + "」が登録されていません"]);
       if (f("r" + r + "_good").classList.contains("over")) out.push(["r" + r + "_good", r + "行目の良品枚数が1PLを超えています"]);
+      var rq = val("r" + r + "_qty"), rng = PROC.concat(SOBAN).reduce(function (s2, k) { return s2 + num("r" + r + "_" + k); }, 0);
+      if (rq !== "" && num("r" + r + "_good") + rng > toNum(rq)) out.push(["r" + r + "_qty", r + "行目は良品＋不良（" + (num("r" + r + "_good") + rng) + "）が作業枚数（" + rq + "）を超えています"]);
     }
     PROC.concat(SOBAN).forEach(function (k) {
       if (num("t_" + k) > 0 && !f("dispose_" + k).checked) out.push(["dispose_" + k, "不良品処置廃棄のレ点（" + DEF_LBL[k] + "）"]);
@@ -941,6 +980,7 @@
     if (!undoSnap || readOnly || undoSnap.date !== curDate) return;
     var u = undoSnap; undoSnap = null;
     apply(u.d); f("workDate").value = curDate;
+    if (u.label === REBAL_LABEL) f("rebalSkip").value = rebalSig(lastActiveRow());
     drawEvList(); recalc(); save();
     msg("「" + u.label + "」を取り消しました", "ok");
   }
@@ -965,9 +1005,17 @@
       if (x.a == null) delete autoVals[n]; else autoVals[n] = x.a;
     });
   }
+  // カウンターから入れた不良の記録（どの行に入れたか）を、行の出し入れに合わせる
+  function shiftLog(fn) {
+    var log = parseJSON(val("cntLog"), []);
+    if (!log.length) return;
+    log = log.map(function (e) { return [e[0], e[1], fn(e[2])]; }).filter(function (e) { return e[2] > 0; });
+    f("cntLog").value = log.length ? JSON.stringify(log) : "";
+  }
   function deleteRow(r) {
     if (readOnly) return;
     snapshot(r + "行目を消す");
+    shiftLog(function (row) { return row === r ? 0 : row > r ? row - 1 : row; });
     for (var i = r; i < ROWS; i++) rowSet(i, rowGet(i + 1));
     rowSet(ROWS, null);
     changed();
@@ -977,6 +1025,7 @@
     if (readOnly) return;
     if (rowActive(val, ROWS)) { msg("⚠ いちばん下（" + ROWS + "行目）が使われているので、行を入れられません", "warn"); return; }
     snapshot(r + "行目に行を入れる");
+    shiftLog(function (row) { return row >= r ? row + 1 : row; });
     for (var i = ROWS; i > r; i--) rowSet(i, rowGet(i - 1));
     rowSet(r, null);
     changed();
@@ -1301,23 +1350,42 @@
       return t ? t.name : id;
     };
     // 不良数：その日の合計。前回取り込んだ分との差を、いま入力している行に足す
-    var totals = {}, unknown = [];
-    h.d.forEach(function (x) {
-      if (dayOf(x[0]) !== date || !okShift(x[3])) return;
-      var nm = typeName(x[1]), col = DEF_MAP[nm];
-      if (!col) { if (unknown.indexOf(nm) < 0) unknown.push(nm); return; }
-      totals[col] = (totals[col] || 0) + x[2];
-    });
+    // 不良は1個ずつ、数えた時刻つきで並べる（取り消し −1 は、その種類の最後の1個を消す）
+    var units = {}, unknown = [];
+    h.d.filter(function (x) { return dayOf(x[0]) === date && okShift(x[3]); })
+      .sort(function (a, b) { return a[0] - b[0]; })
+      .forEach(function (x) {
+        var nm = typeName(x[1]), col = DEF_MAP[nm];
+        if (!col) { if (unknown.indexOf(nm) < 0) unknown.push(nm); return; }
+        var u = units[col] = units[col] || [];
+        for (var i = 0; i < x[2]; i++) u.push(x[0]);
+        for (var j = 0; j < -x[2]; j++) u.pop();
+      });
     var imported = parseJSON(val("cntImported"), {}), row = lastActiveRow() || 1, added = [];
-    Object.keys(totals).forEach(function (col) {
-      var delta = totals[col] - (imported[col] || 0);
+    var log = parseJSON(val("cntLog"), []);   // [数えた時刻, 列, 入れた行]
+    Object.keys(units).concat(Object.keys(imported)).filter(function (c, i, a) { return a.indexOf(c) === i; }).forEach(function (col) {
+      var list = units[col] || [], had = imported[col] || 0, delta = list.length - had;
       if (!delta) return;
-      var n = "r" + row + "_" + col, v = Math.max(0, num(n) + delta);
-      f(n).value = v ? v : "";
-      imported[col] = totals[col];
+      if (delta > 0) {
+        // 新しく数えた分は、いま入力している行へ
+        list.slice(had).forEach(function (t) { log.push([t, col, row]); });
+        var n = "r" + row + "_" + col, v = num(n) + delta;
+        f(n).value = v ? v : "";
+      } else {
+        // カウンターで減らした分は、最後に入れたものから外す
+        for (var k = 0; k < -delta; k++) {
+          var li = -1;
+          log.forEach(function (e, idx) { if (e[1] === col && (li < 0 || e[0] >= log[li][0])) li = idx; });
+          var rr = li >= 0 ? log[li][2] : row, nn = "r" + rr + "_" + col, vv = Math.max(0, num(nn) - 1);
+          f(nn).value = vv ? vv : "";
+          if (li >= 0) log.splice(li, 1);
+        }
+      }
+      imported[col] = list.length;
       added.push(col + (delta > 0 ? "+" : "") + delta);
     });
     f("cntImported").value = JSON.stringify(imported);
+    f("cntLog").value = log.length ? JSON.stringify(log) : "";
     // 稼働状況：作業の開始・終了、設備停止
     var starts = [], ends = [], running = false;
     (h.j || []).forEach(function (x) { if (dayOf(x[0]) === date && okShift(x[2])) { starts.push(x[0] * 1000); ends.push(x[1] * 1000); } });
@@ -1568,7 +1636,7 @@
   });
 
   // ---------- 保存 / 読込み ----------
-  var hiddenExtra = ["cntImported", "autoVals"];
+  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip"];
   hiddenExtra.forEach(function (n) { form.appendChild(el("input", { type: "hidden", name: n })); });
   function collect() {
     f("autoVals").value = JSON.stringify(autoVals);
