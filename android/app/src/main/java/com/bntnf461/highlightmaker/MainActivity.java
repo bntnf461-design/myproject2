@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb, FileChooserParams params) {
                 if (pickCallback != null) pickCallback.onReceiveValue(null);
+                if (!prepDone) finishPrepare(); // 前の準備が残っていたら終わらせる
                 pickCallback = cb;
                 try {
                     startActivityForResult(buildPickIntent(params), REQ_PICK);
@@ -232,21 +233,38 @@ public class MainActivity extends Activity {
         int w, h, rot, transfer;
     }
 
+    // 準備中の状態（中止した時も、必ず1回だけ画面側へ結果を返すため）
+    private ValueCallback<Uri[]> prepCb;
+    private List<Uri> prepOut = java.util.Collections.synchronizedList(new ArrayList<>());
+    private boolean prepDone = true;
+
     private void startPrepare(Uri[] picked, ValueCallback<Uri[]> cb) {
-        prepCancelled = false;
+        prepCancelled = false; prepDone = false; prepCb = cb; prepOut = java.util.Collections.synchronizedList(new ArrayList<>()); // 毎回新しい入れ物（中止後に遅れて届いた分が混ざらない）
         busy = new AlertDialog.Builder(this).setTitle("Highlight Maker").setMessage("写真・動画を準備しています…").setCancelable(false)
-                .setNegativeButton("中止", (d, w) -> { prepCancelled = true; if (currentTx != null) currentTx.cancel(); }).show();
-        prepareAt(picked, 0, new ArrayList<>(), cb);
+                .setNegativeButton("中止（ここまでの分を使う）", (d, w) -> {
+                    prepCancelled = true;
+                    // 変換を止めても完了の知らせは来ないので、ここで終わらせる（以前はここで止まって固まっていた）
+                    if (currentTx != null) { try { currentTx.cancel(); } catch (Exception ignored) { } currentTx = null; }
+                    main.post(this::finishPrepare);
+                }).show();
+        prepareAt(picked, 0, prepOut, cb);
+    }
+
+    /** 準備を終えて、そこまでの素材を画面側に渡す（何度呼ばれても1回だけ） */
+    private void finishPrepare() {
+        if (prepDone) return;
+        prepDone = true;
+        if (busy != null) { try { busy.dismiss(); } catch (Exception ignored) { } busy = null; }
+        final List<Uri> list = prepOut; Uri[] res; synchronized (list) { res = list.toArray(new Uri[0]); }
+        ValueCallback<Uri[]> cb = prepCb; prepCb = null;
+        if (cb != null) cb.onReceiveValue(res.length > 0 ? res : null);
     }
 
     private void setBusy(String msg) { if (busy != null) busy.setMessage(msg); }
 
     private void prepareAt(Uri[] picked, int i, List<Uri> out, ValueCallback<Uri[]> cb) {
-        if (i >= picked.length || prepCancelled) {
-            if (busy != null) { busy.dismiss(); busy = null; }
-            cb.onReceiveValue(out.toArray(new Uri[0]));
-            return;
-        }
+        if (prepDone) return; // 中止済み
+        if (i >= picked.length || prepCancelled) { finishPrepare(); return; }
         final Uri uri = picked[i];
         final String label = (i + 1) + " / " + picked.length;
         setBusy("写真・動画を準備しています… " + label);
@@ -341,6 +359,7 @@ public class MainActivity extends Activity {
                         @Override
                         public void onCompleted(Composition composition, ExportResult exportResult) {
                             currentTx = null;
+                            if (prepCancelled) { outF.delete(); return; }
                             done.accept(outF);
                         }
 
@@ -348,6 +367,7 @@ public class MainActivity extends Activity {
                         public void onError(Composition composition, ExportResult exportResult, ExportException exportException) {
                             currentTx = null;
                             outF.delete();
+                            if (prepCancelled) return;
                             done.accept(null);
                         }
                     }).build();

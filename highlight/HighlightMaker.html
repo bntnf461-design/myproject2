@@ -765,6 +765,10 @@ async function loadVideo(file, t = {}) {
     if (!v && file.size >= 150 * 1048576 && !/形式/.test(lastErr.message)) lastErr = new Error('動画が大きすぎて開けません（150 MB まで）。短く切ってから選んでください');
     if (!v) throw lastErr;
   }
+  if (!isFinite(v.duration) || !(v.duration > 0)) { // 長さが取れない動画（一部の端末・形式）は、最後まで進めて長さを確かめる
+    try { v.currentTime = 1e9; await Promise.race([waitEvent(v, 'durationchange', 4000), waitEvent(v, 'seeked', 4000)]); } catch (e) { }
+    await seekTo(v, 0);
+  }
   const clip = { type: 'video', el: v, w: v.videoWidth, h: v.videoHeight, duration: isFinite(v.duration) && v.duration > 0 ? v.duration : 1, file: typeof file === 'string' ? null : file };
   clip.highlights = await findHighlights(v, clip.duration);
   // サムネイル
@@ -1383,6 +1387,12 @@ function setSegSource(seg, used) {
 function repeatNote(segs, n, scenes) {
   const warn = t => ` ／ <span style="color:var(--warn)">${t}</span>`;
   if (n < 3) return warn(`素材が ${n} 個だけなので、同じ場面がくり返されます。5 個以上がおすすめです`);
+  // 動画の長さより素材（使える場面）の合計が短い時は、短い長さをすすめる
+  const footage = S.clips.reduce((a, c) => a + (c.type === 'video' ? c.duration : 2.5), 0), total = segs.length ? segs[segs.length - 1].e : 0;
+  if (S.clips.some(c => c.type === 'video') && footage < total * .9) {
+    const len = footage >= 40 ? '45秒' : '30秒';
+    if (total > 31) return warn(`素材の合計が約 ${Math.round(footage)} 秒なので、同じ場面がくり返されます。長さを ${len} にするか、動画を足すと自然です`);
+  }
   if (segs.length / Math.max(1, scenes) <= 3) return '';
   const more = Math.min(30, Math.ceil(segs.length / 3 - scenes));
   return more > 0 ? warn(`同じ場面が多めです（写真・動画をあと ${more} 個くらい足すと自然です）`) : '';
@@ -1507,20 +1517,26 @@ async function rebuild() {
   while (t < total - .05) {
     let nbeat = pick(rng, st.cut) * lenMul;
     const atPeak = hasMain && peaks.includes(k);
+    // 先に素材を決める（動画ならカットを短くしすぎないため）
+    const clipIdx = (hasMain && ((ci === 0 && MO.first) || atPeak)) ? mainIdx : nextClip(segs.length); ci++; prevClip = clipIdx;
+    const clip = S.clips[clipIdx];
     const nextPeak = hasMain ? peaks.find(p => p > k && p < k + nbeat) : undefined;
     if (nextPeak !== undefined) nbeat = nextPeak - k; // 盛り上がりの入りでちょうど切り替える
     const e = an.energy[bl[k] ? bl[k].i : 0] ?? .5;
     if (st.adapt) { if (e > .78) nbeat = Math.max(1, nbeat / 2); else if (e < .25) nbeat *= 2; }
     else if (!st.layout) { if (e > .85 && nbeat >= 4) nbeat /= 2; else if (e < .22 && nbeat <= 4) nbeat *= 2; }
     if (atPeak) nbeat = MO.bars * 4; // サビの入りでメインを〇小節見せる
+    if (clip.type === 'video' && !atPeak) { // 動画は最低 1.4 秒くらい見せる（動きが分かるように。短い動画はその長さまで）
+      const minB = Math.ceil(Math.min(1.4, Math.max(.5, clip.duration * .9)) / spb - 1e-6);
+      if (nbeat < minB) nbeat = minB;
+      const np = hasMain ? peaks.find(p => p > k && p < k + nbeat) : undefined; if (np !== undefined) nbeat = np - k; // サビの入りは優先
+    }
     if (nbeat >= 4 && !atPeak && nextPeak === undefined) { // 長いカットは小節の頭で終わるように（サビの入りの手前では揃えない）
       let j = k + nbeat - 1; while (bl[j] && !isDown(bl[j].i) && j < k + nbeat + 3) j++; if (bl[j] && isDown(bl[j].i)) nbeat = j - k + 1;
     }
     let endIdx = k + nbeat - 1, end;
     if (endIdx >= bl.length - 1 || (bl[endIdx] && mStart + total - bl[endIdx].t < spb * .9)) { end = total; k = bl.length; }
     else { end = bl[endIdx].t - mStart; k = endIdx + 1; }
-    const clipIdx = (hasMain && ((ci === 0 && MO.first) || atPeak)) ? mainIdx : nextClip(segs.length); ci++; prevClip = clipIdx;
-    const clip = S.clips[clipIdx];
     const uc = stat[clipIdx].used; stat[clipIdx].used++; stat[clipIdx].last = segs.length;
     const seg = { s: t, e: end, clip, n: ci, rate: st.rate || 1,
       motion: MOTIONS[pick(rng, st.motions)], mMul: st.motionMul || 1,
@@ -3086,7 +3102,7 @@ $('#titlePreviewBtn').onclick = () => {
   play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4;
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.05b';
+const WEB_VER = '2026.11.05c';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
