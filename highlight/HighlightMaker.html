@@ -2270,6 +2270,10 @@ function syncVideos(t, playing) {
    ・使えない環境（WebCodecs がない・素材が MP4/H.264 でない等）は、今までの録画方式に自動で切り替える */
 const FX = {
   fps: 30,
+  live: new Set(), // 書き出しで使っている部品（止まった・中止した時に全部閉じるため）
+  track(c) { FX.live.add(c); return c; },
+  abortAll() { for (const c of FX.live) { try { if (c.state !== 'closed') c.close(); } catch (e) { } } FX.live.clear(); },
+  beat() { S.fxBeat = performance.now(); }, // 進んでいる合図（見張り役が見る）
   /* ---- MP4 を読む（moov の中の表から各コマの位置を知る） ---- */
   async demux(file) {
     let off = 0, moov = null; const size = file.size;
@@ -2343,7 +2347,7 @@ const FX = {
   },
   async supports(info) {
     if (!window.VideoDecoder) return false;
-    try { return (await VideoDecoder.isConfigSupported({ codec: info.codec, description: info.desc, codedWidth: info.width, codedHeight: info.height })).supported; } catch (e) { return false; }
+    try { return (await withTimeout(VideoDecoder.isConfigSupported({ codec: info.codec, description: info.desc, codedWidth: info.width, codedHeight: info.height }), 5000)).supported; } catch (e) { return false; }
   },
 };
 /* 縦横比を保ったまま、長い辺を max 以下にする（書き出しでは出力より大きな絵はいらない） */
@@ -2355,20 +2359,21 @@ class ClipStream {
     this.close(); const I = this.info; this.closed = false;
     let k = 0; for (let i = 0; i < I.count; i++) if (I.key[i] && I.pts[i] <= sec + 1e-3) k = i; // 直前のキーフレームから
     this.next = k; this.pending = []; this.cur = null; this.drawn = null; this.wake = null;
-    this.dec = new VideoDecoder({ output: f => { if (this.closed) { f.close(); return; } this.pending.push(f); this.pending.sort((a, b) => a.timestamp - b.timestamp); this.wake && this.wake(); }, error: e => { this.err = e; this.wake && this.wake(); } });
+    this.dec = FX.track(new VideoDecoder({ output: f => { if (this.closed) { f.close(); return; } this.pending.push(f); this.pending.sort((a, b) => a.timestamp - b.timestamp); this.wake && this.wake(); }, error: e => { this.err = e; this.wake && this.wake(); } }));
     this.dec.configure({ codec: I.codec, description: I.desc, codedWidth: I.width, codedHeight: I.height, optimizeForLatency: true });
     this.lastWant = sec;
   }
   async feed(n) {
-    const I = this.info, from = this.next, to = Math.min(I.count, from + n); if (from >= to) { await this.dec.flush().catch(() => { }); return; }
+    const I = this.info, from = this.next, to = Math.min(I.count, from + n); if (from >= to) { await withTimeout(this.dec.flush(), 6000).catch(() => { }); return; } // 最後まで出させる（返事がない端末があるので時間制限つき）
     let lo = Infinity, hi = 0; for (let i = from; i < to; i++) { lo = Math.min(lo, I.offs[i]); hi = Math.max(hi, I.offs[i] + I.sizes[i]); }
-    const buf = new Uint8Array(await this.file.slice(lo, hi).arrayBuffer());
+    const buf = new Uint8Array(await withTimeout(this.file.slice(lo, hi).arrayBuffer(), 10000));
+    FX.beat();
     for (let i = from; i < to; i++) {
       const s = I.offs[i] - lo;
       this.dec.decode(new EncodedVideoChunk({ type: I.key[i] ? 'key' : 'delta', timestamp: Math.round(I.pts[i] * 1e6), data: buf.subarray(s, s + I.sizes[i]) }));
     }
     this.next = to;
-    if (to >= I.count) await this.dec.flush().catch(() => { });
+    if (to >= I.count) await withTimeout(this.dec.flush(), 6000).catch(() => { });
     else await new Promise(r => { this.wake = r; setTimeout(r, 60); }); this.wake = null;
   }
   async frameAt(sec) {
@@ -2381,6 +2386,7 @@ class ClipStream {
       if (!this.dec || this.dec.state === 'closed') throw new Error('stall');
       if (document.hidden) throw new Error('hidden');
       if (performance.now() - t0 > 8000) throw new Error('stall');
+      FX.beat();
       while (this.pending.length && this.pending[0].timestamp <= target) { if (this.cur) this.cur.close(); this.cur = this.pending.shift(); }
       if (this.pending.length || this.next >= this.info.count) break;
       await this.feed(6);
@@ -2474,11 +2480,11 @@ async function renderExportAudio(sr) {
 async function encodeAudio(buf, bitrate) {
   const cfgs = [{ codec: 'mp4a.40.2', name: 'aac', sampleRate: 44100 }, { codec: 'opus', name: 'opus', sampleRate: 48000 }];
   let pick = null;
-  for (const c of cfgs) { try { if ((await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sampleRate, numberOfChannels: 2, bitrate })).supported) { pick = c; break; } } catch (e) { } }
+  for (const c of cfgs) { try { if ((await withTimeout(AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sampleRate, numberOfChannels: 2, bitrate }), 5000)).supported) { pick = c; break; } } catch (e) { } }
   if (!pick) throw new Error('音声を書き出せません');
   const audio = await renderExportAudio(pick.sampleRate); // 使う部分だけ・フェード込み
   const chunks = []; let desc = null, err = null;
-  const enc = new AudioEncoder({ output: (c, meta) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); chunks.push({ data: d, ts: c.timestamp, dur: c.duration || 0 }); if (meta && meta.decoderConfig && meta.decoderConfig.description) desc = new Uint8Array(meta.decoderConfig.description.buffer ? meta.decoderConfig.description.buffer : meta.decoderConfig.description); }, error: e => err = e });
+  const enc = FX.track(new AudioEncoder({ output: (c, meta) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); chunks.push({ data: d, ts: c.timestamp, dur: c.duration || 0 }); if (meta && meta.decoderConfig && meta.decoderConfig.description) desc = new Uint8Array(meta.decoderConfig.description.buffer ? meta.decoderConfig.description.buffer : meta.decoderConfig.description); }, error: e => err = e }));
   enc.configure({ codec: pick.codec, sampleRate: pick.sampleRate, numberOfChannels: 2, bitrate });
   const L = audio.getChannelData(0), R = audio.getChannelData(1), B = 4096;
   for (let o = 0; o < audio.length; o += B) {
@@ -2486,6 +2492,8 @@ async function encodeAudio(buf, bitrate) {
     const ad = new AudioData({ format: 'f32-planar', sampleRate: pick.sampleRate, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(o / pick.sampleRate * 1e6), data: d });
     enc.encode(ad); ad.close();
     if (enc.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 5));
+    if (enc.state === 'closed' || err) throw err || new Error('stall');
+    FX.beat();
   }
   await withTimeout(enc.flush(), 20000); enc.close(); if (err) throw err;
   if (pick.name === 'aac' && !desc) desc = new Uint8Array([0x12, 0x10]); // 44.1kHz・2ch の AAC-LC
@@ -2493,25 +2501,25 @@ async function encodeAudio(buf, bitrate) {
 }
 /* 1コマずつ描いて MP4 を作る。使えない時は Error('fallback') を投げる */
 function withTimeout(promise, ms) { return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error(document.hidden ? 'hidden' : 'stall')), ms))]); }
-async function exportOffline(onProgress, isCancelled) {
+async function exportOffline(onProgress, isCancelled, token) {
   if (!window.VideoEncoder || !window.AudioEncoder || !window.VideoFrame) throw new Error('fallback');
   const tl = S.tl, W = S.W, H = S.H, fps = FX.fps, N = Math.max(1, Math.round(tl.total * fps));
   const vbr = Math.max(W, H) >= 1920 ? 8e6 : 4.5e6;
   let vcfg = null;
   for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f', 'avc1.42002a']) {
     const c = { codec, width: W, height: H, bitrate: vbr, framerate: fps, avc: { format: 'avc' } };
-    try { if ((await VideoEncoder.isConfigSupported(c)).supported) { vcfg = c; break; } } catch (e) { }
+    try { if ((await withTimeout(VideoEncoder.isConfigSupported(c), 5000)).supported) { vcfg = c; break; } } catch (e) { }
   }
   if (!vcfg) throw new Error('fallback');
   // 動画素材を準備（MP4/H.264 だけ）
   for (const c of S.clips) {
     if (c.type !== 'video') continue;
     if (!c.file) throw new Error('fallback');
-    if (!c.mp4) { try { c.mp4 = await FX.demux(c.file); } catch (e) { c.mp4 = { bad: e.message }; } }
+    if (!c.mp4) { try { c.mp4 = await withTimeout(FX.demux(c.file), 15000); } catch (e) { c.mp4 = { bad: e.message }; } }
     if (c.mp4.bad || !(await FX.supports(c.mp4))) throw new Error('fallback');
   }
   const vchunks = []; let vdesc = null, verr = null;
-  const enc = new VideoEncoder({ output: (c, meta) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); vchunks.push({ data: d, ts: c.timestamp, dur: c.duration || Math.round(1e6 / fps), key: c.type === 'key' }); if (meta && meta.decoderConfig && meta.decoderConfig.description) vdesc = new Uint8Array(meta.decoderConfig.description.buffer ? meta.decoderConfig.description.buffer : meta.decoderConfig.description); }, error: e => verr = e });
+  const enc = FX.track(new VideoEncoder({ output: (c, meta) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); vchunks.push({ data: d, ts: c.timestamp, dur: c.duration || Math.round(1e6 / fps), key: c.type === 'key' }); if (meta && meta.decoderConfig && meta.decoderConfig.description) vdesc = new Uint8Array(meta.decoderConfig.description.buffer ? meta.decoderConfig.description.buffer : meta.decoderConfig.description); }, error: e => verr = e }));
   enc.configure(vcfg);
   const streams = new Map(), t0 = performance.now();
   const srcTime = (sg, t) => { const x = Math.max(0, t - sg.s) * sg.rate; return sg.loop ? x % Math.max(.2, sg.clip.duration - .05) : sg.src + x; };
@@ -2519,6 +2527,7 @@ async function exportOffline(onProgress, isCancelled) {
     for (let f = 0; f < N; f++) {
       if (isCancelled()) throw new Error('cancel');
       if (document.hidden) throw new Error('hidden'); // 裏に回ると端末が映像の部品を止めるので、戻ってから最初からやり直す
+      FX.beat();
       const t = f / fps;
       for (const sg of tl.segs) {
         if (sg.clip.type !== 'video') continue;
@@ -2549,7 +2558,7 @@ async function exportOffline(onProgress, isCancelled) {
   } finally {
     try { if (enc.state !== 'closed') enc.close(); } catch (e) { }
     for (const st of streams.values()) st.close();
-    for (const sg of tl.segs) { if (sg.__frame && sg.__frame.width && !streams.has(sg)) sg.__frame.width = sg.__frame.height = 0; delete sg.__frame; }
+    if (token === undefined || token === S.fxToken) for (const sg of tl.segs) { if (sg.__frame && sg.__frame.width && !streams.has(sg)) sg.__frame.width = sg.__frame.height = 0; delete sg.__frame; } // 中止後に遅れて戻った古い処理は、新しい書き出しの絵を消さない
   }
   if (verr) throw verr;
   if (!vdesc) throw new Error('映像の設定が取れませんでした');
@@ -2642,13 +2651,28 @@ async function tryOfflineExport() {
   S.recording = true; S.recCancelled = false; keepAwake(true);
   $('#exportBtn').textContent = '✕ 中止'; ['#playBtn', '#rerollBtn'].forEach(s => $(s).disabled = true);
   setStatus('書き出しの準備中…', 'busy');
+  const prog = (p, rest, msg) => { setStatus(msg || `書き出し中… ${Math.round(p * 100)}%（残り約 ${Math.max(1, Math.ceil(rest))} 秒）`, 'busy'); $('#exportBtn').textContent = `✕ 中止（${Math.round(p * 100)}%）`; };
+  let guardTimer = 0;
   try {
     let blob = null, stalls = 0, restarts = 0;
     while (!blob) {
+      const token = S.fxToken = (S.fxToken || 0) + 1;
+      FX.beat();
+      const run = exportOffline(prog, () => S.recCancelled || token !== S.fxToken, token);
+      // 見張り役：中止・裏に回った・15秒進まない を、処理がどこで止まっていてもすぐに見つける
+      const guard = new Promise((_, rej) => {
+        guardTimer = setInterval(() => {
+          if (S.recCancelled) rej(new Error('cancel'));
+          else if (document.hidden) rej(new Error('hidden'));
+          else if (performance.now() - (S.fxBeat || 0) > 15000) rej(new Error('stall'));
+        }, 400);
+      });
       try {
-        blob = await exportOffline((p, rest, msg) => { setStatus(msg || `書き出し中… ${Math.round(p * 100)}%（残り約 ${Math.max(1, Math.ceil(rest))} 秒）`, 'busy'); $('#exportBtn').textContent = `✕ 中止（${Math.round(p * 100)}%）`; }, () => S.recCancelled);
+        blob = await Promise.race([run, guard]);
       } catch (e) {
-        if (e.message === 'cancel' || e.message === 'fallback') throw e;
+        S.fxToken++; FX.abortAll(); run.catch(() => { }); // 止まっている処理は部品ごと閉じて捨てる
+        for (const sg of S.tl.segs) { if (sg.__frame && sg.__frame.width) sg.__frame.width = sg.__frame.height = 0; delete sg.__frame; }
+        if (e.message === 'cancel' || e.message === 'fallback' || S.recCancelled) throw S.recCancelled ? new Error('cancel') : e;
         if (e.message === 'hidden' || document.hidden) { // ほかのアプリ・画面オフ：戻ってきたら最初から
           if (++restarts > 5) throw e;
           setStatus('書き出しを中断しました（この画面に戻ると、最初からやり直します）', 'busy');
@@ -2657,10 +2681,10 @@ async function tryOfflineExport() {
           setStatus('画面に戻ったので、最初から書き出し直しています…', 'busy');
           continue;
         }
-        if (++stalls > 1) throw e; // 2回止まったら録画方式に切りかえ
+        if (++stalls > 1) { S.forceRealtime = true; throw new Error('stalled'); } // 2回止まったら、この端末では録画方式にする
         console.warn('書き出しが止まったので、もう一度やり直します', e);
         setStatus('書き出しが止まったので、やり直しています…', 'busy');
-      }
+      } finally { clearInterval(guardTimer); }
     }
     const name = exportName('mp4');
     showExport(blob, name);
@@ -2669,9 +2693,11 @@ async function tryOfflineExport() {
     return true;
   } catch (e) {
     if (e.message === 'cancel') { setStatus('保存を中止しました'); return true; }
+    if (e.message === 'stalled') { setStatus('この端末ではなめらか書き出しが止まるので、録画方式で保存します（再生と同じ時間がかかります）', 'busy'); return false; }
     if (e.message !== 'fallback') console.warn('なめらか書き出しに失敗したので、録画方式で書き出します', e);
     return false;
   } finally {
+    clearInterval(guardTimer);
     S.recording = false; keepAwake(false);
     $('#exportBtn').textContent = '⬇ 保存'; ['#playBtn', '#rerollBtn'].forEach(s => $(s).disabled = false);
     drawFrame(.001);
@@ -2683,8 +2709,15 @@ async function exportVideo() {
   if (!window.MediaRecorder || !out.captureStream) { alert('このブラウザは動画の保存に対応していません。iPhone は Safari（iOS 15 以降）、Android は Chrome をお使いください。'); return; }
   clearExport();
   pause(); S.pos = 0;
-  await prepareVideos(0);
-  const ctx = getActx(); await ctx.resume();
+  S.recording = true; S.recCancelled = false; // 準備中でも「中止」が効くように先に立てる
+  $('#exportBtn').textContent = '✕ 中止'; ['#playBtn', '#rerollBtn'].forEach(s => $(s).disabled = true);
+  setStatus('録画方式で保存する準備中…', 'busy');
+  const ctx = getActx();
+  try {
+    await withTimeout(prepareVideos(0), 15000).catch(() => { });
+    await withTimeout(ctx.resume(), 5000).catch(() => { });
+  } catch (e) { }
+  if (S.recCancelled) { S.recording = false; S.recCancelled = false; resetExportUi(); setStatus('保存を中止しました'); return; }
   S.recDest = ctx.createMediaStreamDestination();
   const vs = out.captureStream(30);
   const stream = new MediaStream([...vs.getVideoTracks(), ...S.recDest.stream.getAudioTracks()]);
@@ -2693,6 +2726,7 @@ async function exportVideo() {
   const chunks = [];
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   rec.onstop = () => {
+    if (S.rec !== rec) return; // 2回目の知らせは無視
     const wasCancelled = S.recCancelled;
     S.recording = false; S.recDest = null; S.recTimer = null; S.rec = null; S.recCancelled = false;
     $('#exportBtn').disabled = false; $('#exportBtn').textContent = '⬇ 保存';
@@ -2809,7 +2843,17 @@ function wipeAll() {
   $('#musicPickRow').hidden = true; $('#musicPick').textContent = '🎵 曲のファイルを選ぶ';
   if (S.actx) { S.actx.close().catch(() => { }); S.actx = null; }
 }
-function cancelExport() { if (S.recording) { S.recCancelled = true; if (S.rec) S.rec.stop(); } }
+function resetExportUi() { $('#exportBtn').disabled = false; $('#exportBtn').textContent = '⬇ 保存'; ['#playBtn', '#rerollBtn'].forEach(s => $(s).disabled = false); }
+function cancelExport() {
+  if (!S.recording) return;
+  S.recCancelled = true;
+  if (S.rec) {
+    const rec = S.rec;
+    try { if (rec.state !== 'inactive') rec.stop(); else rec.onstop && rec.onstop(); } catch (e) { rec.onstop && rec.onstop(); }
+    // 端末によっては停止の知らせが来ないので、1.5秒で必ず操作できる状態へ戻す
+    setTimeout(() => { if (S.rec === rec) { S.recording = false; S.rec = null; S.recDest = null; S.recTimer = null; S.recCancelled = false; resetExportUi(); setStatus('保存を中止しました'); } }, 1500);
+  }
+}
 
 /* ------------------------------ 画面の操作 ------------------------------ */
 /* ===================== テーマパック ===================== */
@@ -2957,7 +3001,7 @@ window.addEventListener('beforeunload', e => { if (S.clips.length || S.recording
 // ほかのアプリに切り替えた時：録画方式の保存は正しく録れないので中止する。なめらか方式は戻ると続きから進む
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (S.recording && S.rec) { S.recCancelled = true; S.rec.stop(); pause(); S.hiddenCancel = true; }
+    if (S.recording && S.rec) { cancelExport(); pause(); S.hiddenCancel = true; }
     else if (S.recording) setStatus('書き出しを中断しました（この画面に戻ると、最初からやり直します）', 'busy');
     else if (S.playing) pause();
   } else if (S.hiddenCancel) {
@@ -3145,7 +3189,7 @@ $('#titlePreviewBtn').onclick = () => {
   goStep(5); play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4; // 再生は ⑤ 仕上げの画面で
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.05d';
+const WEB_VER = '2026.11.05e';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
