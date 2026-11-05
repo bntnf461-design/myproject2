@@ -388,7 +388,7 @@ iPhone は <b>Safari</b>、Android は <b>Chrome</b> で公開ページ（https:
       <option value="9:16">縦長 9:16</option><option value="16:9">横長 16:9</option><option value="1:1">正方形</option><option value="4:5">縦 4:5</option>
     </select>
     <select id="length" class="vh" aria-hidden="true" tabindex="-1">
-      <option value="30">30秒</option><option value="45">45秒</option><option value="60" selected>1分</option><option value="90">1分30秒</option><option value="120">2分</option>
+      <option value="30">30秒</option><option value="45">45秒</option><option value="60" selected>1分</option>
     </select>
     <select id="quality" class="vh" aria-hidden="true" tabindex="-1"><option value="720">720p</option><option value="1080">1080p</option></select>
     <div class="privacy">
@@ -945,7 +945,14 @@ function getActx() {
 async function loadMusicFile(file) {
   setStatus('曲を読み込み中…', 'busy');
   const buf = await file.arrayBuffer();
-  const ab = await getActx().decodeAudioData(buf);
+  let ab;
+  try { ab = await getActx().decodeAudioData(buf); }
+  catch (e) { throw new Error('このファイルは曲として読めません（壊れているか、対応していない形式です。mp3・m4a・wav などをお試しください）'); }
+  if (ab.duration < 5) throw new Error('曲が短すぎます（5 秒以上の曲を選んでください）');
+  { // 音が入っているか（無音のファイルだと音のない動画になるため）
+    let pk = 0; for (let ch = 0; ch < ab.numberOfChannels; ch++) { const d = ab.getChannelData(ch); for (let i = 0; i < d.length; i += 64) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
+    if (pk < .003) throw new Error('このファイルには音が入っていないようです');
+  }
   setStatus('曲を解析中…', 'busy');
   await new Promise(r => setTimeout(r, 20));
   const an = analyzeMusic(ab);
@@ -2921,7 +2928,12 @@ $('#musicSel').onchange = () => {
 $('#musicIn').onchange = async () => {
   const f = $('#musicIn').files[0]; $('#musicIn').value = '';
   if (!f) return;
-  try { await loadMusicFile(f); $('#musicPick').textContent = '🎵 別の曲を選ぶ'; $('#musicSel').value = 'file'; musicCat = '自分の曲'; renderMusicUI(); } catch (e) { alert('曲を読み込めませんでした：' + e.message); $('#musicSel').value = 'edm'; $('#musicPickRow').hidden = true; setStatus('準備OK'); }
+  const playingKey = (S.musicKey || '').split(':')[0], prev = MUSIC[playingKey] ? playingKey : ($('#musicSel').value === 'file' ? 'happy' : $('#musicSel').value); // 今鳴っている曲
+  try { await loadMusicFile(f); $('#musicPick').textContent = '🎵 別の曲を選ぶ'; $('#musicSel').value = 'file'; musicCat = '自分の曲'; renderMusicUI(); }
+  catch (e) { // 読めなかった時は、前に使っていた曲のまま
+    alert('「' + f.name + '」を読み込めませんでした。\n\n' + e.message);
+    $('#musicSel').value = S.musicKey.startsWith('file:') ? 'file' : (prev === 'file' ? 'happy' : prev); renderMusicUI(); setStatus('前の曲のままです');
+  }
   rebuild();
 };
 ['#startMode', '#tempoAdj', '#aspect', '#quality', '#length', '#shuffle'].forEach(s => $(s).onchange = rebuild);
@@ -3074,7 +3086,7 @@ $('#titlePreviewBtn').onclick = () => {
   play(true); S.stopAt = titleDuration(titleStyleId(), S.tl.per) + .4;
 };
 const APP_VER = (() => { try { return window.HighlightApp && HighlightApp.version ? HighlightApp.version() : ''; } catch (e) { return ''; } })();
-const WEB_VER = '2026.11.05';
+const WEB_VER = '2026.11.05b';
 $('#verInfo').textContent = APP_VER ? `Android アプリ版 ${APP_VER}（画面 ${WEB_VER}）` : `Web 版（画面 ${WEB_VER}）`;
 if (APP_VER) document.querySelector('.brand small').textContent = 'Android アプリ v' + APP_VER;
 setDesign('pop');
@@ -3083,7 +3095,7 @@ $('#quickPropose').onclick = () => { goStep(3); makeProposals(); };
 $('#stickerOn').onchange = () => { if (!S.playing && S.tl) drawFrame(S.pos || .001); };
 renderMusicUI(); renderTitleCards(); goStep(1);
 segFrom('#aspect', '#aspectSeg', [{ v: '9:16', html: shapeIcon(14, 24) + '縦長<small>スマホ</small>' }, { v: '16:9', html: shapeIcon(28, 16) + '横長<small>YouTube</small>' }, { v: '1:1', html: shapeIcon(20, 20) + '正方形' }, { v: '4:5', html: shapeIcon(18, 22) + '4:5<small>Instagram</small>' }]);
-segFrom('#length', '#lengthSeg', [{ v: '30', html: '<b>30秒</b><small>SNS向け</small>' }, { v: '45', html: '<b>45秒</b>' }, { v: '60', html: '<b>1分</b>' }, { v: '90', html: '<b>1分30秒</b>' }, { v: '120', html: '<b>2分</b><small>素材多めに</small>' }]);
+segFrom('#length', '#lengthSeg', [{ v: '30', html: '<b>30秒</b><small>SNS向け</small>' }, { v: '45', html: '<b>45秒</b>' }, { v: '60', html: '<b>1分</b>' }]); // 長さは 30秒・45秒・1分 だけ（ご要望）
 segFrom('#quality', '#qualitySeg', [{ v: '720', html: '<b>720p</b><small>軽い・おすすめ</small>' }, { v: '1080', html: '<b>1080p</b><small>きれい・重い</small>' }]);
 buildStyleCards(); renderThemeCards(); renderThumbs(); drawEmpty(); drawTimeline();
 // テスト用

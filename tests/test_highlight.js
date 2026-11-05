@@ -99,6 +99,22 @@ const path = require('path');
   await p.waitForFunction(() => !HM.S.building && HM.S.tl);
   // おまかせ3案（見本画像が写真から作られる）→ 全部消す で見本画像も消えること
   await p.evaluate(() => HM.makeProposals());
+  // 自分の曲：壊れたファイル・無音のファイルは日本語で知らせ、前の曲のまま
+  {
+    const fs = require('fs'), os = require('os'), dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hm-'));
+    const broken = path.join(dir, 'broken.mp3'); fs.writeFileSync(broken, Buffer.from('not audio '.repeat(200)));
+    const sr = 8000, n = sr * 10, wav = Buffer.alloc(44 + n * 2); wav.write('RIFF', 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(sr, 24); wav.writeUInt32LE(sr * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(n * 2, 40);
+    const silent = path.join(dir, 'silent.wav'); fs.writeFileSync(silent, wav);
+    const before = await p.evaluate(() => HM.S.musicKey);
+    const msgs = []; const h = d => { msgs.push(d.message()); d.accept(); }; p.on('dialog', h);
+    for (const f of [broken, silent]) { await p.setInputFiles('#musicIn', f); await p.waitForTimeout(1200); await p.waitForFunction(() => !HM.S.building); }
+    p.off('dialog', h);
+    const after = await p.evaluate(() => HM.S.musicKey);
+    const jpOk = msgs.length === 2 && msgs.every(m => /読み込めませんでした/.test(m) && !/Unable to decode/.test(m));
+    const keep = before.split(':')[0] === after.split(':')[0];
+    if (!(jpOk && keep)) fail++;
+    console.log(`${jpOk && keep ? 'OK ' : 'NG '} 壊れた曲・無音の曲 {"知らせ":${msgs.length},"日本語":${jpOk},"前の曲のまま":${keep}}`);
+  }
   // 全部消す（個人データが残らないこと）
   p.on('dialog', d => d.accept());
   await tap('#wipeBtn');
