@@ -107,6 +107,7 @@
   .dlist li.bad button { border-color: #e39a9a; background: #ffeaea; }
   .dlist li.okline { color: #145214; font-weight: bold; padding: 8px 0; }
   .dlist h4 { margin: 10px 0 4px; font-size: 13px; color: #444; }
+  #donePackText { white-space: pre-line; }
   .packwarn { margin: 8px 0; padding: 8px 10px; border: 2px solid #d33; background: #fff0f0; color: #900; font-weight: bold; font-size: 14px; border-radius: 6px; }
   .packwarn label { display: block; margin-top: 6px; font-size: 15px; color: #000; cursor: pointer; }
   .packwarn input[type=checkbox] { width: 20px; height: 20px; vertical-align: middle; }
@@ -439,7 +440,7 @@
     <ul id="doneList" class="dlist"></ul>
     <div id="donePack" class="packwarn" style="display:none">
       <div id="donePackText"></div>
-      <label><input type="checkbox" id="donePackChk"> 梱包した製品の実数を数えて確かめた</label>
+      <label><input type="checkbox" id="donePackChk"> 梱包した良品の実数を数えて確かめた</label>
     </div>
     <div class="acts">
       <button type="button" id="doneBack">戻って直す</button>
@@ -1290,16 +1291,24 @@
       return manualOf(p + "to") && sobanCalc[n] != null && num(p + "to") !== sobanCalc[n];
     });
   }
-  var PACK_TEXT = "素板の枚数（前残＋使った素板−当残）と、良品＋不良の数が合いません。数字を手で合わせる前に、梱包した製品の実数（パレットの中の枚数）を数えて確かめてください";
-  function packNeeded() { return (packIssues().length > 0 || !!val("packWarn")) && !val("packCounted"); }
+  var PACK_TEXT = "素板の枚数（前残＋使った素板−当残）と、良品＋不良の数が合いません。不良数を変えて合わせる前に、梱包した良品の実数（パレットの中の枚数）を数えて確かめてください（良品の数のほうが違っていることがあります）";
+  // 不良数を手で変えて合わせることが多いので、カウンターで数えた不良数と日報の不良数の違いも見る
+  function defectDiffs() {
+    var imp = parseJSON(val("cntImported"), {});
+    if (!Object.keys(imp).length) return [];
+    return PROC.concat(SOBAN).filter(function (k) { return (imp[k] || 0) !== num("t_" + k); })
+      .map(function (k) { return (DEF_LBL[k] || k) + " カウンター " + (imp[k] || 0) + " → 日報 " + num("t_" + k); });
+  }
+  var DEFECT_TEXT = "不良数が、不良数カウンターで数えた数と違います。数を合わせるために不良数を変えた場合は、その前に梱包した良品の実数（パレットの中の枚数）を数えて確かめてください";
+  function packNeeded() { return (packIssues().length > 0 || defectDiffs().length > 0 || !!val("packWarn")) && !val("packCounted"); }
   function checkPack() {
     if (readOnly) return;
-    var bad = packIssues().length > 0;
+    var bad = packIssues().length > 0, dd = defectDiffs().length > 0;
     // 一度でも合わなかった日は、あとで数字を手で合わせても、完成の前に数えたかを確かめる
-    if (bad && !val("packWarn") && !locked) {
+    if ((bad || dd) && !val("packWarn") && !locked) {
       f("packWarn").value = nowText();
       // ほかの知らせ（明細を作りました など）に上書きされないよう、少しあとに出す
-      if (!val("packCounted")) setTimeout(function () { msg("⚠ " + PACK_TEXT, "warn"); }, 60);
+      if (!val("packCounted")) setTimeout(function () { msg("⚠ " + (bad ? PACK_TEXT : DEFECT_TEXT), "warn"); }, 60);
     }
     var ew = document.getElementById("endPack");
     if (ew) { ew.style.display = bad && !val("packCounted") ? "" : "none"; }
@@ -1411,8 +1420,10 @@
     document.getElementById("donePrint").textContent = fixing ? "訂正を完成して印刷する" : (n ? "このまま完成して印刷する" : "完成して印刷する");
     var need = packNeeded();
     document.getElementById("donePack").style.display = need ? "" : "none";
-    document.getElementById("donePackText").textContent = "📦 " + (packIssues().length ? PACK_TEXT :
-      "今日は素板の枚数と良品＋不良の数が合わないことがありました（" + val("packWarn") + "）。数字を手で合わせた場合は、梱包した製品の実数を数えて確かめてから完成してください");
+    var ddl = defectDiffs();
+    document.getElementById("donePackText").textContent = "📦 " + (packIssues().length ? PACK_TEXT : ddl.length ? DEFECT_TEXT :
+      "今日は素板の枚数と良品＋不良の数が合わないことがありました（" + val("packWarn") + "）。不良数などを手で変えて合わせた場合は、梱包した良品の実数を数えて確かめてから完成してください") +
+      (ddl.length ? "\n不良数の違い：" + ddl.join("、") : "");
     document.getElementById("donePackChk").checked = false;
     packGate();
     doneDlg.showModal();
@@ -1800,7 +1811,7 @@
     // あと入れるもの
     var iss = allIssues(), items = iss.miss.map(function (x) { return [x[0], x[1], ""]; })
       .concat(iss.odd.concat(iss.cons).map(function (x) { return [x[0], "⚠ " + x[1], "bad"]; }));
-    if (packNeeded()) items.unshift(["sb" + (packIssues()[0] || 1) + "_to", "📦 素板の数が合いません。数字を手で合わせる前に、梱包した製品の実数を数えてください", "bad"]);
+    if (packNeeded()) items.unshift(["sb" + (packIssues()[0] || 1) + "_to", "📦 数が合いません。不良数を変えて合わせる前に、梱包した良品の実数を数えてください", "bad"]);
     document.getElementById("wTodoN").textContent = items.length ? items.length + " 件" : "";
     setHtml("wTodo", items.length ? items.slice(0, 8).map(function (x) {
       return '<li class="' + x[2] + '"><button type="button" data-go="' + esc(x[0]) + '">▶ ' + esc(x[1]) + "</button></li>";

@@ -351,7 +351,7 @@ test("素板の数が合わないときは、手で合わせて完成する前�
   await p.click("body"); await scanQR(p, QR_042);
   await fill(p, "gt1_good", 270); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
   await fill(p, "sb1_to", 5); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(300);
-  ok((await p.textContent("#msg")).includes("梱包した製品の実数"), "合わなくなったときに知らせる：" + await p.textContent("#msg"));
+  ok((await p.textContent("#msg")).includes("梱包した良品の実数"), "合わなくなったときに知らせる：" + await p.textContent("#msg"));
   // 数字を手で合わせて（当残を計算どおりに）、数が合った状態でも
   await fill(p, "sb1_to", 7); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(300);
   await p.click("#btnDone"); await p.waitForTimeout(200);
@@ -365,6 +365,23 @@ test("素板の数が合わないときは、手で合わせて完成する前�
   await p.click("#btnFix"); await p.click("#btnDone"); await p.waitForTimeout(200);
   ok(!(await p.isVisible("#donePack")), "一度確かめたら、訂正では聞かない");
   eq(p.errors.join(), "", "ページのエラー");
+});
+
+test("不良数をカウンターの数から変えたら、梱包した良品の実数を数えたか確かめる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "gt1_good", 270); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  await p.evaluate(() => { const f = document.forms.nippo.elements; f.cntImported.value = JSON.stringify({ kizu: 3 }); f.r4_kizu.value = 3; f.r4_kizu.dispatchEvent(new Event("input", { bubbles: true })); });
+  await p.waitForTimeout(300);
+  eq(await v(p, "packWarn"), "", "カウンターと同じなら知らせない");
+  await p.evaluate(() => { const e = document.forms.nippo.elements.r4_kizu; e.value = 5; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); });
+  await p.waitForTimeout(300);
+  ok((await p.textContent("#msg")).includes("不良数が、不良数カウンターで数えた数と違います"), "不良数を変えたら知らせる：" + await p.textContent("#msg"));
+  await p.click("#btnDone"); await p.waitForTimeout(200);
+  ok((await p.textContent("#donePack")).includes("キズ カウンター 3 → 日報 5"), "違いを出す：" + await p.textContent("#donePack"));
+  ok(await p.evaluate(() => document.getElementById("doneOnly").disabled), "数えたと確かめるまで完成できない");
 });
 
 test("素板の数が合っている日は、梱包の実数の確認を出さない", async ctx => {
