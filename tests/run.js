@@ -107,6 +107,11 @@ test("印刷：A3横1枚・シール欄55mm", async ctx => {
     seals: [...document.querySelectorAll(".seal")].map(s => [s.getBoundingClientRect().width, s.getBoundingClientRect().height])
   }));
   ok(m.h <= 285 * 96 / 25.4, "A3の高さ（285mm）に収まらない：" + (m.h * 25.4 / 96).toFixed(1) + "mm");
+  // Windows の游ゴシックのように行が高いフォントでも 1 枚に収まること
+  await p.addStyleTag({ content: '@font-face{font-family:"Yu Gothic";src:local("IPAGothic"),local("Noto Sans CJK JP");ascent-override:150%;descent-override:60%;}' });
+  await p.waitForTimeout(200);
+  const h2 = await p.evaluate(() => document.querySelector(".sheet").getBoundingClientRect().height);
+  ok(h2 <= 285 * 96 / 25.4, "行の高いフォントで A3 の高さに収まらない：" + (h2 * 25.4 / 96).toFixed(1) + "mm");
   eq(m.seals.length, 6, "シール欄の数");
   m.seals.forEach(([w, h]) => ok(Math.abs(w * 25.4 / 96 - 55) < 0.3 && Math.abs(h * 25.4 / 96 - 55) < 0.3, "シール欄が55mmでない"));
   const pdf = path.join(os.tmpdir(), "nippo-print-test.pdf");
