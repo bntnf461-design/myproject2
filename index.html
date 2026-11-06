@@ -222,7 +222,7 @@
   .mark .side input:last-child { border-bottom: 0; }
   .mark .body { flex: 1; display: flex; flex-direction: column; }
   .mark .seals { display: flex; }
-  .mark .foot { text-align: center; font-size: 14px; padding: 2px 0; border-top: 1px solid var(--line); }
+  .mark .foot { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 14px; padding: 2px 0; border-top: 1px solid var(--line); }
   .seal {
     width: 55mm; height: 55mm; flex: none; position: relative;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8mm;
@@ -243,6 +243,11 @@
   .soban .mm { font-size: 9px; color: #555; white-space: nowrap; margin-left: auto; display: flex; align-items: center; }
   .soban .mm input { width: 30px; font-size: 9px; padding: 0; text-align: center; }
   .flex { display: flex; gap: 10px; align-items: flex-start; }
+  /* 検視台・トピックスの列は、コアドリル径の表の下端までのばす */
+  .flex > .kt { flex: 1; align-self: stretch; display: flex; flex-direction: column; }
+  .topics { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--line); margin-top: 8px; }
+  .topics .th { text-align: left; padding: 2px 4px; font-size: 11px; background: #f3f5f8; border-bottom: 1px solid var(--line); }
+  .topics textarea { flex: 1; }
   .time td { height: 22px; }
   .time th.r { width: 22mm; }
   .time th.c { width: 18mm; }
@@ -372,13 +377,19 @@
     input::-webkit-calendar-picker-indicator { display: none; }
     input.blank-time { visibility: hidden; }
     /* A3 1枚に収める（シール欄の 55mm はそのまま） */
-    #main td { height: 18px; }
+    #main td { height: 19px; }
     #main .total td { height: 22px; }
     #main .dispose td { height: 24px; }
     .head table td { height: 28px; }
     .stamp td { height: 40px; }
     .lower { margin-top: 6px; }
     .mark, .final { margin-bottom: 2mm; }
+    /* 打刻マークの枠と、マーク交換前の枠の高さをそろえる */
+    .mark, .final { box-sizing: border-box; height: 62mm; }
+    .final { display: flex; align-items: center; justify-content: center; padding: 0; }
+    /* 右側のいちばん下（コアドリル径など）を、左の枠の下端にそろえる */
+    .lower > .right { display: flex; flex-direction: column; padding-bottom: 2mm; }
+    .lower > .right > :last-child { margin-top: auto; }
     textarea { resize: none; }
     /* 行の高さを決めておく（Windows の游ゴシックは行が高く、そのままだと A3 1枚からはみ出す） */
     .sheet, .sheet * { line-height: 1.2 !important; }
@@ -623,15 +634,15 @@
           <tr><td>Ｅ・・・除外</td></tr>
           <tr><td>Ｏ・・・その他</td></tr>
         </table>
-        <div style="flex:1">
+        <div class="kt">
           <table style="width:100%">
             <tr><th style="font-size:12px;padding:5px">検視台　高さ調整実施</th></tr>
             <tr><td style="height:44px"><input name="kenshidai" style="font-size:18px;text-align:center"></td></tr>
           </table>
-          <table style="width:100%;margin-top:8px">
-            <tr><th style="text-align:left;padding:2px 4px">トピックス</th></tr>
-            <tr><td><textarea name="topics" rows="5"></textarea></td></tr>
-          </table>
+          <div class="topics">
+            <div class="th">トピックス</div>
+            <textarea name="topics" rows="5"></textarea>
+          </div>
           <div id="fixArea" class="fixarea noprint"></div>
         </div>
       </div>
