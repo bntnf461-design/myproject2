@@ -107,6 +107,10 @@
   .dlist li.bad button { border-color: #e39a9a; background: #ffeaea; }
   .dlist li.okline { color: #145214; font-weight: bold; padding: 8px 0; }
   .dlist h4 { margin: 10px 0 4px; font-size: 13px; color: #444; }
+  .packwarn { margin: 8px 0; padding: 8px 10px; border: 2px solid #d33; background: #fff0f0; color: #900; font-weight: bold; font-size: 14px; border-radius: 6px; }
+  .packwarn label { display: block; margin-top: 6px; font-size: 15px; color: #000; cursor: pointer; }
+  .packwarn input[type=checkbox] { width: 20px; height: 20px; vertical-align: middle; }
+  dialog .acts button:disabled { opacity: .4; cursor: not-allowed; }
   #doneDlg .acts, #pickDlg .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
   #doneDlg .acts button, #pickDlg .acts button { font: inherit; font-size: 14px; padding: 6px 16px; cursor: pointer; }
   #doneDlg .acts button.main { background: #2e8b57; color: #fff; border: 0; border-radius: 4px; font-weight: bold; }
@@ -433,6 +437,10 @@
   <div class="db">
     <div id="doneHead" style="font-size:14px;margin-bottom:6px"></div>
     <ul id="doneList" class="dlist"></ul>
+    <div id="donePack" class="packwarn" style="display:none">
+      <div id="donePackText"></div>
+      <label><input type="checkbox" id="donePackChk"> 梱包した製品の実数を数えて確かめた</label>
+    </div>
     <div class="acts">
       <button type="button" id="doneBack">戻って直す</button>
       <button type="button" id="doneOnly">完成する</button>
@@ -1148,6 +1156,7 @@
     drawKado();
     drawLotList();
     markNeed();
+    checkPack();
     if (chkFwd) drawCntBar();   // 起動の途中（カウンター連携の準備前）は描かない
     if (chkFwd) renderWork();
   }
@@ -1273,6 +1282,28 @@
     });
     return out;
   }
+  // ---------- 素板の数が合わないとき：手で合わせる前に、梱包の実数を数えたか確かめる ----------
+  // 数えた当残が、計算（前残＋読んだ素板 − 作業枚数＝良品＋不良）と違うときを「数が合わない」とする
+  function packIssues() {
+    return [1, 2].filter(function (n) {
+      var p = "sb" + n + "_";
+      return manualOf(p + "to") && sobanCalc[n] != null && num(p + "to") !== sobanCalc[n];
+    });
+  }
+  var PACK_TEXT = "素板の枚数（前残＋使った素板−当残）と、良品＋不良の数が合いません。数字を手で合わせる前に、梱包した製品の実数（パレットの中の枚数）を数えて確かめてください";
+  function packNeeded() { return (packIssues().length > 0 || !!val("packWarn")) && !val("packCounted"); }
+  function checkPack() {
+    if (readOnly) return;
+    var bad = packIssues().length > 0;
+    // 一度でも合わなかった日は、あとで数字を手で合わせても、完成の前に数えたかを確かめる
+    if (bad && !val("packWarn") && !locked) {
+      f("packWarn").value = nowText();
+      // ほかの知らせ（明細を作りました など）に上書きされないよう、少しあとに出す
+      if (!val("packCounted")) setTimeout(function () { msg("⚠ " + PACK_TEXT, "warn"); }, 60);
+    }
+    var ew = document.getElementById("endPack");
+    if (ew) { ew.style.display = bad && !val("packCounted") ? "" : "none"; }
+  }
   // 入れ忘れ・おかしな値・計算の食い違いをまとめる
   function allIssues() {
     return {
@@ -1300,7 +1331,7 @@
 
   // ---------- 完成（提出）と訂正 ----------
   var locked = false, fixing = false;
-  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel"];
+  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel", "packWarn", "packCounted"];
   function snapData() { var d = collect(); META.forEach(function (k) { delete d[k]; }); return d; }
   var COL_NAME = { model: "型式", lotCut: "切面ロットNo.", lotSoban: "素板ロットNo", qty: "作業枚数", good: "良品枚数", pallet: "パレット№", palletType: "パレット形態", localCode: "ローカルコード" };
   var OTHER_NAME = { shift: "出", team: "組", prevLot: "前日の切面ロットNo.", prevGood: "前日の良品端数", wheel: "使用面取りホイール",
@@ -1378,9 +1409,23 @@
     issueList(document.getElementById("doneList"), iss, function (name) { doneDlg.close(); focusField(name); });
     document.getElementById("doneOnly").textContent = fixing ? "訂正を完成する" : (n ? "このまま完成する" : "完成する");
     document.getElementById("donePrint").textContent = fixing ? "訂正を完成して印刷する" : (n ? "このまま完成して印刷する" : "完成して印刷する");
+    var need = packNeeded();
+    document.getElementById("donePack").style.display = need ? "" : "none";
+    document.getElementById("donePackText").textContent = "📦 " + (packIssues().length ? PACK_TEXT :
+      "今日は素板の枚数と良品＋不良の数が合わないことがありました（" + val("packWarn") + "）。数字を手で合わせた場合は、梱包した製品の実数を数えて確かめてから完成してください");
+    document.getElementById("donePackChk").checked = false;
+    packGate();
     doneDlg.showModal();
   }
+  // 梱包の実数を数えたと確かめるまで、完成のボタンは押せない
+  function packGate() {
+    var stop = packNeeded() && !document.getElementById("donePackChk").checked;
+    document.getElementById("doneOnly").disabled = stop;
+    document.getElementById("donePrint").disabled = stop;
+  }
+  document.getElementById("donePackChk").onchange = packGate;
   function complete(andPrint) {
+    if (packNeeded()) { if (!document.getElementById("donePackChk").checked) return; f("packCounted").value = nowText(); }
     var snap = snapData(), at = nowText();
     if (fixing) {
       var ch = diffs(parseJSON(val("doneSnap"), {}), snap);
@@ -1625,6 +1670,7 @@
           " 当残 " + inp("sb" + n + "_to", "", "数えた枚数", "number").replace(manualOf("sb" + n + "_to") ? "" : ' value="' + esc(val("sb" + n + "_to")) + '"', manualOf("sb" + n + "_to") ? "" : ' value=""') +
           ' 枚 <span class="hint">計算では ' + (sobanCalc[n] != null ? fmt(sobanCalc[n]) : "―") + " 枚（数えた枚数を入れてください）</span></div>";
       });
+      h += '<div id="endPack" class="packwarn" style="display:none">⚠ ' + esc(PACK_TEXT) + "</div>";
       h += "</div>";
     }
     h += '<div class="sec"><h4>③ 作業者と投入時間</h4>' +
@@ -1638,6 +1684,7 @@
       '<div class="rowx">検視台の高さ ' + inp("kenshidai") + " 稼働 開始 " + inp("kadoS", "", "", "time") + " 終了 " + inp("kadoE", "", "", "time") + "</div></div>";
     h += '<div class="acts"><button type="button" id="endClose">閉じる（あとで）</button><button type="button" id="endGo" class="main">確認して完成・印刷へ</button></div>';
     b.innerHTML = h;
+    checkPack();
     endDlg.showModal();
     var first = b.querySelector('input[data-bind$="_good"]'); if (first) first.focus();
   }
@@ -1753,6 +1800,7 @@
     // あと入れるもの
     var iss = allIssues(), items = iss.miss.map(function (x) { return [x[0], x[1], ""]; })
       .concat(iss.odd.concat(iss.cons).map(function (x) { return [x[0], "⚠ " + x[1], "bad"]; }));
+    if (packNeeded()) items.unshift(["sb" + (packIssues()[0] || 1) + "_to", "📦 素板の数が合いません。数字を手で合わせる前に、梱包した製品の実数を数えてください", "bad"]);
     document.getElementById("wTodoN").textContent = items.length ? items.length + " 件" : "";
     setHtml("wTodo", items.length ? items.slice(0, 8).map(function (x) {
       return '<li class="' + x[2] + '"><button type="button" data-go="' + esc(x[0]) + '">▶ ' + esc(x[1]) + "</button></li>";
@@ -2768,7 +2816,7 @@
   window.addEventListener("beforeprint", prepareLabels);
 
   // ---------- 保存 / 読込み ----------
-  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel"];
+  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel", "packWarn", "packCounted"];
   hiddenExtra.forEach(function (n) { form.appendChild(el("input", { type: "hidden", name: n })); });
   function collect() {
     f("autoVals").value = JSON.stringify(autoVals);

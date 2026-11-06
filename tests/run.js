@@ -344,6 +344,41 @@ test("完成の前に、計算の食い違い（当残・前日の端数・カ�
   ok(t.includes("不良数（キズ）：不良数カウンターでは 3 個、日報では 2 個"), "カウンター");
 });
 
+test("素板の数が合わないときは、手で合わせて完成する前に、梱包の実数を数えたか確かめる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "gt1_good", 270); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  await fill(p, "sb1_to", 5); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(300);
+  ok((await p.textContent("#msg")).includes("梱包した製品の実数"), "合わなくなったときに知らせる：" + await p.textContent("#msg"));
+  // 数字を手で合わせて（当残を計算どおりに）、数が合った状態でも
+  await fill(p, "sb1_to", 7); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(300);
+  await p.click("#btnDone"); await p.waitForTimeout(200);
+  ok(await p.isVisible("#donePack"), "完成の確認に、梱包の実数を数えたかの確認が出る");
+  ok(await p.evaluate(() => document.getElementById("doneOnly").disabled && document.getElementById("donePrint").disabled), "数えたと確かめるまで完成できない");
+  await p.check("#donePackChk");
+  ok(await p.evaluate(() => !document.getElementById("doneOnly").disabled), "確かめたら完成できる");
+  await p.click("#doneOnly"); await p.waitForTimeout(200);
+  ok(await v(p, "doneAt") !== "" && await v(p, "packCounted") !== "", "完成して、数えた日時を残す");
+  // 訂正のときは、もう聞かない
+  await p.click("#btnFix"); await p.click("#btnDone"); await p.waitForTimeout(200);
+  ok(!(await p.isVisible("#donePack")), "一度確かめたら、訂正では聞かない");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
+test("素板の数が合っている日は、梱包の実数の確認を出さない", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "gt1_good", 270); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  await fill(p, "sb1_to", 7); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(300);
+  await p.click("#btnDone"); await p.waitForTimeout(200);
+  ok(!(await p.isVisible("#donePack")), "確認は出ない");
+  ok(await p.evaluate(() => !document.getElementById("doneOnly").disabled), "そのまま完成できる");
+});
+
 test("完成すると入力できなくなり、訂正すると元の値つきで記録が残る", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await fill(p, "r1_lotSoban", "A"); await fill(p, "r1_good", 102);
