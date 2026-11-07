@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ロボットシミュレーター</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo">ROBOT SIM <small id="ver"></small></div>
+  <div class="seg sys" role="group" aria-label="システム切替">
+    <button data-sys="yaskawa">安川電機</button><button data-sys="fanuc">ファナック</button>
+  </div>
+  <label class="toolsel"><span>ハンド</span>
+    <select id="toolSel" aria-label="ハンドの種類"></select>
+  </label>
+  <span class="pill" id="statePill">手動</span>
+  <button class="estop" id="estopBtn" title="非常停止：すべての動作を止め、サーボを切ります">非常停止</button>
+</header>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="c" aria-label="ロボットの3Dビュー。ドラッグで回転、右ドラッグまたはShift+ドラッグで平行移動、ホイールまたはピンチで拡大縮小"></canvas>
+    <div class="hud">
+      <div class="model" id="modelName"></div>
+      <dl class="read" id="poseRead"></dl>
+      <div class="status" id="status">手動操作</div>
+    </div>
+    <div class="alarm" id="alarm" hidden>
+      <div><b id="alarmCode"></b> <span id="alarmMsg"></span></div>
+      <button id="alarmReset">リセット</button>
+    </div>
+    <div class="cycle" id="cycleInfo"></div>
+    <div class="views" id="views">
+      <button data-v="iso">斜め</button><button data-v="front">正面</button><button data-v="side">側面</button><button data-v="top">真上</button>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-t="jog">ジョグ</button>
+      <button role="tab" aria-selected="false" data-t="prog">プログラム</button>
+      <button role="tab" aria-selected="false" data-t="pend">ペンダント</button>
+      <button role="tab" aria-selected="false" data-t="cell">ハンド・セル</button>
+    </div>
+    <div class="body">
+      <!-- ジョグ -->
+      <section id="t-jog">
+        <div class="spd"><label for="jogSpd">ジョグ速度</label><input type="range" id="jogSpd" min="1" max="100" value="30"><output id="jogSpdOut">30%</output></div>
+        <h3>関節</h3>
+        <div id="sliders"></div>
+        <h3>直交 <span class="seg mini" id="cartFrame"><button data-f="base" aria-pressed="true">ロボット</button><button data-f="tool" aria-pressed="false">ツール</button></span></h3>
+        <div class="seg mini" id="stepSel" aria-label="移動量">
+          <button data-s="0" aria-pressed="true">押す間</button><button data-s="1" aria-pressed="false">1mm/1°</button><button data-s="10" aria-pressed="false">10mm/5°</button><button data-s="50" aria-pressed="false">50mm/15°</button>
+        </div>
+        <div class="cgrid" id="cartJog"></div>
+        <h3>位置を指定して移動</h3>
+        <div class="xyz6" id="poseIn"></div>
+        <div class="row grow">
+          <button id="poseGet">現在値を入れる</button>
+          <button class="primary" id="poseJ">関節移動</button>
+          <button class="primary" id="poseL">直線移動</button>
+        </div>
+        <div class="msg" id="jogMsg" role="status"></div>
+        <div class="row grow">
+          <button id="homeBtn">待機姿勢へ</button>
+          <button id="outBtn" aria-pressed="false">ハンド出力 OFF</button>
+        </div>
+      </section>
+
+      <!-- プログラム -->
+      <section id="t-prog" hidden>
+        <div class="row">
+          <label class="pname">名前 <input type="text" id="progName" maxlength="16" spellcheck="false"></label>
+          <button id="undoBtn" title="元に戻す (Ctrl+Z)">元に戻す</button>
+        </div>
+        <ol class="code" id="code" tabindex="0" aria-label="プログラム"></ol>
+        <div class="row grow tight">
+          <button data-ins="MOVJ">＋関節</button><button data-ins="MOVL">＋直線</button>
+          <button data-ins="ON">＋出力ON</button><button data-ins="OFF">＋出力OFF</button>
+          <button data-ins="WAITIN">＋確認待ち</button><button data-ins="TIMER">＋タイマ</button>
+        </div>
+        <div class="edit" id="lineEdit"></div>
+        <div class="row grow">
+          <button class="primary" id="runBtn">▶ 再生</button>
+          <button id="pauseBtn">一時停止</button>
+          <button id="stopBtn">■ 停止</button>
+          <button id="stepBtn" title="選択行を1行だけ実行">1行実行</button>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="loop"> 繰り返し</label>
+          <label class="chk"><input type="checkbox" id="autoSup" checked> ワーク自動供給</label>
+        </div>
+        <div class="spd"><label for="ovr">オーバーライド</label><input type="range" id="ovr" min="5" max="100" step="5" value="100"><output id="ovrOut">100%</output></div>
+        <div class="row grow">
+          <button id="sampleBtn">サンプル作成</button>
+          <button id="clearBtn" class="danger">全削除</button>
+        </div>
+        <h3>ファイル</h3>
+        <div class="row grow">
+          <button id="saveJson">JSON保存</button>
+          <button id="saveNative">JBI 書き出し</button>
+          <button id="loadBtn">読み込み</button>
+          <input type="file" id="fileIn" accept=".json,.jbi,.JBI,.ls,.LS,.txt" hidden>
+        </div>
+        <p class="note">JBI（安川）は直交位置、LS（ファナック）は関節位置で書き出します。実機に入れる前に、ツール番号・ユーザ座標・速度を必ず確認してください。</p>
+        <div class="msg" id="progMsg" role="status"></div>
+      </section>
+
+      <!-- ペンダント -->
+      <section id="t-pend" hidden>
+        <div id="pend"></div>
+      </section>
+
+      <!-- ハンド・セル -->
+      <section id="t-cell" hidden>
+        <h3>ハンド（用途別に切替）</h3>
+        <div class="tools" id="toolCards"></div>
+        <p class="note">ハンドの種類は <code>js/tools.js</code> で定義しています。新しい用途のハンドが必要なときは、AI に「○○用のハンドを追加して」と依頼してください。</p>
+        <h3>ワーク・セル</h3>
+        <div class="row">
+          <label class="pname">ワーク <select id="workSel"></select></label>
+        </div>
+        <div class="row grow">
+          <button id="resetWork">ワークを再配置</button>
+          <button id="trailClr">軌跡を消す</button>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="optColl" checked> 干渉チェック</label>
+          <label class="chk"><input type="checkbox" id="optTrail" checked> 軌跡表示</label>
+          <label class="chk"><input type="checkbox" id="optReach"> 動作範囲表示</label>
+        </div>
+        <dl class="info" id="cellInfo"></dl>
+      </section>
+    </div>
+  </aside>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script>window.THREE || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');</script>
+<script src="js/robots.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/kinematics.js"></script>
+<script src="js/program.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
