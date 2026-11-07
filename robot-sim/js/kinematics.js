@@ -98,6 +98,7 @@
    *   ref   : 参照関節角（ブランド角。最も近い解を選ぶ）
    * 戻り値 : { q:[6] } もしくは { err:'reach'|'limit'|'singular' } */
   RS.ik = function (robot, M, tcp, ref, pref) {
+    if (pref && (pref.up === false || pref.front === false)) return { err: 'config' };   // 肘下・後方の形態は未対応
     const d = robot.dims;
     const refK = RS.toKin(robot, ref || robot.home);
     const W = M.clone().multiply(new T.Matrix4().copy(RS.wristToTcp(d, tcp)).invert());
@@ -152,8 +153,8 @@
       }
       if (q.some(Number.isNaN)) continue;
       if (pref && pref.turn) {
-        // ファナックの回転数指定（J1,J4,J6）: 角度を (-180+360t, 180+360t] に入れる
-        [[0, pref.turn[0]], [3, pref.turn[1]], [5, pref.turn[2]]].forEach(([i, t]) => {
+        // ファナックの回転数指定（J4,J5,J6）: 角度を (-180+360t, 180+360t] に入れる
+        [[3, pref.turn[0]], [4, pref.turn[1]], [5, pref.turn[2]]].forEach(([i, t]) => {
           if (t == null) return;
           let v = q[i]; while (v > 180 + 360 * t) v -= 360; while (v <= -180 + 360 * t) v += 360;
           if (v >= robot.lim[i][0] && v <= robot.lim[i][1]) q[i] = v;
@@ -163,17 +164,19 @@
       let dd = 0;
       const rf = ref || robot.home;
       for (let i = 0; i < 6; i++) dd += Math.abs(q[i] - rf[i]) * (i < 3 ? 2 : 1);
-      if (pref && pref.flip != null && (q[4] < 0) !== pref.flip) dd += 1e5;  // 手首フリップ指定に合わない解は後回し
+      if (pref && pref.flip != null && (q[4] > 0) !== pref.flip) dd += 1e5;  // 手首フリップ指定に合わない解は後回し
       if (dd < bestD) { bestD = dd; best = q; }
     }
     if (!best) return { err: why };
     return { q: best };
   };
 
-  /* ファナック形式の形態 'N U T, 0, 0, 0' ⇔ {flip, turn} （このシミュレーターの規約：J5<0 を Flip とする） */
+  /* ファナック形式の形態 'N U T, t4, t5, t6' ⇔ {flip, turn}
+   * Flip は J5>0（メーカーの向き）、回転数は J4・J5・J6 の半開区間 (-180+360t, 180+360t]。
+   * 回転数の軸（$TURN_AXIS）と Flip の判定は、実機で 1 点確認すること。 */
+  const turnOf = v => Math.ceil((v - 180) / 360);
   RS.configOf = function (q) {
-    const turn = i => Math.round((q[i] - (q[i] > 0 ? 1e-9 : 0)) / 360);
-    return `${q[4] < 0 ? 'F' : 'N'} U T, ${turn(0)}, ${turn(3)}, ${turn(5)}`;
+    return `${q[4] > 0 ? 'F' : 'N'} U T, ${turnOf(q[3])}, ${turnOf(q[4])}, ${turnOf(q[5])}`;
   };
   RS.parseConfig = function (s) {
     const m = String(s || '').match(/([NF])\s*([UD])?\s*([TB])?\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)/i);

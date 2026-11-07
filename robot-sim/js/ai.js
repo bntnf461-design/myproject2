@@ -68,7 +68,7 @@
 - J/L PR[n] ...（位置レジスタへ移動）
 - DO[n]=ON|OFF、RO[n]=ON|OFF|PULSE,秒sec
 - WAIT DI[n]=ON|OFF [TIMEOUT,LBL[m]]、WAIT RI[n]=ON、WAIT 秒(sec)
-- LBL[n]、JMP LBL[n]、IF R[n]<値,JMP LBL[m]、IF DI[n]=ON,JMP LBL[m]、IF (条件) AND (条件),JMP LBL[m]
+- LBL[n]、JMP LBL[n]、IF R[n]<値,JMP LBL[m]、IF DI[n]=ON,JMP LBL[m]、IF DI[n]=ON AND R[m]<3,JMP LBL[k]（AND と OR は混ぜない）
 - CALL 名前、END、PAUSE、ABORT
 - R[n]=式（+ - * / と R[m]、数値）
 - PR[n]=LPOS、PR[n]=JPOS、PR[n]=PR[m]、PR[n]=PR[a]-PR[b]、PR[n,i]=式（i=1〜6: X,Y,Z,W,P,R）
@@ -87,12 +87,12 @@
 
 # 言語
 ${LANG[c.sys]}
-この一覧にない命令は、シミュレーターでは実行されません（実機専用の命令が必要な場合は使ってよいが warnings に書く）。
+この一覧にない命令・オプション（INC、Skip、UNTIL、TOOL#、Wjnt など）は使わない。シミュレーターで確認できず実機で動きが変わるため。必要だと思う場合は warnings に「提案」として書くだけにする。
 
 # 座標系
 - ロボット座標：原点はロボットの旋回中心の床面。X が前方、Y が左、Z が上（mm）。
 - 姿勢は ${c.robot.cart.slice(3).join('/')}（度）。R = Rz·Ry·Rx の固定角。ツールを真下に向け、ツール X をロボット X に合わせた姿勢が (180, 0, 0)。
-- 直交位置の values は [X, Y, Z, ${c.robot.cart.slice(3).join(', ')}]、関節位置は [${c.robot.axes.join(', ')}]（度）。新しく作る位置は原則 cart（直交）で書く。
+- 直交位置の values は [X, Y, Z, ${c.robot.cart.slice(3).join(', ')}]、関節位置は [${c.robot.axes.join(', ')}]（度）。新しく作る位置は必ず cart（直交）で書く（関節値はこのシミュレーターの向きの決まりに依存するため、既存の位置を残す場合を除いて使わない）。
 - ${c.sys === 'fanuc' ? 'J3 は水平からの角度（J2/J3 連動）。' : ''}
 
 # ロボット
@@ -119,6 +119,9 @@ ${c.io}
 - 既存のプログラムを修正する指示の場合は、指示された部分だけを変え、それ以外の行と位置はそのまま返す。位置名も変えない。
 - サブプログラムを作った場合は programs に一緒に入れる。
 - 速度は控えめに（関節 50% 以下、直線 500mm/s 以下）。
+- ワーク・台の近くの移動は ${c.sys === 'yaskawa' ? 'PL を付けない（PL=0）' : 'FINE'} にする。通過動作（${c.sys === 'yaskawa' ? 'PL' : 'CNT'}）は空中の経由点だけ。
+- 開始時にハンド出力を OFF にする。置く前に排出台が空いていることを WAIT で確かめる（${c.sys === 'yaskawa' ? 'WAIT IN#(3)=OFF' : 'WAIT DI[2]=OFF'}）。
+${c.sys === 'yaskawa' ? '- WAIT … T= は時間切れでも先へ進むので、使う場合は後で状態を確かめる。ラベルは 8 文字以内。' : '- 先頭に UFRAME_NUM=0 と UTOOL_NUM=1 を書く。WAIT … TIMEOUT,LBL[n] を使う場合は LBL[n] を必ず作る。プログラム名は英大文字で始め、英大文字・数字・_ だけ。コメントは 16 文字以内。'}
 
 # 出力
 JSON だけを返す（前後に文章を付けない）。形式：
@@ -191,9 +194,12 @@ JSON だけを返す（前後に文章を付けない）。形式：
     const progs = [];
     for (const p of o.programs) {
       if (!p || !Array.isArray(p.lines)) return { err: 'lines がありません' };
-      const prog = RS.emptyProgram(sys, RS.cleanName(p.name), tool);
-      prog.comment = String(p.comment || '').slice(0, 64);
-      prog.lines = p.lines.map(l => String(l).replace(/^\s*\d+\s*:\s*/, '').replace(/;\s*$/, '').trim());
+      let name = RS.cleanName(p.name, sys) || ('AIPROG' + (progs.length + 1));
+      for (let k = 2; progs.some(x => x.name === name); k++) name = RS.cleanName(String(p.name || 'AIPROG').slice(0, 28) + '_' + k, sys) || ('AIPROG' + k);
+      const prog = RS.emptyProgram(sys, name, tool);
+      prog.comment = RS.oneLine(p.comment).slice(0, 64);
+      // 1 要素に改行が入っていたら、別の行として扱う（実機ファイルに見えない行が紛れ込まないように）
+      prog.lines = p.lines.flatMap(l => String(l).split(/\r?\n|\r/)).map(l => l.replace(/^\s*\d+\s*:\s*/, '').replace(/;\s*$/, '').trim()).filter(l => l !== '');
       if (sys === 'yaskawa') prog.lines = prog.lines.filter(l => !/^(NOP|END)$/i.test(l));
       for (const q of (p.positions || [])) {
         if (!q || !Array.isArray(q.values) || q.values.length !== 6 || q.values.some(v => !isFinite(v))) { warns.push(`位置 ${q && q.id} の値が不正なため無視しました`); continue; }

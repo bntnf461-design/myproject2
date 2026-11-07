@@ -293,3 +293,7 @@ details[open] summary{margin-bottom:6px}
 .ymsg{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .ytouch{font-size:10px;min-height:22px;padding:1px 8px;border-radius:4px;background:#fff;color:#1b3d78;border:1px solid #9fb0c8;font-family:system-ui,sans-serif}
 .ybot{display:flex;align-items:center;gap:8px;padding:3px;background:#dde3ec;font-size:10px;color:#b4350a;font-weight:700;font-family:system-ui,sans-serif}
+
+.signrow{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 8px;font-size:12px}
+.chk.confirm{margin:8px 0 2px;font-weight:600;align-items:flex-start}
+.oppanel{flex-wrap:wrap}

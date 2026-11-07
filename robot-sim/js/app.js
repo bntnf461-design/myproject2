@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.2';
+  const VERSION = '3.3';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -45,11 +45,45 @@
     alarm: null, estop: false,
     io: { out: {}, force: {} },
     ovrRun: 100,
-    opts: Object.assign({ coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: true, waitTimeout: 10, jbiSjis: true },
-      store.get('rs3-opts', store.get('rs2-opts', {}))),
+    opts: loadOpts(),
     stats: { count: 0, last: 0, t0: 0 },
     log: []
   };
+  /* 保存された設定を、型と範囲を確かめてから使う */
+  function loadOpts() {
+    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, ver: 4 };
+    const rng = { ovr: [5, 100], jogSpd: [1, 100], waitTimeout: [0, 3600], fanucTmout: [0.1, 3600] };
+    const raw = store.get('rs3-opts', store.get('rs2-opts', {})) || {};
+    const o = Object.assign({}, def);
+    for (const k of Object.keys(def)) {
+      const v = raw[k];
+      if (typeof v !== typeof def[k]) continue;
+      if (typeof v === 'number') { if (!isFinite(v)) continue; const r = rng[k]; o[k] = r ? clamp(v, r[0], r[1]) : v; }
+      else o[k] = v;
+    }
+    if (!(raw.ver >= 4)) o.skipUnknown = false;   // v3.3 から未対応命令は既定で停止
+    o.ver = 4;
+    return o;
+  }
+  function validPos(v) {
+    if (!v || typeof v !== 'object') return null;
+    if (v.k === 'j' && Array.isArray(v.q) && v.q.length === 6 && v.q.every(x => typeof x === 'number' && isFinite(x))) return { k: 'j', q: v.q.slice() };
+    if (v.k === 'c' && v.p && ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].every(a => typeof v.p[a] === 'number' && isFinite(v.p[a]))) return { k: 'c', p: Object.assign({}, v.p), cfg: String(v.cfg || 'N U T, 0, 0, 0'), uf: +v.uf || 0, ut: v.ut == null ? 1 : +v.ut };
+    return null;
+  }
+  function loadVars(key) {
+    const raw = store.get(key, null) || {};
+    const out = { num: {}, pos: {}, conv: 2 };
+    if (raw.num && typeof raw.num === 'object') for (const [k, v] of Object.entries(raw.num)) if (typeof v === 'number' && isFinite(v)) out.num[k] = v;
+    if (raw.pos && typeof raw.pos === 'object') for (const [k, v] of Object.entries(raw.pos)) { const p = validPos(v); if (p) out.pos[k] = p; }
+    if (raw.conv !== 2) for (const p of Object.values(out.pos)) if (p.k === 'j') p.q[4] = -p.q[4];   // v3.3 で B/J5 の向きを変更
+    return out;
+  }
+  function loadUF(key) {
+    const raw = store.get(key, {}) || {}, out = {};
+    for (const [n, u] of Object.entries(raw)) if (u && ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].every(a => typeof u[a] === 'number' && isFinite(u[a]))) out[n] = u;
+    return out;
+  }
   let robot = RS.ROBOTS[S.sys];
   let tool = RS.toolById(S.toolId);
   {
@@ -101,6 +135,7 @@
   buildFloor();
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', buildFloor);
 
+  const FENCE = { x: [-1.1, 2.0], z: [-1.6, 1.6] };   // 安全柵（Three 座標）
   /* セル（供給台・排出台） */
   const TABLES = [
     { id: 'A', name: '供給台', X: 0.95, Y: 0.75, w: 0.8, d: 0.6, h: 0.45 },
@@ -128,7 +163,7 @@
     /* 安全柵 */
     const mPost = new T.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.5, metalness: 0.2 });
     const mNet = new T.MeshBasicMaterial({ color: 0x9aa4b0, transparent: true, opacity: 0.12, side: T.DoubleSide, depthWrite: false });
-    const xs = [-1.1, 2.0], zs = [-1.6, 1.6], H = 1.4;
+    const xs = FENCE.x, zs = FENCE.z, H = 1.4;
     const corners = [[xs[0], zs[0]], [xs[1], zs[0]], [xs[1], zs[1]], [xs[0], zs[1]]];
     corners.forEach(([x, z]) => scene.add(mesh(new T.BoxGeometry(0.05, H, 0.05), mPost, x, H / 2, z)));
     [[xs[0], 0, true, zs[1] - zs[0]], [xs[1], 0, true, zs[1] - zs[0]], [(xs[0] + xs[1]) / 2, zs[0], false, xs[1] - xs[0]], [(xs[0] + xs[1]) / 2, zs[1], false, xs[1] - xs[0]]].forEach(([x, z, side, len]) => {
@@ -171,7 +206,7 @@
     reachRing.visible = S.opts.reach;
     scene.add(reachRing);
   }
-  let poseDirty = true;
+  let poseDirty = true, cableDirty = true;
   function applyPose() {
     const k = RS.toKin(robot, S.q);
     G.sG.rotation.y = k[0] * D2R;
@@ -181,7 +216,7 @@
     G.bG.rotation.z = -k[4] * D2R;
     G.tG.rotation.x = k[5] * D2R;
     scene.updateMatrixWorld(true);
-    model.update();
+    cableDirty = true;
     poseDirty = true;
   }
   const tcpMatrix = q => RS.fk(robot, q || S.q, tool.tcp);
@@ -197,7 +232,7 @@
     return M;
   }
   const ufKey = () => 'rs3-uf-' + S.sys;
-  let uframes = store.get(ufKey(), {});
+  let uframes = loadUF(ufKey());
   function ufMat(n) {
     if (!n) return new T.Matrix4();
     const u = uframes[n];
@@ -233,9 +268,10 @@
     scene.add(g);
     return { def, g, vy: 0, falling: false };
   }
+  function disposeWork(w) { if (w.g.parent) w.g.parent.remove(w.g); w.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
   function clearWorks() {
     S.holding = null;
-    for (const w of works) { if (w.g.parent) w.g.parent.remove(w.g); w.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+    for (const w of works) disposeWork(w);
     works = [];
   }
   function spawnAt(tbl) {
@@ -343,7 +379,7 @@
       outT += dt;
       if (outT > 1.5) {
         outT = 0;
-        for (const w of onB) { scene.remove(w.g); works.splice(works.indexOf(w), 1); }
+        for (const w of onB) { disposeWork(w); works.splice(works.indexOf(w), 1); }
         const now = performance.now();
         if (S.stats.t0) S.stats.last = (now - S.stats.t0) / 1000 / onB.length / (S.timeScale || 1);
         S.stats.t0 = now; S.stats.count += onB.length;
@@ -360,6 +396,9 @@
     pts.push({ p: G.bG.getWorldPosition(new T.Vector3()), r: 0.08, what: '手首' });
     pts.push({ p: G.uG.getWorldPosition(new T.Vector3()), r: 0.14, what: '肘' });
     pts.push({ p: G.mount.getWorldPosition(new T.Vector3()), r: 0.05, what: 'フランジ' });
+    const d = robot.dims;
+    for (const f of [0.35, 0.7]) pts.push({ p: G.lG.localToWorld(new T.Vector3(0, d.la * f, 0.15)), r: 0.1, what: '下腕' });
+    for (const f of [0.35, 0.7]) pts.push({ p: G.rG.localToWorld(new T.Vector3(d.ua * f, 0, 0)), r: 0.09, what: '上腕' });
     if (S.holding) {
       const w = S.holding, [sx, sy, sz] = w.def.size;
       for (const a of [-1, 1]) for (const b of [-1, 1]) {
@@ -370,6 +409,7 @@
     for (const it of pts) {
       const { p, r } = it, tol = it.tol != null ? it.tol : 0.002;
       if (p.y - r < -tol) return it.what + 'が床に当たります';
+      if (p.x - r < FENCE.x[0] || p.x + r > FENCE.x[1] || p.z - r < FENCE.z[0] || p.z + r > FENCE.z[1]) return it.what + 'が安全柵に当たります';
       for (const t of TABLES) {
         if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tol && p.y > -0.01)
           return `${it.what}が${t.name}に当たります`;
@@ -381,7 +421,8 @@
         const [sx, sy, sz] = w.def.size;
         for (let i = 0; i < tool.probes.length; i++) {
           const lp = w.g.worldToLocal(pts[i].p.clone());
-          if (Math.abs(lp.x) < sx / 2 - 0.003 && Math.abs(lp.z) < sy / 2 - 0.003 && Math.abs(lp.y) < sz / 2 - 0.003) return 'ハンドがワークに当たります';
+          // ワーク上面から 2mm 以上めり込んだら干渉（薄い板ガラスでも検出できるよう、上面基準で判定）
+          if (Math.abs(lp.x) < sx / 2 - 0.003 && Math.abs(lp.z) < sy / 2 - 0.003 && lp.y < sz / 2 - 0.002 && lp.y > -sz / 2 - 0.05) return 'ハンドがワークに当たります';
         }
       }
     }
@@ -437,8 +478,11 @@
 
   /* =================== 動作 =================== */
   let mv = null, run = null;
+  let motLim = null;    // ペンダント操作時の制限 { spdFac, tcpCap(mm/s) }
+  let stepKeep = null;  // 1行実行・押している間の運転を止めたときの続き { it, prog, pc }
   const smooth = k => k * k * (3 - 2 * k);
-  const ovr = () => S.opts.ovr / 100 * (run ? S.ovrRun / 100 : 1);
+  const ovr = () => S.opts.ovr / 100 * (run ? S.ovrRun / 100 : 1) * (motLim ? motLim.spdFac : 1);
+  const tcpCap = () => (motLim && motLim.tcpCap) || 0;
   function canMove() {
     if (S.estop) return '非常停止中です';
     if (S.alarm) return 'アラームをリセットしてください';
@@ -455,6 +499,10 @@
       const f = clamp(vPct, 0.1, 100) / 100 * ovr();
       for (let i = 0; i < 6; i++) tt = Math.max(tt, Math.abs(to[i] - from[i]) / (robot.vmax[i] * f));
       tt *= 1.5;
+    }
+    if (tcpCap()) {   // 教示モード（T1）は TCP 速度 250mm/s まで
+      const a = new T.Vector3().setFromMatrixPosition(tcpMatrix(from)), b = new T.Vector3().setFromMatrixPosition(tcpMatrix(to));
+      tt = Math.max(tt, 1.5 * a.distanceTo(b) * 1000 / tcpCap());
     }
     mv = { kind: 'j', from, to: to.slice(), dur: Math.max(0.12, tt), t: 0, done };
     return true;
@@ -476,6 +524,7 @@
       const ta = r.ang / ((opt.rot || 180) * f);
       r.dur = Math.max(0.12, 1.5 * Math.max(tl, ta), 1.5 * tj / f);
     }
+    if (tcpCap()) r.dur = Math.max(r.dur, 1.5 * r.dist * 1000 / tcpCap());
     return r;
   }
   function startL(M, vmm, done, opt) {
@@ -505,6 +554,7 @@
   function stopAll() {
     mv = null;
     jogHold = null;
+    motLim = null; stepKeep = null;
     $$('.hold').forEach(b => b.classList.remove('hold'));
     if (run) { run = null; S.ovrRun = 100; renderCode(); }
     refreshState();
@@ -548,7 +598,7 @@
       if (!q) {
         const ref = a.pos && a.pos.q && !a.offset && !a.shift ? a.pos.q : S.q;
         const r = RS.ik(robot, M, tool.tcp, ref, pref);
-        if (!r.q) { raiseAlarm(r.err === 'reach' ? 'reach' : 'limit', `${a.prog} ${a.line + 1}行目`); return; }
+        if (!r.q) { if (r.err === 'config') raiseAlarm('prog', `${a.prog} ${a.line + 1}行目：肘下（D）・後方（B）の形態はシミュレーターで再現できません`); else raiseAlarm(r.err === 'reach' ? 'reach' : 'limit', `${a.prog} ${a.line + 1}行目`); return; }
         q = r.q;
       }
       if (sp.unit === 'sec' || sp.unit === 'msec') startJ(q, null, done, sp.unit === 'sec' ? sp.v : sp.v / 1000);
@@ -575,12 +625,19 @@
       const old = RS.validateProgram(store.get('rs2-prog-' + S.sys, null), S.sys);   // v2 からの移行
       if (old && old.lines.length) { old.name = 'SAMPLE'; out.progs.SAMPLE = old; out.cur = 'SAMPLE'; }
     }
+    if (!L || L.conv !== 2) {   // v3.3 で B/J5 の向き（ツール下向き＝-90°）を変更したので、保存済みの関節値を変換
+      for (const p of Object.values(out.progs)) for (const pos of Object.values(p.pos)) {
+        if (pos.k === 'j') pos.q[4] = -pos.q[4];
+        if (pos.q) { if (pos.k === 'c') pos.q[4] = -pos.q[4]; if (pos.k === 'c') pos.cfg = RS.configOf(pos.q); }
+      }
+    }
+    out.conv = 2;
     if (!Object.keys(out.progs).length) out.progs.MAIN = RS.emptyProgram(S.sys, 'MAIN', S.toolId);
     if (!out.progs[out.cur]) out.cur = Object.keys(out.progs)[0];
     return out;
   }
   const prog = () => lib.progs[lib.cur];
-  function saveLib() { store.set(libKey(), lib); }
+  function saveLib() { lib.conv = 2; store.set(libKey(), lib); }
   let sel = -1;
   let undoStack = [];
   function pushUndo() { undoStack.push(JSON.stringify(lib)); if (undoStack.length > 60) undoStack.shift(); }
@@ -592,7 +649,7 @@
   }
   function edit(fn) {
     if (run) { flash('#progMsg', '再生中は編集できません'); return false; }
-    pushUndo(); fn(); saveLib(); renderCode(); renderPend(); return true;
+    pushUndo(); stepKeep = null; fn(); saveLib(); renderCode(); renderPend(); return true;
   }
   function teachPos() {
     if (S.sys === 'yaskawa') return { k: 'j', q: curQ() };
@@ -621,8 +678,7 @@
 
   /* =================== プログラム実行 =================== */
   const varKey = () => 'rs3-vars-' + S.sys;
-  let vars = store.get(varKey(), { num: {}, pos: {} });
-  if (!vars || !vars.num) vars = { num: {}, pos: {} };
+  let vars = loadVars(varKey());
   const saveVars = () => store.set(varKey(), vars);
   function makeHost() {
     return {
@@ -631,16 +687,21 @@
       log: (m, lv) => logMsg(m, lv), opts: S.opts
     };
   }
-  function startRun(from, single) {
+  /* lim: ペンダントからの運転の速度制限 { spdFac, tcpCap } */
+  function startRun(from, single, lim) {
     const why = canMove(); if (why) { flash('#progMsg', why); pend.msg = why; return false; }
     const P = prog();
     if (!P.lines.length) { flash('#progMsg', 'プログラムがありません'); return false; }
     const errs = RS.checkProgram(P, lib.progs).filter(e => e.lv === 'err');
     if (errs.length && !single) { flash('#progMsg', `${errs[0].line} 行目：${errs[0].msg}`); renderCheck(); return false; }
-    jogHold = null; mv = null;
-    const it = new RS.Interp(makeHost());
-    it.start(P.name, clamp(from, 0, P.lines.length - 1));
-    run = { interp: it, single: !!single, paused: false, main: P.name };
+    from = clamp(from, 0, P.lines.length - 1);
+    const keep = stepKeep;
+    jogHold = null; mv = null; stepKeep = null;
+    let it, main = P.name;
+    if (keep && keep.prog === P.name && keep.pc === from && keep.it.frame) { it = keep.it; main = keep.main; }   // 続きから（SFTON・CALL・OVERRIDE を引き継ぐ）
+    else { it = new RS.Interp(makeHost()); it.start(P.name, from); S.ovrRun = 100; }
+    run = { interp: it, single: !!single, paused: false, main };
+    motLim = lim || null;
     if (!single) { clearTrail(); logged.clear(); }
     lastPcKey = '';
     refreshState(); renderCode();
@@ -666,16 +727,29 @@
         saveVars();
         if (run.single) { finishSingle(); break; }
         if (S.opts.loop) { run.interp.start(run.main, 0); logMsg(`${run.main} を先頭から繰り返します`); }
-        else { run = null; S.ovrRun = 100; refreshState(); renderCode(); setStatus('プログラム終了'); }
+        else { run = null; S.ovrRun = 100; motLim = null; stepKeep = null; refreshState(); renderCode(); setStatus('プログラム終了'); }
         break;
     }
   }
   function finishSingle() {
-    const it = run.interp;
-    const next = it.frame && it.progName === prog().name ? it.pc : sel + 1;
-    run = null; S.ovrRun = 100;
-    sel = clamp(next, 0, prog().lines.length - 1);
+    const it = run.interp, main = run.main;
+    run = null; motLim = null;
+    if (it.frame) {
+      // 次の 1 行実行で同じインタプリタを続けて使う（呼び出し先・シフトなどを保つ）
+      if (it.progName !== prog().name && lib.progs[it.progName]) { lib.cur = it.progName; renderProgSelect(); }
+      sel = clamp(it.pc, 0, prog().lines.length - 1);
+      stepKeep = it.pc < it.frame.ins.length ? { it, prog: it.progName, pc: it.pc, main } : null;
+    } else { stepKeep = null; S.ovrRun = 100; sel = clamp(sel + 1, 0, prog().lines.length - 1); }
     refreshState(); renderCode(); renderPend(); saveVars();
+  }
+  /* 押している間だけの運転で、キーを離したとき：止めて、続きから再開できるようにする */
+  function holdStop(msg) {
+    if (!run) { if (mv) { mv = null; motLim = null; } return; }
+    const it = run.interp, main = run.main;
+    run = null; mv = null; motLim = null;
+    if (it.frame) { if (it.progName !== prog().name && lib.progs[it.progName]) { lib.cur = it.progName; renderProgSelect(); } sel = it.pc; stepKeep = { it, prog: it.progName, pc: it.pc, main }; }
+    if (msg) pend.msg = msg;
+    refreshState(); renderCode(); updateLcd();
   }
   let lastPcKey = '';
   function syncPc() {
@@ -715,23 +789,26 @@
     };
     const isVac = tool.kind === 'vacuum';
     L.push(RS.lineComment(sys, 'PICK AND PLACE SAMPLE'));
+    if (!Y) { L.push('UFRAME_NUM=0'); L.push('UTOOL_NUM=1'); }
+    L.push(RS.lineOut(sys, ho, false));
     L.push(Y ? 'SET I000 0' : 'R[1]=0');
     mv2('J', robot.home.slice(), 50, false);
     L.push(Y ? '*LOOP' : 'LBL[1]');
     L.push(RS.lineWait(sys, Y ? { kind: 'IN', n: 2 } : { kind: 'DI', n: 1 }, true));
-    mv2('J', qs[0], 60, true);
+    mv2('J', qs[0], 50, true);
     mv2('L', qs[1], 200, true);
     L.push(RS.lineOut(sys, ho, true));
     L.push(RS.lineWait(sys, hi, true));
     if (isVac) L.push(RS.lineTimer(sys, 0.2));
     mv2('L', qs[0], 400, true);
-    mv2('J', qs[2], 60, true);
+    L.push(RS.lineWait(sys, Y ? { kind: 'IN', n: 3 } : { kind: 'DI', n: 2 }, false));
+    mv2('J', qs[2], 50, true);
     mv2('L', qs[3], 200, true);
     L.push(RS.lineOut(sys, ho, false));
     L.push(RS.lineWait(sys, hi, false));
     L.push(RS.lineTimer(sys, 0.3));
     mv2('L', qs[2], 400, true);
-    mv2('J', robot.home.slice(), 60, false);
+    mv2('J', robot.home.slice(), 50, false);
     if (Y) { L.push('INC I000'); L.push('JUMP *LOOP IF I000<3'); }
     else { L.push('R[1]=R[1]+1'); L.push('IF R[1]<3,JMP LBL[1]'); }
     P2.lines = L;
@@ -879,8 +956,8 @@
     S.q = robot.home.slice();
     S.io = { out: {}, force: {} };
     lib = loadLib(); sel = prog().lines.length ? 0 : -1; undoStack = [];
-    vars = store.get(varKey(), { num: {}, pos: {} }); if (!vars || !vars.num) vars = { num: {}, pos: {} };
-    uframes = store.get(ufKey(), {});
+    vars = loadVars(varKey());
+    uframes = loadUF(ufKey());
     resetPend();
     buildRobot(); applyPose(); updateToolVis();
     renderAll();
@@ -1014,7 +1091,8 @@
     if (run) return;
     const n = window.prompt('新しいプログラムの名前（英大文字・数字・_）', 'PROG' + (Object.keys(lib.progs).length + 1));
     if (n == null) return;
-    const name = RS.cleanName(n);
+    const name = RS.cleanName(n, S.sys);
+    if (!name) { flash('#progMsg', S.sys === 'fanuc' ? '名前は英大文字・数字・_ で付けてください' : '名前に使える文字がありません'); return; }
     if (lib.progs[name]) { flash('#progMsg', name + ' はすでにあります'); return; }
     pushUndo();
     lib.progs[name] = RS.emptyProgram(S.sys, name, tool.id); lib.cur = name; sel = -1; saveLib(); renderProgAll();
@@ -1022,7 +1100,8 @@
   $('#progRen').addEventListener('click', () => {
     if (run) return;
     const n = window.prompt('名前を変更', prog().name); if (n == null) return;
-    const name = RS.cleanName(n);
+    const name = RS.cleanName(n, S.sys);
+    if (!name) { flash('#progMsg', '名前に使える文字がありません'); return; }
     if (name === prog().name) return;
     if (lib.progs[name]) { flash('#progMsg', name + ' はすでにあります'); return; }
     pushUndo();
@@ -1030,8 +1109,8 @@
   });
   $('#progDup').addEventListener('click', () => {
     if (run) return;
-    let k = 2, name = RS.cleanName(prog().name + '_2');
-    while (lib.progs[name]) name = RS.cleanName(prog().name + '_' + (++k));
+    const name = uniqueName(prog().name, lib.progs);
+    if (!name) { flash('#progMsg', '複製の名前を作れませんでした'); return; }
     pushUndo();
     const p = JSON.parse(JSON.stringify(prog())); p.name = name; lib.progs[name] = p; lib.cur = name; saveLib(); renderProgAll();
   });
@@ -1041,8 +1120,19 @@
     pushUndo();
     delete lib.progs[lib.cur];
     if (!Object.keys(lib.progs).length) lib.progs.MAIN = RS.emptyProgram(S.sys, 'MAIN', tool.id);
-    lib.cur = Object.keys(lib.progs)[0]; sel = -1; saveLib(); renderProgAll();
+    lib.cur = Object.keys(lib.progs)[0]; sel = prog().lines.length ? 0 : -1; saveLib(); renderProgAll();
   });
+  /* 重複しない名前（末尾に _2, _3 … を付け、長さの上限内に収める） */
+  function uniqueName(base, taken) {
+    const max = S.sys === 'fanuc' ? 36 : 32;
+    if (!taken[base]) return base;
+    for (let k = 2; k < 1000; k++) {
+      const suf = '_' + k;
+      const n = RS.cleanName(String(base).slice(0, Math.max(1, max - suf.length)) + suf, S.sys);
+      if (n && !taken[n]) return n;
+    }
+    return '';
+  }
   function lineNo(i) { return S.sys === 'yaskawa' ? String(i + 1).padStart(4, '0') : String(i + 1).padStart(3, ' ') + ':'; }
   function renderCode() {
     const P = prog();
@@ -1335,22 +1425,35 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
+  function ioText() {
+    const m = io();
+    return [`${m.fmt(m.handOut.kind, m.handOut.n)}＝ハンド`].concat(Object.entries(m.auto).map(([k, v]) => `${m.fmt(k.replace(/\d+$/, ''), +k.match(/\d+$/)[0])}＝${v}`)).join('、');
+  }
   function nativeText(P) {
-    if (S.sys === 'yaskawa') return RS.exportJBI(P, { pulse: robot.pulse, poseOf: q => RS.poseFromMatrix(tcpMatrix(q)) });
-    return RS.exportLS(P);
+    const tl = RS.toolById(P.tool || tool.id), tcp = tl.tcp;   // 教示したときのハンドの TCP で変換する
+    const poseOf = q => RS.poseFromMatrix(RS.fk(robot, q, tcp));
+    if (S.sys === 'yaskawa') return RS.exportJBI(P, { pulse: robot.pulse, jointConfirmed: robot.jointConfirmed, poseOf });
+    return RS.exportLS(P, {
+      jointConfirmed: robot.jointConfirmed,
+      jointAsCart: q => { const p = poseOf(q); for (const k in p) p[k] = r3(p[k]); return { k: 'c', p, cfg: RS.configOf(q), uf: 0, ut: 1 }; }
+    });
   }
   const ext = () => S.sys === 'yaskawa' ? '.JBI' : '.LS';
   function exportNative(all) {
     const list = all ? Object.values(lib.progs).filter(p => p.lines.length) : [prog()];
     if (!list.length || !list[0].lines.length) { flash('#progMsg', 'プログラムがありません'); return; }
     const warns = new Set();
-    list.forEach(P => RS.exportWarnings(P, { pulse: robot.pulse }).forEach(w => warns.add(w)));
+    list.forEach(P => {
+      RS.exportWarnings(P, { pulse: robot.pulse, jointConfirmed: robot.jointConfirmed, tool: RS.toolById(P.tool || tool.id), ioText: ioText() }).forEach(w => warns.add(w));
+      if (P.tool && P.tool !== tool.id) warns.add(`${P.name} は「${RS.toolById(P.tool).name}」で教示したプログラムです（今のハンドと違います）`);
+    });
     const errs = list.flatMap(P => RS.checkProgram(P, lib.progs).filter(e => e.lv === 'err').map(e => `${P.name} ${e.line}行目：${e.msg}`));
     if (errs.length) { flash('#progMsg', 'エラーがあるため書き出せません：' + errs[0]); return; }
     if (!window.confirm('実機に入れる前に確認してください：\n\n・' + [...warns].join('\n・') + '\n\n書き出しますか？')) return;
     let bad = 0;
     list.forEach((P, i) => {
-      let body = nativeText(P), type = 'text/plain';
+      let body, type = 'text/plain';
+      try { body = nativeText(P); } catch (x) { flash('#progMsg', `${P.name}：${x.message}`); return; }
       if (S.sys === 'yaskawa' && S.opts.jbiSjis) { const e = RS.encodeSJIS(body); body = e.bytes; bad += e.bad; type = 'application/octet-stream'; }
       setTimeout(() => download(P.name + ext(), body, type), i * 250);
     });
@@ -1382,6 +1485,10 @@
     if (sys !== S.sys) {
       if (!window.confirm(`このファイルは${RS.ROBOTS[sys].label}用です。システムを切り替えて読み込みますか？`)) return;
       switchSystem(sys);
+    }
+    { // 読み込むファイルどうしで名前が重なったら、後のほうに番号を付ける
+      const seen = {};
+      for (const p of got) { if (seen[p.name]) { const n = uniqueName(p.name, Object.assign({}, seen)); (warns = warns || []).push(`${p.name} が重複したため ${n} にしました`); p.name = n; } seen[p.name] = true; }
     }
     const dup = got.filter(p => lib.progs[p.name]).map(p => p.name);
     if (dup.length && !window.confirm(`${dup.join(', ')} は同じ名前のプログラムがあります。上書きしますか？`)) return;
@@ -1423,6 +1530,8 @@
   trail.visible = S.opts.trail;
   const wt = $('#waitTo'); wt.value = S.opts.waitTimeout;
   wt.addEventListener('change', () => { S.opts.waitTimeout = clamp(+wt.value || 0, 0, 3600); wt.value = S.opts.waitTimeout; saveOpts(); });
+  const ft = $('#fanucTo'); ft.value = S.opts.fanucTmout;
+  ft.addEventListener('change', () => { S.opts.fanucTmout = clamp(+ft.value || 30, 0.1, 3600); ft.value = S.opts.fanucTmout; saveOpts(); });
 
   function renderRobotForm() {
     const d = robot.dims;
@@ -1430,14 +1539,25 @@
     let h = `<label class="pname">機種名 <input type="text" id="rbModel" value="${esc(robot.model)}"></label>`;
     h += '<div class="vgrid w2">' + Object.keys(dimLab).map(k => `<label>${dimLab[k]}（mm）<input type="number" step="1" data-dim="${k}" value="${Math.round(d[k] * 1000)}"></label>`).join('') + '</div>';
     h += '<p class="note" style="margin:6px 0 2px">可動範囲（度）　最小／最大</p><div class="limgrid">' + robot.axes.map((a, i) => `<span>${a}</span><input type="number" data-lim="${i}" data-m="0" value="${robot.lim[i][0]}" aria-label="${a} 最小"><input type="number" data-lim="${i}" data-m="1" value="${robot.lim[i][1]}" aria-label="${a} 最大">`).join('') + '</div>';
+    h += '<p class="note" style="margin:6px 0 2px">関節角の向き（実機と逆の軸は「反転」）</p><div class="signrow">' + robot.axes.map((a, i) => `<label class="chk"><input type="checkbox" data-sign="${i}"${robot.sign[i] < 0 !== (RS.ROBOT_DEFAULTS[robot.id].sign[i] < 0) ? ' checked' : ''}>${a} 反転</label>`).join('') + '</div>';
+    h += `<label class="chk confirm"><input type="checkbox" id="rbConfirmed"${robot.jointConfirmed ? ' checked' : ''}> 実機で 2 姿勢以上、関節値と直交値（X/Y/Z）がシミュレーターと一致することを確認した</label>`;
+    h += `<p class="note">確認するまでは、関節位置を実機用ファイルに関節値のまま書き出しません（直交位置に変換します）。今の向き：ツール下向きの待機姿勢 ${robot.axes[4]}=${robot.home[4]}°</p>`;
     if (robot.id === 'yaskawa') h += '<p class="note" style="margin:6px 0 2px">1度あたりのパルス数（JBI の PULSE 形式の読み書きに使用。取扱説明書の値）</p><div class="vgrid">' + robot.axes.map((a, i) => `<label>${a}<input type="number" step="0.001" data-pulse="${i}" value="${robot.pulse ? robot.pulse[i] : ''}" placeholder="未設定"></label>`).join('') + '</div>';
     $('#robotForm').innerHTML = h;
   }
   $('#robotSave').addEventListener('click', () => {
     const ov = store.get('rs3-robot-ov', {}) || {};
     const o = { dims: {}, lim: [], model: $('#rbModel').value };
-    $$('[data-dim]').forEach(i => { const v = +i.value; if (isFinite(v) && v >= 0) o.dims[i.dataset.dim] = v / 1000; });
-    robot.axes.forEach((a, i) => { o.lim.push([+$(`[data-lim="${i}"][data-m="0"]`).value, +$(`[data-lim="${i}"][data-m="1"]`).value]); });
+    const num = el => (el.value.trim() === '' || !isFinite(+el.value)) ? null : +el.value;
+    for (const i of $$('[data-dim]')) { const v = num(i); if (v == null || v < 0) { flash('#rbMsg', '寸法に空欄か正しくない値があります'); return; } o.dims[i.dataset.dim] = v / 1000; }
+    for (let i = 0; i < 6; i++) {
+      const a = num($(`[data-lim="${i}"][data-m="0"]`)), b = num($(`[data-lim="${i}"][data-m="1"]`));
+      if (a == null || b == null || !(a < b)) { flash('#rbMsg', `${robot.axes[i]} の可動範囲が正しくありません（空欄・最小≧最大）`); return; }
+      o.lim.push([a, b]);
+    }
+    const defS = RS.ROBOT_DEFAULTS[robot.id].sign;
+    o.sign = defS.map((v, i) => ($(`[data-sign="${i}"]`).checked ? -v : v));
+    o.jointConfirmed = $('#rbConfirmed').checked;
     if (robot.id === 'yaskawa') { const p = $$('[data-pulse]').map(i => +i.value); o.pulse = p.every(v => isFinite(v) && v !== 0) ? p : null; }
     if (!(o.dims.la > 0) || !(o.dims.ua > 0)) { flash('#rbMsg', '下腕・上腕の長さは 0 より大きくしてください'); return; }
     ov[robot.id] = o; store.set('rs3-robot-ov', ov);
@@ -1452,6 +1572,7 @@
     const ov = store.get('rs3-robot-ov', {}) || {}; delete ov[robot.id]; store.set('rs3-robot-ov', ov);
     const def = RS.ROBOT_DEFAULTS[robot.id];
     robot.dims = JSON.parse(JSON.stringify(def.dims)); robot.lim = JSON.parse(JSON.stringify(def.lim)); robot.pulse = def.pulse; robot.model = def.model;
+    robot.sign = def.sign.slice(); robot.home = def.home.slice(); robot.jointConfirmed = def.jointConfirmed;
     stopAll(); S.q = robot.home.slice(); buildRobot(); applyPose(); updateToolVis(); renderAll();
     flash('#rbMsg', '初期値に戻しました', true);
   });
@@ -1646,7 +1767,7 @@
    * ファナック：TP 有効/無効スイッチ、非常停止、デッドマン、SHIFT、F1〜F5、STEP、HOLD、FWD/BWD（SHIFT と押している間）、
    *       COORD、±%、POSN、I/O、RESET。自動運転は操作盤の CYCLE START（TP 無効時）。
    * 実機の画面・キー配列を簡略化した再現で、メーカーのロゴは使っていない。 */
-  const pend = { ready: false, enable: false, mode: 'teach', coord: 'joint', sp: 1, ovrI: 3, tp: false, dead: false, shift: false, step: true, view: 'prog', ins: 'J', msg: '', float: false, interlock: false, fast: false, pending: null, instSel: 0, menu: true };
+  const pend = { ready: false, enable: false, mode: 'teach', coord: 'joint', sp: 1, ovrI: 3, tp: false, dead: false, shift: false, step: true, view: 'prog', ins: 'J', msg: '', float: false, interlock: false, fast: false, pending: null, instSel: 0, menu: true, fmode: 'T1' };
   const isY = () => S.sys === 'yaskawa';
   const servoOn = () => isY() ? (pend.ready && (pend.mode === 'teach' ? pend.enable : true)) : (pend.tp ? pend.dead : true);
   const YSP = [['微動', 3], ['低速', 12], ['中速', 35], ['高速', 70]];
@@ -1655,7 +1776,7 @@
   let lcdCache = '', lcdT = 0;
   const COORDS = ['joint', 'base', 'tool'];
   const pendVisible = () => pend.float || !$('#t-pend').hidden;
-  function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null }); }
+  function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
   function pendJogSpec() {
     const Y = isY();
     return { spd: (Y ? (pend.fast ? YSP[3][1] : YSP[pend.sp][1]) : FOV[pend.ovrI]) / 100, frame: pend.coord === 'tool' ? 'tool' : 'base', check: jogBlock, inch: Y && pend.sp === 0 && !pend.fast };
@@ -1678,6 +1799,7 @@
       if (!pend.ready) return '「サーボオン レディ」を押してください';
       if (!pend.enable) return 'イネーブルスイッチを握ってください';
     } else {
+      if (pend.fmode === 'AUTO') return 'AUTO モードでは手動操作できません。操作盤でモードを T1 にしてください';
       if (!pend.tp) return 'TP が無効です。TP 有効/無効スイッチを ON にしてください';
       if (!pend.dead) return 'デッドマンスイッチを握ってください';
       if (!pend.shift) return 'SHIFT を押しながら操作してください';
@@ -1694,7 +1816,10 @@
     if (isY()) {
       if (pend.mode !== 'play') return 'モードを PLAY（再生）にしてください';
       if (!pend.ready) return '「サーボオン レディ」を押してください';
-    } else if (pend.tp) return 'TP が有効です。TP を無効にしてから CYCLE START を押してください';
+    } else {
+      if (pend.fmode !== 'AUTO') return '操作盤のモードを AUTO にしてください（T1/T2 はペンダントの SHIFT＋FWD で運転）';
+      if (pend.tp) return 'TP が有効です。TP を無効にしてから CYCLE START を押してください';
+    }
     return '';
   }
   /* 画面の行 */
@@ -1764,7 +1889,7 @@
     const fk = pend.view === 'prog' ? ['POINT', pend.ins === 'J' ? '[J]/L' : 'J/[L]', 'DELETE', `RO[${io().handOut.n}]`, 'TOUCHUP']
       : pend.view === 'pos' ? ['', 'JNT', 'WORLD', 'TOOL', ''] : ['', '', '', '', ''];
     return `<div class="fsb">${lamp('Busy', !!mv || (run && !run.paused))}${lamp('Step', pend.step)}${lamp('Hold', run && run.paused)}${lamp('Fault', !!S.alarm)}${lamp('Run', run && !run.paused)}${lamp('TP', pend.tp)}` +
-      `<span class="fst">${esc(prog().name)} LINE ${Math.max(0, sel) + 1}　${pend.tp ? 'T1' : 'AUTO'}　${status}　${cn} ${FOV[pend.ovrI]}%</span></div>` +
+      `<span class="fst">${esc(prog().name)} LINE ${Math.max(0, sel) + 1}　${pend.fmode}　${status}　${cn} ${FOV[pend.ovrI]}%</span></div>` +
       `<div class="ftitle">${esc(title)}</div><div class="flist">${list}</div><div class="fmsg${S.alarm ? ' alm' : ''}">${esc(msg)}</div>` +
       `<div class="ffk">${fk.map((t, i) => `<span data-act="f${i + 1}">${esc(t)}</span>`).join('')}</div>`;
   }
@@ -1810,7 +1935,7 @@
           <div class="ycol">
             <div class="pk2"><button class="pk" data-act="mainmenu">メイン<br>メニュー</button><button class="pk${on(pend.view === 'inst')}" data-act="instlist">命令<br>一覧</button></div>
             <div class="pk2"><button class="pk" data-act="ins-type">補間<br>MOV${pend.ins}</button><button class="pk" data-hold="test">試運転</button></div>
-            <div class="pk2"><button class="pk" data-act="bwd">後退</button><button class="pk" data-hold="fwdY">前進</button></div>
+            <div class="pk2"><button class="pk" data-hold="bwdY">後退</button><button class="pk" data-hold="fwdY">前進</button></div>
             <div class="pk2"><button class="pk${on(pend.pending && pend.pending.op === 'ins')}" data-act="ins">挿入</button><button class="pk${on(pend.pending && pend.pending.op === 'del')}" data-act="del">削除</button></div>
             <div class="pk2"><button class="pk${on(pend.pending && pend.pending.op === 'upd')}" data-act="upd">修正</button><button class="pk ent" data-act="enter">エンター</button></div>
             <div class="cross"><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button></div>
@@ -1841,7 +1966,7 @@
             <button class="pk ent" data-act="enter">ENTER</button>
             <button class="pk${on(pend.step)}" data-act="step">STEP</button>
             <button class="pk holdk" data-act="hold">HOLD</button>
-            <div class="pk2"><button class="pk" data-hold="fwdF">FWD</button><button class="pk" data-act="bwd">BWD</button></div>
+            <div class="pk2"><button class="pk" data-hold="fwdF">FWD</button><button class="pk" data-hold="bwdF">BWD</button></div>
             <button class="pk" data-act="coord">COORD<br><small>${robot.coordNames[pend.coord]}</small></button>
             <div class="pk2"><button class="pk" data-act="ovr-">−%</button><button class="pk" data-act="ovr+">+%</button></div>
           </div>
@@ -1849,46 +1974,76 @@
         </div>
         <button class="enable${on(pend.dead)}" data-act="dead" title="裏面のデッドマンスイッチ">デッドマンスイッチ：${pend.dead ? '握っている' : '離している'}</button>
       </div>
-      <div class="oppanel"><span>操作盤</span><button class="pk go" data-act="cycle">CYCLE START</button><span class="note">TP 無効で自動運転</span></div>`;
+      <div class="oppanel"><span>操作盤</span><span class="seg mini">${['T1', 'T2', 'AUTO'].map(m => `<button data-act="fmode-${m}" aria-pressed="${pend.fmode === m}">${m}</button>`).join('')}</span><button class="pk go" data-act="cycle">CYCLE START</button><span class="note">AUTO・TP 無効で自動運転</span></div>`;
     }
     const tools = `<div class="row pendtools"><button id="pendPop">${pend.float ? 'パネルに戻す' : '3D画面の上に出す'}</button><button id="pendBig">${pendEl.classList.contains('big') ? '標準の大きさ' : '大きく表示'}</button></div>`;
     const how = Y
-      ? '操作（DX200）：キーを TEACH に回す → ［サーボオン レディ］ → イネーブルスイッチを握る → 軸キーでジョグ（手動速度「微動」は押すたびに少しずつ、［高速］で速く）。［挿入］［削除］［修正］は［エンター］で確定、［取消］で中止。［前進］は移動命令だけを実行し、ほかの命令は［インターロック］＋［前進］で実行。［試運転］は［インターロック］を押しながら、押している間だけ連続で動きます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
-      : '操作：TP を ON → デッドマンを握る → SHIFT を押しながら軸キーでジョグ。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD で実行（STEP 点灯中は1行ずつ、消灯中は押している間だけ連続）。自動運転は TP を OFF にして操作盤の CYCLE START。';
+      ? '操作（DX200）：キーを TEACH に回す → ［サーボオン レディ］ → イネーブルスイッチを握る → 軸キーでジョグ（手動速度「微動」は押すたびに少しずつ、［高速］で速く）。［挿入］［削除］［修正］は［エンター］で確定、［取消］で中止。［前進］［後退］は押している間だけ動き、離すと止まります（もう一度押すと続きから）。［前進］は移動命令だけを実行し、ほかの命令は［インターロック］＋［前進］で実行。［試運転］は［インターロック］を押しながら、押している間だけ連続で動きます。教示モードの運転は手動速度に従い、TCP 250mm/s までに制限されます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
+      : '操作：TP を ON → デッドマンを握る → SHIFT を押しながら軸キーでジョグ。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD／BWD は押している間だけ動き、SHIFT・キー・デッドマンのどれかを離すと止まります（STEP 点灯中は1行ずつ）。T1 は 250mm/s まで、速度は ±% のオーバーライドに従います。自動運転は操作盤で AUTO にし、TP を OFF にして CYCLE START。';
     pendEl.innerHTML = tools + html + `<p class="note">${how}</p><p class="note">実機の画面・キー配列を簡略化した再現です（メニュー階層・数値キーなどは省略）。マウスで操作しやすいよう、SHIFT・インターロック・高速・イネーブル／デッドマンは押すたびに ON/OFF が切り替わります。</p>`;
     lcdCache = ''; updateLcd();
   }
   bindHold(pendEl);
   /* 押している間だけ動くキー（試運転・FWD） */
-  let heldRun = null;
+  /* 押している間だけ動くキー（前進・後退・試運転・FWD・BWD）。離すと止まり、次に押すと続きから */
+  let heldRun = null, heldMv = false;
+  function pendLim() {
+    if (isY()) return pend.mode === 'teach' ? { spdFac: [0.1, 0.25, 0.5, 1][pend.fast ? 3 : pend.sp], tcpCap: 250 } : null;
+    return { spdFac: FOV[pend.ovrI] / 100, tcpCap: pend.fmode === 'T1' ? 250 : 0 };
+  }
+  /* 1つ前の移動命令の位置へ、その行の補間・速度で戻る */
+  function startBwd() {
+    let i = Math.min(sel, prog().lines.length) - 1, ins = null;
+    for (; i >= 0; i--) { ins = RS.parseLine(S.sys, prog().lines[i]); if (ins.op === 'MOVE' && prog().pos[ins.ref]) break; }
+    if (i < 0) { pend.msg = '戻る位置がありません'; return false; }
+    const pos = prog().pos[ins.ref];
+    let q = pos.k === 'j' ? pos.q : null;
+    if (!q) { const r = RS.ik(robot, posMatrix(pos), tool.tcp, pos.q || S.q, isY() ? null : RS.parseConfig(pos.cfg)); q = r.q; }
+    if (!q) { pend.msg = 'この位置には届きません'; return false; }
+    sel = i; stepKeep = null; markPc();
+    motLim = pendLim();
+    const sp = ins.speed;
+    if (ins.mode === 'L') return startL(posMatrix(pos), sp.unit === 'mm/s' ? sp.v : 100, () => { motLim = null; });
+    return startJ(q, sp.unit === '%' ? sp.v : 25, () => { motLim = null; });
+  }
   pendEl.addEventListener('pointerdown', e => {
     const b = e.target.closest('[data-hold]'); if (!b) return;
     e.preventDefault();
     try { b.setPointerCapture(e.pointerId); } catch (x) { /* 無視 */ }
     const k = b.dataset.hold;
+    sel = Math.max(0, sel);
     const why = jogBlock() || (prog().lines.length ? '' : 'プログラムがありません');
     if (why) { pend.msg = why; updateLcd(); return; }
     if (run || mv) return;
+    pend.msg = '';
+    if (k === 'bwdY' || k === 'bwdF') {
+      if (startBwd()) { b.classList.add('hold'); heldMv = true; }
+      updateLcd(); return;
+    }
     if (k === 'test' && !pend.interlock) { pend.msg = '試運転は［インターロック］を押しながら操作します'; updateLcd(); return; }
     if (k === 'fwdY' && !pend.interlock) {
       // DX200：前進では移動命令だけを実行する（ほかの命令は飛ばす）
-      while (sel < prog().lines.length && RS.parseLine('yaskawa', prog().lines[sel]).op !== 'MOVE') sel++;
-      if (sel >= prog().lines.length) { sel = prog().lines.length - 1; pend.msg = '移動命令がありません（移動以外は［インターロック］＋［前進］）'; markPc(); updateLcd(); return; }
-      markPc();
+      let i = sel;
+      while (i < prog().lines.length && RS.parseLine('yaskawa', prog().lines[i]).op !== 'MOVE') i++;
+      if (i >= prog().lines.length) { pend.msg = '移動命令がありません（移動以外は［インターロック］＋［前進］）'; updateLcd(); return; }
+      if (i !== sel) { sel = i; stepKeep = null; markPc(); }
     }
     const single = k === 'fwdY' || (k === 'fwdF' && pend.step);
-    pend.msg = '';
-    if (startRun(Math.max(0, sel), single)) { b.classList.add('hold'); if (!single) heldRun = run; }
+    if (startRun(sel, single, pendLim())) { b.classList.add('hold'); heldRun = run; run.fromPend = true; }
     updateLcd();
   });
   const releaseHeld = () => {
     $$('#pend [data-hold].hold').forEach(x => x.classList.remove('hold'));
-    if (heldRun && run === heldRun) { stopAll(); pend.msg = isY() ? '試運転を止めました' : 'キーを離したため停止'; updateLcd(); }
-    heldRun = null;
+    if (heldRun && run === heldRun) holdStop(isY() ? 'キーを離したため停止（もう一度押すと続きから）' : 'キーを離したため HOLD（もう一度押すと続きから）');
+    if (heldMv && mv && !run) { mv = null; motLim = null; pend.msg = 'キーを離したため停止'; updateLcd(); }
+    heldRun = null; heldMv = false;
   };
   pendEl.addEventListener('pointerup', e => { if (e.target.closest('[data-hold]')) releaseHeld(); });
   pendEl.addEventListener('pointercancel', releaseHeld);
   pendEl.addEventListener('lostpointercapture', e => { if (e.target.closest && e.target.closest('[data-hold]')) releaseHeld(); });
+  window.addEventListener('blur', releaseHeld);
+  window.addEventListener('pointerup', () => { if (heldRun || heldMv) releaseHeld(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseHeld(); });
   function touchUp() {
     const ins = RS.parseLine(S.sys, prog().lines[sel] || '');
     if (ins.op !== 'MOVE' || !/^(C\d{5}|P\[\d+\])$/.test(ins.ref)) { pend.msg = '移動命令の行を選んでください'; return; }
@@ -1945,13 +2100,17 @@
         P.msg = P.ready ? (P.mode === 'teach' ? 'イネーブルスイッチを握るとサーボが入ります' : '') : 'サーボ電源を切りました'; break;
       case 'enable':
         P.enable = !P.enable;
-        if (!P.enable) { endJog(); if (run && P.mode === 'teach') stopAll(); }
+        if (!P.enable) { endJog(); if ((run || mv) && P.mode === 'teach') holdStop('イネーブルスイッチを離したため停止'); }
         P.msg = ''; break;
       case 'speed+': P.sp = Math.min(YSP.length - 1, P.sp + 1); break;
       case 'speed-': P.sp = Math.max(0, P.sp - 1); break;
       case 'tp': stopAll(); P.tp = !P.tp; P.msg = ''; break;
-      case 'dead': P.dead = !P.dead; if (!P.dead) { endJog(); if (run && P.tp) stopAll(); } P.msg = ''; break;
-      case 'shift': P.shift = !P.shift; break;
+      case 'dead': P.msg = ''; P.dead = !P.dead; if (!P.dead) { endJog(); if ((run || mv) && P.tp) holdStop('デッドマンを離したため停止'); } break;
+      case 'shift': P.shift = !P.shift; if (!P.shift && P.tp && (heldRun || heldMv || (run && run.fromPend))) { releaseHeld(); if (run) holdStop('SHIFT を離したため停止'); } break;
+      case 'fmode-T1': case 'fmode-T2': case 'fmode-AUTO':
+        stopAll(); P.fmode = a.slice(6);
+        P.msg = P.fmode === 'AUTO' ? (P.tp ? 'AUTO では TP を無効にしてください' : '') : (P.tp ? '' : `${P.fmode}：TP を有効にして操作します`);
+        if (P.fmode === 'T2') P.msg = 'T2：速度制限なし（100% まで）。熟練者のみ'; break;
       case 'step': P.step = !P.step; break;
       case 'ovr+': P.ovrI = Math.min(FOV.length - 1, P.ovrI + 1); break;
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
@@ -1966,7 +2125,7 @@
         P.view = 'prog'; P.msg = ''; break;
       case 'grip': case 'f4': {
         if (a === 'f4' && P.view !== 'prog') break;
-        const why = isY() ? (P.mode !== 'teach' ? 'モードを TEACH にしてください' : '') : (!P.tp ? 'TP を ON にしてください' : (!P.shift ? 'SHIFT を押しながら操作してください' : ''));
+        const why = isY() ? (P.mode !== 'teach' ? 'モードを TEACH にしてください' : (!P.interlock ? '出力の切替は［インターロック］を押しながら操作します' : '')) : (!P.tp ? 'TP を ON にしてください' : (!P.shift ? 'SHIFT を押しながら操作してください' : ''));
         if (why) { P.msg = why; break; }
         const h = io().handOut; setOut(h.kind, h.n, !handOn()); P.msg = `${io().fmt(h.kind, h.n)}=${handOn() ? 'ON' : 'OFF'}`; break;
       }
@@ -1995,26 +2154,12 @@
         { const why = editBlock(); if (why) { P.msg = why; break; } }
         if (!P.shift) { P.msg = 'TOUCHUP は SHIFT を押しながら F5 です'; break; }
         touchUp(); break;
-      case 'bwd': {
-        const why = jogBlock(); if (why) { P.msg = why; break; }
-        if (run || mv) break;
-        let i = sel - 1, ins = null;
-        for (; i >= 0; i--) { ins = RS.parseLine(S.sys, prog().lines[i]); if (ins.op === 'MOVE' && prog().pos[ins.ref]) break; }
-        if (i < 0) { P.msg = '戻る位置がありません'; break; }
-        sel = i;
-        const pos = prog().pos[ins.ref];
-        let q = pos.k === 'j' ? pos.q : null;
-        if (!q) { const r = RS.ik(robot, posMatrix(pos), tool.tcp, pos.q || S.q, isY() ? null : RS.parseConfig(pos.cfg)); q = r.q; }
-        P.msg = '';
-        if (q) startJ(q, 25, null); else P.msg = 'この位置には届きません';
-        markPc(); break;
-      }
       case 'run': case 'cycle': {
         if (a === 'run' && !isY()) break;
         const why = runBlock(); if (why) { P.msg = why; break; }
         if (run && run.paused) { run.paused = false; refreshState(); P.msg = ''; break; }
         if (run) break;
-        startRun(Math.max(0, sel), false); P.msg = ''; break;
+        startRun(Math.max(0, sel), false, isY() ? null : { spdFac: FOV[P.ovrI] / 100, tcpCap: 0 }); P.msg = ''; break;
       }
       case 'hold': if (run) { run.paused = true; refreshState(); } else { mv = null; } P.msg = isY() ? 'ホールド中' : 'HOLD'; break;
       case 'reset': resetAlarm(); P.msg = S.alarm ? P.msg : ''; break;
@@ -2082,6 +2227,7 @@
       if (run) refreshState();
     }
     if (pendVisible() && now - lcdT > 120) { lcdT = now; updateLcd(); }
+    if (cableDirty) { cableDirty = false; model.update(); }
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }

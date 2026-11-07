@@ -150,7 +150,11 @@
       [uG, new T.Vector3(-0.2, a3 + 0.02, 0.14)]
     ];
     const tmp = new T.Vector3(), inv = new T.Matrix4();
+    let lastL = null, lastU = null;
     function update() {
+      // ケーブルは旋回部の座標で作るので、形が変わるのは L・U が動いたときだけ
+      if (lastL !== null && Math.abs(lG.rotation.z - lastL) < 0.004 && Math.abs(uG.rotation.z - lastU) < 0.004) return;
+      lastL = lG.rotation.z; lastU = uG.rotation.z;
       root.updateMatrixWorld(true);
       inv.copy(sG.matrixWorld).invert();
       const pts = anchors.map(([g, p]) => (g === sG ? p.clone() : g.localToWorld(tmp.copy(p)).applyMatrix4(inv).clone()));

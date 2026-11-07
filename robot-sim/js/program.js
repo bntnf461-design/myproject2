@@ -26,6 +26,33 @@
     return { ref: s.toUpperCase() };
   }
 
+  /* 移動命令の付加オプション：無視してよいもの以外は「未対応」として扱う（黙って捨てない） */
+  function extraCheck(ins, harmless, text) {
+    const bad = ins.extra.filter(t => !harmless.test(t));
+    if (bad.length) return { op: 'UNKNOWN', text, msg: `オプション「${bad.join(' ')}」には対応していません（位置や動きが変わるため、この行は実行しません）` };
+    if (ins.extra.length) ins.warn = (ins.warn ? ins.warn + '。' : '') + `${ins.extra.join(' ')} はシミュレーターでは無視します`;
+    return null;
+  }
+
+  /* 式（数値・変数と + - * /・かっこ）を評価する。文法がおかしいと例外 */
+  RS.evalExpr = function (toks, get) {
+    let i = 0;
+    const peek = () => toks[i];
+    const prim = () => {
+      const t = toks[i++];
+      if (t === '(') { const v = sum(); if (toks[i++] !== ')') throw new Error('かっこが閉じていません'); return v; }
+      if (t === '-') return -prim();
+      if (t && t.num != null) return t.num;
+      if (t && t.ref) return get(t.ref);
+      throw new Error('式の書き方が分かりません');
+    };
+    const prod = () => { let v = prim(); while (peek() === '*' || peek() === '/') { const o = toks[i++]; const w = prim(); v = o === '*' ? v * w : v / w; } return v; };
+    const sum = () => { let v = prod(); while (peek() === '+' || peek() === '-') { const o = toks[i++]; const w = prod(); v = o === '+' ? v + w : v - w; } return v; };
+    const v = sum();
+    if (i !== toks.length) throw new Error('式の後ろに余分なものがあります');
+    return v;
+  };
+
   /* --- 安川 INFORM --- */
   function yVarRef(s) { const m = String(s).trim().toUpperCase().match(/^([BIDR])(\d{3})$/); return m ? m[1] + m[2] : null; }
   function yCond(s) {
@@ -56,10 +83,12 @@
         if ((t = tok.match(/^VJ=([\d.]+)$/i))) ins.speed = { v: +t[1], unit: '%' };
         else if ((t = tok.match(/^V=([\d.]+)$/i))) ins.speed = { v: +t[1], unit: 'mm/s' };
         else if ((t = tok.match(/^VR=([\d.]+)$/i))) ins.speed = { v: +t[1], unit: 'deg/s' };
-        else if ((t = tok.match(/^PL=(\d)$/i))) ins.term = { pl: +t[1] };
+        else if ((t = tok.match(/^PL=([0-8])$/i))) ins.term = { pl: +t[1] };
+        else if (/^PL=/i.test(tok)) return { op: 'ERR', msg: 'PL は 0〜8 で指定します' };
         else ins.extra.push(tok);
       }
       if (!ins.speed) return { op: 'ERR', msg: '速度（VJ= / V=）がありません' };
+      { const r = extraCheck(ins, /^(ACC|DEC)=\d+(\.\d+)?$/i, s); if (r) return r; }
       if (ins.mode === 'J' && ins.speed.unit !== '%') return { op: 'ERR', msg: 'MOVJ の速度は VJ= で指定します' };
       if (ins.mode === 'L' && ins.speed.unit === '%') return { op: 'ERR', msg: 'MOVL の速度は V= で指定します' };
       return ins;
@@ -73,6 +102,7 @@
         else ins.extra.push(tok);
       }
       if (!ins.speed) return { op: 'ERR', msg: '速度（V=）がありません' };
+      { const r = extraCheck(ins, /^(ACC|DEC)=\d+(\.\d+)?$/i, s); if (r) return r; }
       return ins;
     }
     if ((m = s.match(/^DOUT\s+OT#\((\d+)\)\s+(ON|OFF)$/i))) return { op: 'DOUT', kind: 'OT', n: +m[1], val: ONOFF(m[2]) };
@@ -100,7 +130,7 @@
 
   /* --- ファナック TP --- */
   function fCond(s) {
-    s = s.trim().replace(/^\((.*)\)$/, '$1').trim();
+    s = s.trim();
     let m;
     if ((m = s.match(/^(DI|RI|DO|RO)\[(\d+)(?::[^\]]*)?\]\s*=\s*(ON|OFF)$/i))) return { t: 'io', kind: m[1].toUpperCase(), n: +m[2], val: ONOFF(m[3]) };
     if ((m = s.match(new RegExp(`^R\\[(\\d+)(?::[^\\]]*)?\\]\\s*${CMP}\\s*(.+)$`, 'i')))) {
@@ -109,6 +139,7 @@
     }
     return null;
   }
+  function exprOk(toks) { try { RS.evalExpr(toks, () => 1); return true; } catch (e) { return false; } }
   function fExpr(s) {
     // 数値・R[n] と + - * / （かっこ可）の式を、評価用のトークン列にする
     const toks = [];
@@ -127,6 +158,24 @@
     }
     return toks;
   }
+  function closeParen(s, at) {
+    let d = 0;
+    for (let i = at; i < s.length; i++) { if (s[i] === '(') d++; else if (s[i] === ')') { d--; if (!d) return i; } }
+    return -1;
+  }
+  function splitTop(s) {   // かっこの外の AND / OR で分ける → [条件, 'AND', 条件, ...]
+    const out = []; let d = 0, last = 0;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '(') d++; else if (s[i] === ')') { d--; if (d < 0) return null; }
+      else if (!d) {
+        const mm = s.slice(i).match(/^\s+(AND|OR)\s+/i);
+        if (mm && i > 0) { out.push(s.slice(last, i)); out.push(mm[1].toUpperCase()); i += mm[0].length - 1; last = i + 1; }
+      }
+    }
+    if (d !== 0) return null;
+    out.push(s.slice(last));
+    return out;
+  }
   const PR = '(?:PR\\[(\\d+)(?::[^\\]]*)?\\])';
   function parseF(raw) {
     let s = raw.trim().replace(/^\d+\s*:\s*/, '').replace(/;\s*$/, '').trim();
@@ -137,13 +186,25 @@
     if ((m = s.match(/^LBL\[(\d+)(?::[^\]]*)?\]$/i))) return { op: 'LABEL', label: m[1] };
     if ((m = s.match(/^JMP\s+LBL\[(\d+)(?::[^\]]*)?\]$/i))) return { op: 'JUMP', label: m[1], cond: null };
     if ((m = s.match(/^IF\s+(.+?)\s*,\s*(JMP\s+LBL\[(\d+)(?::[^\]]*)?\]|CALL\s+(\S+))$/i))) {
-      const parts = m[1].split(/\s+(AND|OR)\s+/i);
+      // 通常形式：IF 条件 AND 条件,JMP …（かっこなし、AND と OR は混在不可）
+      // 混合ロジック形式：IF (条件 AND 条件),JMP …（全体をかっこで囲む）
+      let expr = m[1].trim(), outer = false;
+      if (expr.startsWith('(') && closeParen(expr, 0) === expr.length - 1) { expr = expr.slice(1, -1).trim(); outer = true; }
+      const parts = splitTop(expr);
+      if (!parts) return { op: 'ERR', msg: 'かっこの対応が合っていません' };
       const conds = [], ops = [];
       for (let i = 0; i < parts.length; i++) {
-        if (i % 2) { ops.push(parts[i].toUpperCase()); continue; }
-        const c = fCond(parts[i]); if (!c) return { op: 'ERR', msg: '条件の書き方が分かりません：' + parts[i] };
+        if (i % 2) { ops.push(parts[i]); continue; }
+        let t = parts[i].trim();
+        if (t.startsWith('(')) {
+          if (!outer) return { op: 'ERR', msg: 'かっこを使うときは条件全体を ( ) で囲みます（例：IF (DI[1]=ON AND R[1]<3),JMP LBL[1]）' };
+          if (closeParen(t, 0) !== t.length - 1) return { op: 'ERR', msg: 'かっこの対応が合っていません' };
+          t = t.slice(1, -1);
+        }
+        const c = fCond(t); if (!c) return { op: 'ERR', msg: '条件の書き方が分かりません：' + parts[i] };
         conds.push(c);
       }
+      if (new Set(ops).size > 1) return { op: 'ERR', msg: 'AND と OR を同じ条件の中で混ぜないでください（分けて書きます）' };
       const cond = conds.length === 1 ? conds[0] : { t: 'multi', conds, ops };
       if (m[3]) return { op: 'JUMP', label: m[3], cond };
       return { op: 'CALL', name: m[4].toUpperCase(), cond };
@@ -169,9 +230,9 @@
         let t;
         if ((t = tok.match(new RegExp(`^Offset,${PR}$`, 'i')))) ins.offset = { type: 'user', pr: +t[1] };
         else if ((t = tok.match(new RegExp(`^Tool_Offset,${PR}$`, 'i')))) ins.offset = { type: 'tool', pr: +t[1] };
-        else if (/^Offset$/i.test(tok)) ins.offset = { type: 'user', pr: null };
         else ins.extra.push(tok);
       }
+      { const r = extraCheck(ins, /^ACC\d+$/i, s); if (r) return r; }
       if (ins.mode === 'J' && !/^(%|sec|msec)$/.test(ins.speed.unit)) return { op: 'ERR', msg: 'J の速度は % で指定します' };
       if (ins.mode === 'L' && ins.speed.unit === '%') return { op: 'ERR', msg: 'L の速度は mm/sec で指定します' };
       return ins;
@@ -184,14 +245,14 @@
       return { op: 'WAITIN', kind: m[1].toUpperCase(), n: +m[2], val: ONOFF(m[3]), timeoutLbl: m[4] || null };
     if ((m = s.match(/^WAIT\s+([\d.]+)\s*\(sec\)$/i))) return { op: 'TIMER', t: +m[1] };
     if ((m = s.match(/^R\[(\d+)(?::[^\]]*)?\]\s*=\s*(.+)$/i))) {
-      const e = fExpr(m[2]); if (!e) return { op: 'ERR', msg: '式の書き方が分かりません：' + m[2] };
+      const e = fExpr(m[2]); if (!e || !exprOk(e)) return { op: 'ERR', msg: '式の書き方が分かりません：' + m[2] };
       return { op: 'CALC', dst: 'R' + m[1], fn: 'EXPR', expr: e };
     }
     if ((m = s.match(new RegExp(`^${PR}\\s*=\\s*(LPOS|JPOS)$`, 'i')))) return { op: 'PRSET', pr: +m[1], src: m[2].toUpperCase() };
     if ((m = s.match(new RegExp(`^${PR}\\s*=\\s*${PR}$`, 'i')))) return { op: 'PRSET', pr: +m[1], src: 'PR', a: +m[2] };
     if ((m = s.match(new RegExp(`^${PR}\\s*=\\s*${PR}\\s*([+-])\\s*${PR}$`, 'i')))) return { op: 'PRSET', pr: +m[1], src: 'PR', a: +m[2], sign: m[3], b: +m[4] };
     if ((m = s.match(/^PR\[(\d+)\s*,\s*(\d+)(?::[^\]]*)?\]\s*=\s*(.+)$/i))) {
-      const e = fExpr(m[3]); if (!e) return { op: 'ERR', msg: '式の書き方が分かりません：' + m[3] };
+      const e = fExpr(m[3]); if (!e || !exprOk(e)) return { op: 'ERR', msg: '式の書き方が分かりません：' + m[3] };
       return { op: 'PRELEM', pr: +m[1], i: +m[2], expr: e };
     }
     if ((m = s.match(/^OVERRIDE\s*=\s*(\d+)\s*%$/i))) return { op: 'OVERRIDE', v: +m[1] };
@@ -241,7 +302,22 @@
 
   RS.emptyProgram = (sys, name, tool) => ({ name: name || 'MAIN', sys, tool: tool || RS.DEFAULT_TOOL, comment: '', lines: [], pos: {} });
 
-  RS.cleanName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 32) || 'MAIN';
+  /* プログラム名を整える。使えない文字は除く（空になったら '' を返す）
+   *   ファナック：英大文字・数字・_、先頭は英字、36 文字まで
+   *   安川：英数字・_・-・全角（Shift_JIS で 32 バイトまで） */
+  RS.cleanName = function (s, sys) {
+    let n = String(s || '').replace(/[\s\x00-\x1f]/g, '');
+    if (sys === 'fanuc') {
+      n = n.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+      if (n && !/^[A-Z]/.test(n)) n = 'P' + n;
+      return n.slice(0, 36);
+    }
+    n = n.toUpperCase().replace(/[^A-Z0-9_\-\u3000-\u30ff\u4e00-\u9fff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]/g, '');
+    let out = '', b = 0;
+    for (const ch of n) { const w = ch.charCodeAt(0) < 0x80 || (ch >= '\uff61' && ch <= '\uff9f') ? 1 : 2; if (b + w > 32) break; out += ch; b += w; }
+    return out;
+  };
+  RS.oneLine = v => String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ');
 
   /* 保存データの検査（壊れたデータを読まない） */
   RS.validateProgram = function (p, sys) {
@@ -249,8 +325,9 @@
     // v2（構造化命令）からの移行
     if (Array.isArray(p.lines) && p.lines.length && typeof p.lines[0] === 'object') return migrateV2(p, sys);
     if (!Array.isArray(p.lines)) return null;
-    const out = RS.emptyProgram(p.sys === 'fanuc' || p.sys === 'yaskawa' ? p.sys : sys, RS.cleanName(p.name), p.tool);
-    out.comment = String(p.comment || '').slice(0, 64);
+    const psys = p.sys === 'fanuc' || p.sys === 'yaskawa' ? p.sys : sys;
+    const out = RS.emptyProgram(psys, RS.cleanName(p.name, psys) || 'MAIN', p.tool);
+    out.comment = RS.oneLine(p.comment).slice(0, 64);
     out.lines = p.lines.filter(l => typeof l === 'string').map(l => l.replace(/[\r\n]/g, ' ').slice(0, 200));
     const pos = p.pos && typeof p.pos === 'object' ? p.pos : {};
     for (const [k, v] of Object.entries(pos)) {
@@ -266,7 +343,7 @@
     return out;
   };
   function migrateV2(p, sys) {
-    const out = RS.emptyProgram(sys, RS.cleanName(p.name), p.tool);
+    const out = RS.emptyProgram(sys, RS.cleanName(p.name, sys) || 'MAIN', p.tool);
     const io = sys === 'yaskawa' ? { kind: 'OT', n: 1 } : { kind: 'RO', n: 1 };
     const ii = sys === 'yaskawa' ? { kind: 'IN', n: 1 } : { kind: 'RI', n: 1 };
     for (const l of p.lines) {
@@ -293,6 +370,8 @@
       if (i.op === 'ERR') errs.push({ line: at, lv: 'err', msg: i.msg });
       else if (i.op === 'UNKNOWN') errs.push({ line: at, lv: 'warn', msg: (i.msg || '未対応の命令（実行時は飛ばします）') });
       else if (i.op === 'MOVE' && /^(C\d{5}|P\[\d+\])$/.test(i.ref) && !prog.pos[i.ref]) errs.push({ line: at, lv: 'err', msg: `位置 ${i.ref} がありません` });
+      else if (i.op === 'WAITIN' && i.timeoutLbl != null && !labels.has(i.timeoutLbl)) errs.push({ line: at, lv: 'err', msg: `TIMEOUT の飛び先 LBL[${i.timeoutLbl}] がありません` });
+      else if (i.op === 'LABEL' && prog.sys === 'yaskawa' && i.label.length > 8) errs.push({ line: at, lv: 'warn', msg: `ラベル *${i.label} は 8 文字以内にしてください` });
       else if (i.op === 'JUMP' && !labels.has(i.label)) errs.push({ line: at, lv: 'err', msg: `ラベル ${prog.sys === 'yaskawa' ? '*' + i.label : 'LBL[' + i.label + ']'} がありません` });
       else if ((i.op === 'CALL' || i.op === 'JUMPJOB') && lib && !lib[i.name]) errs.push({ line: at, lv: 'warn', msg: `呼び出し先 ${i.name} がありません` });
       if (i.warn) errs.push({ line: at, lv: 'warn', msg: i.warn });
@@ -307,28 +386,55 @@
   }
   const isAscii = s => /^[\x20-\x7e]*$/.test(s);
 
-  /* 実機に入れる前の注意点 */
+  /* 実機に入れる前の注意点
+   * ctx = { pulse, jointConfirmed, tool:{name,tcp}, ioText } */
   RS.exportWarnings = function (prog, ctx) {
-    const w = [];
+    ctx = ctx || {};
+    const w = [], Y = prog.sys === 'yaskawa';
     const ins = prog.lines.map(l => RS.parseLine(prog.sys, l));
-    if (ins.some(i => i.op === 'UNKNOWN' || i.op === 'ERR')) w.push('シミュレーターが解釈できない行があります（実機でも確認してください）');
-    if (prog.lines.some(l => !isAscii(l)) || !isAscii(prog.comment || '')) w.push('全角文字（日本語のコメント等）があります。DX200 では「設定」の Shift_JIS 書き出しを使ってください（言語設定によっては表示できません）');
-    if (prog.sys === 'yaskawa' && !ctx.pulse && Object.values(prog.pos).some(p => p.k === 'j')) w.push('パルス係数が未設定のため、関節位置を直交（RECTAN）で書き出します');
+    const linesOf = fn => ins.map((x, i) => (fn(x) ? i + 1 : 0)).filter(Boolean);
+    const lst = a => a.slice(0, 12).join(', ') + (a.length > 12 ? ' …' : '');
+    const bad = linesOf(x => x.op === 'UNKNOWN' || x.op === 'ERR');
+    if (bad.length) w.push(`シミュレーターで実行していない行があります（${lst(bad)} 行目）。実機でどう動くか必ず確認してください`);
+    const ign = linesOf(x => x.op === 'IGNORE' || (x.op === 'MOVE' && x.extra && x.extra.length));
+    if (ign.length) w.push(`シミュレーターでは無視した命令・オプションがあります（${lst(ign)} 行目）`);
+    const pass = linesOf(x => x.op === 'MOVE' && x.term && (x.term.cnt > 0 || x.term.pl > 0));
+    if (pass.length) w.push(`通過動作（${Y ? 'PL' : 'CNT'}）の行があります（${lst(pass)} 行目）。実機ではコーナーが内側を通ります。ワークや台の近くでは ${Y ? 'PL=0' : 'FINE'} にしてください`);
+    const circ = linesOf(x => x.op === 'MOVE' && /MOVC/i.test(x.warn || ''));
+    if (circ.length) w.push(`円弧（MOVC）の行は直線で近似して確認しています（${lst(circ)} 行目）`);
+    const off = linesOf(x => (x.op === 'MOVE' && x.offset) || x.op === 'SFTON' || x.op === 'IMOV');
+    if (off.length) w.push(`オフセット／シフトの行があります（${lst(off)} 行目）。姿勢成分（${Y ? 'Rx/Ry/Rz' : 'W/P/R'}）を 0 以外にする場合の動きは実機で確認してください`);
+    const wt = linesOf(x => x.op === 'WAITIN' && x.timeout != null);
+    if (wt.length && Y) w.push(`WAIT … T= の行は、時間切れでもそのまま先へ進みます（${lst(wt)} 行目）。後で状態を確かめていますか`);
+    if (prog.lines.some(l => !isAscii(l)) || !isAscii(prog.comment || '')) w.push(Y ? '全角文字（日本語のコメント等）があります。Shift_JIS で書き出します（コントローラの言語設定によっては表示できません）' : '全角文字があります。LS の日本語は文字化けしやすいので、英数字にすることを勧めます');
+    if (!Y && (prog.comment || '').length > 16) w.push('ファナックのプログラムコメントは 16 文字までです（超えた分は切れます）');
+    const hasJ = Object.values(prog.pos).some(p => p.k === 'j');
+    if (hasJ && !ctx.jointConfirmed) w.push(`関節で記録した位置は、関節角の向きを実機で確認していないため、直交位置に変換して書き出します。形態（${Y ? 'RCONF' : 'CONFIG'}）が実機の姿勢と同じか確認してください`);
+    else if (hasJ && Y && !ctx.pulse) w.push('パルス係数が未設定のため、関節位置を直交（RECTAN）で書き出します。RCONF は 0 です');
+    if (Object.values(prog.pos).some(p => p.k === 'c')) w.push(Y ? '直交位置は ///RCONF 0,0,0,0,0,0,0,0 で書き出します。読み込み後、各点の姿勢（フリップ・手首の回り方）を確認してください' : '直交位置の CONFIG はシミュレーターの決まり（Flip＝J5>0、回転数＝J4/J5/J6）で付けています。実機で確認してください');
     if (Object.values(prog.pos).some(p => p.k === 'c' && p.uf)) w.push('ユーザ座標の位置があります。実機のユーザ座標番号・値が同じか確認してください');
-    if (ins.some(i => i.op === 'MOVE' && ((i.speed.unit === 'mm/s' && i.speed.v > 1000) || (i.speed.unit === '%' && i.speed.v > 80)))) w.push('高速の移動命令があります。初回は必ず低速（オーバーライドを下げる）で確認してください');
-    w.push('寸法・ツール（TCP）・ユーザ座標が実機と合っているか、教示モード・低速で1行ずつ確認してから自動運転してください');
+    if (ctx.tool) { const t = ctx.tool.tcp.map(v => Math.round(v * 1000)); w.push(`ツール：${Y ? 'ツール番号 0' : 'UT 1'} として書き出します。シミュレーターの TCP は X=${t[0]} Y=${t[1]} Z=${t[2]} mm（${ctx.tool.name}）。実機のツールデータと同じ値か確認してください`); }
+    if (!Y && !ins.some(x => x.op === 'FRAME')) w.push('先頭に UFRAME_NUM=0 と UTOOL_NUM=1 を入れることを勧めます（実機の選択中の番号と違うと止まります）');
+    if (ctx.ioText) w.push('入出力の割り当てはシミュレーター内の決まりです。実機の配線と同じか確認してください：' + ctx.ioText);
+    if (ins.some(x => x.op === 'MOVE' && ((x.speed.unit === 'mm/s' && x.speed.v > 1000) || (x.speed.unit === '%' && x.speed.v > 80)))) w.push('高速の移動命令があります。初回は必ず低速（オーバーライドを下げる）で確認してください');
+    w.push('干渉チェックはハンド・手首・肘・腕の代表点と、床・台・ワークだけです。周辺機器・柵・ケーブルとの干渉は実機で確認してください');
+    w.push('寸法・ツール・ユーザ座標が実機と合っているか、教示モード・低速で1行ずつ確認してから自動運転してください');
     return w;
   };
 
   /* 安川 JBI
    * ctx = { pulse:[6]|null, poseOf(q)→{X..rz}, robotName } */
+  function guardLines(prog) {
+    if (prog.lines.some(l => /[\r\n]/.test(l)) || /[\r\n]/.test(prog.comment || '') || /[\r\n]/.test(prog.name)) throw new Error('改行を含む行があるため書き出せません');
+  }
   RS.exportJBI = function (prog, ctx) {
+    guardLines(prog);
     const t = now();
     const ids = Object.keys(prog.pos).filter(k => /^C\d{5}$/.test(k)).sort();
     const pulseLines = [], rect = {};
     for (const id of ids) {
       const p = prog.pos[id];
-      if (p.k === 'j' && ctx.pulse) pulseLines.push(`${id}=${p.q.map((v, i) => Math.round(v * ctx.pulse[i])).join(',')}`);
+      if (p.k === 'j' && ctx.pulse && ctx.jointConfirmed) pulseLines.push(`${id}=${p.q.map((v, i) => Math.round(v * ctx.pulse[i])).join(',')}`);
       else {
         const P = p.k === 'c' ? p.p : ctx.poseOf(p.q);
         const uf = p.k === 'c' ? (p.uf || 0) : 0;
@@ -349,13 +455,16 @@
 
   /* ファナック LS */
   RS.exportLS = function (prog, ctx) {
+    guardLines(prog);
+    ctx = ctx || {};
     const t = now();
     const yy = String(t.y).slice(2);
     const mn = prog.lines.map((l, i) => `${pad(i + 1, 4, ' ')}:  ${l.trim()}${l.trim() ? '    ' : ''};`);
     const pos = [];
     const ids = Object.keys(prog.pos).filter(k => /^P\[\d+\]$/.test(k)).sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0]);
     for (const id of ids) {
-      const p = prog.pos[id];
+      let p = prog.pos[id];
+      if (p.k === 'j' && ctx.jointAsCart && !ctx.jointConfirmed) p = ctx.jointAsCart(p.q);   // 関節の向きが未確認なら直交で出す
       pos.push(`${id}{`, '   GP1:');
       if (p.k === 'j') {
         const q = p.q.map(v => f(v, 3).padStart(10, ' '));
@@ -370,7 +479,7 @@
     }
     const date = `DATE ${yy}-${t.mo}-${t.d}  TIME ${t.h}:${t.mi}:${t.s}`;
     return [
-      `/PROG  ${prog.name}`, '/ATTR', 'OWNER\t\t= MNEDITOR;', `COMMENT\t\t= "${(prog.comment || '').replace(/"/g, '')}";`,
+      `/PROG  ${prog.name}`, '/ATTR', 'OWNER\t\t= MNEDITOR;', `COMMENT\t\t= "${(prog.comment || '').replace(/"/g, '').slice(0, 16)}";`,
       'PROG_SIZE\t= 0;', `CREATE\t\t= ${date};`, `MODIFIED\t= ${date};`, 'FILE_NAME\t= ;', 'VERSION\t\t= 0;',
       `LINE_COUNT\t= ${prog.lines.length};`, 'MEMORY_SIZE\t= 0;', 'PROTECT\t\t= READ_WRITE;',
       'TCD:  STACK_SIZE\t= 0,', '      TASK_PRIORITY\t= 50,', '      TIME_SLICE\t= 0,', '      BUSY_LAMP_OFF\t= 0,',
@@ -394,6 +503,9 @@
         if (ch.length === 1 && ch !== '\uFFFD' && !sjisMap.has(ch)) sjisMap.set(ch, [a, b]);
       }
       for (let b = 0xa1; b <= 0xdf; b++) sjisMap.set(dec.decode(new Uint8Array([b])), [b]);   // 半角カナ
+      // 環境によって別の文字コード位置になる記号の別名
+      for (const [from, to] of [['\u301C', '\uFF5E'], ['\u2212', '\uFF0D'], ['\u2016', '\u2225'], ['\u00A2', '\uFFE0'], ['\u00A3', '\uFFE1'], ['\u00AC', '\uFFE2'], ['\u2014', '\u2015']])
+        if (!sjisMap.has(from) && sjisMap.has(to)) sjisMap.set(from, sjisMap.get(to));
     }
     const out = [];
     let bad = 0;
@@ -433,7 +545,7 @@
   function importJBI(t, ctx) {
     const warns = [];
     const lines = t.split(/\r?\n/);
-    const name = RS.cleanName((t.match(/^\/\/NAME\s+(\S+)/m) || [])[1] || 'IMPORT');
+    const name = RS.cleanName((t.match(/^\/\/NAME\s+(\S+)/m) || [])[1], 'yaskawa') || 'IMPORT';
     const prog = RS.emptyProgram('yaskawa', name);
     let sec = '', postype = 'PULSE', user = 0, inInst = false, started = false;
     const pulse = ctx.pulse && ctx.pulse.yaskawa;
@@ -446,6 +558,7 @@
         if ((m = s.match(/^\/\/\/POSTYPE\s+(\S+)/))) { postype = m[1].toUpperCase(); continue; }
         if (s === '///PULSE') { postype = 'PULSE'; continue; }
         if ((m = s.match(/^\/\/\/USER\s+(\d+)/))) { user = +m[1]; continue; }
+        if ((m = s.match(/^\/\/\/RCONF\s+(.+)$/)) && m[1].split(',').some(v => +v !== 0)) { warns.push(`RCONF ${m[1].trim()}：形態（フリップ・手首の回り方など）は再現しません。シミュレーターは今の姿勢に近い解で動かします`); continue; }
         if (s.startsWith('///')) continue;
         if ((m = s.match(/^(C\d{5})=(.+)$/))) {
           const v = m[2].split(',').map(Number);
@@ -471,7 +584,7 @@
 
   function importLS(t) {
     const warns = [];
-    const name = RS.cleanName((t.match(/^\/PROG\s+(\S+)/m) || [])[1] || 'IMPORT');
+    const name = RS.cleanName((t.match(/^\/PROG\s+(\S+)/m) || [])[1], 'fanuc') || 'IMPORT';
     const prog = RS.emptyProgram('fanuc', name);
     const cm = t.match(/^COMMENT\s*=\s*"([^"]*)"/m); if (cm) prog.comment = cm[1];
     const mnPart = (t.split(/^\/MN\s*$/m)[1] || '').split(/^\/(POS|END)\s*$/m)[0];

@@ -24,7 +24,22 @@ ok('J', F('J P[1:HOME] 100% FINE').ref === 'P[1]');
 ok('L CNT offset', (x => x.term.cnt === 50 && x.offset.pr === 3 && x.speed.unit === 'mm/s')(F('L P[2] 500mm/sec CNT50 Offset,PR[3]')));
 ok('L PR', F('L PR[5] 200mm/sec FINE').ref === 'PR[5]');
 ok('IF', F('IF R[1]<3,JMP LBL[10]').cond.op === '<');
-ok('IF AND', F('IF (DI[1]=ON) AND (R[2]=0),JMP LBL[1]').cond.t === 'multi');
+ok('IF 混合ロジック形式', F('IF (DI[1]=ON AND R[2]=0),JMP LBL[1]').cond.t === 'multi');
+ok('IF 通常形式', F('IF DI[1]=ON AND R[2]=0,JMP LBL[1]').cond.t === 'multi');
+ok('IF 外側かっこなしの (条件) は誤り', F('IF (DI[1]=ON) AND (R[2]=0),JMP LBL[1]').op === 'ERR');
+ok('IF AND/OR 混在は誤り', F('IF DI[1]=ON AND R[2]=0 OR DI[3]=ON,JMP LBL[1]').op === 'ERR');
+ok('INC オプションは未対応', F('L P[1] 100mm/sec FINE INC').op === 'UNKNOWN');
+ok('Skip は未対応', F('L P[1] 100mm/sec FINE Skip,LBL[2]').op === 'UNKNOWN');
+ok('ACC は無視して警告', (x => x.op === 'MOVE' && !!x.warn)(F('L P[1] 100mm/sec FINE ACC50')));
+ok('UNTIL は未対応', Y('MOVL C00000 V=100.0 UNTIL IN#(1)=ON').op === 'UNKNOWN');
+ok('PL=9 は誤り', Y('MOVJ C00000 VJ=50.00 PL=9').op === 'ERR');
+ok('式の余分な項は誤り', F('R[1]=1 2').op === 'ERR' && F('R[1]=(1+2').op === 'ERR' && F('R[1]=3)').op === 'ERR');
+ok('式 正しい形', F('R[1]=(R[2]+3)*2').op === 'CALC');
+ok('名前（ファナック）', RS.cleanName('1abc-d', 'fanuc') === 'P1ABCD');
+ok('名前（安川・全角）', RS.cleanName('テスト1', 'yaskawa') === 'テスト1');
+{ const pr = RS.emptyProgram('fanuc', 'T'); pr.lines = ['WAIT DI[1]=ON TIMEOUT,LBL[99]']; ok('TIMEOUT ラベル検査', RS.checkProgram(pr).some(e => e.lv === 'err' && /LBL\[99\]/.test(e.msg))); }
+{ const pr = RS.emptyProgram('yaskawa', 'T'); pr.lines = ["'a\nMOVJ C00009 VJ=100.00"]; let thrown = false; try { RS.exportJBI(pr, { poseOf: () => null }); } catch (e) { thrown = true; } ok('改行入りは書き出し拒否', thrown); }
+{ const rb = RS.ROBOTS.fanuc, tcp = [0, 0, 0.17]; const q = [10, 20, -10, 30, -60, -180]; const r = RS.ik(rb, RS.fk(rb, q, tcp), tcp, rb.home, RS.parseConfig(RS.configOf(q))); ok('CONFIG J6=-180', r.q && Math.abs(r.q[5] + 180) < 1e-6, r.q); }
 ok('R expr', F('R[1]=R[1]+1').op === 'CALC');
 ok('PR elem', F('PR[3,3]=R[1]*5').op === 'PRELEM');
 ok('PR clear', F('PR[3]=PR[3]-PR[3]').sign === '-');
@@ -100,7 +115,7 @@ END
 ok('JBI pulse needs factors', !!RS.importText(JBI, {}).err);
 const j = RS.importText(JBI, { pulse: { yaskawa: [100, 100, 100, 100, 100, 100] } });
 ok('JBI import', j.progs && j.progs[0].pos.C00000.q[4] === -10 && j.progs[0].pos.C00001.k === 'c' && j.progs[0].lines.length === 5, j);
-const jb = RS.exportJBI(j.progs[0], { pulse: [100, 100, 100, 100, 100, 100], poseOf: () => null });
+const jb = RS.exportJBI(j.progs[0], { pulse: [100, 100, 100, 100, 100, 100], jointConfirmed: true, poseOf: () => null });
 ok('JBI export pulse', jb.includes('C00000=0,0,0,0,-1000,0') && jb.includes('C00001=900.000') && jb.includes('*LOOP'), jb);
 
 // --- インタプリタ ---
@@ -137,6 +152,16 @@ function host(lib, ins) {
   ok('wait timeout alarm', a && a.t === 'alarm' && a.key === 'wait', a);
 }
 {
+  const run1 = (sys, lines, setup) => { const m = RS.emptyProgram(sys, 'X'); m.lines = lines; const H = host({ X: m }); if (setup) setup(H); const it = new RS.Interp(H); it.start('X', 0); let a, n = 0; while (n++ < 50) { a = it.tick(0.1); if (a && a.t === 'move') { it.done(); continue; } if (a) break; } return { a, H }; };
+  ok('B 変数の範囲', run1('yaskawa', ['SET B000 300']).a.t === 'alarm');
+  ok('0 で割る', run1('fanuc', ['R[1]=1/0']).a.t === 'alarm');
+  ok('未設定 PR', run1('fanuc', ['PR[2]=PR[3]']).a.t === 'alarm');
+  ok('PR クリア', (r => r.a.t === 'end' && r.H.vars.pos.PR1.p.X === 0)(run1('fanuc', ['PR[1]=PR[1]-PR[1]'])));
+  ok('D 変数は整数', run1('yaskawa', ['SET D000 7', 'DIV D000 2']).H.vars.num.D000 === 3);
+  ok('TIMEOUT 飛び先なしはアラーム', run1('fanuc', ['WAIT DI[1]=ON TIMEOUT,LBL[9]'], H => { H.opts.fanucTmout = 0.3; }).a.t === 'alarm');
+  ok('TIMEOUT でラベルへ', (r => r.a.t === 'end' && r.H.vars.num.R1 === 5)(run1('fanuc', ['WAIT DI[1]=ON TIMEOUT,LBL[9]', 'R[1]=1', 'END', 'LBL[9]', 'R[1]=5'], H => { H.opts.fanucTmout = 0.3; })));
+}
+{
   const m = RS.emptyProgram('fanuc', 'L'); m.lines = ['LBL[1]', 'JMP LBL[1]'];
   const it = new RS.Interp(host({ L: m })); it.start('L', 0);
   const a = it.tick(0.1);
@@ -148,6 +173,7 @@ function host(lib, ins) {
   const e = RS.encodeSJIS(txt);
   const back = new TextDecoder('shift_jis').decode(e.bytes);
   ok('Shift_JIS 往復', back === txt && e.bad === 0, [back, e.bad]);
+  ok('Shift_JIS 別名（〜−‖）', RS.encodeSJIS('\u301C\u2212\u2016').bad === 0);
 }
 // --- programs/ のサンプルファイルが読めて誤りがない ---
 const fs = require('fs'), path = require('path');

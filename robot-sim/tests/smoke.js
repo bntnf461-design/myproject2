@@ -84,7 +84,7 @@ P[1]{
    GP1:
 	UF : 0, UT : 1,
 	J1=     0.000 deg,	J2=     0.000 deg,	J3=     0.000 deg,
-	J4=     0.000 deg,	J5=    90.000 deg,	J6=     0.000 deg
+	J4=     0.000 deg,	J5=   -90.000 deg,	J6=     0.000 deg
 };
 P[2]{
    GP1:
@@ -132,7 +132,7 @@ P[2]{
   const aiJson = await ev(() => JSON.stringify({
     explanation: 'テスト', warnings: [],
     programs: [{ name: 'AITEST', comment: '', lines: ["'AI MADE", 'MOVJ C00000 VJ=30.00', 'MOVL C00001 V=200.0', 'TIMER T=0.50', 'MOVJ C00000 VJ=30.00'],
-      positions: [{ id: 'C00000', kind: 'joint', values: [0, 0, 0, 0, 90, 0], uf: 0 }, { id: 'C00001', kind: 'cart', values: [900, 0, 800, 180, 0, 0], uf: 0 }] }]
+      positions: [{ id: 'C00000', kind: 'joint', values: [0, 0, 0, 0, -90, 0], uf: 0 }, { id: 'C00001', kind: 'cart', values: [900, 0, 800, 180, 0, 0], uf: 0 }] }]
   }));
   await page.click('summary:has-text("キーなしで使う")');
   await page.fill('#aiPaste', 'はい、作りました。\n```json\n' + aiJson + '\n```');
@@ -207,9 +207,13 @@ P[2]{
   await page.click('#pend [data-act="del"]'); await page.click('#pend [data-act="cancel"]');
   check('削除→取消で消えない', (await ev(() => RSIM.prog.lines.length)) === n0 + 2);
   await ev(() => { document.querySelector('#code li[data-i="1"]').click(); });   // SET I000 0（移動以外）
-  await pk('#pend [data-hold="fwdY"]', 120);
+  await page.click('#pend [data-act="fast"]');
+  await ev(() => { RSIM.state.timeScale = 12; });
+  await pk('#pend [data-hold="fwdY"]', 4000);
+  await ev(() => { RSIM.state.timeScale = 3; });
   await waitIdle(20000);
-  check('前進は移動命令まで飛ばして実行', (await ev(() => RSIM.prog.lines[Math.max(0, document.querySelector('#code li.sel') ? +document.querySelector('#code li.sel').dataset.i - 1 : 0)])).startsWith('MOVJ'));
+  await page.click('#pend [data-act="fast"]');
+  check('前進は移動命令まで飛ばして実行', (await ev(() => RSIM.prog.lines[Math.max(0, document.querySelector('#code li.sel') ? +document.querySelector('#code li.sel').dataset.i - 1 : 0)])).startsWith('MOVJ'), await ev(() => ({ sel: document.querySelector('#code li.sel') && document.querySelector('#code li.sel').dataset.i, lcd: document.querySelector('#lcd').textContent.slice(-80), alarm: RSIM.state.alarm, q: RSIM.state.q })));
   await ev(() => { document.querySelector('#code li[data-i="0"]').click(); });
   await pk('#pend [data-hold="test"]', 300);
   check('試運転はインターロックが必要', !(await ev(() => RSIM.run)) && (await page.textContent('#lcd')).includes('インターロック'));
@@ -241,14 +245,42 @@ P[2]{
   const nf = await ev(() => RSIM.prog.lines.length);
   await page.click('#pend [data-act="f1"] >> nth=0');
   check('F1 POINT', (await ev(() => RSIM.prog.lines.length)) === nf + 1);
-  await ev(() => { document.querySelector('#code li[data-i="0"]').click(); });
-  await pk('#pend [data-hold="fwdF"]', 200);
-  await waitIdle(20000);
-  check('STEP 中の SHIFT+FWD は1行', (await ev(() => RSIM.run)) === null);
+  // 1行実行の途中でキーを離すと止まり、次に押すと続きから
+  await ev(() => { RSIM.state.timeScale = 0.3; const L = RSIM.prog.lines; const i = L.findIndex(l => /^J P/.test(l)); document.querySelector(`#code li[data-i="${i}"]`).click(); });
+  const qa = await ev(() => RSIM.state.q.slice());
+  await ev(() => { const L = RSIM.prog.lines; const i = L.findIndex(l => /^J P/.test(l)); RSIM.state.q[0] += 20; });
+  await pk('#pend [data-hold="fwdF"]', 150);
+  const mid = await ev(() => ({ run: !!RSIM.run, mv: !!RSIM.mv, q0: RSIM.state.q[0] }));
+  await page.waitForTimeout(200);
+  const mid2 = await ev(() => RSIM.state.q[0]);
+  check('FWD を離すと止まる（1行の途中でも）', !mid.run && !mid.mv && Math.abs(mid2 - mid.q0) < 1e-9, mid);
+  await ev(() => { RSIM.state.timeScale = 3; });
+  await pk('#pend [data-hold="fwdF"]', 2500);
+  check('もう一度押すと続きから完了', (await ev(() => RSIM.run)) === null);
+  // SHIFT を離すと止まる（連続運転）
+  await page.click('#pend [data-act="step"]');
+  await ev(() => { document.querySelector('#code li[data-i="0"]').click(); RSIM.state.timeScale = 0.3; });
+  const h = await page.$('#pend [data-hold="fwdF"]'); await h.scrollIntoViewIfNeeded(); const bb = await h.boundingBox();
+  await page.mouse.move(bb.x + 5, bb.y + 5); await page.mouse.down(); await page.waitForTimeout(150);
+  const running = await ev(() => !!RSIM.run);
+  await ev(() => document.querySelector('#pend [data-act="shift"]').click());
+  const afterShift = await ev(() => !!RSIM.run);
+  await page.mouse.up();
+  check('SHIFT を離すと連続運転が止まる', running && !afterShift, { running, afterShift });
+  await ev(() => { RSIM.state.timeScale = 3; document.querySelector('#pend [data-act="shift"]').click(); document.querySelector('#pend [data-act="step"]').click(); });
+  // BWD は押している間だけ
+  await ev(() => { const n = RSIM.prog.lines.length; document.querySelector(`#code li[data-i="${n - 1}"]`).click(); });
+  await pk('#pend [data-hold="bwdF"]', 100);
+  check('BWD を離すと止まる', (await ev(() => !RSIM.mv)));
+  // CYCLE START は AUTO・TP 無効のときだけ
   await page.click('#pend [data-act="tp"]');
   await page.click('#pend [data-act="cycle"]');
-  check('TP OFF で CYCLE START', !!(await ev(() => RSIM.run)));
+  check('T1 では CYCLE START 不可', !(await ev(() => RSIM.run)) && (await page.textContent('#lcd')).includes('AUTO'));
+  await page.click('#pend [data-act="fmode-AUTO"]');
+  await page.click('#pend [data-act="cycle"]');
+  check('AUTO・TP OFF で CYCLE START', !!(await ev(() => RSIM.run)));
   await click('#stopBtn');
+  await page.click('#pend [data-act="fmode-T1"]');
   await page.click('#pend #pendPop');
   check('3D画面の上に表示', await ev(() => !document.querySelector('#pendFloat').hidden && !!document.querySelector('#pendFloat #lcd')));
   if (shots) await page.screenshot({ path: shots + '/06-pendant-fanuc.png' });

@@ -70,21 +70,7 @@
       }
       return false;
     }
-    evalExpr(toks) {
-      // 再帰下降（* / が + - より優先）
-      let i = 0;
-      const peek = () => toks[i];
-      const prim = () => {
-        const t = toks[i++];
-        if (t === '(') { const v = sum(); i++; return v; }
-        if (t === '-') return -prim();
-        if (t && (t.num != null || t.ref)) return this.num(t);
-        throw new Error('式');
-      };
-      const prod = () => { let v = prim(); while (peek() === '*' || peek() === '/') { const o = toks[i++]; const w = prim(); v = o === '*' ? v * w : v / w; } return v; };
-      const sum = () => { let v = prod(); while (peek() === '+' || peek() === '-') { const o = toks[i++]; const w = prod(); v = o === '+' ? v + w : v - w; } return v; };
-      return sum();
-    }
+    evalExpr(toks) { return RS.evalExpr(toks, ref => this.num({ ref })); }
 
     /* 1フレームごとに呼ぶ。戻り値：
      *   null                     待ち中・計算のみ（次のフレームでまた呼ぶ）
@@ -102,7 +88,10 @@
           else {
             w.t += dt;
             if (w.timeout != null && w.t >= w.timeout) { this.wait = null; }                      // 安川 T=：時間で先へ進む
-            else if (w.timeoutLbl != null && w.t >= (H.opts.waitTimeout || 10)) { this.wait = null; this.jump(w.timeoutLbl); }
+            else if (w.timeoutLbl != null && w.t >= (H.opts.fanucTmout || 30)) {   // ファナック $WAITTMOUT 相当
+              this.wait = null;
+              if (!this.jump(w.timeoutLbl)) return { t: 'alarm', key: 'prog', msg: `TIMEOUT の飛び先 LBL[${w.timeoutLbl}] がありません` };
+            }
             else if (H.opts.waitTimeout && w.t >= H.opts.waitTimeout && w.timeout == null && w.timeoutLbl == null)
               return { t: 'alarm', key: 'wait', msg: `${w.text} が ${H.opts.waitTimeout} 秒来ません` };
             else return null;
@@ -160,7 +149,10 @@
               case 'DIV': { const d = this.num(i.arg); if (!d) return { t: 'alarm', key: 'prog', msg: '0 で割りました' }; v = cur / d; break; }
               case 'EXPR': try { v = this.evalExpr(i.expr); } catch (e) { return { t: 'alarm', key: 'prog', msg: '式を計算できません：' + text }; } break;
             }
-            if (/^[BI]/.test(i.dst)) v = Math.trunc(v);
+            if (!isFinite(v)) return { t: 'alarm', key: 'prog', msg: `${F.prog.name} ${F.pc + 1}行目：計算結果が数値になりません（0 で割った可能性）` };
+            if (/^[BID]/.test(i.dst)) v = Math.trunc(v);
+            const rng = { B: [0, 255], I: [-32768, 32767], D: [-2147483648, 2147483647] }[i.dst[0]];
+            if (rng && /^[BID]\d{3}$/.test(i.dst) && (v < rng[0] || v > rng[1])) return { t: 'alarm', key: 'prog', msg: `${F.prog.name} ${F.pc + 1}行目：${i.dst} の範囲（${rng[0]}〜${rng[1]}）を超えます（${v}）` };
             N[i.dst] = v;
             F.pc++; break;
           }
@@ -170,7 +162,11 @@
             else if (i.src === 'JPOS') P['PR' + i.pr] = { k: 'j', q: H.curQ() };
             else {
               const zero = () => ({ k: 'c', p: { X: 0, Y: 0, Z: 0, rx: 0, ry: 0, rz: 0 }, cfg: 'N U T, 0, 0, 0', uf: 0, ut: 1 });
-              const a = P['PR' + i.a] || zero();                        // 未設定の PR は 0 として扱う
+              // 未設定の PR は使えない（実機でも未初期化データのアラーム）。ただし PR[n]=PR[n]-PR[n]（クリア）は許す
+              const clearIdiom = i.b != null && i.a === i.pr && i.b === i.pr && i.sign === '-';
+              if (!P['PR' + i.a] && !clearIdiom) return { t: 'alarm', key: 'prog', msg: `PR[${i.a}] が未設定です` };
+              if (i.b != null && !P['PR' + i.b] && !clearIdiom) return { t: 'alarm', key: 'prog', msg: `PR[${i.b}] が未設定です` };
+              const a = P['PR' + i.a] || zero();
               if (i.b != null && !P['PR' + i.b]) P['PR' + i.b] = zero();
               if (i.b == null) P['PR' + i.pr] = JSON.parse(JSON.stringify(a));
               else {

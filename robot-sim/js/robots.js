@@ -13,12 +13,16 @@
  *   ua   : 上腕長さ（U軸から手首中心まで、上腕方向。R/B/T 3軸の交点）
  *   fl   : 手首中心からフランジ面までの距離
  *
- * 関節角の符号（両システム共通の向き）
+ * 関節角の向き（内部の計算上の向き）
  *   S/J1 + : 上から見て反時計回り
  *   L/J2 + : 下腕が前へ倒れる
  *   U/J3 + : 上腕が上がる
  *   B/J5 + : 手首が下を向く
  *   原点（全軸0）は「下腕が垂直、上腕・ツールが前方水平」。
+ * 画面・プログラムに出る角度は sign[] を掛けた「そのメーカーの向き」です（初期値は B/J5 だけ逆向き：
+ * ツール下向き＝ -90°）。実機と向きが違う軸は「設定」で反転できます。
+ * jointConfirmed が false の間（実機と 1〜2 姿勢を比べて確かめるまで）は、関節位置を実機用ファイルに
+ * 関節値のまま書き出しません（直交位置に変換するか、書き出しを止めます）。
  *
  * ファナックの J3 は実機と同様に「水平からの角度」（J2/J3 連動）で表します。
  *   内部の相対角 U = J3 + J2
@@ -41,7 +45,9 @@
       pulse: null,                                     // 1度あたりのパルス数 [S,L,U,R,B,T]（JBI の PULSE 形式に必要。機種の取扱説明書の値）
       vlMax: 2000,                                     // 直線最高速度 mm/s
       colors: { main: 0x1d5fbf, sub: 0xe9edf2, dark: 0x2b323b },
-      home: [0, 0, 0, 0, 90, 0],
+      home: [0, 0, 0, 0, -90, 0],
+      sign: [1, 1, 1, 1, -1, 1],
+      jointConfirmed: false,
       j3abs: false,
       cart: ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'],
       coordNames: { joint: '関節', base: '直交', tool: 'ツール' }
@@ -58,7 +64,9 @@
       dims: { pivR: 0.15, pivY: 0.525, la: 0.79, a3: 0.15, ua: 0.86, fl: 0.10 },
       vlMax: 2000,
       colors: { main: 0xf2c200, sub: 0xf2c200, dark: 0x2b2b2b },
-      home: [0, 0, 0, 0, 90, 0],
+      home: [0, 0, 0, 0, -90, 0],
+      sign: [1, 1, 1, 1, -1, 1],
+      jointConfirmed: false,
       j3abs: true,
       cart: ['X', 'Y', 'Z', 'W', 'P', 'R'],
       coordNames: { joint: 'JOINT', base: 'WORLD', tool: 'TOOL' }
@@ -75,21 +83,29 @@
       if (Array.isArray(o.lim) && o.lim.length === 6) r.lim = o.lim.map((a, i) => (Array.isArray(a) && a.length === 2 && a.every(isFinite) && a[0] < a[1]) ? [+a[0], +a[1]] : r.lim[i]);
       if (Array.isArray(o.pulse) && o.pulse.length === 6 && o.pulse.every(v => isFinite(v) && v !== 0)) r.pulse = o.pulse.map(Number);
       if (typeof o.model === 'string' && o.model.trim()) r.model = o.model.trim().slice(0, 60);
+      if (Array.isArray(o.sign) && o.sign.length === 6 && o.sign.every(v => v === 1 || v === -1)) {
+        const def = RS.ROBOT_DEFAULTS ? RS.ROBOT_DEFAULTS[id] : null;
+        r.sign = o.sign.slice();
+        if (def) r.home = def.home.map((v, i) => v * def.sign[i] * r.sign[i]);
+      }
+      if (typeof o.jointConfirmed === 'boolean') r.jointConfirmed = o.jointConfirmed;
     }
   };
   RS.ROBOT_DEFAULTS = JSON.parse(JSON.stringify(RS.ROBOTS));
 
   /* ブランド関節角 → 内部（相対）関節角 */
   RS.toKin = function (robot, q) {
-    const k = q.slice();
-    if (robot.j3abs) k[2] = q[2] + q[1];
+    const sg = robot.sign || [1, 1, 1, 1, 1, 1];
+    const k = q.map((v, i) => v * sg[i]);
+    if (robot.j3abs) k[2] = k[2] + k[1];
     return k;
   };
   /* 内部（相対）関節角 → ブランド関節角 */
   RS.fromKin = function (robot, k) {
+    const sg = robot.sign || [1, 1, 1, 1, 1, 1];
     const q = k.slice();
     if (robot.j3abs) q[2] = k[2] - k[1];
-    return q;
+    return q.map((v, i) => v * sg[i]);
   };
   /* 可動範囲チェック：範囲外の軸番号を返す（範囲内なら -1） */
   RS.limitViolation = function (robot, q, tol) {
