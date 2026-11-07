@@ -2,7 +2,7 @@
 //   SHOTS=フォルダ でスクリーンショットも保存
 const { chromium } = require('playwright');
 const path = require('path');
-const url = 'file://' + path.resolve(__dirname, '../index.html');
+const url = 'file://' + path.resolve(__dirname, '..', process.env.PAGE || 'index.html');
 const shots = process.env.SHOTS || '';
 
 (async () => {
