@@ -32,6 +32,7 @@
       <button id="alarmReset">リセット</button>
     </div>
     <div class="cycle" id="cycleInfo"></div>
+    <div class="pendfloat" id="pendFloat" hidden><div class="pfbar"><span>ペンダント（ドラッグで移動）</span><button id="pendDock">パネルに戻す</button></div></div>
     <div class="views" id="views">
       <button data-v="iso">斜め</button><button data-v="front">正面</button><button data-v="side">側面</button><button data-v="top">真上</button>
     </div>
@@ -126,6 +127,7 @@
 
       <!-- ペンダント -->
       <section id="t-pend" hidden>
+        <div class="pendaway" id="pendAway" hidden><p class="note">ペンダントは 3D 画面の上に表示しています。</p><button id="pendBack">パネルに戻す</button></div>
         <div id="pend"></div>
       </section>
 

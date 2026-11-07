@@ -148,34 +148,6 @@ button.hold{filter:brightness(.8);border-color:var(--accent)}
 .info dt{color:var(--muted)}
 .info dd{margin:0}
 
-/* ペンダント */
-.pend{max-width:360px;margin:0 auto;border-radius:20px;padding:12px 12px 14px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-.pend.yas{background:#aab2bb;color:#10161d;border:2px solid #7c8793}
-.pend.fan{background:#f2c516;color:#171717;border:2px solid #b48f00}
-.pbrand{font-weight:800;letter-spacing:.14em;font-size:12px;margin-bottom:6px;opacity:.85;display:flex;justify-content:space-between}
-.lcd{background:#f3f6ef;color:#0e1a12;border:2px solid #333;border-radius:6px;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;margin-bottom:10px}
-.lcd .t{padding:3px 8px;color:#fff;font-weight:700;display:flex;justify-content:space-between}
-.yas .lcd .t{background:#0a4fb4}
-.fan .lcd .t{background:#2a2f36}
-.lcd .b{padding:4px 0}
-.lr{height:18px;line-height:18px;padding:0 8px;white-space:pre;overflow:hidden}
-.yas .lr.sel{background:#1e6be0;color:#fff}
-.fan .lr.sel{background:#1b2a4a;color:#fff}
-.lcd .f{padding:3px 8px;background:#d9dfd2;font-size:11px;border-top:1px solid #9aa294;white-space:pre;overflow:hidden}
-.lcd .m{padding:3px 8px;min-height:24px;font-size:12px;color:#b4350a;font-weight:700;border-top:1px solid #9aa294}
-.pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
-.pgrid.g3{grid-template-columns:repeat(3,1fr)}
-.pk{min-height:40px;padding:3px 2px;font-size:11px;font-weight:700;line-height:1.2;border-radius:7px;touch-action:manipulation}
-.yas .pk{background:#e4e8ed;color:#10161d;border:1px solid #6d7782}
-.fan .pk{background:#2a2a2a;color:#fff;border:1px solid #000}
-.pk.on{box-shadow:inset 0 -5px 0 #2bd06b}
-.pk.go{background:#1a8f4d!important;color:#fff!important}
-.pk.stop{background:#c0392b!important;color:#fff!important}
-.pk.hold{filter:brightness(.75)}
-.jgrid{display:grid;grid-template-columns:1fr 46px 1fr 1fr 46px 1fr;gap:6px;margin:10px 0}
-.jgrid .pk{min-height:38px;font-size:15px;touch-action:none}
-.ax{display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
-
 /* v3 追加 */
 .tabs button{font-size:12.5px}
 .row.tight button{flex:1 1 auto}
@@ -220,3 +192,99 @@ details[open] summary{margin-bottom:6px}
 .steps{padding-left:18px}
 #aiMode{margin-bottom:0}
 .edit .xyz6 input{width:100%}
+
+/* ===== ティーチングペンダント（実機風） ===== */
+#pend{max-width:380px;margin:0 auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#pend.big{max-width:470px;font-size:115%}
+.pendtools{justify-content:center}
+.pendtools button{font-size:12px;min-height:30px;padding:4px 10px}
+.pendant{position:relative;border-radius:26px;padding:12px 12px 10px;box-shadow:0 10px 26px rgba(0,0,0,.28),inset 0 2px 0 rgba(255,255,255,.35),inset 0 -3px 0 rgba(0,0,0,.18)}
+.pendant.yp{background:linear-gradient(#e3e6ea,#c9ced4);color:#1a2026;border:1px solid #9aa2ac}
+.pendant.fp{background:linear-gradient(#4a4f56,#2f3338);color:#eef1f4;border:1px solid #1b1d20}
+.ptop{display:flex;align-items:center;gap:8px;margin:0 2px 10px}
+.ptag{flex:1;text-align:center;font-size:11px;letter-spacing:.2em;opacity:.6}
+/* 非常停止 */
+.estopbtn{margin-left:auto;width:58px;height:58px;border-radius:50%;padding:0;border:4px solid #f2c200;background:radial-gradient(circle at 40% 35%,#ff6b5e,#c4170c 60%,#8d0b04);color:#fff;font-size:10px;font-weight:800;line-height:1.1;box-shadow:0 3px 0 #6d0a03,0 4px 8px rgba(0,0,0,.35);min-height:0}
+.estopbtn.on{transform:translateY(3px);box-shadow:0 0 0 #6d0a03,inset 0 2px 6px rgba(0,0,0,.4)}
+.estopbtn:hover{border-color:#f2c200}
+/* 安川：モード切替キー */
+.keysw{position:relative;width:96px;height:58px;border-radius:12px;background:#2a2f36;border:1px solid #111;padding:0;min-height:0;color:#fff}
+.keysw .kl{position:absolute;font-size:7px;font-weight:700;letter-spacing:0}
+.keysw .kl:nth-child(1){left:4px;top:26px}.keysw .kl:nth-child(2){left:50%;top:3px;transform:translateX(-50%)}.keysw .kl:nth-child(3){right:4px;top:26px}
+.keysw .knob{position:absolute;left:50%;top:58%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:radial-gradient(circle,#d9dde2,#8d959e);box-shadow:0 1px 3px rgba(0,0,0,.6);transition:transform .2s}
+.keysw .knob::after{content:"";position:absolute;left:50%;top:1px;width:4px;height:12px;margin-left:-2px;border-radius:2px;background:#222}
+.lampbtn{width:60px;height:40px;border-radius:9px;font-size:11px;font-weight:800;padding:0;min-height:0;border:1px solid #555}
+.lampbtn.start{background:#cfe9d6;color:#0c5a2a}.lampbtn.start.on{background:#2fd06a;color:#04210f;box-shadow:0 0 12px #2fd06a}
+.lampbtn.hold{background:#f4dfc4;color:#7a4300}.lampbtn.hold.on{background:#ffb347;box-shadow:0 0 12px #ffb347}
+/* ファナック：TP スイッチ */
+.tpsw{display:flex;align-items:center;gap:4px;padding:4px 8px;min-height:0;border-radius:8px;background:#1f2226;color:#ddd;border:1px solid #000;font-size:10px;font-weight:700}
+.tpsw .sl{width:30px;height:16px;border-radius:8px;background:#555;position:relative}
+.tpsw .sl::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#ddd;transition:left .15s}
+.tpsw.on .sl{background:#2fd06a}.tpsw.on .sl::after{left:16px}
+/* 画面 */
+.pscreen{border-radius:6px;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Noto Sans JP",monospace;font-size:11.5px;margin-bottom:10px;border:3px solid #1a1d21;box-shadow:inset 0 0 0 1px #000}
+.lr{height:18px;line-height:18px;padding:0 6px;white-space:pre;overflow:hidden;cursor:pointer}
+.yscr{background:#f6f8fb;color:#0d1620}
+.ysb{display:flex;gap:2px;background:#1b3d78;padding:3px;flex-wrap:wrap}
+.ysi{background:#2d5aa8;color:#fff;font-size:9.5px;padding:1px 5px;border-radius:3px;font-family:system-ui,sans-serif}
+.ysi.tc{background:#e8a317;color:#111}.ysi.pl{background:#2fa84f}.ysi.sv{background:#2fd06a;color:#04210f}.ysi.rn{background:#ff7a1a}
+.ymain{display:flex;min-height:170px}
+.ymenu{display:flex;flex-direction:column;gap:2px;padding:3px;background:#dde3ec;width:58px;flex:none}
+.ymenu-b{font-size:9.5px;padding:3px 2px;min-height:28px;border-radius:4px;background:#fff;border:1px solid #9fb0c8;color:#1b3d78;font-family:system-ui,sans-serif}
+.ymenu-b.on{background:#1b3d78;color:#fff}
+.ycont{flex:1;min-width:0}
+.ytitle{background:#c9d6ea;padding:2px 6px;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden}
+.yscr .lr.sel{background:#1e6be0;color:#fff}
+.yscr .lr.pcl::before,.fscr .lr.pcl::before{content:"▶";color:#2fd06a;margin-right:2px}
+.ymsg{min-height:22px;padding:3px 6px;background:#e9edf3;border-top:1px solid #9fb0c8;color:#b4350a;font-weight:700;font-size:11px;font-family:system-ui,sans-serif}
+.ymsg.alm,.fmsg.alm{background:#c0392b;color:#fff}
+.fscr{background:#fdfdfd;color:#111}
+.fsb{display:flex;gap:2px;align-items:center;background:#2b2f35;padding:3px;flex-wrap:wrap}
+.flamp{font-size:8.5px;padding:0 4px;border-radius:3px;background:#4a5058;color:#aab;font-family:system-ui,sans-serif}
+.flamp.on{background:#2fd06a;color:#04210f}
+.fst{flex:1 1 100%;color:#fff;font-size:10px;padding:1px 2px;white-space:nowrap;overflow:hidden}
+.ftitle{background:#dfe6ee;padding:2px 6px;font-weight:700;font-size:11px;border-bottom:1px solid #aab}
+.flist{min-height:182px}
+.fscr .lr.sel{background:#f2c200;color:#111}
+.fmsg{min-height:20px;padding:2px 6px;background:#eef1f4;color:#b4350a;font-weight:700;font-size:11px;border-top:1px solid #aab;font-family:system-ui,sans-serif}
+.ffk{display:grid;grid-template-columns:repeat(5,1fr);background:#2b2f35;gap:1px}
+.ffk span{background:#3e444c;color:#fff;font-size:9.5px;text-align:center;padding:3px 0;min-height:18px;cursor:pointer}
+/* キー */
+.pk{min-height:36px;padding:2px 2px;font-size:10.5px;font-weight:700;line-height:1.15;border-radius:7px;touch-action:manipulation}
+.pk small{font-size:9px;font-weight:600;opacity:.8}
+.yp .pk{background:linear-gradient(#fdfdfd,#e2e6ea);color:#14202c;border:1px solid #8a939d;box-shadow:0 2px 0 #9aa2ac}
+.fp .pk{background:linear-gradient(#5a6068,#3a3f45);color:#fff;border:1px solid #111;box-shadow:0 2px 0 #15171a}
+.pk:active,.pk.hold{transform:translateY(1px);box-shadow:none!important;filter:brightness(.85)}
+.pk.on{box-shadow:inset 0 -4px 0 #2bd06b!important}
+.yp .lampk.on{background:linear-gradient(#bfe0ff,#6aa8ef);border-color:#1e6be0}
+.fp .shiftk{background:linear-gradient(#f0c33c,#c99a10);color:#111}
+.fp .shiftk.on{background:linear-gradient(#ffe27a,#f2c200);box-shadow:0 0 10px #f2c200!important}
+.fp .holdk{background:linear-gradient(#e8a24b,#b56d14)}
+.pk.ent{background:linear-gradient(#cfe0ff,#9dbbe8)!important;color:#0d2a55!important}
+.pk.go{background:#1a8f4d!important;color:#fff!important}
+.jk{min-height:40px}
+.yp .jk{background:linear-gradient(#eef1f4,#cfd5db)}
+.fp .jk{background:linear-gradient(#4f6a8a,#334a66)}
+.ykeys{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ycol{display:flex;flex-direction:column;gap:6px}
+.pk2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cross{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.jgrid2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.frow5{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:6px}
+.frow{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:8px}
+.fbody{display:grid;grid-template-columns:1fr 1.2fr;gap:10px}
+.fcol{display:flex;flex-direction:column;gap:6px}
+.enable{display:block;width:100%;margin-top:10px;min-height:32px;font-size:11.5px;font-weight:700;border-radius:10px;border:1px dashed currentColor;background:transparent;color:inherit}
+.enable.on{background:#2fd06a;color:#04210f;border-style:solid;border-color:#1a8f4d}
+.oppanel{display:flex;align-items:center;gap:8px;margin:10px 4px 0;padding:8px 10px;border-radius:10px;background:var(--soft);font-size:12px}
+.oppanel .pk{min-height:34px;padding:4px 12px;font-size:12px}
+.oppanel .note{margin:0}
+/* 3D 画面の上に重ねる */
+.pendfloat{position:absolute;right:10px;top:10px;z-index:3;max-height:calc(100% - 20px);overflow:auto;background:color-mix(in srgb,var(--panel) 70%,transparent);border-radius:14px;padding:0 8px 8px;width:400px;max-width:calc(100% - 20px);box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.pendfloat[hidden]{display:none}
+.pfbar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 2px;cursor:move;font-size:12px;font-weight:700;background:inherit;z-index:1}
+.pfbar button{font-size:11px;min-height:26px;padding:2px 8px}
+.pendfloat .pendtools{display:none}
+
+.pendaway{text-align:center;padding:30px 10px}
+.pendaway[hidden]{display:none}

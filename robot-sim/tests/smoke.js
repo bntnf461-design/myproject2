@@ -176,39 +176,62 @@ P[2]{
   check('床干渉でアラーム', al && al.code === 'ALM 201', al);
   await page.click('#alarmReset');
 
-  // 9. ペンダント（安川）
+  // 9. ペンダント（安川・実機風）
   await tab('pend');
   const pk = async (sel, ms) => hold(sel, ms || 60);
+  const jogKey = '#pend .jgrid2 button[data-jog*="\\"axis\\":0,\\"dir\\":1"]';
   const q0 = await ev(() => RSIM.state.q[0]);
-  await pk('#pend .jgrid button[data-jog*="\\"axis\\":0,\\"dir\\":1"]', 400);
-  check('サーボOFFではジョグ不可', (await ev(() => RSIM.state.q[0])) === q0 && (await page.textContent('#lcd')).includes('サーボ'));
-  await page.click('#pend [data-act="servo"]');
-  await pk('#pend .jgrid button[data-jog*="\\"axis\\":0,\\"dir\\":1"]', 500);
-  check('サーボONでジョグ', (await ev(() => RSIM.state.q[0])) > q0 + 0.5);
+  await pk(jogKey, 400);
+  check('レディ前はジョグ不可', (await ev(() => RSIM.state.q[0])) === q0 && (await page.textContent('#lcd')).includes('サーボオン'));
+  await page.click('#pend [data-act="ready"]');
+  await pk(jogKey, 300);
+  check('イネーブルなしではジョグ不可', (await ev(() => RSIM.state.q[0])) === q0 && (await page.textContent('#lcd')).includes('イネーブル'));
+  await page.click('#pend [data-act="enable"]');
+  await pk(jogKey, 500);
+  check('レディ＋イネーブルでジョグ', (await ev(() => RSIM.state.q[0])) > q0 + 0.5);
   const n0 = await ev(() => RSIM.prog.lines.length);
   await page.click('#pend [data-act="ins"]');
   check('挿入で1行増える', (await ev(() => RSIM.prog.lines.length)) === n0 + 1);
+  await ev(() => { document.querySelector('#code li[data-i="0"]').click(); });
+  await pk('#pend [data-hold="test"]', 700);
+  const tr = await ev(() => ({ run: !!RSIM.run, sel: RSIM.state }));
+  check('試運転は離すと止まる', !tr.run, tr);
   await page.click('#pend [data-act="mode"]');
-  if (!(await ev(() => document.querySelector('#pend [data-act="servo"]').classList.contains('on')))) await page.click('#pend [data-act="servo"]');
+  check('モードキー PLAY', (await page.textContent('#lcd')).includes('PLAY'));
   await ev(() => { document.querySelector('#code li[data-i="0"]').click(); });
   await page.click('#pend [data-act="run"]');
-  check('ペンダントでスタート', !!(await ev(() => RSIM.run)));
+  check('START で自動運転', !!(await ev(() => RSIM.run)));
   await page.click('#pend [data-act="hold"]');
-  check('ホールドで一時停止', (await ev(() => RSIM.run && RSIM.run.paused)) === true);
+  check('HOLD で一時停止', (await ev(() => RSIM.run && RSIM.run.paused)) === true);
   await click('#stopBtn');
   if (shots) await page.screenshot({ path: shots + '/05-pendant-yaskawa.png' });
 
-  // 10. ペンダント（ファナック）
+  // 10. ペンダント（ファナック・実機風）
   await ev(() => RSIM.switchSystem('fanuc'));
   await tab('jog'); await tab('pend');
   const f0 = await ev(() => RSIM.state.q[0]);
   for (const a of ['tp', 'dead']) await page.click(`#pend [data-act="${a}"]`);
-  await pk('#pend .jgrid button[data-jog*="\\"axis\\":0,\\"dir\\":1"]', 300);
+  await pk(jogKey, 300);
   check('SHIFTなしでは動かない', (await ev(() => RSIM.state.q[0])) === f0);
-  await page.click('#pend [data-act="shift"]');
-  await pk('#pend .jgrid button[data-jog*="\\"axis\\":0,\\"dir\\":1"]', 500);
+  await page.click('#pend [data-act="shift"] >> nth=0');
+  await pk(jogKey, 500);
   check('TP+DEADMAN+SHIFTでジョグ', (await ev(() => RSIM.state.q[0])) > f0 + 0.5);
+  const nf = await ev(() => RSIM.prog.lines.length);
+  await page.click('#pend [data-act="f1"] >> nth=0');
+  check('F1 POINT', (await ev(() => RSIM.prog.lines.length)) === nf + 1);
+  await ev(() => { document.querySelector('#code li[data-i="0"]').click(); });
+  await pk('#pend [data-hold="fwdF"]', 200);
+  await waitIdle(20000);
+  check('STEP 中の SHIFT+FWD は1行', (await ev(() => RSIM.run)) === null);
+  await page.click('#pend [data-act="tp"]');
+  await page.click('#pend [data-act="cycle"]');
+  check('TP OFF で CYCLE START', !!(await ev(() => RSIM.run)));
+  await click('#stopBtn');
+  await page.click('#pend #pendPop');
+  check('3D画面の上に表示', await ev(() => !document.querySelector('#pendFloat').hidden && !!document.querySelector('#pendFloat #lcd')));
   if (shots) await page.screenshot({ path: shots + '/06-pendant-fanuc.png' });
+  await page.click('#pendDock');
+  check('パネルに戻す', await ev(() => document.querySelector('#pendFloat').hidden && !!document.querySelector('#t-pend #lcd')));
 
   // 11. 書き出し → 読み込み
   const io = await ev(() => {

@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.0';
+  const VERSION = '3.1';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -431,7 +431,7 @@
     S.estop = !S.estop;
     $('#estopBtn').classList.toggle('on', S.estop);
     $('#estopBtn').textContent = S.estop ? '非常停止 解除' : '非常停止';
-    if (S.estop) { pend.servo = false; raiseAlarm('estop'); } else refreshState();
+    if (S.estop) { pend.ready = false; pend.enable = false; raiseAlarm('estop'); } else refreshState();
     renderPend();
   });
 
@@ -686,7 +686,7 @@
     lastPcKey = key;
     if (it.progName !== prog().name && lib.progs[it.progName]) { lib.cur = it.progName; renderProgSelect(); renderCode(); }
     if (it.progName === prog().name) { sel = it.pc; markPc(); }
-    if (!$('#t-pend').hidden) updateLcd();
+    if (pendVisible()) updateLcd();
   }
 
   /* サンプルプログラム（供給台 → 排出台、3回繰り返し） */
@@ -877,7 +877,7 @@
     lib = loadLib(); sel = prog().lines.length ? 0 : -1; undoStack = [];
     vars = store.get(varKey(), { num: {}, pos: {} }); if (!vars || !vars.num) vars = { num: {}, pos: {} };
     uframes = store.get(ufKey(), {});
-    Object.assign(pend, { servo: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '' });
+    resetPend();
     buildRobot(); applyPose(); updateToolVis();
     renderAll();
   }
@@ -1629,159 +1629,292 @@
   }
   new ResizeObserver(resize).observe(stage);
 
-  /* =================== ティーチングペンダント =================== */
-  const pend = { servo: false, mode: 'teach', coord: 'joint', sp: 1, ovrI: 3, tp: false, dead: false, shift: false, view: 'prog', ins: 'J', msg: '' };
-  const YSP = [['微速', 3], ['低速', 12], ['中速', 35], ['高速', 70]];
+  /* =================== ティーチングペンダント（実機風） ===================
+   * 安川：モード切替キー（REMOTE/PLAY/TEACH）、非常停止、START/HOLD、サーボオンレディ＋イネーブルスイッチ、
+   *       手動速度、補間、試運転（押している間）、前進／後退、挿入／削除／修正。
+   * ファナック：TP 有効/無効スイッチ、非常停止、デッドマン、SHIFT、F1〜F5、STEP、HOLD、FWD/BWD（SHIFT と押している間）、
+   *       COORD、±%、POSN、I/O、RESET。自動運転は操作盤の CYCLE START（TP 無効時）。
+   * 実機の画面・キー配列を簡略化した再現で、メーカーのロゴは使っていない。 */
+  const pend = { ready: false, enable: false, mode: 'teach', coord: 'joint', sp: 1, ovrI: 3, tp: false, dead: false, shift: false, step: true, view: 'prog', ins: 'J', msg: '', float: false };
+  const isY = () => S.sys === 'yaskawa';
+  const servoOn = () => isY() ? (pend.ready && (pend.mode === 'teach' ? pend.enable : true)) : (pend.tp ? pend.dead : true);
+  const YSP = [['微動', 3], ['低速', 12], ['中速', 35], ['高速', 70]];
   const FOV = [1, 5, 10, 25, 50, 75, 100];
   const pendEl = $('#pend');
   let lcdCache = '', lcdT = 0;
-  const isY = () => S.sys === 'yaskawa';
   const COORDS = ['joint', 'base', 'tool'];
-  function pendAxisLabels() { return pend.coord === 'joint' ? robot.axes : robot.cart; }
+  const pendVisible = () => pend.float || !$('#t-pend').hidden;
+  function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog' }); }
   function pendJogSpec() { return { spd: (isY() ? YSP[pend.sp][1] : FOV[pend.ovrI]) / 100, frame: pend.coord === 'tool' ? 'tool' : 'base', check: jogBlock }; }
   function jogBlock() {
     if (isY()) {
-      if (!pend.servo) return 'サーボ電源が入っていません';
-      if (pend.mode !== 'teach') return '教示モードにしてください';
+      if (pend.mode !== 'teach') return 'モードを TEACH（教示）にしてください';
+      if (!pend.ready) return '「サーボオン レディ」を押してください';
+      if (!pend.enable) return 'イネーブルスイッチを握ってください';
     } else {
-      if (!pend.tp) return 'TPが無効です。TP ONにしてください';
+      if (!pend.tp) return 'TP が無効です。TP 有効/無効スイッチを ON にしてください';
       if (!pend.dead) return 'デッドマンスイッチを握ってください';
-      if (!pend.shift) return 'SHIFTを押しながら操作してください';
+      if (!pend.shift) return 'SHIFT を押しながら操作してください';
     }
     return '';
   }
   function editBlock() {
-    if (isY()) return pend.mode !== 'teach' ? '教示モードにしてください' : '';
-    return pend.tp ? '' : 'TPが無効です。TP ONにしてください';
+    if (isY()) return pend.mode !== 'teach' ? 'モードを TEACH（教示）にしてください' : '';
+    return pend.tp ? '' : 'TP が無効です。TP 有効/無効スイッチを ON にしてください';
   }
   function runBlock() {
     if (S.alarm) return 'アラームをリセットしてください';
     if (!prog().lines.length) return 'プログラムがありません';
     if (isY()) {
-      if (!pend.servo) return 'サーボ電源が入っていません';
-      if (pend.mode !== 'play') return '再生モードにしてください';
-    } else if (pend.tp) return 'TPが有効です。TP OFFにしてください';
+      if (pend.mode !== 'play') return 'モードを PLAY（再生）にしてください';
+      if (!pend.ready) return '「サーボオン レディ」を押してください';
+    } else if (pend.tp) return 'TP が有効です。TP を無効にしてから CYCLE START を押してください';
     return '';
   }
-  function lcdHTML() {
-    const Y = isY(), P = prog();
-    let title = '', rows = [], selRow = -1, right = '';
-    if (pend.view === 'prog') {
+  /* 画面の行 */
+  function screenRows() {
+    const Y = isY(), P = prog(), rows = [];
+    let selRow = -1, title = '';
+    const v = pend.view;
+    if (v === 'prog') {
       if (Y) {
-        title = 'ジョブ内容　' + P.name; right = 'S:' + String(Math.max(0, sel) + 1).padStart(4, '0');
-        rows.push('0000 NOP');
-        P.lines.forEach((l, k) => { rows.push(`${String(k + 1).padStart(4, '0')} ${l}`); if (k === sel) selRow = rows.length - 1; });
-        rows.push(`${String(P.lines.length + 1).padStart(4, '0')} END`);
+        title = `ジョブ内容　J:${P.name}　S:${String(Math.max(0, sel) + 1).padStart(4, '0')}`;
+        rows.push({ t: '0000 NOP' });
+        P.lines.forEach((l, k) => { rows.push({ t: `${String(k + 1).padStart(4, '0')} ${l}`, i: k, pc: run && run.interp.progName === P.name && run.interp.pc === k }); if (k === sel) selRow = rows.length - 1; });
+        rows.push({ t: `${String(P.lines.length + 1).padStart(4, '0')} END` });
       } else {
-        title = P.name; right = `${Math.max(0, sel) + 1}/${P.lines.length + 1}`;
-        P.lines.forEach((l, k) => { rows.push(`${String(k + 1).padStart(3, ' ')}: ${l} ;`); if (k === sel) selRow = rows.length - 1; });
-        rows.push('[End]');
+        title = `${P.name}　　　　　　LINE ${Math.max(0, sel) + 1}`;
+        P.lines.forEach((l, k) => { rows.push({ t: `${String(k + 1).padStart(4, ' ')}:  ${l} ;`, i: k, pc: run && run.interp.progName === P.name && run.interp.pc === k }); if (k === sel) selRow = rows.length - 1; });
+        rows.push({ t: '[End]' });
       }
-    } else {
+    } else if (v === 'pos') {
       const Pz = curPose(), j = pend.coord === 'joint', cl = robot.cart;
-      if (Y) {
-        title = '現在位置　' + (j ? '関節' : 'ロボット');
-        rows = j ? S.q.map((v, i) => `${robot.axes[i]}  : ${v.toFixed(3).padStart(9)} °`) :
-          [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].map((v, i) => `${cl[i].padEnd(3)}: ${v.toFixed(i < 3 ? 3 : 4).padStart(10)} ${i < 3 ? 'mm' : '°'}`);
-      } else {
-        title = 'POSITION　' + (j ? 'JOINT' : 'WORLD');
-        rows = j ? S.q.map((v, i) => `J${i + 1}: ${v.toFixed(3).padStart(9)} deg`) :
-          [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].map((v, i) => `${cl[i]}: ${v.toFixed(3).padStart(9)} ${i < 3 ? 'mm' : 'deg'}`);
-      }
+      title = Y ? '現在値　' + (j ? '関節' : robot.coordNames[pend.coord]) : 'POSITION　' + (j ? 'JOINT' : robot.coordNames[pend.coord]);
+      if (j) S.q.forEach((x, i) => rows.push({ t: Y ? `${robot.axes[i]}  ${x.toFixed(3).padStart(10)} °` : `J${i + 1}  ${x.toFixed(3).padStart(10)} deg` }));
+      else [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].forEach((x, i) => rows.push({ t: `${cl[i].padEnd(3)} ${x.toFixed(3).padStart(10)} ${i < 3 ? 'mm' : (Y ? '°' : 'deg')}` }));
+      if (!Y) rows.push({ t: `CONFIG: ${RS.configOf(S.q)}` });
+    } else if (v === 'io') {
+      const m = io();
+      title = Y ? '入出力　汎用入出力' : 'I/O　Robot / Digital';
+      for (const [k, c] of m.outs) for (let n = 1; n <= Math.min(c, 4); n++) rows.push({ t: `${m.fmt(k, n).padEnd(7)} ${getOut(k, n) ? '●' : '○'} ${getOut(k, n) ? 'ON ' : 'OFF'}  ${m.outName[k + n] || ''}` });
+      for (const [k, c] of m.ins) for (let n = 1; n <= Math.min(c, 4); n++) rows.push({ t: `${m.fmt(k, n).padEnd(7)} ${getIn(k, n) ? '●' : '○'} ${getIn(k, n) ? 'ON ' : 'OFF'}  ${m.auto[k + n] || ''}` });
+    } else if (v === 'var') {
+      title = Y ? '変数' : 'DATA　Registers';
+      const { nums } = usedVars();
+      if (!nums.length) rows.push({ t: Y ? '（使用中の変数なし）' : '(no registers used)' });
+      nums.forEach(k => rows.push({ t: `${varLabel(k).padEnd(7)} = ${vars.num[k] || 0}` }));
     }
-    const N = 7;
-    const st = clamp((selRow >= 0 ? selRow : 0) - 3, 0, Math.max(0, rows.length - N));
-    let vis = '';
+    return { rows, selRow, title };
+  }
+  function lcdHTML() {
+    const Y = isY();
+    const { rows, selRow, title } = screenRows();
+    const N = Y ? 9 : 10;
+    const st = clamp((selRow >= 0 ? selRow : 0) - 4, 0, Math.max(0, rows.length - N));
+    let list = '';
     for (let i = 0; i < N; i++) {
-      const t = rows[st + i];
-      vis += t === undefined ? '<div class="lr"></div>' : `<div class="lr${st + i === selRow ? ' sel' : ''}">${esc(t)}</div>`;
+      const r = rows[st + i];
+      list += r === undefined ? '<div class="lr"></div>' : `<div class="lr${st + i === selRow ? ' sel' : ''}${r.pc ? ' pcl' : ''}"${r.i != null ? ` data-row="${r.i}"` : ''}>${esc(r.t)}</div>`;
     }
+    const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (run.interp.status() || (Y ? '再生中' : '')) : ''));
     const cn = robot.coordNames[pend.coord];
-    const foot = Y
-      ? `${pend.servo ? '●サーボON' : '○サーボOFF'} ${pend.mode === 'teach' ? '教示' : '再生'} ${YSP[pend.sp][0]} ${cn} 挿入:MOV${pend.ins}`
-      : `${cn} ${FOV[pend.ovrI]}% TP ${pend.tp ? 'ON' : 'OFF'}${pend.dead ? ' DMS' : ''}${pend.shift ? ' SHIFT' : ''} ${pend.ins}`;
-    const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (run.interp.status() || (Y ? '再生中' : 'RUNNING')) : ''));
-    return `<div class="t"><span>${esc(title)}</span><span>${esc(right)}</span></div><div class="b">${vis}</div><div class="f">${esc(foot)}</div><div class="m">${esc(msg)}</div>`;
+    if (Y) {
+      const menu = [['prog', 'ジョブ'], ['pos', 'ロボット'], ['io', '入出力'], ['var', '変数']].map(([k, n]) => `<button class="ymenu-b${pend.view === k ? ' on' : ''}" data-view="${k}">${n}</button>`).join('');
+      const icon = (txt, cls) => `<span class="ysi${cls ? ' ' + cls : ''}">${esc(txt)}</span>`;
+      return `<div class="ysb">${icon(cn)}${icon(YSP[pend.sp][0])}${icon({ teach: 'TEACH', play: 'PLAY', remote: 'REMOTE' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl')}${icon(servoOn() ? 'サーボON' : (pend.ready ? 'レディ' : 'サーボOFF'), servoOn() ? 'sv' : '')}${icon(run ? (run.paused ? 'ホールド' : '運転中') : '停止', run && !run.paused ? 'rn' : '')}${icon('挿入 MOV' + pend.ins)}</div>` +
+        `<div class="ymain"><div class="ymenu">${menu}</div><div class="ycont"><div class="ytitle">${esc(title)}</div><div class="ylist">${list}</div></div></div>` +
+        `<div class="ymsg${S.alarm ? ' alm' : ''}">${esc(msg)}</div>`;
+    }
+    const lamp = (n, on) => `<span class="flamp${on ? ' on' : ''}">${n}</span>`;
+    const status = run ? (run.paused ? 'PAUSED' : 'RUNNING') : 'ABORTED';
+    const fk = pend.view === 'prog' ? ['POINT', pend.ins === 'J' ? '[J]/L' : 'J/[L]', 'DELETE', `RO[${io().handOut.n}]`, 'TOUCHUP']
+      : pend.view === 'pos' ? ['', 'JNT', 'WORLD', 'TOOL', ''] : ['', '', '', '', ''];
+    return `<div class="fsb">${lamp('Busy', !!mv || (run && !run.paused))}${lamp('Step', pend.step)}${lamp('Hold', run && run.paused)}${lamp('Fault', !!S.alarm)}${lamp('Run', run && !run.paused)}${lamp('TP', pend.tp)}` +
+      `<span class="fst">${esc(prog().name)} LINE ${Math.max(0, sel) + 1}　${pend.tp ? 'T1' : 'AUTO'}　${status}　${cn} ${FOV[pend.ovrI]}%</span></div>` +
+      `<div class="ftitle">${esc(title)}</div><div class="flist">${list}</div><div class="fmsg${S.alarm ? ' alm' : ''}">${esc(msg)}</div>` +
+      `<div class="ffk">${fk.map((t, i) => `<span data-act="f${i + 1}">${esc(t)}</span>`).join('')}</div>`;
   }
   function updateLcd() {
     const el = $('#lcd'); if (!el) return;
     const h = lcdHTML();
     if (h !== lcdCache) { lcdCache = h; el.innerHTML = h; }
   }
-  function renderPend() {
-    if ($('#t-pend').hidden && pendEl.innerHTML) { lcdCache = ''; return; }
-    const Y = isY(), ax = pendAxisLabels();
-    let jr = '';
+  function jogKeys(Y) {
+    const lj = robot.axes, lc = robot.cart;
+    const kind = pend.coord === 'joint' ? 'j' : 'c';
+    let h = '';
     for (let i = 0; i < 6; i++) {
-      const spec = `{"kind":"${pend.coord === 'joint' ? 'j' : 'c'}","axis":${i},"dir":DIR,"pendant":true}`;
-      jr += `<button class="pk" data-jog='${spec.replace('DIR', -1)}'>−</button><span class="ax">${ax[i]}</span><button class="pk" data-jog='${spec.replace('DIR', 1)}'>＋</button>`;
+      const spec = d => `{"kind":"${kind}","axis":${i},"dir":${d},"pendant":true}`;
+      const lab = d => Y ? `${lc[i]}${d}<br><small>${lj[i]}${d}</small>` : `${d}${lc[i]}<br><small>(${lj[i]})</small>`;
+      h += `<button class="pk jk" data-jog='${spec(-1)}'>${lab('−')}</button><button class="pk jk" data-jog='${spec(1)}'>${lab('＋')}</button>`;
     }
-    const on = b => (b ? ' on' : '');
-    const cn = robot.coordNames[pend.coord];
-    const ho = handOn();
-    const modeKeys = Y
-      ? `<button class="pk${on(pend.servo)}" data-act="servo">サーボ<br>${pend.servo ? 'ON' : 'OFF'}</button><button class="pk" data-act="mode">モード<br>${pend.mode === 'teach' ? '教示' : '再生'}</button><button class="pk" data-act="coord">座標<br>${cn}</button><button class="pk" data-act="speed">手動速度<br>${YSP[pend.sp][0]}</button>`
-      : `<button class="pk${on(pend.tp)}" data-act="tp">TP<br>${pend.tp ? 'ON' : 'OFF'}</button><button class="pk${on(pend.dead)}" data-act="dead">DEAD<br>MAN</button><button class="pk${on(pend.shift)}" data-act="shift">SHIFT</button><button class="pk" data-act="coord">COORD<br>${cn}</button><button class="pk" data-act="ovr-">−%</button><button class="pk" data-act="ovr+">＋%</button><button class="pk" data-act="ins-type">${pend.ins}<br>補間</button><button class="pk" data-act="view">DISP</button>`;
-    const yExtra = Y ? `<button class="pk" data-act="ins-type">補間<br>MOV${pend.ins}</button><button class="pk" data-act="view">画面<br>切替</button><button class="pk" data-act="grip">ハンド<br>${ho ? 'ON' : 'OFF'}</button><button class="pk" data-act="reset">リセット</button>` : '';
-    const editKeys = Y
-      ? `<button class="pk" data-act="ins">挿入</button><button class="pk" data-act="upd">修正</button><button class="pk" data-act="del">削除</button><button class="pk" data-act="enter">エンター</button><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button><button class="pk" data-act="bwd">後退</button><button class="pk" data-act="fwd">前進</button>`
-      : `<button class="pk" data-act="ins">POINT</button><button class="pk" data-act="upd">TOUCH<br>UP</button><button class="pk" data-act="del">DELETE</button><button class="pk" data-act="grip">RO[1]<br>${ho ? 'ON' : 'OFF'}</button><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button><button class="pk" data-act="bwd">BWD</button><button class="pk" data-act="fwd">FWD</button>`;
-    const runKeys = Y
-      ? '<button class="pk go" data-act="run">スタート</button><button class="pk stop" data-act="hold">ホールド</button><button class="pk" data-act="estop">非常停止</button>'
-      : '<button class="pk go" data-act="run">CYCLE<br>START</button><button class="pk stop" data-act="hold">HOLD</button><button class="pk" data-act="reset">RESET</button>';
+    return h;
+  }
+  function renderPend() {
+    if (!pendVisible() && pendEl.innerHTML) { lcdCache = ''; return; }
+    const Y = isY(), ho = handOn(), on = b => (b ? ' on' : '');
+    let html;
+    if (Y) {
+      const ang = { remote: -45, play: 0, teach: 45 }[pend.mode];
+      html = `<div class="pendant yp">
+        <div class="ptop">
+          <button class="keysw" data-act="mode" title="モード切替キー（REMOTE / PLAY / TEACH）"><span class="kl">REMOTE</span><span class="kl">PLAY</span><span class="kl">TEACH</span><span class="knob" style="transform:rotate(${ang}deg)"></span></button>
+          <button class="lampbtn start${on(run && !run.paused)}" data-act="run">START</button>
+          <button class="lampbtn hold${on(run && run.paused)}" data-act="hold">HOLD</button>
+          <button class="estopbtn${on(S.estop)}" data-act="estop" title="非常停止"><span>非常<br>停止</span></button>
+        </div>
+        <div class="pscreen yscr" id="lcd"></div>
+        <div class="ykeys">
+          <div class="ycol">
+            <button class="pk" data-act="coord">座標</button>
+            <button class="pk lampk${on(pend.ready)}" data-act="ready">サーボオン<br>レディ</button>
+            <div class="pk2"><button class="pk" data-act="speed+">手動速度<br>高</button><button class="pk" data-act="speed-">手動速度<br>低</button></div>
+            <div class="jgrid2">${jogKeys(true)}</div>
+          </div>
+          <div class="ycol">
+            <div class="pk2"><button class="pk" data-act="ins-type">補間<br>MOV${pend.ins}</button><button class="pk" data-hold="test">試運転</button></div>
+            <div class="pk2"><button class="pk" data-act="bwd">後退</button><button class="pk" data-hold="fwdY">前進</button></div>
+            <div class="pk2"><button class="pk" data-act="ins">挿入</button><button class="pk" data-act="del">削除</button></div>
+            <div class="pk2"><button class="pk" data-act="upd">修正</button><button class="pk ent" data-act="enter">エンター</button></div>
+            <div class="cross"><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button></div>
+            <div class="pk2"><button class="pk" data-act="reset">取消<br>リセット</button><button class="pk${on(ho)}" data-act="grip">ハンド<br>${io().fmt(io().handOut.kind, io().handOut.n)}</button></div>
+          </div>
+        </div>
+        <button class="enable${on(pend.enable)}" data-act="enable" title="裏面のイネーブルスイッチ（3ポジション）">イネーブルスイッチ：${pend.enable ? '握っている' : '離している'}</button>
+      </div>`;
+    } else {
+      html = `<div class="pendant fp">
+        <div class="ptop">
+          <button class="tpsw${on(pend.tp)}" data-act="tp" title="TP 有効/無効スイッチ"><span>OFF</span><span class="sl"></span><span>ON</span></button>
+          <span class="ptag">Teach Pendant</span>
+          <button class="estopbtn${on(S.estop)}" data-act="estop" title="非常停止"><span>EMG<br>STOP</span></button>
+        </div>
+        <div class="pscreen fscr" id="lcd"></div>
+        <div class="frow5">${[1, 2, 3, 4, 5].map(i => `<button class="pk fkey" data-act="f${i}">F${i}</button>`).join('')}</div>
+        <div class="frow">
+          <button class="pk${on(pend.shift)} shiftk" data-act="shift">SHIFT</button>
+          <button class="pk" data-act="view-prog">EDIT</button><button class="pk" data-act="view-var">DATA</button>
+          <button class="pk" data-act="view-pos">POSN</button><button class="pk" data-act="view-io">I/O</button>
+          <button class="pk${on(pend.shift)} shiftk" data-act="shift">SHIFT</button>
+        </div>
+        <div class="fbody">
+          <div class="fcol">
+            <button class="pk" data-act="reset">RESET</button>
+            <div class="cross"><button class="pk" data-act="up">↑</button><button class="pk" data-act="down">↓</button></div>
+            <button class="pk ent" data-act="enter">ENTER</button>
+            <button class="pk${on(pend.step)}" data-act="step">STEP</button>
+            <button class="pk holdk" data-act="hold">HOLD</button>
+            <div class="pk2"><button class="pk" data-hold="fwdF">FWD</button><button class="pk" data-act="bwd">BWD</button></div>
+            <button class="pk" data-act="coord">COORD<br><small>${robot.coordNames[pend.coord]}</small></button>
+            <div class="pk2"><button class="pk" data-act="ovr-">−%</button><button class="pk" data-act="ovr+">+%</button></div>
+          </div>
+          <div class="jgrid2">${jogKeys(false)}</div>
+        </div>
+        <button class="enable${on(pend.dead)}" data-act="dead" title="裏面のデッドマンスイッチ">デッドマンスイッチ：${pend.dead ? '握っている' : '離している'}</button>
+      </div>
+      <div class="oppanel"><span>操作盤</span><button class="pk go" data-act="cycle">CYCLE START</button><span class="note">TP 無効で自動運転</span></div>`;
+    }
+    const tools = `<div class="row pendtools"><button id="pendPop">${pend.float ? 'パネルに戻す' : '3D画面の上に出す'}</button><button id="pendBig">${pendEl.classList.contains('big') ? '標準の大きさ' : '大きく表示'}</button></div>`;
     const how = Y
-      ? '手順：サーボON → 教示モード → 軸キーを押し続けるとジョグ。「挿入」で現在位置を選択行の下に追加（補間キーで MOVJ／MOVL 切替）。「前進」で選択行を1行ずつ実行。自動運転は「再生」モード＋サーボONで「スタート」。'
-      : '手順：TP ON → DEADMAN と SHIFT を有効 → 軸キーを押し続けるとジョグ。POINT で現在位置を追加（J/L 補間キーで切替）、SHIFT＋FWD で1行ずつ実行。自動運転は TP OFF で CYCLE START。';
-    pendEl.innerHTML = `<div class="pend ${Y ? 'yas' : 'fan'}"><div class="pbrand"><span>${robot.brand}</span><span>${Y ? 'プログラミングペンダント' : 'iPendant'}</span></div><div class="lcd" id="lcd"></div>` +
-      `<div class="pgrid">${modeKeys}${yExtra}</div><div class="jgrid">${jr}</div><div class="pgrid">${editKeys}</div><div class="pgrid g3">${runKeys}</div></div>` +
-      `<p class="note">${how}</p><p class="note">実機の画面・キー配列を簡略化した再現です。</p>`;
+      ? '操作：TEACH でキーを回す → 「サーボオン レディ」 → イネーブルスイッチを握る → 軸キーを押し続けるとジョグ。「挿入」で現在位置を選択行の下に追加。「前進」で1行ずつ、「試運転」は押している間だけ連続で動きます。自動運転は PLAY に回して「サーボオン レディ」→ START。'
+      : '操作：TP を ON → デッドマンを握る → SHIFT を押しながら軸キーでジョグ。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD で実行（STEP 点灯中は1行ずつ、消灯中は押している間だけ連続）。自動運転は TP を OFF にして操作盤の CYCLE START。';
+    pendEl.innerHTML = tools + html + `<p class="note">${how}</p><p class="note">実機の画面・キー配列を簡略化した再現です（メニュー階層・数値キーなどは省略）。マウスで操作しやすいよう、SHIFT とイネーブル／デッドマンは押すたびに ON/OFF が切り替わります。</p>`;
     lcdCache = ''; updateLcd();
   }
   bindHold(pendEl);
+  /* 押している間だけ動くキー（試運転・FWD） */
+  let heldRun = null;
+  pendEl.addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-hold]'); if (!b) return;
+    e.preventDefault();
+    try { b.setPointerCapture(e.pointerId); } catch (x) { /* 無視 */ }
+    const k = b.dataset.hold;
+    const why = jogBlock() || (prog().lines.length ? '' : 'プログラムがありません');
+    if (why) { pend.msg = why; updateLcd(); return; }
+    if (run || mv) return;
+    const single = k === 'fwdY' || (k === 'fwdF' && pend.step);
+    pend.msg = '';
+    if (startRun(Math.max(0, sel), single)) { b.classList.add('hold'); if (!single) heldRun = run; }
+    updateLcd();
+  });
+  const releaseHeld = () => {
+    $$('#pend [data-hold].hold').forEach(x => x.classList.remove('hold'));
+    if (heldRun && run === heldRun) { stopAll(); pend.msg = isY() ? '試運転を止めました' : 'キーを離したため停止'; updateLcd(); }
+    heldRun = null;
+  };
+  pendEl.addEventListener('pointerup', e => { if (e.target.closest('[data-hold]')) releaseHeld(); });
+  pendEl.addEventListener('pointercancel', releaseHeld);
+  pendEl.addEventListener('lostpointercapture', e => { if (e.target.closest && e.target.closest('[data-hold]')) releaseHeld(); });
+  function touchUp() {
+    const ins = RS.parseLine(S.sys, prog().lines[sel] || '');
+    if (ins.op !== 'MOVE' || !/^(C\d{5}|P\[\d+\])$/.test(ins.ref)) { pend.msg = '移動命令の行を選んでください'; return; }
+    const old = prog().pos[ins.ref];
+    edit(() => {
+      if (old && old.k === 'c') { const p = poseInUf(tcpMatrix(), old.uf || 0); for (const k in p) p[k] = r3(p[k]); prog().pos[ins.ref] = { k: 'c', p, cfg: RS.configOf(S.q), uf: old.uf || 0, ut: old.ut == null ? 1 : old.ut, q: curQ() }; }
+      else prog().pos[ins.ref] = (old && old.k === 'j') ? { k: 'j', q: curQ() } : teachPos();
+    });
+    pend.msg = isY() ? `${ins.ref} を修正しました` : `${ins.ref} TOUCHUP 完了`;
+  }
   function pendAct(a) {
     const P = pend;
     switch (a) {
-      case 'servo':
-        if (!P.servo && S.estop) { P.msg = '非常停止中はサーボONできません'; break; }
-        if (!P.servo && S.alarm) { P.msg = 'アラームをリセットしてください'; break; }
-        P.servo = !P.servo; if (!P.servo) stopAll(); P.msg = P.servo ? '' : 'サーボ電源を切りました'; break;
-      case 'mode': stopAll(); P.mode = P.mode === 'teach' ? 'play' : 'teach'; P.msg = ''; break;
-      case 'speed': P.sp = (P.sp + 1) % YSP.length; break;
+      case 'mode':
+        stopAll(); P.mode = { teach: 'play', play: 'remote', remote: 'teach' }[P.mode];
+        P.enable = false; P.msg = P.mode === 'remote' ? 'REMOTE：外部からの起動待ち（シミュレーターでは使いません）' : ''; break;
+      case 'ready':
+        if (S.estop) { P.msg = '非常停止を解除してください'; break; }
+        if (S.alarm) { P.msg = 'アラームをリセットしてください'; break; }
+        P.ready = !P.ready; if (!P.ready) stopAll();
+        P.msg = P.ready ? (P.mode === 'teach' ? 'イネーブルスイッチを握るとサーボが入ります' : '') : 'サーボ電源を切りました'; break;
+      case 'enable':
+        P.enable = !P.enable;
+        if (!P.enable) { endJog(); if (run && P.mode === 'teach') stopAll(); }
+        P.msg = ''; break;
+      case 'speed+': P.sp = Math.min(YSP.length - 1, P.sp + 1); break;
+      case 'speed-': P.sp = Math.max(0, P.sp - 1); break;
       case 'tp': stopAll(); P.tp = !P.tp; P.msg = ''; break;
       case 'dead': P.dead = !P.dead; if (!P.dead) { endJog(); if (run && P.tp) stopAll(); } P.msg = ''; break;
       case 'shift': P.shift = !P.shift; break;
+      case 'step': P.step = !P.step; break;
       case 'ovr+': P.ovrI = Math.min(FOV.length - 1, P.ovrI + 1); break;
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
       case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; break;
-      case 'view': P.view = P.view === 'prog' ? 'pos' : 'prog'; break;
+      case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); break;
       case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
-      case 'up': sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); break;
-      case 'down': sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); break;
-      case 'enter': P.view = 'prog'; break;
-      case 'grip': {
-        const why = isY() ? (P.mode !== 'teach' ? '教示モードにしてください' : '') : (P.tp && !P.shift ? 'SHIFTを押しながら操作してください' : '');
+      case 'up': if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
+      case 'down': if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
+      case 'enter': P.view = 'prog'; P.msg = ''; break;
+      case 'grip': case 'f4': {
+        if (a === 'f4' && P.view !== 'prog') break;
+        const why = isY() ? (P.mode !== 'teach' ? 'モードを TEACH にしてください' : '') : (!P.tp ? 'TP を ON にしてください' : (!P.shift ? 'SHIFT を押しながら操作してください' : ''));
         if (why) { P.msg = why; break; }
-        const h = io().handOut; setOut(h.kind, h.n, !handOn()); P.msg = ''; break;
+        const h = io().handOut; setOut(h.kind, h.n, !handOn()); P.msg = `${io().fmt(h.kind, h.n)}=${handOn() ? 'ON' : 'OFF'}`; break;
       }
-      case 'ins': { const why = editBlock(); if (why) { P.msg = why; break; } insertMove(P.ins); P.msg = ''; break; }
-      case 'upd': {
+      case 'ins': case 'f1': {
+        if (a === 'f1' && P.view !== 'prog') break;
         const why = editBlock(); if (why) { P.msg = why; break; }
-        const ins = RS.parseLine(S.sys, prog().lines[sel] || '');
-        if (ins.op !== 'MOVE' || !/^(C\d{5}|P\[\d+\])$/.test(ins.ref)) { P.msg = '移動命令の行を選んでください'; break; }
-        const old = prog().pos[ins.ref];
-        edit(() => {
-          if (old && old.k === 'c') { const p = poseInUf(tcpMatrix(), old.uf || 0); for (const k in p) p[k] = r3(p[k]); prog().pos[ins.ref] = { k: 'c', p, cfg: RS.configOf(S.q), uf: old.uf || 0, ut: old.ut == null ? 1 : old.ut, q: curQ() }; }
-          else prog().pos[ins.ref] = (old && old.k === 'j') ? { k: 'j', q: curQ() } : teachPos();
-        });
-        P.msg = isY() ? '位置を修正しました' : 'TOUCHUP 完了'; break;
+        insertMove(P.ins); P.msg = isY() ? '現在位置を挿入しました' : 'POINT：位置を記録しました'; break;
       }
-      case 'del': { const why = editBlock(); if (why) { P.msg = why; break; } if (sel < 0) { P.msg = 'プログラムがありません'; break; } delLine(); P.msg = ''; break; }
-      case 'fwd': {
-        const why = jogBlock(); if (why) { P.msg = why; break; }
-        if (run || mv) break;
+      case 'f2':
+        if (P.view === 'prog') P.ins = P.ins === 'J' ? 'L' : 'J';
+        else if (P.view === 'pos') P.coord = 'joint';
+        break;
+      case 'f3':
+        if (P.view === 'pos') { P.coord = 'base'; break; }
+        if (P.view !== 'prog') break;
+      // fallthrough（DELETE）
+      case 'del': {
+        const why = editBlock(); if (why) { P.msg = why; break; }
         if (sel < 0) { P.msg = 'プログラムがありません'; break; }
-        startRun(sel, true); P.msg = ''; break;
+        delLine(); P.msg = ''; break;
       }
+      case 'upd': { const why = editBlock(); if (why) { P.msg = why; break; } touchUp(); break; }
+      case 'f5':
+        if (P.view === 'pos') { P.coord = 'tool'; break; }
+        if (P.view !== 'prog') break;
+        { const why = editBlock(); if (why) { P.msg = why; break; } }
+        if (!P.shift) { P.msg = 'TOUCHUP は SHIFT を押しながら F5 です'; break; }
+        touchUp(); break;
       case 'bwd': {
         const why = jogBlock(); if (why) { P.msg = why; break; }
         if (run || mv) break;
@@ -1796,20 +1929,54 @@
         if (q) startJ(q, 25, null); else P.msg = 'この位置には届きません';
         markPc(); break;
       }
-      case 'run': {
+      case 'run': case 'cycle': {
+        if (a === 'run' && !isY()) break;
         const why = runBlock(); if (why) { P.msg = why; break; }
-        if (run && run.paused) { run.paused = false; refreshState(); break; }
+        if (run && run.paused) { run.paused = false; refreshState(); P.msg = ''; break; }
         if (run) break;
         startRun(Math.max(0, sel), false); P.msg = ''; break;
       }
       case 'hold': if (run) { run.paused = true; refreshState(); } else { mv = null; } P.msg = isY() ? 'ホールド中' : 'HOLD'; break;
       case 'reset': resetAlarm(); P.msg = S.alarm ? P.msg : ''; break;
-      case 'estop': $('#estopBtn').click(); break;
+      case 'estop': $('#estopBtn').click(); return;
     }
     renderPend();
   }
-  pendEl.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) pendAct(b.dataset.act); });
+  pendEl.addEventListener('click', e => {
+    if (e.target.id === 'pendPop') { setPendFloat(!pend.float); return; }
+    if (e.target.id === 'pendBig') { pendEl.classList.toggle('big'); renderPend(); return; }
+    const v = e.target.closest('[data-view]'); if (v) { pend.view = v.dataset.view; renderPend(); return; }
+    const r = e.target.closest('[data-row]'); if (r) { sel = +r.dataset.row; markPc(); renderLineEdit(); updateLcd(); return; }
+    const b = e.target.closest('[data-act]'); if (b) pendAct(b.dataset.act);
+  });
   pendEl.addEventListener('contextmenu', e => e.preventDefault());
+  /* 3D 画面の上に重ねて表示 */
+  function setPendFloat(f) {
+    pend.float = f;
+    const fl = $('#pendFloat');
+    if (f) { fl.appendChild(pendEl); fl.hidden = false; }
+    else { $('#t-pend').appendChild(pendEl); fl.hidden = true; }
+    $('#pendAway').hidden = !f;
+    renderPend();
+  }
+  {
+    const fl = $('#pendFloat'), bar = fl.querySelector('.pfbar');
+    let drag = null;
+    bar.addEventListener('pointerdown', e => {
+      if (e.target.closest('button')) return;
+      drag = { x: e.clientX - fl.offsetLeft, y: e.clientY - fl.offsetTop }; bar.setPointerCapture(e.pointerId);
+    });
+    bar.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const st = fl.parentElement;
+      fl.style.left = clamp(e.clientX - drag.x, 0, st.clientWidth - 80) + 'px';
+      fl.style.top = clamp(e.clientY - drag.y, 0, st.clientHeight - 40) + 'px';
+      fl.style.right = 'auto';
+    });
+    bar.addEventListener('pointerup', () => { drag = null; });
+    $('#pendDock').addEventListener('click', () => setPendFloat(false));
+    $('#pendBack').addEventListener('click', () => setPendFloat(false));
+  }
 
   /* =================== メインループ =================== */
   let last = performance.now(), hudT = 0, ioT = 0;
@@ -1833,7 +2000,7 @@
       if (!$('#t-prog').hidden && $('#ioDet').open) renderIO();
       if (run) refreshState();
     }
-    if (!$('#t-pend').hidden && now - lcdT > 120) { lcdT = now; updateLcd(); }
+    if (pendVisible() && now - lcdT > 120) { lcdT = now; updateLcd(); }
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
