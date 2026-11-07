@@ -36,7 +36,7 @@
     const s = ry(k[0] * D2R);
     const l = s.clone().multiply(tr(dims.pivR, dims.pivY, 0)).multiply(rz(-k[1] * D2R));
     const u = l.clone().multiply(tr(0, dims.la, 0)).multiply(rz(k[2] * D2R));
-    const r = u.clone().multiply(rx(k[3] * D2R));
+    const r = u.clone().multiply(tr(0, dims.a3 || 0, 0)).multiply(rx(k[3] * D2R));
     const b = r.clone().multiply(tr(dims.ua, 0, 0)).multiply(rz(-k[4] * D2R));
     const t = b.clone().multiply(rx(k[5] * D2R));
     return { s, l, u, r, b, t };
@@ -97,7 +97,7 @@
    *   tcp   : ツールの TCP [x,y,z] m
    *   ref   : 参照関節角（ブランド角。最も近い解を選ぶ）
    * 戻り値 : { q:[6] } もしくは { err:'reach'|'limit'|'singular' } */
-  RS.ik = function (robot, M, tcp, ref) {
+  RS.ik = function (robot, M, tcp, ref, pref) {
     const d = robot.dims;
     const refK = RS.toKin(robot, ref || robot.home);
     const W = M.clone().multiply(new T.Matrix4().copy(RS.wristToTcp(d, tcp)).invert());
@@ -112,16 +112,17 @@
     S = wrapNear(S, refK[0], robot.lim[0][0], robot.lim[0][1]);
     if (S === null) return { err: 'limit', axis: 0 };
 
-    // L, U（肘上解）
+    // L, U（肘上解）。上腕は U 軸から (ua, a3) の位置に手首中心がある
+    const a3 = d.a3 || 0, L2 = Math.hypot(d.ua, a3), phi = Math.atan2(a3, d.ua);
     const r = rh - d.pivR, h = wc.y - d.pivY;
     const dist = Math.hypot(r, h);
-    if (dist > d.la + d.ua - 1e-6 || dist < Math.abs(d.la - d.ua) + 1e-6) return { err: 'reach' };
+    if (dist > d.la + L2 - 1e-6 || dist < Math.abs(d.la - L2) + 1e-6) return { err: 'reach' };
     const delta = Math.atan2(r, h);
-    const a = Math.acos(Math.max(-1, Math.min(1, (d.la * d.la + dist * dist - d.ua * d.ua) / (2 * d.la * dist))));
+    const a = Math.acos(Math.max(-1, Math.min(1, (d.la * d.la + dist * dist - L2 * L2) / (2 * d.la * dist))));
     const L = delta - a;
     const ex = d.la * Math.sin(L), ey = d.la * Math.cos(L);
     const e = Math.atan2(h - ey, r - ex);
-    const U = e + L;
+    const U = e + L - phi;
     const Ld = L * R2D, Ud = U * R2D;
 
     // 手首 R,B,T : Rrel = Rx(R)·Rz(-B)·Rx(T)
@@ -150,14 +151,34 @@
         if (v === null) { q[i] = NaN; } else q[i] = v;
       }
       if (q.some(Number.isNaN)) continue;
+      if (pref && pref.turn) {
+        // ファナックの回転数指定（J1,J4,J6）: 角度を (-180+360t, 180+360t] に入れる
+        [[0, pref.turn[0]], [3, pref.turn[1]], [5, pref.turn[2]]].forEach(([i, t]) => {
+          if (t == null) return;
+          let v = q[i]; while (v > 180 + 360 * t) v -= 360; while (v <= -180 + 360 * t) v += 360;
+          if (v >= robot.lim[i][0] && v <= robot.lim[i][1]) q[i] = v;
+        });
+      }
       if (RS.limitViolation(robot, q) >= 0) continue;
       let dd = 0;
       const rf = ref || robot.home;
       for (let i = 0; i < 6; i++) dd += Math.abs(q[i] - rf[i]) * (i < 3 ? 2 : 1);
+      if (pref && pref.flip != null && (q[4] < 0) !== pref.flip) dd += 1e5;  // 手首フリップ指定に合わない解は後回し
       if (dd < bestD) { bestD = dd; best = q; }
     }
     if (!best) return { err: why };
     return { q: best };
+  };
+
+  /* ファナック形式の形態 'N U T, 0, 0, 0' ⇔ {flip, turn} （このシミュレーターの規約：J5<0 を Flip とする） */
+  RS.configOf = function (q) {
+    const turn = i => Math.round((q[i] - (q[i] > 0 ? 1e-9 : 0)) / 360);
+    return `${q[4] < 0 ? 'F' : 'N'} U T, ${turn(0)}, ${turn(3)}, ${turn(5)}`;
+  };
+  RS.parseConfig = function (s) {
+    const m = String(s || '').match(/([NF])\s*([UD])?\s*([TB])?\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)/i);
+    if (!m) return null;
+    return { flip: m[1].toUpperCase() === 'F', up: (m[2] || 'U').toUpperCase() === 'U', front: (m[3] || 'T').toUpperCase() === 'T', turn: [+m[4], +m[5], +m[6]] };
   };
 
   /* 2つの行列の位置距離(m)と回転角(度) */

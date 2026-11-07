@@ -7,6 +7,8 @@ let fail = 0, n = 0, nf = 0;
 function rnd(a, b) { return a + Math.random() * (b - a); }
 for (const id of ['yaskawa', 'fanuc']) {
   const rb = RS.ROBOTS[id], tcp = [0.01, -0.02, 0.17];
+  // フリップ指定の確認
+  { const q=[10,30,10,20,-40,30]; const M=RS.fk(rb,q,tcp); const c=RS.parseConfig(RS.configOf(q)); const r=RS.ik(rb,M,tcp,rb.home,c); if(!r.q||Math.abs(r.q[4]-q[4])>1e-3||Math.abs(r.q[3]-q[3])>1e-3){fail++;console.log('config',r.q,q);} }
   for (let t = 0; t < 3000; t++) {
     const q = rb.lim.map(([a, b], i) => i === 5 ? rnd(-170, 170) : i===3? rnd(-170,170): rnd(a * 0.9, b * 0.9));
     if (Math.abs(q[4]) < 3) continue;

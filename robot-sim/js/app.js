@@ -4,69 +4,96 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '2.0';
+  const VERSION = '3.0';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const r3 = v => +(+v).toFixed(3);
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 保存できない環境 */ } }
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 保存できない環境 */ } },
+    del(k) { try { localStorage.removeItem(k); } catch (e) { /* 無視 */ } }
   };
   $('#ver').textContent = 'v' + VERSION;
+  RS.applyRobotOverrides(store.get('rs3-robot-ov', null));
+
+  /* =================== 入出力の割り当て =================== */
+  const IOMAP = {
+    yaskawa: {
+      handOut: { kind: 'OT', n: 1 }, handIn: { kind: 'IN', n: 1 },
+      outs: [['OT', 8]], ins: [['IN', 8]],
+      auto: { IN1: 'ハンド保持確認', IN2: '供給台 ワーク有', IN3: '排出台 ワーク有' }, outName: { OT1: 'ハンド（吸着/閉）' },
+      fmt: (k, n) => `${k}#(${n})`
+    },
+    fanuc: {
+      handOut: { kind: 'RO', n: 1 }, handIn: { kind: 'RI', n: 1 },
+      outs: [['RO', 8], ['DO', 8]], ins: [['RI', 8], ['DI', 8]],
+      auto: { RI1: 'ハンド保持確認', DI1: '供給台 ワーク有', DI2: '排出台 ワーク有' }, outName: { RO1: 'ハンド（吸着/閉）' },
+      fmt: (k, n) => `${k}[${n}]`
+    }
+  };
 
   /* =================== 状態 =================== */
   const S = {
-    sys: store.get('rs2-sys', 'yaskawa') === 'fanuc' ? 'fanuc' : 'yaskawa',
-    toolId: RS.toolById(store.get('rs2-tool', RS.DEFAULT_TOOL)).id,
+    sys: store.get('rs3-sys', store.get('rs2-sys', 'yaskawa')) === 'fanuc' ? 'fanuc' : 'yaskawa',
+    toolId: RS.toolById(store.get('rs3-tool', store.get('rs2-tool', RS.DEFAULT_TOOL))).id,
     workId: null,
     q: null,
-    out: false,           // ハンド出力（吸着／閉）
-    holding: null,        // 保持中のワーク
-    gripK: 0,             // 爪の閉じ量 0〜1
-    alarm: null,
-    estop: false,
-    opts: Object.assign({ coll: true, trail: true, reach: false, loop: false, autoSup: true, ovr: 100, jogSpd: 30 }, store.get('rs2-opts', {})),
-    stats: { count: 0, last: 0, cycleT0: 0 }
+    holding: null, gripK: 0, gripWidth: null,
+    alarm: null, estop: false,
+    io: { out: {}, force: {} },
+    ovrRun: 100,
+    opts: Object.assign({ coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: true, waitTimeout: 10 },
+      store.get('rs3-opts', store.get('rs2-opts', {}))),
+    stats: { count: 0, last: 0, t0: 0 },
+    log: []
   };
   let robot = RS.ROBOTS[S.sys];
   let tool = RS.toolById(S.toolId);
-  S.workId = RS.WORKS[store.get('rs2-work', tool.work)] ? store.get('rs2-work', tool.work) : tool.work;
+  {
+    const w = store.get('rs3-work', tool.work);
+    S.workId = RS.WORKS[w] ? w : tool.work;
+  }
   S.q = robot.home.slice();
-  const saveOpts = () => store.set('rs2-opts', S.opts);
+  const saveOpts = () => store.set('rs3-opts', S.opts);
+  const io = () => IOMAP[S.sys];
+  const handOn = () => !!S.io.out[io().handOut.kind + io().handOut.n];
 
   /* =================== Three.js シーン =================== */
   const canvas = $('#c'), stage = $('#stage');
-  const renderer = new T.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: false });
+  const renderer = new T.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = T.PCFSoftShadowMap;
   const scene = new T.Scene();
+  try { scene.environment = RS.makeEnvironment(T, renderer); } catch (e) { /* 環境マップなしでも動く */ }
   const camera = new T.PerspectiveCamera(40, 1, 0.05, 60);
-  scene.add(new T.HemisphereLight(0xffffff, 0x8b95a3, 0.8));
-  const sun = new T.DirectionalLight(0xffffff, 0.85);
+  scene.add(new T.HemisphereLight(0xffffff, 0x8b95a3, 0.6));
+  const sun = new T.DirectionalLight(0xffffff, 0.75);
   sun.position.set(2.5, 5, 3);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.5, far: 14 });
   sun.shadow.bias = -0.0004;
   scene.add(sun);
+  const fill = new T.DirectionalLight(0xdfe8ff, 0.25); fill.position.set(-3, 2.5, -2); scene.add(fill);
 
   function shadowed(m) { m.castShadow = true; m.receiveShadow = true; return m; }
   function mesh(geo, mat, x, y, z) { const m = shadowed(new T.Mesh(geo, mat)); m.position.set(x || 0, y || 0, z || 0); return m; }
-  function zCyl(r, len, mat, x, y, z) { const g = new T.CylinderGeometry(r, r, len, 32); g.rotateX(Math.PI / 2); return mesh(g, mat, x, y, z); }
-  function xCyl(r, len, mat, x, y, z) { const g = new T.CylinderGeometry(r, r, len, 32); g.rotateZ(Math.PI / 2); return mesh(g, mat, x, y, z); }
 
   /* 床 */
-  let floor, grid, reachRing;
+  let floor, grid, reachRing, cellFloor;
   function cssVar(n, d) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d; }
   function buildFloor() {
     scene.background = new T.Color(cssVar('--scene', '#e3e8ee'));
-    if (floor) { scene.remove(floor); floor.geometry.dispose(); floor.material.dispose(); }
-    if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
+    [floor, grid, cellFloor].forEach(o => { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
     floor = new T.Mesh(new T.PlaneGeometry(16, 16), new T.ShadowMaterial({ opacity: 0.22 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+    const dark = cssVar('--panel', '#ffffff').toLowerCase() !== '#ffffff';
+    cellFloor = new T.Mesh(new T.PlaneGeometry(3.1, 3.2), new T.MeshStandardMaterial({ color: dark ? 0x2a3038 : 0xc9ced4, roughness: 0.9, metalness: 0 }));
+    cellFloor.rotation.x = -Math.PI / 2; cellFloor.position.set(0.45, 0.0005, 0); cellFloor.receiveShadow = true; scene.add(cellFloor);
     const gc = new T.Color(cssVar('--grid', '#c4ccd7'));
     grid = new T.GridHelper(8, 32, gc, gc);
     grid.position.y = 0.001; scene.add(grid);
@@ -79,93 +106,57 @@
     { id: 'A', name: '供給台', X: 0.95, Y: 0.75, w: 0.8, d: 0.6, h: 0.45 },
     { id: 'B', name: '排出台', X: 0.95, Y: -0.75, w: 0.8, d: 0.6, h: 0.45 }
   ];
-  const mTable = new T.MeshStandardMaterial({ color: 0x8d99a8, roughness: 0.7, metalness: 0.2 });
-  const mTop = new T.MeshStandardMaterial({ color: 0x5f6b7a, roughness: 0.8 });
-  const mMark = { A: new T.MeshBasicMaterial({ color: 0x1d9a5b }), B: new T.MeshBasicMaterial({ color: 0xd2691e }) };
-  for (const t of TABLES) {
-    const g = new T.Group();
-    g.position.set(t.X, 0, -t.Y);
-    g.add(mesh(new T.BoxGeometry(t.w, 0.03, t.d), mTop, 0, t.h - 0.015, 0));
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(mesh(new T.BoxGeometry(0.04, t.h - 0.03, 0.04), mTable, sx * (t.w / 2 - 0.04), (t.h - 0.03) / 2, sz * (t.d / 2 - 0.04)));
-    const mk = new T.Mesh(new T.PlaneGeometry(t.w, 0.03), mMark[t.id]);
-    mk.rotation.x = -Math.PI / 2; mk.position.set(0, t.h + 0.0005, t.d / 2 - 0.015); g.add(mk);
-    scene.add(g);
-  }
-  /* 安全柵（簡易） */
   {
-    const mPost = new T.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.6 });
+    const mFrame = new T.MeshStandardMaterial({ color: 0x8d99a8, roughness: 0.45, metalness: 0.6 });
+    const mTop = new T.MeshStandardMaterial({ color: 0x59636f, roughness: 0.75, metalness: 0.1 });
+    const mMark = { A: new T.MeshBasicMaterial({ color: 0x1d9a5b }), B: new T.MeshBasicMaterial({ color: 0xd2691e }) };
+    for (const t of TABLES) {
+      const g = new T.Group();
+      g.position.set(t.X, 0, -t.Y);
+      g.add(mesh(new T.BoxGeometry(t.w, 0.025, t.d), mTop, 0, t.h - 0.0125, 0));
+      g.add(mesh(new T.BoxGeometry(t.w - 0.04, 0.05, t.d - 0.04), mFrame, 0, t.h - 0.05, 0));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        g.add(mesh(new T.BoxGeometry(0.04, t.h - 0.05, 0.04), mFrame, sx * (t.w / 2 - 0.04), (t.h - 0.05) / 2, sz * (t.d / 2 - 0.04)));
+        g.add(mesh(new T.CylinderGeometry(0.03, 0.03, 0.012, 16), mTop, sx * (t.w / 2 - 0.04), 0.006, sz * (t.d / 2 - 0.04)));
+      }
+      g.add(mesh(new T.BoxGeometry(t.w - 0.1, 0.03, 0.03), mFrame, 0, 0.12, t.d / 2 - 0.04));
+      g.add(mesh(new T.BoxGeometry(t.w - 0.1, 0.03, 0.03), mFrame, 0, 0.12, -t.d / 2 + 0.04));
+      const mk = new T.Mesh(new T.PlaneGeometry(t.w, 0.03), mMark[t.id]);
+      mk.rotation.x = -Math.PI / 2; mk.position.set(0, t.h + 0.0005, t.d / 2 - 0.015); g.add(mk);
+      scene.add(g);
+    }
+    /* 安全柵 */
+    const mPost = new T.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.5, metalness: 0.2 });
     const mNet = new T.MeshBasicMaterial({ color: 0x9aa4b0, transparent: true, opacity: 0.12, side: T.DoubleSide, depthWrite: false });
     const xs = [-1.1, 2.0], zs = [-1.6, 1.6], H = 1.4;
     const corners = [[xs[0], zs[0]], [xs[1], zs[0]], [xs[1], zs[1]], [xs[0], zs[1]]];
     corners.forEach(([x, z]) => scene.add(mesh(new T.BoxGeometry(0.05, H, 0.05), mPost, x, H / 2, z)));
-    const walls = [[xs[0], 0, 0, zs[1] - zs[0]], [xs[1], 0, 0, zs[1] - zs[0]], [(xs[0] + xs[1]) / 2, zs[0], 1, xs[1] - xs[0]], [(xs[0] + xs[1]) / 2, zs[1], 1, xs[1] - xs[0]]];
-    walls.forEach(([x, z, rot, len]) => {
+    [[xs[0], 0, true, zs[1] - zs[0]], [xs[1], 0, true, zs[1] - zs[0]], [(xs[0] + xs[1]) / 2, zs[0], false, xs[1] - xs[0]], [(xs[0] + xs[1]) / 2, zs[1], false, xs[1] - xs[0]]].forEach(([x, z, side, len]) => {
       const p = new T.Mesh(new T.PlaneGeometry(len, H - 0.2), mNet);
-      p.position.set(x, 0.1 + (H - 0.2) / 2, rot ? z : 0);
-      if (!rot) { p.rotation.y = Math.PI / 2; p.position.z = 0; }
+      p.position.set(x, 0.1 + (H - 0.2) / 2, z);
+      if (side) p.rotation.y = Math.PI / 2;
       scene.add(p);
+      scene.add(mesh(new T.BoxGeometry(side ? 0.03 : len, 0.03, side ? len : 0.03), mPost, x, H - 0.05, z));
     });
   }
 
   /* =================== ロボット =================== */
-  let robotRoot = null;
-  const G = {};  // sG,lG,uG,rG,bG,tG,mount,tcp
-  let toolVis = null;
-  function buildRobot() {
-    if (robotRoot) {
-      if (S.holding) dropWork(true);
-      scene.remove(robotRoot);
-      robotRoot.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-    }
-    const d = robot.dims, c = robot.colors;
-    const mMain = new T.MeshStandardMaterial({ color: c.main, roughness: 0.42, metalness: 0.2 });
-    const mSub = new T.MeshStandardMaterial({ color: c.sub, roughness: 0.5, metalness: 0.1 });
-    const mDark = new T.MeshStandardMaterial({ color: c.dark, roughness: 0.6, metalness: 0.3 });
-    const root = new T.Group();
-    // ベース
-    root.add(mesh(new T.CylinderGeometry(0.27, 0.29, 0.16, 40), mDark, 0, 0.08, 0));
-    root.add(mesh(new T.BoxGeometry(0.62, 0.02, 0.62), mDark, 0, 0.01, 0));
-    // S
-    const sG = new T.Group(); root.add(sG);
-    sG.add(mesh(new T.CylinderGeometry(0.23, 0.25, 0.14, 40), mSub, 0, 0.23, 0));
-    sG.add(mesh(new T.BoxGeometry(0.34, d.pivY - 0.28, 0.32), mMain, d.pivR * 0.5, 0.3 + (d.pivY - 0.28) / 2 - 0.02, 0));
-    sG.add(xCyl(0.07, 0.16, mDark, -0.12, d.pivY - 0.05, 0.16));
-    // L
-    const lG = new T.Group(); lG.position.set(d.pivR, d.pivY, 0); sG.add(lG);
-    lG.add(zCyl(0.13, 0.36, mSub));
-    lG.add(zCyl(0.09, 0.08, mDark, 0, 0, 0.21));
-    lG.add(mesh(new T.BoxGeometry(0.17, d.la, 0.2), mMain, 0, d.la / 2, 0.02));
-    // U
-    const uG = new T.Group(); uG.position.set(0, d.la, 0); lG.add(uG);
-    uG.add(zCyl(0.11, 0.3, mSub));
-    uG.add(mesh(new T.BoxGeometry(0.34, 0.2, 0.22), mMain, 0.02, 0.02, -0.01));
-    uG.add(xCyl(0.07, 0.14, mDark, -0.2, 0.02, 0));
-    // R
-    const rG = new T.Group(); uG.add(rG);
-    rG.add(xCyl(0.085, d.ua - 0.32, mMain, 0.17 + (d.ua - 0.32) / 2, 0, 0));
-    rG.add(xCyl(0.095, 0.04, mSub, 0.17, 0, 0));
-    // 手首フォーク
-    rG.add(mesh(new T.BoxGeometry(0.16, 0.12, 0.03), mMain, d.ua - 0.06, 0, 0.085));
-    rG.add(mesh(new T.BoxGeometry(0.16, 0.12, 0.03), mMain, d.ua - 0.06, 0, -0.085));
-    // B
-    const bG = new T.Group(); bG.position.set(d.ua, 0, 0); rG.add(bG);
-    bG.add(zCyl(0.065, 0.2, mSub));
-    // T
-    const tG = new T.Group(); bG.add(tG);
-    tG.add(xCyl(0.055, d.fl - 0.012, mMain, (d.fl - 0.012) / 2, 0, 0));
-    tG.add(xCyl(0.05, 0.012, mDark, d.fl - 0.006, 0, 0));
-    const mount = new T.Group();
-    mount.position.set(d.fl, 0, 0);
-    mount.quaternion.setFromRotationMatrix(RS.TOOL_BASIS);
-    tG.add(mount);
-    const tcp = new T.Object3D(); mount.add(tcp);
-    scene.add(root);
-    robotRoot = root;
-    Object.assign(G, { sG, lG, uG, rG, bG, tG, mount, tcp, mats: { mMain, mSub, mDark } });
-    buildTool();
-    buildReach();
-  }
+  let model = null, toolVis = null;
+  const G = {};
   const toolKit = RS.makeToolKit(T);
+  function buildRobot() {
+    if (model) {
+      if (S.holding) dropWork(true);
+      scene.remove(model.root);
+      model.root.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    }
+    model = RS.buildRobotModel(T, robot);
+    scene.add(model.root);
+    Object.assign(G, model);
+    G.tcp = new T.Object3D(); G.mount.add(G.tcp);
+    toolVis = null;
+    buildTool(); buildReach();
+  }
   function buildTool() {
     if (toolVis) { G.mount.remove(toolVis.group); toolVis.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     toolVis = tool.build(toolKit);
@@ -174,14 +165,12 @@
   }
   function buildReach() {
     if (reachRing) { scene.remove(reachRing); reachRing.geometry.dispose(); }
-    const d = robot.dims, R = d.pivR + d.la + d.ua + d.fl + tool.tcp[2];
+    const d = robot.dims, R = d.pivR + d.la + Math.hypot(d.ua, d.a3 || 0) + d.fl + tool.tcp[2];
     reachRing = new T.Mesh(new T.RingGeometry(R - 0.012, R, 96), new T.MeshBasicMaterial({ color: 0x0a84ff, transparent: true, opacity: 0.6, side: T.DoubleSide }));
     reachRing.rotation.x = -Math.PI / 2; reachRing.position.y = 0.003;
     reachRing.visible = S.opts.reach;
     scene.add(reachRing);
   }
-
-  /* 姿勢を反映 */
   let poseDirty = true;
   function applyPose() {
     const k = RS.toKin(robot, S.q);
@@ -192,28 +181,61 @@
     G.bG.rotation.z = -k[4] * D2R;
     G.tG.rotation.x = k[5] * D2R;
     scene.updateMatrixWorld(true);
+    model.update();
     poseDirty = true;
   }
   const tcpMatrix = q => RS.fk(robot, q || S.q, tool.tcp);
   const curPose = () => RS.poseFromMatrix(tcpMatrix());
+  const curQ = () => S.q.map(r3);
+
+  /* ロボット座標の行列（Three 変換なし） */
+  const C4 = new T.Matrix4().makeBasis(new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), new T.Vector3(0, 1, 0));
+  const C4i = C4.clone().transpose();
+  function rawMat(P) {
+    const M = new T.Matrix4().makeRotationZ(P.rz * D2R).multiply(new T.Matrix4().makeRotationY(P.ry * D2R)).multiply(new T.Matrix4().makeRotationX(P.rx * D2R));
+    M.setPosition(P.X / 1000, P.Y / 1000, P.Z / 1000);
+    return M;
+  }
+  const ufKey = () => 'rs3-uf-' + S.sys;
+  let uframes = store.get(ufKey(), {});
+  function ufMat(n) {
+    if (!n) return new T.Matrix4();
+    const u = uframes[n];
+    if (!u) { logMsg(`ユーザ座標 UF${n} が未設定のため、ベース座標として扱います`, 'warn', 'uf' + n); return new T.Matrix4(); }
+    return rawMat(u);
+  }
+  /* 位置データ → Three ワールド行列（UF を含む） */
+  function posMatrix(pos) {
+    if (pos.k === 'j') return tcpMatrix(pos.q);
+    return C4.clone().multiply(ufMat(pos.uf)).multiply(rawMat(pos.p));
+  }
+  /* Three ワールド行列 → その UF での姿勢 */
+  function poseInUf(M, uf) {
+    const raw = C4i.clone().multiply(M);
+    const loc = uf ? ufMat(uf).invert().multiply(raw) : raw;
+    return RS.poseFromMatrix(C4.clone().multiply(loc));
+  }
 
   /* =================== ワーク =================== */
   let works = [];
-  function workDef() { return RS.WORKS[S.workId]; }
+  const workDef = () => RS.WORKS[S.workId];
   function makeWork(def) {
     const [sx, sy, sz] = def.size;
     const g = new T.Group();
-    const mat = new T.MeshStandardMaterial({ color: def.color, roughness: def.opacity < 1 ? 0.1 : 0.7, metalness: 0, transparent: def.opacity < 1, opacity: def.opacity, depthWrite: def.opacity >= 1 });
+    const glass = def.opacity < 1;
+    const mat = glass
+      ? new T.MeshPhysicalMaterial({ color: def.color, roughness: 0.05, metalness: 0, transparent: true, opacity: def.opacity, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.05 })
+      : new T.MeshStandardMaterial({ color: def.color, roughness: 0.75, metalness: 0 });
     const m = new T.Mesh(new T.BoxGeometry(sx, sz, sy), mat);
-    m.castShadow = def.opacity >= 1; m.receiveShadow = true;
+    m.castShadow = !glass; m.receiveShadow = true;
     g.add(m);
     g.add(new T.LineSegments(new T.EdgesGeometry(m.geometry), new T.LineBasicMaterial({ color: def.edge })));
     scene.add(g);
     return { def, g, vy: 0, falling: false };
   }
   function clearWorks() {
-    if (S.holding) { S.holding = null; }
-    for (const w of works) { w.g.parent && w.g.parent.remove(w.g); w.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+    S.holding = null;
+    for (const w of works) { if (w.g.parent) w.g.parent.remove(w.g); w.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
     works = [];
   }
   function spawnAt(tbl) {
@@ -222,18 +244,9 @@
     works.push(w);
     return w;
   }
-  function resetWorks() {
-    clearWorks();
-    spawnAt(TABLES[0]);
-    updateToolVis();
-  }
-  function tableAt(x, z) { // Three 座標
-    return TABLES.find(t => Math.abs(x - t.X) <= t.w / 2 && Math.abs(-z - t.Y) <= t.d / 2);
-  }
-  function worksOn(tbl) {
-    return works.filter(w => w !== S.holding && !w.falling && tableAt(w.g.position.x, w.g.position.z) === tbl);
-  }
-  /* 支える面の高さ（Three y） */
+  function resetWorks() { clearWorks(); spawnAt(TABLES[0]); updateToolVis(); }
+  function tableAt(x, z) { return TABLES.find(t => Math.abs(x - t.X) <= t.w / 2 && Math.abs(-z - t.Y) <= t.d / 2); }
+  function worksOn(tbl) { return works.filter(w => w !== S.holding && !w.falling && tableAt(w.g.position.x, w.g.position.z) === tbl); }
   function supportY(w) {
     const p = w.g.position;
     let y = 0;
@@ -247,15 +260,14 @@
     return y;
   }
   const _v = new T.Vector3(), _v2 = new T.Vector3(), _q = new T.Quaternion();
-  /* 吸着・把持できるか調べる */
   function tryGrasp() {
-    if (S.holding || !S.out) return false;
+    if (S.holding || !handOn()) return false;
     const cand = works.filter(w => !w.falling);
     if (tool.kind === 'vacuum') {
       const up = new T.Vector3(0, 0, 1).applyQuaternion(G.mount.getWorldQuaternion(_q));
       for (const w of cand) {
         const wup = new T.Vector3(0, 1, 0).applyQuaternion(w.g.getWorldQuaternion(new T.Quaternion()));
-        if (up.dot(wup) > -0.97) continue;          // 吸盤がワーク面に向いていない
+        if (up.dot(wup) > -0.97) continue;
         const [sx, sy, sz] = w.def.size;
         let ok = 0;
         for (const [cx, cy] of tool.cups) {
@@ -274,7 +286,6 @@
         const lp = w.g.worldToLocal(_v.clone());
         const [sx, sy, sz] = w.def.size;
         if (Math.abs(lp.x) > sx / 2 || Math.abs(lp.z) > sy / 2 || Math.abs(lp.y) > sz / 2) continue;
-        // 爪の開閉方向（ツールY）のワーク幅
         const ty = new T.Vector3(0, 1, 0).applyQuaternion(G.mount.getWorldQuaternion(_q));
         const wq = w.g.getWorldQuaternion(new T.Quaternion());
         const ax = [new T.Vector3(1, 0, 0), new T.Vector3(0, 1, 0), new T.Vector3(0, 0, 1)].map(a => a.applyQuaternion(wq));
@@ -285,11 +296,7 @@
     }
     return false;
   }
-  function attach(w) {
-    G.mount.attach(w.g);
-    S.holding = w; w.falling = false; w.vy = 0;
-    updateToolVis();
-  }
+  function attach(w) { G.mount.attach(w.g); S.holding = w; w.falling = false; w.vy = 0; updateToolVis(); }
   function dropWork(instant) {
     const w = S.holding; if (!w) return;
     scene.attach(w.g);
@@ -300,21 +307,49 @@
     if (instant) { w.g.position.y = supportY(w) + w.def.size[2] / 2; w.falling = false; }
     updateToolVis();
   }
-  function setOut(on) {
-    S.out = !!on;
+  function setHand(on) {
     if (!on && S.holding) dropWork(false);
     if (on) tryGrasp();
-    updateToolVis();
-    updateOutBtn();
+    updateToolVis(); updateOutBtn();
   }
-  function updateToolVis() {
-    if (toolVis) toolVis.update({ on: S.out, holding: !!S.holding, k: S.gripK, width: S.holding ? S.gripWidth : null });
+  function updateToolVis() { if (toolVis) toolVis.update({ on: handOn(), holding: !!S.holding, k: S.gripK, width: S.holding ? S.gripWidth : null }); }
+
+  /* I/O */
+  function setOut(kind, n, v) {
+    S.io.out[kind + n] = !!v;
+    const h = io().handOut;
+    if (kind === h.kind && n === h.n) setHand(!!v);
   }
-  /* 自動供給：排出台のワークを払い出し、供給台が空なら補充 */
-  function supplyCycle() {
-    const done = worksOn(TABLES[1]);
-    for (const w of done) { scene.remove(w.g); works.splice(works.indexOf(w), 1); }
-    if (!worksOn(TABLES[0]).length) spawnAt(TABLES[0]);
+  function getOut(kind, n) { return !!S.io.out[kind + n]; }
+  function getIn(kind, n) {
+    const key = kind + n;
+    if (S.io.force[key] != null) return S.io.force[key];
+    const a = io().auto[key];
+    if (a === 'ハンド保持確認') return !!S.holding;
+    if (a === '供給台 ワーク有') return worksOn(TABLES[0]).length > 0;
+    if (a === '排出台 ワーク有') return worksOn(TABLES[1]).length > 0;
+    return false;
+  }
+
+  /* 自動供給・払い出し */
+  let supT = 0, outT = 0;
+  function near(t) { G.tcp.getWorldPosition(_v); return Math.hypot(_v.x - t.X, -_v.z - t.Y) < 0.6 && _v.y < t.h + 0.6; }
+  function cellTick(dt) {
+    if (S.opts.autoSup && !worksOn(TABLES[0]).length && !works.some(w => w.falling) && !(S.holding && near(TABLES[0]))) {
+      supT += dt; if (supT > 1.0) { supT = 0; spawnAt(TABLES[0]); }
+    } else supT = 0;
+    const onB = worksOn(TABLES[1]);
+    if (S.opts.autoOut && onB.length && !near(TABLES[1])) {
+      outT += dt;
+      if (outT > 1.5) {
+        outT = 0;
+        for (const w of onB) { scene.remove(w.g); works.splice(works.indexOf(w), 1); }
+        const now = performance.now();
+        if (S.stats.t0) S.stats.last = (now - S.stats.t0) / 1000 / onB.length / (S.timeScale || 1);
+        S.stats.t0 = now; S.stats.count += onB.length;
+        updateCycle();
+      }
+    } else outT = 0;
   }
 
   /* =================== 干渉チェック =================== */
@@ -323,7 +358,7 @@
     const pts = [];
     for (const p of tool.probes) { _v.set(p[0], p[1], p[2]); pts.push({ p: G.mount.localToWorld(_v.clone()), r: 0, what: 'ハンド' }); }
     pts.push({ p: G.bG.getWorldPosition(new T.Vector3()), r: 0.08, what: '手首' });
-    pts.push({ p: G.uG.getWorldPosition(new T.Vector3()), r: 0.12, what: '肘' });
+    pts.push({ p: G.uG.getWorldPosition(new T.Vector3()), r: 0.14, what: '肘' });
     pts.push({ p: G.mount.getWorldPosition(new T.Vector3()), r: 0.05, what: 'フランジ' });
     if (S.holding) {
       const w = S.holding, [sx, sy, sz] = w.def.size;
@@ -346,34 +381,43 @@
         const [sx, sy, sz] = w.def.size;
         for (let i = 0; i < tool.probes.length; i++) {
           const lp = w.g.worldToLocal(pts[i].p.clone());
-          if (Math.abs(lp.x) < sx / 2 - 0.003 && Math.abs(lp.z) < sy / 2 - 0.003 && Math.abs(lp.y) < sz / 2 - 0.003)
-            return 'ハンドがワークに当たります';
+          if (Math.abs(lp.x) < sx / 2 - 0.003 && Math.abs(lp.z) < sy / 2 - 0.003 && Math.abs(lp.y) < sz / 2 - 0.003) return 'ハンドがワークに当たります';
         }
       }
     }
     return '';
   }
 
-  /* =================== アラーム =================== */
+  /* =================== ログ・アラーム =================== */
+  const logged = new Set();
+  function logMsg(msg, lv, onceKey) {
+    if (onceKey) { if (logged.has(onceKey)) return; logged.add(onceKey); }
+    const t = new Date();
+    S.log.push({ t: `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}`, msg, lv: lv || 'info' });
+    if (S.log.length > 200) S.log.shift();
+    renderLog();
+  }
   const ALM = {
     estop: ['ALM 100', '非常停止中です'],
     coll: ['ALM 201', '干渉を検出しました'],
-    reach: ['ALM 202', '直線動作の経路が動作範囲外です'],
+    reach: ['ALM 202', '目標位置が動作範囲外です'],
     sing: ['ALM 203', '特異点付近のため直線動作できません'],
     limit: ['ALM 204', '可動範囲を超えます'],
     hand: ['ALM 301', 'ハンド確認信号が来ません'],
-    prog: ['ALM 401', 'プログラムに誤りがあります']
+    wait: ['ALM 302', '入力待ちタイムアウト'],
+    prog: ['ALM 401', 'プログラムエラー']
   };
   function raiseAlarm(key, detail) {
-    const [code, msg] = ALM[key];
+    const [code, msg] = ALM[key] || ALM.prog;
     S.alarm = { code, msg: msg + (detail ? '：' + detail : '') };
-    const errPc = run ? run.pc : -1;
+    const errLine = run && run.interp.frame && run.interp.progName === prog().name ? run.interp.pc : -1;
     stopAll();
-    if (errPc >= 0) markErrLine(errPc);
+    if (errLine >= 0) markErrLine(errLine);
     $('#alarmCode').textContent = code;
     $('#alarmMsg').textContent = S.alarm.msg;
     $('#alarm').hidden = false;
     pend.msg = code + ' ' + S.alarm.msg;
+    logMsg(code + ' ' + S.alarm.msg, 'err');
     refreshState();
   }
   function resetAlarm() {
@@ -387,34 +431,37 @@
     S.estop = !S.estop;
     $('#estopBtn').classList.toggle('on', S.estop);
     $('#estopBtn').textContent = S.estop ? '非常停止 解除' : '非常停止';
-    if (S.estop) { pend.servo = false; raiseAlarm('estop'); }
-    else refreshState();
+    if (S.estop) { pend.servo = false; raiseAlarm('estop'); } else refreshState();
     renderPend();
   });
 
   /* =================== 動作 =================== */
-  let mv = null;     // 実行中の動作
-  let run = null;    // プログラム実行状態
+  let mv = null, run = null;
   const smooth = k => k * k * (3 - 2 * k);
-  const ovr = () => S.opts.ovr / 100;
-
+  const ovr = () => S.opts.ovr / 100 * (run ? S.ovrRun / 100 : 1);
   function canMove() {
     if (S.estop) return '非常停止中です';
     if (S.alarm) return 'アラームをリセットしてください';
     return '';
   }
-  /* 関節補間 */
-  function startJ(to, vPct, done) {
+  /* 関節補間（vPct: 速度%、dur: 時間指定 秒） */
+  function startJ(to, vPct, done, dur) {
+    const lv = RS.limitViolation(robot, to);
+    if (lv >= 0) { raiseAlarm('limit', robot.axes[lv] + '軸'); return false; }
     const from = S.q.slice();
-    if (RS.limitViolation(robot, to) >= 0) { raiseAlarm('limit', robot.axes[RS.limitViolation(robot, to)] + '軸'); return false; }
     let tt = 0;
-    const f = clamp(vPct, 0.1, 100) / 100 * ovr();
-    for (let i = 0; i < 6; i++) tt = Math.max(tt, Math.abs(to[i] - from[i]) / (robot.vmax[i] * f));
-    mv = { kind: 'j', from, to: to.slice(), dur: Math.max(0.15, tt * 1.5), t: 0, done };
+    if (dur != null) tt = dur / ovr();
+    else {
+      const f = clamp(vPct, 0.1, 100) / 100 * ovr();
+      for (let i = 0; i < 6; i++) tt = Math.max(tt, Math.abs(to[i] - from[i]) / (robot.vmax[i] * f));
+      tt *= 1.5;
+    }
+    mv = { kind: 'j', from, to: to.slice(), dur: Math.max(0.12, tt), t: 0, done };
     return true;
   }
-  /* 直線補間 */
-  function planL(M, vmm) {
+  /* 直線補間（vmm: mm/s、opt.rot: 姿勢速度 deg/s、opt.dur: 時間指定） */
+  function planL(M, vmm, opt) {
+    opt = opt || {};
     const r = RS.planLinear(robot, S.q, M, tool.tcp);
     if (!r.ok) return r;
     const f = ovr();
@@ -423,14 +470,17 @@
       let s = 0; for (let k = 1; k < r.qs.length; k++) s = Math.max(s, Math.abs(r.qs[k][i] - r.qs[k - 1][i]));
       tj = Math.max(tj, s * (r.qs.length - 1) / robot.vmax[i]);
     }
-    const tl = (r.dist * 1000) / (clamp(vmm, 1, robot.vlMax) * f);
-    const ta = r.ang / (180 * f);
-    r.dur = Math.max(0.15, 1.5 * Math.max(tl, ta), 1.5 * tj / f);
+    if (opt.dur != null) r.dur = Math.max(0.12, opt.dur / f, 1.5 * tj / f);
+    else {
+      const tl = vmm ? (r.dist * 1000) / (clamp(vmm, 0.1, robot.vlMax) * f) : 0;
+      const ta = r.ang / ((opt.rot || 180) * f);
+      r.dur = Math.max(0.12, 1.5 * Math.max(tl, ta), 1.5 * tj / f);
+    }
     return r;
   }
-  function startL(M, vmm, done) {
-    const r = planL(M, vmm);
-    if (!r.ok) { raiseAlarm(r.err === 'singular' ? 'sing' : 'reach', `経路の${Math.round(r.at * 100)}%地点`); return false; }
+  function startL(M, vmm, done, opt) {
+    const r = planL(M, vmm, opt);
+    if (!r.ok) { raiseAlarm(r.err === 'singular' ? 'sing' : 'reach', `直線経路の${Math.round(r.at * 100)}%地点`); return false; }
     mv = { kind: 'p', qs: r.qs, dur: r.dur, t: 0, done };
     return true;
   }
@@ -439,17 +489,16 @@
     mv.t += dt;
     const k = Math.min(1, mv.t / mv.dur), e = smooth(k);
     const prev = S.q.slice();
-    if (mv.kind === 'j') {
-      for (let i = 0; i < 6; i++) S.q[i] = mv.from[i] + (mv.to[i] - mv.from[i]) * e;
-    } else {
-      const x = e * (mv.qs.length - 1), i0 = Math.min(mv.qs.length - 2, Math.floor(x)), fr = x - i0;
-      const a = mv.qs[Math.max(0, i0)], b = mv.qs[Math.min(mv.qs.length - 1, i0 + 1)];
-      for (let i = 0; i < 6; i++) S.q[i] = a[i] + (b[i] - a[i]) * (mv.qs.length === 1 ? 0 : fr);
+    if (mv.kind === 'j') for (let i = 0; i < 6; i++) S.q[i] = mv.from[i] + (mv.to[i] - mv.from[i]) * e;
+    else {
+      const n = mv.qs.length - 1, x = e * n, i0 = Math.min(Math.max(0, n - 1), Math.floor(x)), fr = n ? x - i0 : 0;
+      const a = mv.qs[i0], b = mv.qs[Math.min(n, i0 + 1)];
+      for (let i = 0; i < 6; i++) S.q[i] = a[i] + (b[i] - a[i]) * fr;
     }
     applyPose();
     const c = collisionCheck();
     if (c) { S.q = prev; applyPose(); raiseAlarm('coll', c); return; }
-    if (S.out && !S.holding) tryGrasp();
+    if (handOn() && !S.holding) tryGrasp();
     if (S.opts.trail && run) addTrail();
     if (k >= 1) { const cb = mv.done; mv = null; if (cb) cb(); }
   }
@@ -457,130 +506,240 @@
     mv = null;
     jogHold = null;
     $$('.hold').forEach(b => b.classList.remove('hold'));
-    if (run) { run = null; renderCode(); }
+    if (run) { run = null; S.ovrRun = 100; renderCode(); }
     refreshState();
   }
 
-  /* =================== プログラム =================== */
-  const progKey = () => 'rs2-prog-' + S.sys;
-  let prog = loadProg();
+  /* プログラムの移動命令を実行する */
+  function addRot(raw, P) { // ベース側から回転 P を掛け、位置を P だけ動かす
+    const p = new T.Vector3().setFromMatrixPosition(raw).add(new T.Vector3(P.X / 1000, P.Y / 1000, P.Z / 1000));
+    const R = new T.Matrix4().extractRotation(rawMat({ X: 0, Y: 0, Z: 0, rx: P.rx, ry: P.ry, rz: P.rz })).multiply(new T.Matrix4().extractRotation(raw));
+    R.setPosition(p);
+    return R;
+  }
+  function execMove(a, done) {
+    let M = null, q = null, pref = null;
+    if (a.rel) {
+      const cur = C4i.clone().multiply(tcpMatrix());
+      M = C4.clone().multiply(a.rel.frame === 'TF' ? cur.multiply(rawMat(a.rel.p)) : addRot(cur, a.rel.p));
+    } else {
+      const pos = a.pos;
+      if (pos.k === 'c' && pos.ut != null && pos.ut > 1) logMsg(`UT${pos.ut} の位置を、今のハンドの TCP で動かします`, 'warn', 'ut' + pos.ut);
+      if (pos.k === 'j' && !a.offset && !a.shift) q = pos.q.slice();
+      else if (pos.k === 'j' && a.offset && a.offset.pos.k === 'j' && !a.shift) q = pos.q.map((v, i) => v + a.offset.pos.q[i]);
+      else {
+        let raw = C4i.clone().multiply(posMatrix(pos));
+        if (a.offset) {
+          const o = a.offset.pos;
+          if (o.k !== 'c') { raiseAlarm('prog', '関節形式の PR は関節位置にだけ足せます'); return; }
+          if (a.offset.type === 'tool') raw = raw.multiply(rawMat(o.p));
+          else {
+            const U = ufMat(pos.k === 'c' ? (pos.uf || 0) : 0);
+            raw = U.clone().multiply(addRot(U.clone().invert().multiply(raw), o.p));
+          }
+        }
+        if (a.shift) raw = a.shift.frame === 'TF' ? raw.multiply(rawMat(a.shift.p)) : addRot(raw, a.shift.p);
+        M = C4.clone().multiply(raw);
+        if (pos.k === 'c' && S.sys === 'fanuc') pref = RS.parseConfig(pos.cfg);
+      }
+    }
+    const sp = a.speed || { v: 50, unit: '%' };
+    if (a.mode === 'J') {
+      if (!q) {
+        const ref = a.pos && a.pos.q && !a.offset && !a.shift ? a.pos.q : S.q;
+        const r = RS.ik(robot, M, tool.tcp, ref, pref);
+        if (!r.q) { raiseAlarm(r.err === 'reach' ? 'reach' : 'limit', `${a.prog} ${a.line + 1}行目`); return; }
+        q = r.q;
+      }
+      if (sp.unit === 'sec' || sp.unit === 'msec') startJ(q, null, done, sp.unit === 'sec' ? sp.v : sp.v / 1000);
+      else startJ(q, sp.v, done);
+    } else {
+      if (!M) M = tcpMatrix(q);
+      const u = sp.unit;
+      if (u === 'sec' || u === 'msec') startL(M, null, done, { dur: u === 'sec' ? sp.v : sp.v / 1000 });
+      else if (u === 'deg/s') startL(M, null, done, { rot: sp.v });
+      else startL(M, u === 'cm/min' ? sp.v / 6 : u === 'inch/min' ? sp.v * 25.4 / 60 : sp.v, done);
+    }
+  }
+
+  /* =================== プログラム・ライブラリ =================== */
+  const libKey = () => 'rs3-lib-' + S.sys;
+  let lib = loadLib();
+  function loadLib() {
+    const L = store.get(libKey(), null);
+    const out = { cur: 'MAIN', progs: {} };
+    if (L && L.progs) {
+      for (const p of Object.values(L.progs)) { const v = RS.validateProgram(p, S.sys); if (v) { v.sys = S.sys; out.progs[v.name] = v; } }
+      if (L.cur && out.progs[L.cur]) out.cur = L.cur;
+    } else {
+      const old = RS.validateProgram(store.get('rs2-prog-' + S.sys, null), S.sys);   // v2 からの移行
+      if (old && old.lines.length) { old.name = 'SAMPLE'; out.progs.SAMPLE = old; out.cur = 'SAMPLE'; }
+    }
+    if (!Object.keys(out.progs).length) out.progs.MAIN = RS.emptyProgram(S.sys, 'MAIN', S.toolId);
+    if (!out.progs[out.cur]) out.cur = Object.keys(out.progs)[0];
+    return out;
+  }
+  const prog = () => lib.progs[lib.cur];
+  function saveLib() { store.set(libKey(), lib); }
   let sel = -1;
   let undoStack = [];
-  function loadProg() {
-    const p = RS.validateProgram(store.get(progKey(), null));
-    return p || { name: 'SAMPLE', tool: S.toolId, lines: [] };
-  }
-  function saveProg() { store.set(progKey(), prog); }
-  function pushUndo() { undoStack.push(JSON.stringify(prog)); if (undoStack.length > 60) undoStack.shift(); }
+  function pushUndo() { undoStack.push(JSON.stringify(lib)); if (undoStack.length > 60) undoStack.shift(); }
   function undo() {
     if (run) return;
     const s = undoStack.pop(); if (!s) { flash('#progMsg', 'これ以上戻せません'); return; }
-    prog = JSON.parse(s); sel = clamp(sel, -1, prog.lines.length - 1); saveProg(); renderCode(); renderPend();
+    lib = JSON.parse(s);
+    sel = clamp(sel, -1, prog().lines.length - 1); saveLib(); renderProgAll();
   }
-  function edit(fn) { if (run) { flash('#progMsg', '再生中は編集できません'); return false; } pushUndo(); fn(); saveProg(); renderCode(); renderPend(); return true; }
-  const curQ = () => S.q.map(v => +v.toFixed(3));
-  function insertLine(l) {
-    edit(() => { const at = sel < 0 ? prog.lines.length : sel + 1; prog.lines.splice(at, 0, l); sel = at; });
+  function edit(fn) {
+    if (run) { flash('#progMsg', '再生中は編集できません'); return false; }
+    pushUndo(); fn(); saveLib(); renderCode(); renderPend(); return true;
   }
-  function defaultV(op) { return op === 'MOVJ' ? 50 : 300; }
-
-  /* 1行を実行 */
-  function execLine(i, done) {
-    const l = prog.lines[i];
-    if (!l) { done(); return; }
-    switch (l.op) {
-      case 'MOVJ': if (!startJ(l.q, l.v, done)) return; break;
-      case 'MOVL': if (!startL(tcpMatrix(l.q), l.v, done)) return; break;
-      case 'OUT': setOut(l.on); done(); break;
-      case 'WAITIN': run && (run.wait = { kind: 'in', on: l.on, t: 0, done }); if (!run) done(); break;
-      case 'TIMER': run && (run.wait = { kind: 't', t: l.t, done }); if (!run) done(); break;
-      default: done();
+  function teachPos() {
+    if (S.sys === 'yaskawa') return { k: 'j', q: curQ() };
+    const P = curPose();
+    const p = {}; for (const k of ['X', 'Y', 'Z', 'rx', 'ry', 'rz']) p[k] = r3(P[k]);
+    return { k: 'c', p, cfg: RS.configOf(S.q), uf: 0, ut: 1, q: curQ() };
+  }
+  function insertLine(text, pos) {
+    edit(() => {
+      const P = prog();
+      const at = sel < 0 ? P.lines.length : sel + 1;
+      let line = text;
+      if (pos) { const id = RS.nextPosId(S.sys, P); P.pos[id] = pos; line = text.replace('@', id); }
+      P.lines.splice(at, 0, line); sel = at;
+    });
+  }
+  function lastSpeed(mode) {
+    const P = prog();
+    for (let i = Math.min(sel, P.lines.length - 1); i >= 0; i--) {
+      const ins = RS.parseLine(S.sys, P.lines[i]);
+      if (ins.op === 'MOVE' && ins.mode === mode && (ins.speed.unit === '%' || ins.speed.unit === 'mm/s')) return ins.speed.v;
     }
+    return mode === 'J' ? 50 : 300;
+  }
+  function insertMove(mode) { insertLine(RS.lineMove(S.sys, mode, '@', lastSpeed(mode)), teachPos()); }
+
+  /* =================== プログラム実行 =================== */
+  const varKey = () => 'rs3-vars-' + S.sys;
+  let vars = store.get(varKey(), { num: {}, pos: {} });
+  if (!vars || !vars.num) vars = { num: {}, pos: {} };
+  const saveVars = () => store.set(varKey(), vars);
+  function makeHost() {
+    return {
+      lib: () => lib.progs, getIn, getOut, setOut, vars, curPose, curQ,
+      setOverride: v => { S.ovrRun = clamp(v, 1, 100); },
+      log: (m, lv) => logMsg(m, lv), opts: S.opts
+    };
   }
   function startRun(from, single) {
-    const why = canMove(); if (why) { flash('#progMsg', why); return false; }
-    if (!prog.lines.length) { flash('#progMsg', 'プログラムがありません'); return false; }
+    const why = canMove(); if (why) { flash('#progMsg', why); pend.msg = why; return false; }
+    const P = prog();
+    if (!P.lines.length) { flash('#progMsg', 'プログラムがありません'); return false; }
+    const errs = RS.checkProgram(P, lib.progs).filter(e => e.lv === 'err');
+    if (errs.length && !single) { flash('#progMsg', `${errs[0].line} 行目：${errs[0].msg}`); renderCheck(); return false; }
     jogHold = null; mv = null;
-    run = { pc: clamp(from, 0, prog.lines.length - 1), single: !!single, paused: false, wait: null };
-    if (!single && run.pc === 0) beginCycle();
-    if (!single) clearTrail();
+    const it = new RS.Interp(makeHost());
+    it.start(P.name, clamp(from, 0, P.lines.length - 1));
+    run = { interp: it, single: !!single, paused: false, main: P.name };
+    if (!single) { clearTrail(); logged.clear(); }
+    lastPcKey = '';
     refreshState(); renderCode();
     return true;
   }
-  function beginCycle() {
-    if (S.opts.autoSup) supplyCycle();
-    S.stats.cycleT0 = performance.now();
-  }
-  function endCycle() {
-    S.stats.last = (performance.now() - S.stats.cycleT0) / 1000;
-    S.stats.count++;
-    updateCycle();
-  }
   function stepRun(dt) {
     if (!run || run.paused || mv || S.alarm) return;
-    if (run.wait) {
-      const w = run.wait;
-      if (w.kind === 't') { w.t -= dt; if (w.t > 0) return; }
-      else {
-        if (S.out && !S.holding) tryGrasp();
-        if (!!S.holding !== w.on) { w.t += dt; if (w.t > 3) raiseAlarm('hand', tool.kind === 'vacuum' ? '吸着を確認できません（位置・高さを確認）' : '把持を確認できません'); return; }
-      }
-      run.wait = null; w.done(); return;
+    const a = run.interp.tick(dt, run.single);
+    if (run && run.interp.frame) syncPc();
+    if (!a) return;
+    switch (a.t) {
+      case 'move':
+        execMove(a, () => {
+          if (!run) return;
+          run.interp.done(); syncPc();
+          if (run.single) finishSingle();
+        });
+        break;
+      case 'stepped': finishSingle(); break;
+      case 'pause': run.paused = true; logMsg('PAUSE で一時停止しました（再生で続行）'); refreshState(); break;
+      case 'alarm': raiseAlarm(a.key, a.msg); break;
+      case 'end':
+        saveVars();
+        if (run.single) { finishSingle(); break; }
+        if (S.opts.loop) { run.interp.start(run.main, 0); logMsg(`${run.main} を先頭から繰り返します`); }
+        else { run = null; S.ovrRun = 100; refreshState(); renderCode(); setStatus('プログラム終了'); }
+        break;
     }
-    if (run.pc >= prog.lines.length) {
-      endCycle();
-      if (S.opts.loop) { run.pc = 0; beginCycle(); renderCode(); return; }
-      run = null; sel = prog.lines.length - 1; refreshState(); renderCode(); setStatus('プログラム終了'); return;
-    }
-    const pc = run.pc;
-    sel = pc; markPc();
-    run.busy = true;
-    execLine(pc, () => {
-      if (!run) return;
-      run.pc = pc + 1;
-      if (run.single) { run = null; sel = Math.min(pc + 1, prog.lines.length - 1); refreshState(); renderCode(); renderPend(); }
-      else markPc();
-    });
+  }
+  function finishSingle() {
+    const it = run.interp;
+    const next = it.frame && it.progName === prog().name ? it.pc : sel + 1;
+    run = null; S.ovrRun = 100;
+    sel = clamp(next, 0, prog().lines.length - 1);
+    refreshState(); renderCode(); renderPend(); saveVars();
+  }
+  let lastPcKey = '';
+  function syncPc() {
+    if (!run || !run.interp.frame) return;
+    const it = run.interp;
+    const key = it.progName + ':' + it.pc;
+    if (key === lastPcKey) return;
+    lastPcKey = key;
+    if (it.progName !== prog().name && lib.progs[it.progName]) { lib.cur = it.progName; renderProgSelect(); renderCode(); }
+    if (it.progName === prog().name) { sel = it.pc; markPc(); }
+    if (!$('#t-pend').hidden) updateLcd();
   }
 
-  /* サンプルプログラム（供給台 → 排出台） */
+  /* サンプルプログラム（供給台 → 排出台、3回繰り返し） */
   function makeSample() {
     const def = workDef(), A = TABLES[0], B = TABLES[1];
     const grasp = tool.kind === 'gripper' ? Math.min(def.size[2] * 0.5, tool.grip.depth * 0.6) : 0;
     const zA = A.h + def.size[2] - grasp, zB = B.h + def.size[2] - grasp, ap = tool.approach;
-    const P = (t, z) => ({ X: t.X * 1000, Y: t.Y * 1000, Z: z * 1000, rx: 180, ry: 0, rz: 0 });
+    const P = (t, z) => ({ X: t.X * 1000, Y: t.Y * 1000, Z: r3(z * 1000), rx: 180, ry: 0, rz: 0 });
     const targets = [P(A, zA + ap), P(A, zA), P(B, zB + ap), P(B, zB)];
     const qs = []; let ref = robot.home;
     for (const p of targets) {
       const r = RS.ik(robot, RS.matrixFromPose(p), tool.tcp, ref);
-      if (!r.q) { flash('#progMsg', 'サンプルの位置に届きません（ハンド・ワークの組合せを確認）'); return; }
-      qs.push(r.q.map(v => +v.toFixed(3))); ref = r.q;
+      if (!r.q) { flash('#progMsg', 'サンプルの位置に届きません（ハンド・ワーク・機種寸法の組合せを確認）'); return; }
+      qs.push({ q: r.q.map(v => +v.toFixed(4)), p: targets[qs.length] }); ref = r.q;
     }
-    const home = robot.home.slice();
+    const sys = S.sys, ho = io().handOut, hi = io().handIn, Y = sys === 'yaskawa';
+    const P2 = RS.emptyProgram(sys, 'SAMPLE', tool.id);
+    P2.comment = 'PICK AND PLACE';
+    const L = [];
+    const mv2 = (mode, t, v, cart) => {
+      const id = RS.nextPosId(sys, P2);
+      if (!cart) P2.pos[id] = { k: 'j', q: t };
+      else P2.pos[id] = { k: 'c', p: Object.assign({}, t.p), cfg: RS.configOf(t.q), uf: 0, ut: 1, q: t.q };
+      L.push(RS.lineMove(sys, mode, id, v));
+      P2.lines = L;
+    };
     const isVac = tool.kind === 'vacuum';
-    edit(() => {
-      prog.name = 'SAMPLE'; prog.tool = tool.id;
-      prog.lines = [
-        { op: 'MOVJ', q: home, v: 50 },
-        { op: 'MOVJ', q: qs[0], v: 60 },
-        { op: 'MOVL', q: qs[1], v: 200 },
-        { op: 'OUT', on: true },
-        { op: 'WAITIN', on: true },
-        ...(isVac ? [{ op: 'TIMER', t: 0.2 }] : []),
-        { op: 'MOVL', q: qs[0], v: 400 },
-        { op: 'MOVJ', q: qs[2], v: 60 },
-        { op: 'MOVL', q: qs[3], v: 200 },
-        { op: 'OUT', on: false },
-        { op: 'WAITIN', on: false },
-        { op: 'TIMER', t: 0.3 },
-        { op: 'MOVL', q: qs[2], v: 400 },
-        { op: 'MOVJ', q: home, v: 60 }
-      ];
-      sel = 0;
-    });
+    L.push(RS.lineComment(sys, 'PICK AND PLACE SAMPLE'));
+    L.push(Y ? 'SET I000 0' : 'R[1]=0');
+    mv2('J', robot.home.slice(), 50, false);
+    L.push(Y ? '*LOOP' : 'LBL[1]');
+    L.push(RS.lineWait(sys, Y ? { kind: 'IN', n: 2 } : { kind: 'DI', n: 1 }, true));
+    mv2('J', qs[0], 60, true);
+    mv2('L', qs[1], 200, true);
+    L.push(RS.lineOut(sys, ho, true));
+    L.push(RS.lineWait(sys, hi, true));
+    if (isVac) L.push(RS.lineTimer(sys, 0.2));
+    mv2('L', qs[0], 400, true);
+    mv2('J', qs[2], 60, true);
+    mv2('L', qs[3], 200, true);
+    L.push(RS.lineOut(sys, ho, false));
+    L.push(RS.lineWait(sys, hi, false));
+    L.push(RS.lineTimer(sys, 0.3));
+    mv2('L', qs[2], 400, true);
+    mv2('J', robot.home.slice(), 60, false);
+    if (Y) { L.push('INC I000'); L.push('JUMP *LOOP IF I000<3'); }
+    else { L.push('R[1]=R[1]+1'); L.push('IF R[1]<3,JMP LBL[1]'); }
+    P2.lines = L;
+    edit(() => { lib.progs.SAMPLE = P2; lib.cur = 'SAMPLE'; sel = 0; });
+    renderProgSelect();
     resetWorks();
-    if (S.out) setOut(false);
-    flash('#progMsg', 'サンプルを作成しました。「▶ 再生」で動かせます', true);
+    setOut(ho.kind, ho.n, false);
+    flash('#progMsg', 'サンプル（3回繰り返し）を作成しました。「▶ 再生」で動かせます', true);
   }
 
   /* =================== 軌跡 =================== */
@@ -602,14 +761,10 @@
   function clearTrail() { trailN = 0; trailGeo.setDrawRange(0, 0); }
 
   /* =================== ジョグ =================== */
-  let jogHold = null;   // {kind:'j'|'c', axis, dir, frame, spd, src}
-  let stepSize = 0;     // 0 = 押している間
-  let cartFrame = 'base';
-  const LIN_MAX = 250, ROT_MAX = 45, JNT_FRAC = 0.25; // 手動速度の上限（mm/s, deg/s, 最高速度比）
+  let jogHold = null, stepSize = 0, cartFrame = 'base';
+  const LIN_MAX = 250, ROT_MAX = 45, JNT_FRAC = 0.25;
   const BASE_AX = [new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), new T.Vector3(0, 1, 0)];
-
   function cartTarget(M, axis, dir, amt, frame) {
-    // amt: mm または 度
     const N = M.clone();
     if (frame === 'tool') {
       const D = new T.Matrix4();
@@ -620,11 +775,9 @@
     const p = new T.Vector3().setFromMatrixPosition(M);
     if (axis < 3) { p.addScaledVector(BASE_AX[axis], dir * amt / 1000); N.setPosition(p); return N; }
     const R = new T.Matrix4().makeRotationAxis(BASE_AX[axis - 3], dir * amt * D2R);
-    const Rot = new T.Matrix4().extractRotation(M);
-    const O = R.multiply(Rot); O.setPosition(p);
+    const O = R.multiply(new T.Matrix4().extractRotation(M)); O.setPosition(p);
     return O;
   }
-  /* 1フレーム分のジョグ */
   function stepJog(dt) {
     const j = jogHold; if (!j) return;
     const why = canMove() || (j.check ? j.check() : '');
@@ -647,13 +800,11 @@
     applyPose();
     const c = collisionCheck();
     if (c) { S.q = prev; applyPose(); msg = '干渉するため停止：' + c; endJog(); }
-    if (S.out && !S.holding) tryGrasp();
-    if (msg) jogMsg(msg); else if (j.msgShown) { jogMsg(''); j.msgShown = false; }
-    if (msg) j.msgShown = true;
+    if (handOn() && !S.holding) tryGrasp();
+    if (msg) { jogMsg(msg); j.msgShown = true; } else if (j.msgShown) { jogMsg(''); j.msgShown = false; }
   }
   function jogMsg(m) { $('#jogMsg').textContent = m; $('#jogMsg').classList.remove('ok'); pend.msg = m; }
   function endJog() { jogHold = null; $$('.hold').forEach(b => b.classList.remove('hold')); }
-  /* 決まった量だけ動かす（ステップ送り） */
   function jogStep(kind, axis, dir, frame) {
     const why = canMove(); if (why) { jogMsg(why); return; }
     if (mv) return;
@@ -704,31 +855,32 @@
   function refreshState() {
     const pill = $('#statePill');
     pill.className = 'pill';
-    if (S.alarm) { pill.textContent = 'アラーム'; pill.classList.add('alm'); }
-    else if (run) { pill.textContent = run.paused ? '一時停止' : (run.single ? '1行実行' : '再生中'); pill.classList.add('run'); }
-    else pill.textContent = '手動';
-    if (!S.alarm && !run) setStatus('手動操作');
-    if (run && !S.alarm) setStatus(run.paused ? '一時停止中' : `実行中 ${String(run.pc + 1).padStart(3, '0')} 行目 / ${prog.lines.length}`);
-    if (S.alarm) setStatus('アラーム停止中');
+    if (S.alarm) { pill.textContent = 'アラーム'; pill.classList.add('alm'); setStatus('アラーム停止中'); }
+    else if (run) {
+      pill.textContent = run.paused ? '一時停止' : (run.single ? '1行実行' : '再生中'); pill.classList.add('run');
+      const it = run.interp, st = it.status();
+      setStatus(run.paused ? '一時停止中' : `${it.progName} ${String(it.pc + 1).padStart(3, '0')} 行目${st ? '　' + st : ''}`);
+    } else { pill.textContent = '手動'; setStatus('手動操作'); }
     $('#runBtn').textContent = run && run.paused ? '▶ 再開' : '▶ 再生';
   }
-  function flash(sel, m, ok) { const el = $(sel); el.textContent = m; el.classList.toggle('ok', !!ok); }
+  function flash(sel2, m, ok) { const el = $(sel2); if (!el) return; el.textContent = m; el.classList.toggle('ok', !!ok); }
 
   $$('.seg.sys button').forEach(b => b.addEventListener('click', () => switchSystem(b.dataset.sys)));
   function switchSystem(id) {
     if (id === S.sys) return;
-    stopAll();
-    saveProg();
+    stopAll(); saveLib(); saveVars();
     if (S.holding) dropWork(true);
     if (S.alarm && !S.estop) resetAlarm();
-    S.sys = id; robot = RS.ROBOTS[id]; store.set('rs2-sys', id);
+    S.sys = id; robot = RS.ROBOTS[id]; store.set('rs3-sys', id);
     S.q = robot.home.slice();
-    prog = loadProg(); sel = prog.lines.length ? 0 : -1; undoStack = [];
+    S.io = { out: {}, force: {} };
+    lib = loadLib(); sel = prog().lines.length ? 0 : -1; undoStack = [];
+    vars = store.get(varKey(), { num: {}, pos: {} }); if (!vars || !vars.num) vars = { num: {}, pos: {} };
+    uframes = store.get(ufKey(), {});
     Object.assign(pend, { servo: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '' });
-    buildRobot(); applyPose();
+    buildRobot(); applyPose(); updateToolVis();
     renderAll();
   }
-  /* ハンド */
   const toolSel = $('#toolSel');
   toolSel.innerHTML = RS.TOOLS.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
   toolSel.addEventListener('change', () => switchTool(toolSel.value));
@@ -736,13 +888,13 @@
     if (id === tool.id) return;
     stopAll();
     if (S.holding) dropWork(true);
-    S.out = false; S.gripK = 0;
-    tool = RS.toolById(id); S.toolId = tool.id; store.set('rs2-tool', tool.id);
-    S.workId = tool.work; store.set('rs2-work', S.workId);
+    S.io.out = {}; S.gripK = 0;
+    tool = RS.toolById(id); S.toolId = tool.id; store.set('rs3-tool', tool.id);
+    S.workId = tool.work; store.set('rs3-work', S.workId);
     buildTool(); buildReach(); applyPose();
     resetWorks();
     renderAll();
-    flash('#progMsg', prog.lines.length && prog.tool !== tool.id ? 'このプログラムは別のハンド用です。「サンプル作成」で作り直すか、位置を修正してください' : '');
+    flash('#progMsg', prog().lines.length && prog().tool !== tool.id ? `このプログラムは「${RS.toolById(prog().tool).name}」用です` : '');
   }
 
   /* =================== 画面：ジョグタブ =================== */
@@ -766,7 +918,7 @@
         S.q[i] = +inp.value; applyPose();
         const c = collisionCheck();
         if (c) { S.q = prev; applyPose(); jogMsg('干渉するため動かせません：' + c); }
-        if (S.out && !S.holding) tryGrasp();
+        if (handOn() && !S.holding) tryGrasp();
       });
     });
   }
@@ -832,12 +984,15 @@
     if (run) stopAll();
     startJ(robot.home, S.opts.jogSpd, null);
   });
-  $('#outBtn').addEventListener('click', () => { setOut(!S.out); if (S.out && !S.holding) flash('#jogMsg', tool.kind === 'vacuum' ? '吸着ON（ワークに触れていません）' : '閉（ワークをつかんでいません）'); else flash('#jogMsg', ''); });
+  $('#outBtn').addEventListener('click', () => {
+    const h = io().handOut; setOut(h.kind, h.n, !handOn());
+    if (handOn() && !S.holding) flash('#jogMsg', tool.kind === 'vacuum' ? '吸着ON（ワークに触れていません）' : '閉（ワークをつかんでいません）'); else flash('#jogMsg', '');
+  });
   function outName(on) { return tool.kind === 'vacuum' ? (on ? '吸着 ON' : '吸着 OFF') : (on ? '閉' : '開'); }
   function updateOutBtn() {
     const b = $('#outBtn');
-    b.textContent = 'ハンド：' + outName(S.out) + (S.holding ? '（保持中）' : '');
-    b.setAttribute('aria-pressed', String(S.out));
+    b.textContent = 'ハンド：' + outName(handOn()) + (S.holding ? '（保持中）' : '');
+    b.setAttribute('aria-pressed', String(handOn()));
   }
   const jogSpd = $('#jogSpd');
   jogSpd.value = S.opts.jogSpd; $('#jogSpdOut').textContent = S.opts.jogSpd + '%';
@@ -845,29 +1000,76 @@
 
   /* =================== 画面：プログラムタブ =================== */
   const codeEl = $('#code');
+  let textMode = false;
+  function renderProgSelect() {
+    $('#progSel').innerHTML = Object.keys(lib.progs).sort().map(n => `<option value="${esc(n)}"${n === lib.cur ? ' selected' : ''}>${esc(n)}${lib.progs[n].comment ? '　' + esc(lib.progs[n].comment) : ''}</option>`).join('');
+    $('#progComment').value = prog().comment || '';
+  }
+  $('#progSel').addEventListener('change', e => { if (run) { renderProgSelect(); return; } lib.cur = e.target.value; sel = prog().lines.length ? 0 : -1; saveLib(); renderProgAll(); });
+  $('#progNew').addEventListener('click', () => {
+    if (run) return;
+    const n = window.prompt('新しいプログラムの名前（英大文字・数字・_）', 'PROG' + (Object.keys(lib.progs).length + 1));
+    if (n == null) return;
+    const name = RS.cleanName(n);
+    if (lib.progs[name]) { flash('#progMsg', name + ' はすでにあります'); return; }
+    pushUndo();
+    lib.progs[name] = RS.emptyProgram(S.sys, name, tool.id); lib.cur = name; sel = -1; saveLib(); renderProgAll();
+  });
+  $('#progRen').addEventListener('click', () => {
+    if (run) return;
+    const n = window.prompt('名前を変更', prog().name); if (n == null) return;
+    const name = RS.cleanName(n);
+    if (name === prog().name) return;
+    if (lib.progs[name]) { flash('#progMsg', name + ' はすでにあります'); return; }
+    pushUndo();
+    const p = prog(); delete lib.progs[p.name]; p.name = name; lib.progs[name] = p; lib.cur = name; saveLib(); renderProgAll();
+  });
+  $('#progDup').addEventListener('click', () => {
+    if (run) return;
+    let k = 2, name = RS.cleanName(prog().name + '_2');
+    while (lib.progs[name]) name = RS.cleanName(prog().name + '_' + (++k));
+    pushUndo();
+    const p = JSON.parse(JSON.stringify(prog())); p.name = name; lib.progs[name] = p; lib.cur = name; saveLib(); renderProgAll();
+  });
+  $('#progDel').addEventListener('click', () => {
+    if (run) return;
+    if (!window.confirm(`プログラム ${prog().name} を削除します。よろしいですか？（元に戻せます）`)) return;
+    pushUndo();
+    delete lib.progs[lib.cur];
+    if (!Object.keys(lib.progs).length) lib.progs.MAIN = RS.emptyProgram(S.sys, 'MAIN', tool.id);
+    lib.cur = Object.keys(lib.progs)[0]; sel = -1; saveLib(); renderProgAll();
+  });
+  function lineNo(i) { return S.sys === 'yaskawa' ? String(i + 1).padStart(4, '0') : String(i + 1).padStart(3, ' ') + ':'; }
   function renderCode() {
-    const pi = RS.pointIndex(prog);
+    const P = prog();
     const Y = S.sys === 'yaskawa';
-    let h = Y ? '<li class="fixed"><span class="n">0000</span>NOP</li>' : '';
-    prog.lines.forEach((l, i) => {
-      const n = Y ? String(i + 1).padStart(4, '0') : String(i + 1).padStart(3, ' ') + ':';
-      h += `<li data-i="${i}" class="${i === sel ? 'sel' : ''}${run && run.pc === i ? ' pc' : ''}"><span class="n">${n}</span>${esc(RS.formatLine(S.sys, l, pi[i]))}</li>`;
-    });
-    h += Y ? `<li class="fixed"><span class="n">${String(prog.lines.length + 1).padStart(4, '0')}</span>END</li>` : '<li class="fixed"><span class="n">[End]</span></li>';
-    codeEl.innerHTML = h;
-    const s = codeEl.querySelector('li.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
-    $('#progName').value = prog.name;
-    renderLineEdit();
+    if (textMode) $('#codeText').value = P.lines.join('\n');
+    else {
+      const errs = RS.checkProgram(P, lib.progs);
+      const bad = {}; errs.forEach(e => { bad[e.line - 1] = bad[e.line - 1] === 'err' ? 'err' : e.lv; });
+      let h = Y ? '<li class="fixed"><span class="n">0000</span>NOP</li>' : '';
+      P.lines.forEach((l, i) => {
+        const pc = run && run.interp.progName === P.name && run.interp.pc === i;
+        h += `<li data-i="${i}" class="${i === sel ? 'sel' : ''}${pc ? ' pc' : ''}${bad[i] ? ' ' + (bad[i] === 'err' ? 'bad' : 'warnl') : ''}"><span class="n">${lineNo(i)}</span>${esc(l)}${Y ? '' : ' ;'}</li>`;
+      });
+      h += Y ? `<li class="fixed"><span class="n">${String(P.lines.length + 1).padStart(4, '0')}</span>END</li>` : '<li class="fixed"><span class="n">[End]</span></li>';
+      codeEl.innerHTML = h;
+      const s = codeEl.querySelector('li.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
+    }
+    codeEl.hidden = textMode; $('#textBox').hidden = !textMode;
+    $$('#viewSel button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.v === 'text') === textMode)));
+    renderLineEdit(); renderCheck(); renderVars();
     refreshState();
   }
+  function renderProgAll() { renderProgSelect(); renderCode(); renderPend(); }
   function markPc() {
+    const P = prog();
     codeEl.querySelectorAll('li[data-i]').forEach(li => {
       const i = +li.dataset.i;
-      li.classList.toggle('pc', !!run && run.pc === i);
+      li.classList.toggle('pc', !!run && run.interp.progName === P.name && run.interp.pc === i);
       li.classList.toggle('sel', i === sel);
     });
     const s = codeEl.querySelector('li.pc'); if (s) s.scrollIntoView({ block: 'nearest' });
-    refreshState();
   }
   function markErrLine(i) { const li = codeEl.querySelector(`li[data-i="${i}"]`); if (li) li.classList.add('err'); }
   codeEl.addEventListener('click', e => {
@@ -877,62 +1079,146 @@
   codeEl.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      sel = clamp(sel + (e.key === 'ArrowDown' ? 1 : -1), 0, prog.lines.length - 1); markPc(); renderLineEdit();
+      sel = clamp(sel + (e.key === 'ArrowDown' ? 1 : -1), 0, prog().lines.length - 1); markPc(); renderLineEdit();
     } else if (e.key === 'Delete' && sel >= 0) delLine();
   });
+  $('#viewSel').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (textMode && b.dataset.v !== 'text' && $('#codeText').value !== prog().lines.join('\n')) {
+      if (!window.confirm('テキストの変更を「反映」していません。破棄して一覧に戻りますか？')) return;
+    }
+    textMode = b.dataset.v === 'text'; renderCode();
+  });
+  $('#textApply').addEventListener('click', () => {
+    const lines = $('#codeText').value.split(/\r?\n/).map(l => l.replace(/^\s*\d+\s*:\s*/, '').replace(/\s*;\s*$/, '').trimEnd());
+    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    const clean = S.sys === 'yaskawa' ? lines.filter(l => !/^\s*(NOP|END)\s*$/i.test(l)) : lines;
+    edit(() => { prog().lines = clean; sel = Math.min(sel, clean.length - 1); });
+    const errs = RS.checkProgram(prog(), lib.progs);
+    flash('#progMsg', errs.length ? `反映しました（確認事項 ${errs.length} 件）` : '反映しました', !errs.some(e => e.lv === 'err'));
+  });
+  $('#fillPos').addEventListener('click', () => {
+    const P = prog();
+    const miss = [];
+    P.lines.forEach(l => { const i = RS.parseLine(S.sys, l); if (i.op === 'MOVE' && /^(C\d{5}|P\[\d+\])$/.test(i.ref) && !P.pos[i.ref] && !miss.includes(i.ref)) miss.push(i.ref); });
+    if (!miss.length) { flash('#progMsg', '不足している位置はありません', true); return; }
+    edit(() => { miss.forEach(id => { P.pos[id] = teachPos(); }); });
+    flash('#progMsg', `${miss.join(', ')} を現在位置で作成しました。各行で「現在位置で修正」して教示してください`, true);
+  });
+  function renderCheck() {
+    const errs = RS.checkProgram(prog(), lib.progs);
+    $('#checkList').innerHTML = errs.slice(0, 30).map(e => `<li class="${e.lv}" data-l="${e.line - 1}">${e.line} 行目：${esc(e.msg)}</li>`).join('');
+    $('#checkList').hidden = !errs.length;
+  }
+  $('#checkList').addEventListener('click', e => { const li = e.target.closest('[data-l]'); if (!li) return; textMode = false; sel = +li.dataset.l; renderCode(); });
+
+  /* 行の編集パネル */
   function renderLineEdit() {
     const box = $('#lineEdit');
-    const l = prog.lines[sel];
-    if (!l) { box.innerHTML = '<p class="note" style="margin:0">行を選ぶと、ここで編集できます。新しい行は選んだ行の下に追加されます。</p>'; return; }
+    const P = prog(), l = P.lines[sel];
+    if (textMode) { box.hidden = true; return; }
+    box.hidden = false;
+    if (l == null) { box.innerHTML = '<p class="note" style="margin:0">行を選ぶと、ここで編集できます。新しい行は選んだ行の下に追加されます。</p>'; return; }
     const Y = S.sys === 'yaskawa';
-    let h = `<div class="row"><b>${String(sel + 1).padStart(3, '0')} 行目</b>`;
-    if (RS.isMove(l)) {
-      h += `<span class="seg mini"><button data-e="op" data-v="MOVJ" aria-pressed="${l.op === 'MOVJ'}">${Y ? 'MOVJ' : 'J'} 関節</button><button data-e="op" data-v="MOVL" aria-pressed="${l.op === 'MOVL'}">${Y ? 'MOVL' : 'L'} 直線</button></span></div>`;
-      h += `<div class="row"><label class="chk">速度 <input type="number" id="eV" min="1" max="${l.op === 'MOVJ' ? 100 : robot.vlMax}" step="${l.op === 'MOVJ' ? 1 : 10}" value="${l.v}"> ${l.op === 'MOVJ' ? '%' : 'mm/s'}</label></div>`;
-      h += `<div class="row grow"><button data-e="touch">現在位置で修正</button><button data-e="goto">この位置へ移動</button></div>`;
-    } else if (l.op === 'OUT' || l.op === 'WAITIN') {
-      h += `<span class="seg mini"><button data-e="on" data-v="1" aria-pressed="${l.on}">ON</button><button data-e="on" data-v="0" aria-pressed="${!l.on}">OFF</button></span></div>`;
-      h += `<p class="note" style="margin:2px 0">${l.op === 'OUT' ? (tool.kind === 'vacuum' ? 'ON＝吸着、OFF＝解放' : 'ON＝閉じる、OFF＝開く') : 'ハンドの確認信号（保持中＝ON）を待ちます。3秒で来なければアラーム'}</p>`;
-    } else if (l.op === 'TIMER') {
-      h += `</div><div class="row"><label class="chk">待ち時間 <input type="number" id="eT" min="0" max="60" step="0.1" value="${l.t}"> 秒</label></div>`;
+    const ins = RS.parseLine(S.sys, l);
+    let h = `<div class="row"><b>${String(sel + 1).padStart(3, '0')} 行目</b><input type="text" id="eText" class="grow1" spellcheck="false" value="${esc(l)}" aria-label="命令文"></div>`;
+    if (ins.op === 'ERR') h += `<p class="msg" style="margin:2px 0">${esc(ins.msg)}</p>`;
+    if (ins.op === 'UNKNOWN') h += `<p class="note" style="margin:2px 0">${esc(ins.msg || 'シミュレーターが解釈できない命令です（実行時は飛ばします）。')}</p>`;
+    if (ins.op === 'MOVE') {
+      h += `<div class="row"><span class="seg mini"><button data-e="mode" data-v="J" aria-pressed="${ins.mode === 'J'}">${Y ? 'MOVJ' : 'J'} 関節</button><button data-e="mode" data-v="L" aria-pressed="${ins.mode === 'L'}">${Y ? 'MOVL' : 'L'} 直線</button></span>` +
+        `<label class="chk">速度 <input type="number" id="eV" min="0.1" step="${ins.mode === 'J' ? 1 : 10}" value="${ins.speed.v}"> ${esc(ins.speed.unit)}</label>` +
+        (Y ? `<label class="chk">PL <select id="eTerm"><option value="">なし</option>${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option${ins.term && ins.term.pl === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`
+          : `<label class="chk"><select id="eTerm"><option value="FINE">FINE</option>${[0, 25, 50, 75, 100].map(n => `<option value="${n}"${ins.term && ins.term.cnt === n ? ' selected' : ''}>CNT${n}</option>`).join('')}</select></label>`) + '</div>';
+      if (/^(C\d{5}|P\[\d+\])$/.test(ins.ref)) {
+        const pos = P.pos[ins.ref];
+        if (pos) {
+          const lab = pos.k === 'j' ? robot.axes : robot.cart;
+          const vals = pos.k === 'j' ? pos.q : [pos.p.X, pos.p.Y, pos.p.Z, pos.p.rx, pos.p.ry, pos.p.rz];
+          h += `<div class="row"><b>${esc(ins.ref)}</b><span class="seg mini"><button data-e="pk" data-v="c" aria-pressed="${pos.k === 'c'}">直交</button><button data-e="pk" data-v="j" aria-pressed="${pos.k === 'j'}">関節</button></span>${pos.k === 'c' ? `<span class="note">UF${pos.uf || 0} UT${pos.ut == null ? 1 : pos.ut}${S.sys === 'fanuc' ? ' ' + esc(pos.cfg) : ''}</span>` : ''}</div>`;
+          h += `<div class="xyz6">${lab.map((a, i) => `<label>${a}<input type="number" data-pv="${i}" step="0.1" value="${(+vals[i]).toFixed(3)}"></label>`).join('')}</div>`;
+        } else h += `<p class="msg" style="margin:4px 0">位置 ${esc(ins.ref)} がありません。「現在位置で修正」で作れます。</p>`;
+        h += `<div class="row grow"><button data-e="touch">現在位置で修正</button><button data-e="goto">この位置へ移動</button></div>`;
+      } else h += `<p class="note">位置変数 ${esc(ins.ref)} への移動です（値は「変数」で設定）。</p>`;
     }
     h += `<div class="row grow"><button data-e="up">↑ 上へ</button><button data-e="down">↓ 下へ</button><button data-e="dup">複製</button><button data-e="del" class="danger">削除</button></div>`;
     box.innerHTML = h;
-    const eV = $('#eV'); if (eV) eV.addEventListener('change', () => { const v = +eV.value; if (!(v > 0)) return; edit(() => { l.v = clamp(v, 1, l.op === 'MOVJ' ? 100 : robot.vlMax); }); });
-    const eT = $('#eT'); if (eT) eT.addEventListener('change', () => { const v = +eT.value; if (!(v >= 0)) return; edit(() => { l.t = clamp(v, 0, 60); }); });
+    const eText = $('#eText');
+    eText.addEventListener('change', () => { const v = eText.value.replace(/\s*;\s*$/, '').trim(); edit(() => { prog().lines[sel] = v; }); });
+    if (ins.op === 'MOVE') {
+      const upd = fn => { const i2 = RS.parseLine(S.sys, prog().lines[sel]); if (i2.op !== 'MOVE') return; fn(i2); edit(() => { prog().lines[sel] = RS.formatMove(S.sys, i2); }); };
+      $('#eV').addEventListener('change', e => { const v = +e.target.value; if (!(v > 0)) return; upd(i2 => { i2.speed.v = i2.speed.unit === '%' ? clamp(v, 0.01, 100) : clamp(v, 0.1, i2.speed.unit === 'mm/s' ? robot.vlMax : 100000); }); });
+      $('#eTerm').addEventListener('change', e => upd(i2 => { const v = e.target.value; if (Y) i2.term = v === '' ? null : { pl: +v }; else i2.term = v === 'FINE' ? { fine: true } : { cnt: +v }; }));
+      box.querySelectorAll('[data-pv]').forEach(inp => inp.addEventListener('change', () => {
+        const v = +inp.value; if (!isFinite(v)) return;
+        const k = +inp.dataset.pv;
+        edit(() => { const pos = prog().pos[ins.ref]; if (!pos) return; if (pos.k === 'j') pos.q[k] = v; else { pos.p[['X', 'Y', 'Z', 'rx', 'ry', 'rz'][k]] = v; delete pos.q; } });
+      }));
+    }
   }
-  function delLine() { if (sel < 0) return; edit(() => { prog.lines.splice(sel, 1); sel = Math.min(sel, prog.lines.length - 1); }); }
+  function delLine() { if (sel < 0) return; edit(() => { prog().lines.splice(sel, 1); sel = Math.min(sel, prog().lines.length - 1); }); }
   $('#lineEdit').addEventListener('click', e => {
     const b = e.target.closest('[data-e]'); if (!b) return;
-    const l = prog.lines[sel]; if (!l) return;
+    const l = prog().lines[sel]; if (l == null) return;
+    const ins = RS.parseLine(S.sys, l);
     switch (b.dataset.e) {
-      case 'op': if (l.op !== b.dataset.v) edit(() => { l.op = b.dataset.v; l.v = defaultV(l.op); }); break;
-      case 'on': edit(() => { l.on = b.dataset.v === '1'; }); break;
-      case 'touch': edit(() => { l.q = curQ(); }); flash('#progMsg', '現在位置で修正しました', true); break;
+      case 'mode':
+        if (ins.op === 'MOVE' && ins.mode !== b.dataset.v) edit(() => {
+          ins.mode = b.dataset.v;
+          ins.speed = { v: lastSpeed(ins.mode), unit: ins.mode === 'J' ? '%' : 'mm/s' };
+          prog().lines[sel] = RS.formatMove(S.sys, ins);
+        });
+        break;
+      case 'pk': {
+        const pos = prog().pos[ins.ref]; if (!pos || pos.k === b.dataset.v) break;
+        if (b.dataset.v === 'j') {
+          const r = pos.q ? { q: pos.q } : RS.ik(robot, posMatrix(pos), tool.tcp, S.q, S.sys === 'fanuc' ? RS.parseConfig(pos.cfg) : null);
+          if (!r.q) { flash('#progMsg', 'この位置は関節に変換できません（届かない）'); break; }
+          edit(() => { prog().pos[ins.ref] = { k: 'j', q: r.q.map(r3) }; });
+        } else edit(() => {
+          const q = pos.q, p = RS.poseFromMatrix(tcpMatrix(q));
+          for (const k in p) p[k] = r3(p[k]);
+          prog().pos[ins.ref] = { k: 'c', p, cfg: RS.configOf(q), uf: 0, ut: 1, q: q.slice() };
+        });
+        break;
+      }
+      case 'touch':
+        if (ins.op !== 'MOVE') break;
+        edit(() => {
+          const P = prog(), old = P.pos[ins.ref];
+          if (old && old.k === 'c') {
+            const p = poseInUf(tcpMatrix(), old.uf || 0); for (const k in p) p[k] = r3(p[k]);
+            P.pos[ins.ref] = { k: 'c', p, cfg: RS.configOf(S.q), uf: old.uf || 0, ut: old.ut == null ? 1 : old.ut, q: curQ() };
+          } else if (old && old.k === 'j') P.pos[ins.ref] = { k: 'j', q: curQ() };
+          else P.pos[ins.ref] = teachPos();
+        });
+        flash('#progMsg', `${ins.ref} を現在位置で修正しました`, true); break;
       case 'goto': {
         const why = canMove(); if (why) { flash('#progMsg', why); break; }
+        const pos = prog().pos[ins.ref]; if (!pos) break;
         if (run) stopAll();
-        startJ(l.q, S.opts.jogSpd, null); break;
+        let q = pos.k === 'j' ? pos.q : null;
+        if (!q) { const r = RS.ik(robot, posMatrix(pos), tool.tcp, pos.q || S.q, S.sys === 'fanuc' ? RS.parseConfig(pos.cfg) : null); if (!r.q) { flash('#progMsg', 'この位置には届きません'); break; } q = r.q; }
+        startJ(q, S.opts.jogSpd, null); break;
       }
-      case 'up': if (sel > 0) edit(() => { const [x] = prog.lines.splice(sel, 1); prog.lines.splice(sel - 1, 0, x); sel--; }); break;
-      case 'down': if (sel < prog.lines.length - 1) edit(() => { const [x] = prog.lines.splice(sel, 1); prog.lines.splice(sel + 1, 0, x); sel++; }); break;
-      case 'dup': edit(() => { prog.lines.splice(sel + 1, 0, JSON.parse(JSON.stringify(l))); sel++; }); break;
+      case 'up': if (sel > 0) edit(() => { const L = prog().lines; const [x] = L.splice(sel, 1); L.splice(sel - 1, 0, x); sel--; }); break;
+      case 'down': if (sel < prog().lines.length - 1) edit(() => { const L = prog().lines; const [x] = L.splice(sel, 1); L.splice(sel + 1, 0, x); sel++; }); break;
+      case 'dup': edit(() => { prog().lines.splice(sel + 1, 0, l); sel++; }); break;
       case 'del': delLine(); break;
     }
   });
   $$('[data-ins]').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.ins;
-    if (k === 'MOVJ' || k === 'MOVL') {
-      const prev = [...prog.lines.slice(0, sel + 1)].reverse().find(l => l.op === k);
-      insertLine({ op: k, q: curQ(), v: prev ? prev.v : defaultV(k) });
-    } else if (k === 'ON' || k === 'OFF') insertLine({ op: 'OUT', on: k === 'ON' });
-    else if (k === 'WAITIN') { const o = [...prog.lines.slice(0, sel + 1)].reverse().find(l => l.op === 'OUT'); insertLine({ op: 'WAITIN', on: o ? o.on : true }); }
-    else if (k === 'TIMER') insertLine({ op: 'TIMER', t: 0.5 });
+    if (k === 'MOVJ') insertMove('J');
+    else if (k === 'MOVL') insertMove('L');
+    else if (k === 'ON' || k === 'OFF') insertLine(RS.lineOut(S.sys, io().handOut, k === 'ON'));
+    else if (k === 'WAITIN') {
+      let on = true;
+      for (let i = sel; i >= 0; i--) { const x = RS.parseLine(S.sys, prog().lines[i] || ''); if (x.op === 'DOUT' && x.kind === io().handOut.kind && x.n === io().handOut.n) { on = x.val; break; } }
+      insertLine(RS.lineWait(S.sys, io().handIn, on));
+    } else if (k === 'TIMER') insertLine(RS.lineTimer(S.sys, 0.5));
+    else if (k === 'CMT') insertLine(RS.lineComment(S.sys, 'COMMENT'));
   }));
-  $('#progName').addEventListener('change', e => {
-    const n = e.target.value.toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 16) || 'SAMPLE';
-    edit(() => { prog.name = n; });
-  });
+  $('#progComment').addEventListener('change', e => edit(() => { prog().comment = e.target.value.slice(0, 64); }));
   $('#undoBtn').addEventListener('click', undo);
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
@@ -940,26 +1226,102 @@
   $('#runBtn').addEventListener('click', () => {
     if (run && run.paused) { run.paused = false; refreshState(); return; }
     if (run) return;
-    startRun(sel > 0 && confirmFromSel() ? sel : 0, false);
+    startRun(sel > 0 && window.confirm(`${sel + 1} 行目から再生しますか？\n（キャンセルで先頭から）`) ? sel : 0, false);
   });
-  function confirmFromSel() { return window.confirm(`${sel + 1} 行目から再生しますか？\n（キャンセルで先頭から）`); }
   $('#pauseBtn').addEventListener('click', () => { if (run) { run.paused = true; refreshState(); } });
   $('#stopBtn').addEventListener('click', () => { stopAll(); setStatus('停止しました'); });
   $('#stepBtn').addEventListener('click', () => { if (!run) startRun(Math.max(0, sel), true); });
-  const loopEl = $('#loop'), autoEl = $('#autoSup'), ovrEl = $('#ovr');
-  loopEl.checked = S.opts.loop; autoEl.checked = S.opts.autoSup; ovrEl.value = S.opts.ovr; $('#ovrOut').textContent = S.opts.ovr + '%';
+  const loopEl = $('#loop'), ovrEl = $('#ovr');
+  loopEl.checked = S.opts.loop; ovrEl.value = S.opts.ovr; $('#ovrOut').textContent = S.opts.ovr + '%';
   loopEl.addEventListener('change', () => { S.opts.loop = loopEl.checked; saveOpts(); });
-  autoEl.addEventListener('change', () => { S.opts.autoSup = autoEl.checked; saveOpts(); });
   ovrEl.addEventListener('input', () => { S.opts.ovr = +ovrEl.value; $('#ovrOut').textContent = ovrEl.value + '%'; saveOpts(); renderPend(); });
   $('#sampleBtn').addEventListener('click', () => {
-    if (prog.lines.length && !window.confirm('今のプログラムをサンプルで置き換えます。よろしいですか？（元に戻すこともできます）')) return;
+    if (lib.progs.SAMPLE && lib.progs.SAMPLE.lines.length && !window.confirm('プログラム SAMPLE を作り直します。よろしいですか？（元に戻せます）')) return;
     stopAll(); makeSample();
   });
   $('#clearBtn').addEventListener('click', () => {
-    if (!prog.lines.length) return;
-    if (!window.confirm('プログラムをすべて削除します。よろしいですか？（元に戻すこともできます）')) return;
-    stopAll(); edit(() => { prog.lines = []; sel = -1; });
+    if (!prog().lines.length) return;
+    if (!window.confirm(`${prog().name} の命令をすべて削除します。よろしいですか？（元に戻せます）`)) return;
+    stopAll(); edit(() => { prog().lines = []; prog().pos = {}; sel = -1; });
   });
+
+  /* I/O・変数・ログ */
+  function renderIO() {
+    const m = io();
+    const cell = (k, n, isIn) => {
+      const key = k + n, v = isIn ? getIn(k, n) : getOut(k, n);
+      const name = isIn ? m.auto[key] : m.outName[key];
+      const f = S.io.force[key];
+      return `<button class="iob${v ? ' on' : ''}" data-io="${isIn ? 'i' : 'o'}" data-k="${k}" data-n="${n}" title="${esc(name || '')}">${m.fmt(k, n)}${name ? `<small>${esc(name)}</small>` : ''}${isIn && f != null ? '<small>強制</small>' : ''}</button>`;
+    };
+    let h = '<div class="iogrp"><b>出力</b><div>';
+    for (const [k, c] of m.outs) for (let n = 1; n <= c; n++) h += cell(k, n, false);
+    h += '</div></div><div class="iogrp"><b>入力</b><div>';
+    for (const [k, c] of m.ins) for (let n = 1; n <= c; n++) h += cell(k, n, true);
+    h += '</div></div><p class="note">押すと切り替わります（入力は 強制ON → 強制OFF → 自動 の順）。</p>';
+    const el = $('#ioBox');
+    if (el.innerHTML !== h) el.innerHTML = h;
+  }
+  $('#ioBox').addEventListener('click', e => {
+    const b = e.target.closest('[data-io]'); if (!b) return;
+    const k = b.dataset.k, n = +b.dataset.n, key = k + n;
+    if (b.dataset.io === 'o') setOut(k, n, !getOut(k, n));
+    else { const f = S.io.force[key]; if (f == null) S.io.force[key] = true; else if (f === true) S.io.force[key] = false; else delete S.io.force[key]; }
+    renderIO();
+  });
+  function usedVars() {
+    const nums = new Set(), poss = new Set();
+    for (const p of Object.values(lib.progs)) for (const l of p.lines) {
+      if (S.sys === 'yaskawa') {
+        for (const m of l.matchAll(/\b([BIDR]\d{3})\b/g)) nums.add(m[1]);
+        for (const m of l.matchAll(/\b(P\d{3})\b/g)) poss.add(m[1]);
+      } else {
+        for (const m of l.matchAll(/(^|[^P])R\[(\d+)/g)) nums.add('R' + m[2]);
+        for (const m of l.matchAll(/PR\[(\d+)/g)) poss.add('PR' + m[1]);
+      }
+    }
+    Object.keys(vars.num).forEach(k => { if (vars.num[k]) nums.add(k); });
+    Object.keys(vars.pos).forEach(k => poss.add(k));
+    return { nums: [...nums].sort(), poss: [...poss].sort() };
+  }
+  const varLabel = k => S.sys === 'yaskawa' ? k : k.replace(/^(PR|R)(\d+)$/, '$1[$2]');
+  function renderVars() {
+    const { nums, poss } = usedVars();
+    let h = '';
+    if (!nums.length && !poss.length) h = '<p class="note">プログラムで使っている変数・レジスタがここに出ます。</p>';
+    if (nums.length) h += '<div class="vgrid">' + nums.map(k => `<label>${varLabel(k)}<input type="number" data-vn="${k}" value="${vars.num[k] || 0}"></label>`).join('') + '</div>';
+    for (const k of poss) {
+      const p = vars.pos[k];
+      const v = p ? (p.k === 'j' ? p.q : [p.p.X, p.p.Y, p.p.Z, p.p.rx, p.p.ry, p.p.rz]) : [0, 0, 0, 0, 0, 0];
+      const lab = p && p.k === 'j' ? robot.axes : robot.cart;
+      h += `<div class="row"><b>${varLabel(k)}</b><span class="note">${p ? (p.k === 'j' ? '関節' : '直交') : '未設定'}</span><button data-vp="${k}" data-a="here">現在位置</button><button data-vp="${k}" data-a="zero">0 にする</button></div>` +
+        `<div class="xyz6">${lab.map((a, i) => `<label>${a}<input type="number" step="0.1" data-vpi="${k}" data-i="${i}" value="${(+v[i]).toFixed(3)}"></label>`).join('')}</div>`;
+    }
+    $('#varBox').innerHTML = h;
+  }
+  $('#varBox').addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.vn) { vars.num[t.dataset.vn] = +t.value || 0; saveVars(); }
+    if (t.dataset.vpi) {
+      const k = t.dataset.vpi, i = +t.dataset.i;
+      if (!vars.pos[k]) vars.pos[k] = { k: 'c', p: { X: 0, Y: 0, Z: 0, rx: 0, ry: 0, rz: 0 }, cfg: 'N U T, 0, 0, 0', uf: 0, ut: 1 };
+      const p = vars.pos[k];
+      if (p.k === 'j') p.q[i] = +t.value || 0; else p.p[['X', 'Y', 'Z', 'rx', 'ry', 'rz'][i]] = +t.value || 0;
+      saveVars(); renderVars();
+    }
+  });
+  $('#varBox').addEventListener('click', e => {
+    const b = e.target.closest('[data-vp]'); if (!b) return;
+    const k = b.dataset.vp;
+    if (b.dataset.a === 'here') { const P = curPose(); for (const a in P) P[a] = r3(P[a]); vars.pos[k] = { k: 'c', p: P, cfg: RS.configOf(S.q), uf: 0, ut: 1 }; }
+    else vars.pos[k] = { k: 'c', p: { X: 0, Y: 0, Z: 0, rx: 0, ry: 0, rz: 0 }, cfg: 'N U T, 0, 0, 0', uf: 0, ut: 1 };
+    saveVars(); renderVars();
+  });
+  $('#varReset').addEventListener('click', () => { vars.num = {}; saveVars(); renderVars(); });
+  function renderLog() {
+    const el = $('#logBox'); if (!el) return;
+    el.innerHTML = S.log.slice(-60).reverse().map(l => `<li class="${l.lv}">${l.t} ${esc(l.msg)}</li>`).join('') || '<li class="note">まだありません</li>';
+  }
 
   /* ファイル */
   function download(name, text, type) {
@@ -969,32 +1331,59 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
-  $('#saveJson').addEventListener('click', () => { download(prog.name + '.json', RS.exportJSON(prog, S.sys), 'application/json'); flash('#progMsg', 'JSON を保存しました', true); });
-  $('#saveNative').addEventListener('click', () => {
-    if (!prog.lines.length) { flash('#progMsg', 'プログラムがありません'); return; }
-    if (S.sys === 'yaskawa') download(prog.name + '.JBI', RS.exportJBI(prog, q => RS.poseFromMatrix(tcpMatrix(q))));
-    else download(prog.name + '.LS', RS.exportLS(prog));
-    flash('#progMsg', (S.sys === 'yaskawa' ? 'JBI' : 'LS') + ' を書き出しました', true);
-  });
+  function nativeText(P) {
+    if (S.sys === 'yaskawa') return RS.exportJBI(P, { pulse: robot.pulse, poseOf: q => RS.poseFromMatrix(tcpMatrix(q)) });
+    return RS.exportLS(P);
+  }
+  const ext = () => S.sys === 'yaskawa' ? '.JBI' : '.LS';
+  function exportNative(all) {
+    const list = all ? Object.values(lib.progs).filter(p => p.lines.length) : [prog()];
+    if (!list.length || !list[0].lines.length) { flash('#progMsg', 'プログラムがありません'); return; }
+    const warns = new Set();
+    list.forEach(P => RS.exportWarnings(P, { pulse: robot.pulse }).forEach(w => warns.add(w)));
+    const errs = list.flatMap(P => RS.checkProgram(P, lib.progs).filter(e => e.lv === 'err').map(e => `${P.name} ${e.line}行目：${e.msg}`));
+    if (errs.length) { flash('#progMsg', 'エラーがあるため書き出せません：' + errs[0]); return; }
+    if (!window.confirm('実機に入れる前に確認してください：\n\n・' + [...warns].join('\n・') + '\n\n書き出しますか？')) return;
+    list.forEach((P, i) => setTimeout(() => download(P.name + ext(), nativeText(P)), i * 250));
+    flash('#progMsg', `${list.length} 本を ${ext().slice(1)} で書き出しました`, true);
+  }
+  $('#saveJson').addEventListener('click', () => { download(`ROBOTSIM_${S.sys}.json`, RS.exportJSON(Object.values(lib.progs)), 'application/json'); flash('#progMsg', 'すべてのプログラムを JSON で保存しました', true); });
+  $('#saveNative').addEventListener('click', () => exportNative(false));
+  $('#saveNativeAll').addEventListener('click', () => exportNative(true));
   $('#loadBtn').addEventListener('click', () => $('#fileIn').click());
   $('#fileIn').addEventListener('change', async e => {
-    const f = e.target.files[0]; e.target.value = '';
-    if (!f) return;
-    const text = await f.text();
-    const ikOf = (P, ref) => { const r = RS.ik(RS.ROBOTS.yaskawa, RS.matrixFromPose(P), tool.tcp, ref || RS.ROBOTS.yaskawa.home); return r.q ? r.q.map(v => +v.toFixed(3)) : null; };
-    const r = RS.importText(text, ikOf);
-    if (r.err) { flash('#progMsg', r.err); return; }
-    if (r.system && r.system !== S.sys) {
-      if (!window.confirm(`このファイルは${RS.ROBOTS[r.system].label}用です。システムを切り替えて読み込みますか？`)) return;
-      switchSystem(r.system);
+    const files = [...e.target.files]; e.target.value = '';
+    if (!files.length) return;
+    const got = [], warns = [];
+    for (const f of files) {
+      const buf = await f.arrayBuffer();
+      let text;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+      catch (x) { try { text = new TextDecoder('shift_jis').decode(buf); } catch (y) { text = new TextDecoder().decode(buf); } }
+      const r = RS.importText(text, { pulse: { yaskawa: RS.ROBOTS.yaskawa.pulse } });
+      if (r.err) { flash('#progMsg', `${f.name}：${r.err}`); return; }
+      r.progs.forEach(p => got.push(p)); r.warns.forEach(w => warns.push(`${f.name}：${w}`));
     }
-    stopAll();
-    edit(() => { prog = r.prog; sel = prog.lines.length ? 0 : -1; });
-    saveProg(); renderCode(); renderPend();
-    flash('#progMsg', `${f.name} を読み込みました（${prog.lines.length} 行）` + (prog.tool !== tool.id ? '。ハンドが違います：' + RS.toolById(prog.tool).name : ''), true);
+    importProgs(got, warns);
   });
+  function importProgs(got, warns) {
+    const sys = got[0].sys;
+    if (got.some(p => p.sys !== sys)) { flash('#progMsg', '安川とファナックのファイルが混ざっています。分けて読み込んでください'); return; }
+    if (sys !== S.sys) {
+      if (!window.confirm(`このファイルは${RS.ROBOTS[sys].label}用です。システムを切り替えて読み込みますか？`)) return;
+      switchSystem(sys);
+    }
+    const dup = got.filter(p => lib.progs[p.name]).map(p => p.name);
+    if (dup.length && !window.confirm(`${dup.join(', ')} は同じ名前のプログラムがあります。上書きしますか？`)) return;
+    stopAll();
+    edit(() => { got.forEach(p => { p.tool = p.tool || tool.id; lib.progs[p.name] = p; }); lib.cur = got[0].name; sel = prog().lines.length ? 0 : -1; });
+    renderProgAll();
+    (warns || []).forEach(w => logMsg(w, 'warn'));
+    const errs = got.flatMap(p => RS.checkProgram(p, lib.progs));
+    flash('#progMsg', `${got.map(p => p.name).join(', ')} を読み込みました` + (errs.length ? `（確認事項 ${errs.length} 件）` : '') + (warns && warns.length ? `（注意 ${warns.length} 件はログ参照）` : ''), true);
+  }
 
-  /* =================== 画面：ハンド・セル =================== */
+  /* =================== 画面：設定 =================== */
   function renderCell() {
     const ic = { vacuum: '◎', gripper: '⊐' };
     $('#toolCards').innerHTML = RS.TOOLS.map(t => `<button class="tcard" data-tool="${t.id}" aria-pressed="${t.id === tool.id}"><span class="ic">${ic[t.kind] || '■'}</span><b>${esc(t.name)}</b><span class="d">${esc(t.desc)}<br>TCP Z=${Math.round(t.tcp[2] * 1000)}mm ／ ${t.kind === 'vacuum' ? '吸盤 ' + t.cups.length + '個' : '爪 開き ' + Math.round(t.grip.open * 1000) + 'mm'} ／ 標準ワーク：${esc(RS.WORKS[t.work].name)}</span></button>`).join('');
@@ -1002,22 +1391,168 @@
     toolSel.value = tool.id;
     const d = robot.dims;
     $('#cellInfo').innerHTML = [
-      ['機種', robot.model], ['リーチ', Math.round((d.pivR + d.la + d.ua + d.fl) * 1000) + ' mm（フランジまで）'],
+      ['機種', robot.model], ['リーチ', Math.round((d.pivR + d.la + Math.hypot(d.ua, d.a3 || 0) + d.fl) * 1000) + ' mm（フランジまで）'],
       ['ハンド', tool.name], ['ワーク', workDef().name],
       ['供給台', `X ${TABLES[0].X * 1000} / Y ${TABLES[0].Y * 1000} / 高さ ${TABLES[0].h * 1000} mm`],
       ['排出台', `X ${TABLES[1].X * 1000} / Y ${TABLES[1].Y * 1000} / 高さ ${TABLES[1].h * 1000} mm`]
     ].map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
+    renderRobotForm(); renderUF(); renderIOMapDoc();
   }
   $('#toolCards').addEventListener('click', e => { const b = e.target.closest('[data-tool]'); if (b) switchTool(b.dataset.tool); });
-  $('#workSel').addEventListener('change', e => { stopAll(); S.workId = e.target.value; store.set('rs2-work', S.workId); if (S.out) setOut(false); resetWorks(); renderCell(); });
-  $('#resetWork').addEventListener('click', () => { stopAll(); if (S.holding) dropWork(true); setOut(false); resetWorks(); S.stats.count = 0; updateCycle(); });
+  $('#workSel').addEventListener('change', e => { stopAll(); S.workId = e.target.value; store.set('rs3-work', S.workId); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell(); });
+  $('#resetWork').addEventListener('click', () => { stopAll(); if (S.holding) dropWork(true); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); S.stats = { count: 0, last: 0, t0: 0 }; updateCycle(); });
   $('#trailClr').addEventListener('click', clearTrail);
-  const optColl = $('#optColl'), optTrail = $('#optTrail'), optReach = $('#optReach');
-  optColl.checked = S.opts.coll; optTrail.checked = S.opts.trail; optReach.checked = S.opts.reach;
-  optColl.addEventListener('change', () => { S.opts.coll = optColl.checked; saveOpts(); });
-  optTrail.addEventListener('change', () => { S.opts.trail = optTrail.checked; trail.visible = S.opts.trail; saveOpts(); });
-  optReach.addEventListener('change', () => { S.opts.reach = optReach.checked; reachRing.visible = S.opts.reach; saveOpts(); });
+  const bindOpt = (id, key, after) => { const el = $(id); el.checked = !!S.opts[key]; el.addEventListener('change', () => { S.opts[key] = el.checked; saveOpts(); if (after) after(); }); };
+  bindOpt('#optColl', 'coll');
+  bindOpt('#optTrail', 'trail', () => { trail.visible = S.opts.trail; });
+  bindOpt('#optReach', 'reach', () => { reachRing.visible = S.opts.reach; });
+  bindOpt('#autoSup', 'autoSup');
+  bindOpt('#autoOut', 'autoOut');
+  bindOpt('#optSkip', 'skipUnknown');
   trail.visible = S.opts.trail;
+  const wt = $('#waitTo'); wt.value = S.opts.waitTimeout;
+  wt.addEventListener('change', () => { S.opts.waitTimeout = clamp(+wt.value || 0, 0, 3600); wt.value = S.opts.waitTimeout; saveOpts(); });
+
+  function renderRobotForm() {
+    const d = robot.dims;
+    const dimLab = { pivR: '旋回中心→L軸 水平距離', pivY: '床→L軸 高さ', la: '下腕長さ（L→U）', a3: '上腕オフセット（U軸→上腕中心線）', ua: '上腕長さ（U→手首中心）', fl: '手首中心→フランジ' };
+    let h = `<label class="pname">機種名 <input type="text" id="rbModel" value="${esc(robot.model)}"></label>`;
+    h += '<div class="vgrid w2">' + Object.keys(dimLab).map(k => `<label>${dimLab[k]}（mm）<input type="number" step="1" data-dim="${k}" value="${Math.round(d[k] * 1000)}"></label>`).join('') + '</div>';
+    h += '<p class="note" style="margin:6px 0 2px">可動範囲（度）　最小／最大</p><div class="limgrid">' + robot.axes.map((a, i) => `<span>${a}</span><input type="number" data-lim="${i}" data-m="0" value="${robot.lim[i][0]}" aria-label="${a} 最小"><input type="number" data-lim="${i}" data-m="1" value="${robot.lim[i][1]}" aria-label="${a} 最大">`).join('') + '</div>';
+    if (robot.id === 'yaskawa') h += '<p class="note" style="margin:6px 0 2px">1度あたりのパルス数（JBI の PULSE 形式の読み書きに使用。取扱説明書の値）</p><div class="vgrid">' + robot.axes.map((a, i) => `<label>${a}<input type="number" step="0.001" data-pulse="${i}" value="${robot.pulse ? robot.pulse[i] : ''}" placeholder="未設定"></label>`).join('') + '</div>';
+    $('#robotForm').innerHTML = h;
+  }
+  $('#robotSave').addEventListener('click', () => {
+    const ov = store.get('rs3-robot-ov', {}) || {};
+    const o = { dims: {}, lim: [], model: $('#rbModel').value };
+    $$('[data-dim]').forEach(i => { const v = +i.value; if (isFinite(v) && v >= 0) o.dims[i.dataset.dim] = v / 1000; });
+    robot.axes.forEach((a, i) => { o.lim.push([+$(`[data-lim="${i}"][data-m="0"]`).value, +$(`[data-lim="${i}"][data-m="1"]`).value]); });
+    if (robot.id === 'yaskawa') { const p = $$('[data-pulse]').map(i => +i.value); o.pulse = p.every(v => isFinite(v) && v !== 0) ? p : null; }
+    if (!(o.dims.la > 0) || !(o.dims.ua > 0)) { flash('#rbMsg', '下腕・上腕の長さは 0 より大きくしてください'); return; }
+    ov[robot.id] = o; store.set('rs3-robot-ov', ov);
+    if (robot.id === 'yaskawa' && !o.pulse) robot.pulse = null;
+    RS.applyRobotOverrides(ov);
+    stopAll(); S.q = S.q.map((v, i) => clamp(v, robot.lim[i][0], robot.lim[i][1]));
+    buildRobot(); applyPose(); updateToolVis(); renderAll();
+    flash('#rbMsg', '保存して反映しました', true);
+  });
+  $('#robotReset').addEventListener('click', () => {
+    if (!window.confirm(`${robot.label} の機種パラメータを初期値に戻します。よろしいですか？`)) return;
+    const ov = store.get('rs3-robot-ov', {}) || {}; delete ov[robot.id]; store.set('rs3-robot-ov', ov);
+    const def = RS.ROBOT_DEFAULTS[robot.id];
+    robot.dims = JSON.parse(JSON.stringify(def.dims)); robot.lim = JSON.parse(JSON.stringify(def.lim)); robot.pulse = def.pulse; robot.model = def.model;
+    stopAll(); S.q = robot.home.slice(); buildRobot(); applyPose(); updateToolVis(); renderAll();
+    flash('#rbMsg', '初期値に戻しました', true);
+  });
+  function renderUF() {
+    let h = '<div class="uftab"><span></span>' + robot.cart.map(c => `<span>${c}</span>`).join('');
+    for (let n = 1; n <= 5; n++) {
+      const u = uframes[n] || {};
+      h += `<span>UF${n}</span>` + ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].map(k => `<input type="number" step="0.1" data-uf="${n}" data-k="${k}" value="${u[k] != null ? u[k] : ''}" placeholder="—" aria-label="UF${n} ${k}">`).join('');
+    }
+    $('#ufBox').innerHTML = h + '</div>';
+  }
+  $('#ufBox').addEventListener('change', e => {
+    const t = e.target; if (!t.dataset.uf) return;
+    const n = t.dataset.uf;
+    const row = $$(`[data-uf="${n}"]`);
+    if (row.every(i => i.value === '')) delete uframes[n];
+    else { uframes[n] = {}; row.forEach(i => { uframes[n][i.dataset.k] = +i.value || 0; }); }
+    store.set(ufKey(), uframes);
+  });
+  function renderIOMapDoc() {
+    const m = io();
+    $('#ioMapDoc').innerHTML = `<dt>${m.fmt(m.handOut.kind, m.handOut.n)}</dt><dd>ハンド出力（ON＝${tool.kind === 'vacuum' ? '吸着' : '閉'}）</dd>` +
+      Object.entries(m.auto).map(([k, v]) => `<dt>${m.fmt(k.replace(/\d+$/, ''), +k.match(/\d+$/)[0])}</dt><dd>${esc(v)}</dd>`).join('');
+  }
+
+  /* =================== 画面：AI =================== */
+  const aiKeyEl = $('#aiKey'), aiRem = $('#aiRemember');
+  { const k = store.get('rs3-ai-key', ''); if (k) { aiKeyEl.value = k; aiRem.checked = true; } }
+  aiRem.addEventListener('change', () => { if (aiRem.checked) store.set('rs3-ai-key', aiKeyEl.value.trim()); else store.del('rs3-ai-key'); });
+  aiKeyEl.addEventListener('change', () => { if (aiRem.checked) store.set('rs3-ai-key', aiKeyEl.value.trim()); });
+  let aiMode = 'edit', aiResult = null, aiAbort = null;
+  $('#aiMode').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    aiMode = b.dataset.m;
+    $$('#aiMode button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  });
+  $('#aiExamples').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#aiText').value = b.textContent; aiMode = b.dataset.m || aiMode; $$('#aiMode button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.m === aiMode))); } });
+  function aiContext() {
+    const m = io();
+    const ioTxt = `- ハンド出力：${m.fmt(m.handOut.kind, m.handOut.n)}（ON＝${tool.kind === 'vacuum' ? '吸着' : '閉じる'}、OFF＝${tool.kind === 'vacuum' ? '解放' : '開く'}）\n` +
+      Object.entries(m.auto).map(([k, v]) => `- 入力 ${m.fmt(k.replace(/\d+$/, ''), +k.match(/\d+$/)[0])}：${v}`).join('\n') +
+      '\n- それ以外の出力・入力は未接続（入力は常に OFF。教育用に手動で切り替えられる）';
+    const P = curPose();
+    return {
+      sys: S.sys, robot, tool, work: workDef(), tables: TABLES, io: ioTxt, prog: prog(), lib: lib.progs,
+      curPoseText: robot.cart.map((c, i) => `${c}=${[P.X, P.Y, P.Z, P.rx, P.ry, P.rz][i].toFixed(1)}`).join(' ') + `（関節 ${S.q.map(v => v.toFixed(1)).join(', ')}）`
+    };
+  }
+  function aiPrompts() {
+    const t = $('#aiText').value.trim();
+    if (!t) { flash('#aiMsg', '指示を入力してください'); return null; }
+    const c = aiContext();
+    return { system: RS.aiSystemPrompt(c), user: RS.aiUserPrompt(c, t, aiMode) };
+  }
+  $('#aiRun').addEventListener('click', async () => {
+    const key = aiKeyEl.value.trim();
+    if (!key) { flash('#aiMsg', 'API キーがありません。キーなしで使う場合は「指示文をコピー」を使ってください'); return; }
+    const pr = aiPrompts(); if (!pr) return;
+    if (aiAbort) aiAbort.abort();
+    aiAbort = new AbortController();
+    const btn = $('#aiRun'); btn.disabled = true; btn.textContent = '作成中…（数十秒かかります）';
+    flash('#aiMsg', '', true);
+    try {
+      const text = await RS.aiCall(key, pr.system, pr.user, aiAbort.signal);
+      showAiResult(text);
+    } catch (e) {
+      if (e.name !== 'AbortError') flash('#aiMsg', /fetch/i.test(e.message) ? 'AI に接続できません（社内ネットワークで api.anthropic.com が遮断されている可能性）。「指示文をコピー」を使ってください' : e.message);
+    } finally { btn.disabled = false; btn.textContent = 'AIで作成'; aiAbort = null; }
+  });
+  $('#aiCopy').addEventListener('click', async () => {
+    const pr = aiPrompts(); if (!pr) return;
+    const all = pr.system + '\n\n----\n\n' + pr.user;
+    try { await navigator.clipboard.writeText(all); flash('#aiMsg', '指示文をコピーしました。Claude に貼り付け、返ってきた JSON を下の欄に貼り付けてください', true); }
+    catch (e) { $('#aiPaste').value = all; flash('#aiMsg', 'コピーできなかったため、下の欄に指示文を入れました。全選択してコピーしてください'); }
+  });
+  $('#aiImport').addEventListener('click', () => showAiResult($('#aiPaste').value));
+  function showAiResult(text) {
+    const r = RS.aiParse(text, S.sys, tool.id);
+    if (r.err) { flash('#aiMsg', r.err); aiResult = null; $('#aiOut').hidden = true; return false; }
+    aiResult = r;
+    const box = $('#aiOut'); box.hidden = false;
+    let h = `<h3>AI の説明</h3><p class="aiexp">${esc(r.explanation).replace(/\n/g, '<br>')}</p>`;
+    const allWarn = r.warnings.slice();
+    const merged = Object.assign({}, lib.progs, Object.fromEntries(r.progs.map(x => [x.name, x])));
+    for (const p of r.progs) {
+      const errs = RS.checkProgram(p, merged);
+      const bad = [];
+      for (const [id, pos] of Object.entries(p.pos)) {
+        if (pos.k === 'j') { if (RS.limitViolation(robot, pos.q) >= 0) bad.push(id); }
+        else if (!RS.ik(robot, posMatrix(pos), tool.tcp, robot.home).q) bad.push(id);
+      }
+      h += `<h3>${esc(p.name)}${lib.progs[p.name] ? '（上書き）' : '（新規）'}　${p.lines.length} 行・位置 ${Object.keys(p.pos).length} 点</h3>`;
+      h += `<ol class="code small">${p.lines.map((l, i) => `<li class="${errs.some(e => e.line === i + 1 && e.lv === 'err') ? 'bad' : ''}"><span class="n">${i + 1}</span>${esc(l)}</li>`).join('')}</ol>`;
+      errs.forEach(e => allWarn.push(`${p.name} ${e.line}行目：${e.msg}`));
+      if (bad.length) allWarn.push(`${p.name}：届かない位置 ${bad.join(', ')}`);
+    }
+    if (allWarn.length) h += `<h3>確認事項</h3><ul class="aiwarn">${allWarn.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`;
+    h += '<div class="row grow"><button class="primary" id="aiApply">プログラムに反映</button><button id="aiDiscard">破棄</button></div>';
+    box.innerHTML = h;
+    flash('#aiMsg', '内容を確認して「プログラムに反映」を押してください', true);
+    return true;
+  }
+  $('#aiOut').addEventListener('click', e => {
+    if (e.target.id === 'aiDiscard') { aiResult = null; $('#aiOut').hidden = true; flash('#aiMsg', ''); return; }
+    if (e.target.id !== 'aiApply' || !aiResult) return;
+    stopAll();
+    edit(() => { aiResult.progs.forEach(p => { lib.progs[p.name] = p; }); lib.cur = aiResult.progs[0].name; sel = 0; });
+    renderProgAll();
+    logMsg(`AI の結果を反映：${aiResult.progs.map(p => p.name).join(', ')}`);
+    aiResult = null; $('#aiOut').hidden = true;
+    flash('#aiMsg', '反映しました。「プログラム」タブで確認・再生してください（元に戻すこともできます）', true);
+  });
 
   /* =================== HUD =================== */
   function renderHudLabels() {
@@ -1030,23 +1565,24 @@
     for (let i = 0; i < 6; i++) $('#pr' + i).textContent = v[i].toFixed(i < 3 ? 1 : 2) + (i < 3 ? ' mm' : ' °');
   }
   function updateCycle() {
-    $('#cycleInfo').innerHTML = S.stats.count ? `サイクル <b>${S.stats.last.toFixed(2)} s</b><br>完了 <b>${S.stats.count}</b>` : '';
+    $('#cycleInfo').innerHTML = S.stats.count ? `完了 <b>${S.stats.count}</b>${S.stats.last ? `<br>1個あたり <b>${S.stats.last.toFixed(2)} s</b>` : ''}` : '';
   }
 
   /* =================== タブ =================== */
   $$('.tabs button').forEach(b => b.addEventListener('click', () => {
     $$('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
-    ['jog', 'prog', 'pend', 'cell'].forEach(t => { $('#t-' + t).hidden = (t !== b.dataset.t); });
+    ['jog', 'prog', 'pend', 'ai', 'cell'].forEach(t => { $('#t-' + t).hidden = (t !== b.dataset.t); });
     if (b.dataset.t === 'jog') fillPoseIn();
     if (b.dataset.t === 'pend') renderPend();
+    if (b.dataset.t === 'prog') { renderIO(); renderVars(); renderLog(); }
   }));
 
   /* =================== カメラ =================== */
-  const target = new T.Vector3(0.5, 0.55, 0);
-  let cam = { theta: 0.95, phi: 0.45, r: 4.2 };
-  const VIEWS = { iso: { theta: 0.95, phi: 0.45, r: 4.2 }, front: { theta: Math.PI / 2, phi: 0.12, r: 4.4 }, side: { theta: 0, phi: 0.12, r: 4.4 }, top: { theta: Math.PI / 2, phi: 1.5, r: 4.8 } };
+  const target = new T.Vector3(0.5, 0.6, 0);
+  let cam = { theta: 0.95, phi: 0.42, r: 4.3 };
+  const VIEWS = { iso: { theta: 0.95, phi: 0.42, r: 4.3 }, front: { theta: Math.PI / 2, phi: 0.12, r: 4.4 }, side: { theta: 0, phi: 0.12, r: 4.4 }, top: { theta: Math.PI / 2, phi: 1.5, r: 4.8 } };
   function updateCam() {
-    cam.phi = clamp(cam.phi, 0.02, 1.55); cam.r = clamp(cam.r, 1, 12);
+    cam.phi = clamp(cam.phi, 0.02, 1.55); cam.r = clamp(cam.r, 0.8, 12);
     camera.position.set(
       target.x + cam.r * Math.cos(cam.phi) * Math.sin(cam.theta),
       target.y + cam.r * Math.sin(cam.phi),
@@ -1055,7 +1591,7 @@
   }
   $('#views').addEventListener('click', e => {
     const b = e.target.closest('button');
-    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(0.5, 0.55, 0); updateCam(); }
+    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(0.5, 0.6, 0); updateCam(); }
   });
   const ptrs = new Map(); let pinch = 0, panMode = false;
   canvas.addEventListener('pointerdown', e => {
@@ -1074,10 +1610,8 @@
   canvas.addEventListener('pointermove', e => {
     const p = ptrs.get(e.pointerId); if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
-    if (ptrs.size === 1) {
-      if (panMode) pan(dx, dy);
-      else { cam.theta -= dx * 0.008; cam.phi += dy * 0.006; }
-    } else if (ptrs.size === 2) {
+    if (ptrs.size === 1) { if (panMode) pan(dx, dy); else { cam.theta -= dx * 0.008; cam.phi += dy * 0.006; } }
+    else if (ptrs.size === 2) {
       p.x = e.clientX; p.y = e.clientY;
       const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
       if (pinch > 0) cam.r *= pinch / d; pinch = d;
@@ -1096,7 +1630,7 @@
   new ResizeObserver(resize).observe(stage);
 
   /* =================== ティーチングペンダント =================== */
-  const pend = { servo: false, mode: 'teach', coord: 'joint', sp: 1, ovrI: 3, tp: false, dead: false, shift: false, view: 'prog', ins: 'MOVJ', msg: '' };
+  const pend = { servo: false, mode: 'teach', coord: 'joint', sp: 1, ovrI: 3, tp: false, dead: false, shift: false, view: 'prog', ins: 'J', msg: '' };
   const YSP = [['微速', 3], ['低速', 12], ['中速', 35], ['高速', 70]];
   const FOV = [1, 5, 10, 25, 50, 75, 100];
   const pendEl = $('#pend');
@@ -1104,9 +1638,7 @@
   const isY = () => S.sys === 'yaskawa';
   const COORDS = ['joint', 'base', 'tool'];
   function pendAxisLabels() { return pend.coord === 'joint' ? robot.axes : robot.cart; }
-  function pendJogSpec() {
-    return { spd: (isY() ? YSP[pend.sp][1] : FOV[pend.ovrI]) / 100, frame: pend.coord === 'tool' ? 'tool' : 'base', check: jogBlock };
-  }
+  function pendJogSpec() { return { spd: (isY() ? YSP[pend.sp][1] : FOV[pend.ovrI]) / 100, frame: pend.coord === 'tool' ? 'tool' : 'base', check: jogBlock }; }
   function jogBlock() {
     if (isY()) {
       if (!pend.servo) return 'サーボ電源が入っていません';
@@ -1124,7 +1656,7 @@
   }
   function runBlock() {
     if (S.alarm) return 'アラームをリセットしてください';
-    if (!prog.lines.length) return 'プログラムがありません';
+    if (!prog().lines.length) return 'プログラムがありません';
     if (isY()) {
       if (!pend.servo) return 'サーボ電源が入っていません';
       if (pend.mode !== 'play') return '再生モードにしてください';
@@ -1132,31 +1664,29 @@
     return '';
   }
   function lcdHTML() {
-    const Y = isY();
-    const pi = RS.pointIndex(prog);
+    const Y = isY(), P = prog();
     let title = '', rows = [], selRow = -1, right = '';
     if (pend.view === 'prog') {
       if (Y) {
-        title = 'ジョブ内容　' + prog.name; right = 'S:' + String(Math.max(0, sel) + 1).padStart(4, '0');
+        title = 'ジョブ内容　' + P.name; right = 'S:' + String(Math.max(0, sel) + 1).padStart(4, '0');
         rows.push('0000 NOP');
-        prog.lines.forEach((l, k) => { rows.push(`${String(k + 1).padStart(4, '0')} ${RS.formatLine('yaskawa', l, pi[k])}`); if (k === sel) selRow = rows.length - 1; });
-        rows.push(`${String(prog.lines.length + 1).padStart(4, '0')} END`);
+        P.lines.forEach((l, k) => { rows.push(`${String(k + 1).padStart(4, '0')} ${l}`); if (k === sel) selRow = rows.length - 1; });
+        rows.push(`${String(P.lines.length + 1).padStart(4, '0')} END`);
       } else {
-        title = prog.name; right = `${Math.max(0, sel) + 1}/${prog.lines.length + 1}`;
-        prog.lines.forEach((l, k) => { rows.push(`${String(k + 1).padStart(3, ' ')}: ${RS.formatLine('fanuc', l, pi[k])} ;`); if (k === sel) selRow = rows.length - 1; });
+        title = P.name; right = `${Math.max(0, sel) + 1}/${P.lines.length + 1}`;
+        P.lines.forEach((l, k) => { rows.push(`${String(k + 1).padStart(3, ' ')}: ${l} ;`); if (k === sel) selRow = rows.length - 1; });
         rows.push('[End]');
       }
     } else {
-      const P = curPose(), j = pend.coord === 'joint';
-      const cl = robot.cart;
+      const Pz = curPose(), j = pend.coord === 'joint', cl = robot.cart;
       if (Y) {
         title = '現在位置　' + (j ? '関節' : 'ロボット');
         rows = j ? S.q.map((v, i) => `${robot.axes[i]}  : ${v.toFixed(3).padStart(9)} °`) :
-          [P.X, P.Y, P.Z, P.rx, P.ry, P.rz].map((v, i) => `${cl[i].padEnd(3)}: ${v.toFixed(i < 3 ? 3 : 4).padStart(10)} ${i < 3 ? 'mm' : '°'}`);
+          [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].map((v, i) => `${cl[i].padEnd(3)}: ${v.toFixed(i < 3 ? 3 : 4).padStart(10)} ${i < 3 ? 'mm' : '°'}`);
       } else {
         title = 'POSITION　' + (j ? 'JOINT' : 'WORLD');
         rows = j ? S.q.map((v, i) => `J${i + 1}: ${v.toFixed(3).padStart(9)} deg`) :
-          [P.X, P.Y, P.Z, P.rx, P.ry, P.rz].map((v, i) => `${cl[i]}: ${v.toFixed(3).padStart(9)} ${i < 3 ? 'mm' : 'deg'}`);
+          [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].map((v, i) => `${cl[i]}: ${v.toFixed(3).padStart(9)} ${i < 3 ? 'mm' : 'deg'}`);
       }
     }
     const N = 7;
@@ -1168,9 +1698,9 @@
     }
     const cn = robot.coordNames[pend.coord];
     const foot = Y
-      ? `${pend.servo ? '●サーボON' : '○サーボOFF'} ${pend.mode === 'teach' ? '教示' : '再生'} ${YSP[pend.sp][0]} ${cn} 挿入:${pend.ins}`
-      : `${cn} ${FOV[pend.ovrI]}% TP ${pend.tp ? 'ON' : 'OFF'}${pend.dead ? ' DMS' : ''}${pend.shift ? ' SHIFT' : ''} ${pend.ins === 'MOVJ' ? 'J' : 'L'}`;
-    const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (Y ? '再生中' : 'RUNNING') : ''));
+      ? `${pend.servo ? '●サーボON' : '○サーボOFF'} ${pend.mode === 'teach' ? '教示' : '再生'} ${YSP[pend.sp][0]} ${cn} 挿入:MOV${pend.ins}`
+      : `${cn} ${FOV[pend.ovrI]}% TP ${pend.tp ? 'ON' : 'OFF'}${pend.dead ? ' DMS' : ''}${pend.shift ? ' SHIFT' : ''} ${pend.ins}`;
+    const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (run.interp.status() || (Y ? '再生中' : 'RUNNING')) : ''));
     return `<div class="t"><span>${esc(title)}</span><span>${esc(right)}</span></div><div class="b">${vis}</div><div class="f">${esc(foot)}</div><div class="m">${esc(msg)}</div>`;
   }
   function updateLcd() {
@@ -1183,23 +1713,24 @@
     const Y = isY(), ax = pendAxisLabels();
     let jr = '';
     for (let i = 0; i < 6; i++) {
-      const spec = pend.coord === 'joint' ? `{"kind":"j","axis":${i},"dir":DIR,"pendant":true}` : `{"kind":"c","axis":${i},"dir":DIR,"pendant":true}`;
+      const spec = `{"kind":"${pend.coord === 'joint' ? 'j' : 'c'}","axis":${i},"dir":DIR,"pendant":true}`;
       jr += `<button class="pk" data-jog='${spec.replace('DIR', -1)}'>−</button><span class="ax">${ax[i]}</span><button class="pk" data-jog='${spec.replace('DIR', 1)}'>＋</button>`;
     }
     const on = b => (b ? ' on' : '');
     const cn = robot.coordNames[pend.coord];
+    const ho = handOn();
     const modeKeys = Y
       ? `<button class="pk${on(pend.servo)}" data-act="servo">サーボ<br>${pend.servo ? 'ON' : 'OFF'}</button><button class="pk" data-act="mode">モード<br>${pend.mode === 'teach' ? '教示' : '再生'}</button><button class="pk" data-act="coord">座標<br>${cn}</button><button class="pk" data-act="speed">手動速度<br>${YSP[pend.sp][0]}</button>`
-      : `<button class="pk${on(pend.tp)}" data-act="tp">TP<br>${pend.tp ? 'ON' : 'OFF'}</button><button class="pk${on(pend.dead)}" data-act="dead">DEAD<br>MAN</button><button class="pk${on(pend.shift)}" data-act="shift">SHIFT</button><button class="pk" data-act="coord">COORD<br>${cn}</button><button class="pk" data-act="ovr-">−%</button><button class="pk" data-act="ovr+">＋%</button><button class="pk" data-act="ins-type">${pend.ins === 'MOVJ' ? 'J' : 'L'}<br>補間</button><button class="pk" data-act="view">DISP</button>`;
-    const yExtra = Y ? `<button class="pk" data-act="ins-type">補間<br>${pend.ins}</button><button class="pk" data-act="view">画面<br>切替</button><button class="pk" data-act="grip">ハンド<br>${S.out ? 'ON' : 'OFF'}</button><button class="pk" data-act="reset">リセット</button>` : '';
+      : `<button class="pk${on(pend.tp)}" data-act="tp">TP<br>${pend.tp ? 'ON' : 'OFF'}</button><button class="pk${on(pend.dead)}" data-act="dead">DEAD<br>MAN</button><button class="pk${on(pend.shift)}" data-act="shift">SHIFT</button><button class="pk" data-act="coord">COORD<br>${cn}</button><button class="pk" data-act="ovr-">−%</button><button class="pk" data-act="ovr+">＋%</button><button class="pk" data-act="ins-type">${pend.ins}<br>補間</button><button class="pk" data-act="view">DISP</button>`;
+    const yExtra = Y ? `<button class="pk" data-act="ins-type">補間<br>MOV${pend.ins}</button><button class="pk" data-act="view">画面<br>切替</button><button class="pk" data-act="grip">ハンド<br>${ho ? 'ON' : 'OFF'}</button><button class="pk" data-act="reset">リセット</button>` : '';
     const editKeys = Y
       ? `<button class="pk" data-act="ins">挿入</button><button class="pk" data-act="upd">修正</button><button class="pk" data-act="del">削除</button><button class="pk" data-act="enter">エンター</button><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button><button class="pk" data-act="bwd">後退</button><button class="pk" data-act="fwd">前進</button>`
-      : `<button class="pk" data-act="ins">POINT</button><button class="pk" data-act="upd">TOUCH<br>UP</button><button class="pk" data-act="del">DELETE</button><button class="pk" data-act="grip">RO[1]<br>${S.out ? 'ON' : 'OFF'}</button><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button><button class="pk" data-act="bwd">BWD</button><button class="pk" data-act="fwd">FWD</button>`;
+      : `<button class="pk" data-act="ins">POINT</button><button class="pk" data-act="upd">TOUCH<br>UP</button><button class="pk" data-act="del">DELETE</button><button class="pk" data-act="grip">RO[1]<br>${ho ? 'ON' : 'OFF'}</button><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button><button class="pk" data-act="bwd">BWD</button><button class="pk" data-act="fwd">FWD</button>`;
     const runKeys = Y
-      ? `<button class="pk go" data-act="run">スタート</button><button class="pk stop" data-act="hold">ホールド</button><button class="pk" data-act="estop">非常停止</button>`
-      : `<button class="pk go" data-act="run">CYCLE<br>START</button><button class="pk stop" data-act="hold">HOLD</button><button class="pk" data-act="reset">RESET</button>`;
+      ? '<button class="pk go" data-act="run">スタート</button><button class="pk stop" data-act="hold">ホールド</button><button class="pk" data-act="estop">非常停止</button>'
+      : '<button class="pk go" data-act="run">CYCLE<br>START</button><button class="pk stop" data-act="hold">HOLD</button><button class="pk" data-act="reset">RESET</button>';
     const how = Y
-      ? '手順：サーボON → 教示モード → 軸キーを押し続けるとジョグ。「挿入」で現在位置を選択行の下に追加（補間キーで MOVJ／MOVL 切替）。「前進」を押すと選択行を1行ずつ実行。自動運転は「再生」モード＋サーボONで「スタート」。'
+      ? '手順：サーボON → 教示モード → 軸キーを押し続けるとジョグ。「挿入」で現在位置を選択行の下に追加（補間キーで MOVJ／MOVL 切替）。「前進」で選択行を1行ずつ実行。自動運転は「再生」モード＋サーボONで「スタート」。'
       : '手順：TP ON → DEADMAN と SHIFT を有効 → 軸キーを押し続けるとジョグ。POINT で現在位置を追加（J/L 補間キーで切替）、SHIFT＋FWD で1行ずつ実行。自動運転は TP OFF で CYCLE START。';
     pendEl.innerHTML = `<div class="pend ${Y ? 'yas' : 'fan'}"><div class="pbrand"><span>${robot.brand}</span><span>${Y ? 'プログラミングペンダント' : 'iPendant'}</span></div><div class="lcd" id="lcd"></div>` +
       `<div class="pgrid">${modeKeys}${yExtra}</div><div class="jgrid">${jr}</div><div class="pgrid">${editKeys}</div><div class="pgrid g3">${runKeys}</div></div>` +
@@ -1223,31 +1754,28 @@
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
       case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; break;
       case 'view': P.view = P.view === 'prog' ? 'pos' : 'prog'; break;
-      case 'ins-type': P.ins = P.ins === 'MOVJ' ? 'MOVL' : 'MOVJ'; break;
+      case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
       case 'up': sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); break;
-      case 'down': sel = Math.min(prog.lines.length - 1, sel + 1); markPc(); renderLineEdit(); break;
+      case 'down': sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); break;
       case 'enter': P.view = 'prog'; break;
       case 'grip': {
         const why = isY() ? (P.mode !== 'teach' ? '教示モードにしてください' : '') : (P.tp && !P.shift ? 'SHIFTを押しながら操作してください' : '');
         if (why) { P.msg = why; break; }
-        setOut(!S.out); P.msg = ''; break;
+        const h = io().handOut; setOut(h.kind, h.n, !handOn()); P.msg = ''; break;
       }
-      case 'ins': {
-        const why = editBlock(); if (why) { P.msg = why; break; }
-        const prev = [...prog.lines.slice(0, sel + 1)].reverse().find(l => l.op === P.ins);
-        insertLine({ op: P.ins, q: curQ(), v: prev ? prev.v : defaultV(P.ins) }); P.msg = ''; break;
-      }
+      case 'ins': { const why = editBlock(); if (why) { P.msg = why; break; } insertMove(P.ins); P.msg = ''; break; }
       case 'upd': {
         const why = editBlock(); if (why) { P.msg = why; break; }
-        const l = prog.lines[sel];
-        if (!l || !RS.isMove(l)) { P.msg = '移動命令の行を選んでください'; break; }
-        edit(() => { l.q = curQ(); }); P.msg = isY() ? '位置を修正しました' : 'TOUCHUP 完了'; break;
+        const ins = RS.parseLine(S.sys, prog().lines[sel] || '');
+        if (ins.op !== 'MOVE' || !/^(C\d{5}|P\[\d+\])$/.test(ins.ref)) { P.msg = '移動命令の行を選んでください'; break; }
+        const old = prog().pos[ins.ref];
+        edit(() => {
+          if (old && old.k === 'c') { const p = poseInUf(tcpMatrix(), old.uf || 0); for (const k in p) p[k] = r3(p[k]); prog().pos[ins.ref] = { k: 'c', p, cfg: RS.configOf(S.q), uf: old.uf || 0, ut: old.ut == null ? 1 : old.ut, q: curQ() }; }
+          else prog().pos[ins.ref] = (old && old.k === 'j') ? { k: 'j', q: curQ() } : teachPos();
+        });
+        P.msg = isY() ? '位置を修正しました' : 'TOUCHUP 完了'; break;
       }
-      case 'del': {
-        const why = editBlock(); if (why) { P.msg = why; break; }
-        if (sel < 0) { P.msg = 'プログラムがありません'; break; }
-        delLine(); P.msg = ''; break;
-      }
+      case 'del': { const why = editBlock(); if (why) { P.msg = why; break; } if (sel < 0) { P.msg = 'プログラムがありません'; break; } delLine(); P.msg = ''; break; }
       case 'fwd': {
         const why = jogBlock(); if (why) { P.msg = why; break; }
         if (run || mv) break;
@@ -1257,10 +1785,16 @@
       case 'bwd': {
         const why = jogBlock(); if (why) { P.msg = why; break; }
         if (run || mv) break;
-        // 1つ前の移動命令の位置へ戻る
-        let i = sel - 1; while (i >= 0 && !RS.isMove(prog.lines[i])) i--;
+        let i = sel - 1, ins = null;
+        for (; i >= 0; i--) { ins = RS.parseLine(S.sys, prog().lines[i]); if (ins.op === 'MOVE' && prog().pos[ins.ref]) break; }
         if (i < 0) { P.msg = '戻る位置がありません'; break; }
-        sel = i; startJ(prog.lines[i].q, prog.lines[i].op === 'MOVJ' ? prog.lines[i].v : 25, null); markPc(); P.msg = ''; break;
+        sel = i;
+        const pos = prog().pos[ins.ref];
+        let q = pos.k === 'j' ? pos.q : null;
+        if (!q) { const r = RS.ik(robot, posMatrix(pos), tool.tcp, pos.q || S.q, isY() ? null : RS.parseConfig(pos.cfg)); q = r.q; }
+        P.msg = '';
+        if (q) startJ(q, 25, null); else P.msg = 'この位置には届きません';
+        markPc(); break;
       }
       case 'run': {
         const why = runBlock(); if (why) { P.msg = why; break; }
@@ -1278,25 +1812,26 @@
   pendEl.addEventListener('contextmenu', e => e.preventDefault());
 
   /* =================== メインループ =================== */
-  let last = performance.now(), hudT = 0;
+  let last = performance.now(), hudT = 0, ioT = 0;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000) * (S.timeScale || 1); last = now;
     if (jogHold && !mv) stepJog(dt);
     stepMotion(dt);
     stepRun(dt);
-    // 爪の開閉
-    const tg = S.out ? 1 : 0;
+    cellTick(dt);
+    const tg = handOn() ? 1 : 0;
     if (Math.abs(S.gripK - tg) > 1e-3) { S.gripK += (tg - S.gripK) * Math.min(1, dt * 12); updateToolVis(); }
-    // 落下
     for (const w of works) {
       if (!w.falling) continue;
       const sy = supportY(w) + w.def.size[2] / 2;
       w.vy += 9.8 * dt; w.g.position.y -= w.vy * dt;
       if (w.g.position.y <= sy) { w.g.position.y = sy; w.falling = false; w.vy = 0; }
     }
-    if (poseDirty && now - hudT > 50) {
-      hudT = now; poseDirty = false;
-      updateHud(); syncSliders();
+    if (poseDirty && now - hudT > 50) { hudT = now; poseDirty = false; updateHud(); syncSliders(); }
+    if (now - ioT > 250) {
+      ioT = now;
+      if (!$('#t-prog').hidden && $('#ioDet').open) renderIO();
+      if (run) refreshState();
     }
     if (!$('#t-pend').hidden && now - lcdT > 120) { lcdT = now; updateLcd(); }
     renderer.render(scene, camera);
@@ -1306,8 +1841,11 @@
   function renderAll() {
     document.documentElement.dataset.sys = S.sys;
     $$('.seg.sys button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sys === S.sys)));
-    $('#saveNative').textContent = S.sys === 'yaskawa' ? 'JBI 書き出し' : 'LS 書き出し';
-    renderSliders(); renderCartJog(); renderHudLabels(); renderCode(); renderCell(); renderPend(); updateOutBtn(); updateCycle();
+    $('#saveNative').textContent = (S.sys === 'yaskawa' ? 'JBI' : 'LS') + ' 書き出し';
+    $('#saveNativeAll').textContent = 'すべて ' + (S.sys === 'yaskawa' ? 'JBI' : 'LS');
+    $('#aiLang').textContent = S.sys === 'yaskawa' ? '安川 INFORM（JBI）' : 'ファナック TP（LS）';
+    renderSliders(); renderCartJog(); renderHudLabels(); renderProgSelect(); renderCode(); renderCell(); renderPend(); updateOutBtn(); updateCycle();
+    renderIO(); renderVars(); renderLog();
     syncSliders(); updateHud(); refreshState();
   }
 
@@ -1315,15 +1853,15 @@
   buildRobot();
   applyPose();
   resetWorks();
-  sel = prog.lines.length ? 0 : -1;
+  sel = prog().lines.length ? 0 : -1;
   renderAll();
   resize(); updateCam();
   requestAnimationFrame(frame);
 
   /* テスト・デバッグ用（ブラウザのコンソールから参照できます） */
   window.RSIM = {
-    get state() { return S; }, get prog() { return prog; }, get run() { return run; }, get mv() { return mv; },
-    get works() { return works; }, get robot() { return robot; }, get tool() { return tool; },
-    curPose, collisionCheck, G, TABLES, switchSystem, switchTool, makeSample, setOut
+    get state() { return S; }, get prog() { return prog(); }, get lib() { return lib; }, get run() { return run; }, get mv() { return mv; },
+    get works() { return works; }, get robot() { return robot; }, get tool() { return tool; }, get vars() { return vars; },
+    curPose, collisionCheck, G, TABLES, switchSystem, switchTool, makeSample, setOut, getIn, tcpMatrix, showAiResult, importProgs
   };
 })();

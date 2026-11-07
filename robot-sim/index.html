@@ -42,7 +42,8 @@
       <button role="tab" aria-selected="true" data-t="jog">ジョグ</button>
       <button role="tab" aria-selected="false" data-t="prog">プログラム</button>
       <button role="tab" aria-selected="false" data-t="pend">ペンダント</button>
-      <button role="tab" aria-selected="false" data-t="cell">ハンド・セル</button>
+      <button role="tab" aria-selected="false" data-t="ai">AI</button>
+      <button role="tab" aria-selected="false" data-t="cell">設定</button>
     </div>
     <div class="body">
       <!-- ジョグ -->
@@ -72,14 +73,26 @@
       <!-- プログラム -->
       <section id="t-prog" hidden>
         <div class="row">
-          <label class="pname">名前 <input type="text" id="progName" maxlength="16" spellcheck="false"></label>
-          <button id="undoBtn" title="元に戻す (Ctrl+Z)">元に戻す</button>
+          <label class="pname">プログラム <select id="progSel"></select></label>
+        </div>
+        <div class="row grow tight">
+          <button id="progNew">新規</button><button id="progDup">複製</button><button id="progRen">名前変更</button><button id="progDel" class="danger">削除</button><button id="undoBtn" title="元に戻す (Ctrl+Z)">元に戻す</button>
+        </div>
+        <div class="row">
+          <label class="pname">コメント <input type="text" id="progComment" maxlength="64" spellcheck="false"></label>
+          <span class="seg mini" id="viewSel"><button data-v="list" aria-pressed="true">一覧</button><button data-v="text" aria-pressed="false">テキスト編集</button></span>
         </div>
         <ol class="code" id="code" tabindex="0" aria-label="プログラム"></ol>
+        <div id="textBox" hidden>
+          <textarea id="codeText" class="codetext" spellcheck="false" aria-label="プログラムのテキスト"></textarea>
+          <div class="row grow"><button class="primary" id="textApply">反映</button><button id="fillPos">不足している位置を現在位置で作る</button></div>
+          <p class="note">実機と同じ書き方で1行ずつ書きます（行番号・NOP/END・末尾の ; は不要）。位置（C00000 / P[1]）は一覧の行編集で教示します。</p>
+        </div>
+        <ul class="check" id="checkList" hidden></ul>
         <div class="row grow tight">
           <button data-ins="MOVJ">＋関節</button><button data-ins="MOVL">＋直線</button>
           <button data-ins="ON">＋出力ON</button><button data-ins="OFF">＋出力OFF</button>
-          <button data-ins="WAITIN">＋確認待ち</button><button data-ins="TIMER">＋タイマ</button>
+          <button data-ins="WAITIN">＋確認待ち</button><button data-ins="TIMER">＋タイマ</button><button data-ins="CMT">＋コメント</button>
         </div>
         <div class="edit" id="lineEdit"></div>
         <div class="row grow">
@@ -89,23 +102,26 @@
           <button id="stepBtn" title="選択行を1行だけ実行">1行実行</button>
         </div>
         <div class="row">
-          <label class="chk"><input type="checkbox" id="loop"> 繰り返し</label>
-          <label class="chk"><input type="checkbox" id="autoSup" checked> ワーク自動供給</label>
+          <label class="chk"><input type="checkbox" id="loop"> 終わったら先頭から繰り返す</label>
         </div>
         <div class="spd"><label for="ovr">オーバーライド</label><input type="range" id="ovr" min="5" max="100" step="5" value="100"><output id="ovrOut">100%</output></div>
+        <div class="msg" id="progMsg" role="status"></div>
         <div class="row grow">
           <button id="sampleBtn">サンプル作成</button>
-          <button id="clearBtn" class="danger">全削除</button>
+          <button id="clearBtn" class="danger">命令を全削除</button>
         </div>
-        <h3>ファイル</h3>
+        <details id="ioDet"><summary>入出力（I/O）</summary><div id="ioBox"></div></details>
+        <details><summary>変数・レジスタ</summary><div id="varBox"></div><div class="row"><button id="varReset">数値変数を 0 に戻す</button></div></details>
+        <details><summary>実行ログ</summary><ul class="log" id="logBox"></ul></details>
+        <h3>ファイル（実機用）</h3>
         <div class="row grow">
-          <button id="saveJson">JSON保存</button>
           <button id="saveNative">JBI 書き出し</button>
+          <button id="saveNativeAll">すべて JBI</button>
           <button id="loadBtn">読み込み</button>
-          <input type="file" id="fileIn" accept=".json,.jbi,.JBI,.ls,.LS,.txt" hidden>
+          <button id="saveJson">JSON 保存</button>
+          <input type="file" id="fileIn" accept=".json,.jbi,.JBI,.ls,.LS,.txt" multiple hidden>
         </div>
-        <p class="note">JBI（安川）は直交位置、LS（ファナック）は関節位置で書き出します。実機に入れる前に、ツール番号・ユーザ座標・速度を必ず確認してください。</p>
-        <div class="msg" id="progMsg" role="status"></div>
+        <p class="note">実機のプログラム（安川 .JBI ／ ファナック .LS）を読み込んで動かせます。複数ファイル（CALL 先のサブプログラム）もまとめて選べます。</p>
       </section>
 
       <!-- ペンダント -->
@@ -113,7 +129,39 @@
         <div id="pend"></div>
       </section>
 
-      <!-- ハンド・セル -->
+      <!-- AI -->
+      <section id="t-ai" hidden>
+        <p class="note">やりたいことを日本語で書くと、AI が <b id="aiLang"></b> のプログラムを作ります。作られたプログラムは確認してから反映します。</p>
+        <div class="seg mini" id="aiMode"><button data-m="edit" aria-pressed="true">今のプログラムを修正</button><button data-m="new" aria-pressed="false">新しく作る</button></div>
+        <textarea id="aiText" class="aitext" placeholder="例：吸着してから 1 秒待ってから持ち上げるようにして" aria-label="AIへの指示"></textarea>
+        <div class="chips" id="aiExamples">
+          <button data-m="new">供給台のガラスを排出台へ運ぶプログラムを作って。5回繰り返して</button>
+          <button data-m="new">排出台に10mmずつずらして3枚並べて置く</button>
+          <button data-m="edit">吸着後 1 秒待ってから持ち上げるようにして</button>
+          <button data-m="edit">全体の速度を半分にして</button>
+          <button data-m="edit">供給台にワークがないときは待つようにして</button>
+        </div>
+        <div class="row grow">
+          <button class="primary" id="aiRun">AIで作成</button>
+          <button id="aiCopy">指示文をコピー（キーなし）</button>
+        </div>
+        <div class="msg" id="aiMsg" role="status"></div>
+        <div class="aiout" id="aiOut" hidden></div>
+        <details>
+          <summary>API キー（このページから直接 AI を呼ぶ場合）</summary>
+          <label class="pname">キー <input type="password" id="aiKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."></label>
+          <label class="chk"><input type="checkbox" id="aiRemember"> このパソコンに保存する</label>
+          <p class="note">キーはこのブラウザから api.anthropic.com にだけ送られます。共用パソコンでは保存しないでください。社内ネットワークで接続できない場合は、キーなしの方法を使います。</p>
+        </details>
+        <details>
+          <summary>キーなしで使う（Claude の画面に貼り付ける）</summary>
+          <ol class="note steps"><li>指示を書いて「指示文をコピー」</li><li>Claude（claude.ai など）に貼り付けて送る</li><li>返ってきた回答をこの欄に貼り付けて「回答を取り込む」</li></ol>
+          <textarea id="aiPaste" class="aitext" placeholder="ここに AI の回答（JSON）を貼り付け" aria-label="AIの回答"></textarea>
+          <div class="row grow"><button id="aiImport">回答を取り込む</button></div>
+        </details>
+      </section>
+
+      <!-- 設定 -->
       <section id="t-cell" hidden>
         <h3>ハンド（用途別に切替）</h3>
         <div class="tools" id="toolCards"></div>
@@ -127,11 +175,31 @@
           <button id="trailClr">軌跡を消す</button>
         </div>
         <div class="row">
-          <label class="chk"><input type="checkbox" id="optColl" checked> 干渉チェック</label>
-          <label class="chk"><input type="checkbox" id="optTrail" checked> 軌跡表示</label>
+          <label class="chk"><input type="checkbox" id="autoSup"> 供給台に自動補充</label>
+          <label class="chk"><input type="checkbox" id="autoOut"> 排出台から自動払い出し</label>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="optColl"> 干渉チェック</label>
+          <label class="chk"><input type="checkbox" id="optTrail"> 軌跡表示</label>
           <label class="chk"><input type="checkbox" id="optReach"> 動作範囲表示</label>
         </div>
         <dl class="info" id="cellInfo"></dl>
+        <h3>入出力の割り当て</h3>
+        <dl class="info" id="ioMapDoc"></dl>
+        <h3>実行</h3>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="optSkip"> 未対応の命令は飛ばす（オフで停止）</label>
+        </div>
+        <div class="row">
+          <label class="chk">入力待ちのタイムアウト <input type="number" id="waitTo" min="0" max="3600" step="1" style="width:80px"> 秒（0＝無制限）</label>
+        </div>
+        <h3>機種パラメータ（実機に合わせる）</h3>
+        <div id="robotForm"></div>
+        <div class="row grow"><button class="primary" id="robotSave">保存して反映</button><button id="robotReset">初期値に戻す</button></div>
+        <div class="msg" id="rbMsg" role="status"></div>
+        <h3>ユーザ座標（UF）</h3>
+        <div id="ufBox"></div>
+        <p class="note">実機のユーザ座標の値（ロボット座標から見た原点と向き）を入れると、UF 付きの位置を正しく再生します。</p>
       </section>
     </div>
   </aside>
@@ -142,7 +210,10 @@
 <script src="js/robots.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/kinematics.js"></script>
+<script src="js/model.js"></script>
 <script src="js/program.js"></script>
+<script src="js/interp.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
