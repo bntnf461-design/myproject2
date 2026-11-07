@@ -21,6 +21,10 @@
 - 位置：JBI は `///RECTAN` の `C00000=X,Y,Z,Rx,Ry,Rz`、LS は `P[n]{ GP1: UF : 0, UT : 1, CONFIG : 'N U T, 0, 0, 0', X = … }`。`programs/GLASS_PICK.*` が見本。
 - 実機に入れる前提のファイルには、確認が必要な点（UF/UT、速度、未確認の位置）をユーザーに必ず伝える。
 
+## 対象コントローラ
+- 安川は **DX200**（ユーザーの実機）。ペンダントの操作・JBI の書式は DX200 に合わせる。JBI は Shift_JIS で書き出す（`RS.encodeSJIS`）。
+- ファナックの型式は未確認。
+
 ## テスト
 ```
 node tests/kin.test.js

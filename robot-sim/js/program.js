@@ -312,7 +312,7 @@
     const w = [];
     const ins = prog.lines.map(l => RS.parseLine(prog.sys, l));
     if (ins.some(i => i.op === 'UNKNOWN' || i.op === 'ERR')) w.push('シミュレーターが解釈できない行があります（実機でも確認してください）');
-    if (prog.lines.some(l => !isAscii(l)) || !isAscii(prog.comment || '')) w.push('全角文字（日本語のコメント等）があります。コントローラの文字コード設定によっては文字化けします');
+    if (prog.lines.some(l => !isAscii(l)) || !isAscii(prog.comment || '')) w.push('全角文字（日本語のコメント等）があります。DX200 では「設定」の Shift_JIS 書き出しを使ってください（言語設定によっては表示できません）');
     if (prog.sys === 'yaskawa' && !ctx.pulse && Object.values(prog.pos).some(p => p.k === 'j')) w.push('パルス係数が未設定のため、関節位置を直交（RECTAN）で書き出します');
     if (Object.values(prog.pos).some(p => p.k === 'c' && p.uf)) w.push('ユーザ座標の位置があります。実機のユーザ座標番号・値が同じか確認してください');
     if (ins.some(i => i.op === 'MOVE' && ((i.speed.unit === 'mm/s' && i.speed.v > 1000) || (i.speed.unit === '%' && i.speed.v > 80)))) w.push('高速の移動命令があります。初回は必ず低速（オーバーライドを下げる）で確認してください');
@@ -338,7 +338,7 @@
     const out = ['/JOB', `//NAME ${prog.name}`, '//POS', `///NPOS ${ids.length},0,0,0,0,0`, '///TOOL 0'];
     if (pulseLines.length) out.push('///POSTYPE PULSE', '///PULSE', ...pulseLines);
     for (const [uf, arr] of Object.entries(rect)) {
-      if (+uf) out.push(`///USER ${uf}`, '///POSTYPE USER'); else out.push('///POSTYPE BASE');
+      if (+uf) out.push(`///USER ${uf}`, '///POSTYPE USER'); else out.push('///POSTYPE ROBOT');
       out.push('///RECTAN', '///RCONF 0,0,0,0,0,0,0,0', ...arr);
     }
     out.push('//INST', `///DATE ${t.y}/${t.mo}/${t.d} ${t.h}:${t.mi}`);
@@ -377,6 +377,33 @@
       '      ABORT_REQUEST\t= 0,', '      PAUSE_REQUEST\t= 0;', 'DEFAULT_GROUP\t= 1,*,*,*,*;', 'CONTROL_CODE\t= 00000000 00000000;',
       '/APPL', '/MN', ...mn, '/POS', ...pos, '/END'
     ].join('\r\n') + '\r\n';
+  };
+
+  /* Shift_JIS への変換（DX200 など日本語コントローラ向け）。ブラウザの Shift_JIS デコーダから逆引き表を作る */
+  let sjisMap = null;
+  RS.encodeSJIS = function (text) {
+    if (!sjisMap) {
+      sjisMap = new Map();
+      const dec = new TextDecoder('shift_jis');
+      const lead = [];
+      for (let b = 0x81; b <= 0x9f; b++) lead.push(b);
+      for (let b = 0xe0; b <= 0xfc; b++) lead.push(b);
+      for (const a of lead) for (let b = 0x40; b <= 0xfc; b++) {
+        if (b === 0x7f) continue;
+        const ch = dec.decode(new Uint8Array([a, b]));
+        if (ch.length === 1 && ch !== '\uFFFD' && !sjisMap.has(ch)) sjisMap.set(ch, [a, b]);
+      }
+      for (let b = 0xa1; b <= 0xdf; b++) sjisMap.set(dec.decode(new Uint8Array([b])), [b]);   // 半角カナ
+    }
+    const out = [];
+    let bad = 0;
+    for (const ch of text) {
+      const c = ch.codePointAt(0);
+      if (c < 0x80) { out.push(c); continue; }
+      const m = sjisMap.get(ch);
+      if (m) out.push(...m); else { out.push(0x3f); bad++; }
+    }
+    return { bytes: new Uint8Array(out), bad };
   };
 
   RS.exportJSON = function (progs) {
@@ -427,7 +454,7 @@
             if (!pulse) return { err: 'このJBIはパルス形式です。「設定」タブの機種パラメータで「1度あたりのパルス数」を入れてから読み込んでください' };
             prog.pos[m[1]] = { k: 'j', q: v.slice(0, 6).map((x, i) => +(x / pulse[i]).toFixed(4)) };
           } else {
-            if (postype === 'ROBOT' || postype === 'TOOL' || postype === 'MTOOL') warns.push(`${m[1]} は POSTYPE ${postype} です。ベース座標として扱います`);
+            if (postype === 'TOOL' || postype === 'MTOOL') warns.push(`${m[1]} は POSTYPE ${postype} です。ロボット座標として扱います`);
             prog.pos[m[1]] = { k: 'c', p: { X: v[0], Y: v[1], Z: v[2], rx: v[3], ry: v[4], rz: v[5] }, cfg: 'N U T, 0, 0, 0', uf: postype === 'USER' ? user : 0, ut: 1 };
           }
         } else if (/^(BC|EC)\d{5}=/.test(s)) warns.push('ベース軸・ステーション軸の位置は読み込みません');

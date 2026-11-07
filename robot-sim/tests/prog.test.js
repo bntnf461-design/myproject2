@@ -142,6 +142,13 @@ function host(lib, ins) {
   const a = it.tick(0.1);
   ok('infinite loop guard', a && a.t === 'alarm', a);
 }
+// --- Shift_JIS（DX200 の日本語コメント） ---
+{
+  const txt = "'ガラス取出し ｶﾅ ①\r\nMOVJ C00000 VJ=50.00";
+  const e = RS.encodeSJIS(txt);
+  const back = new TextDecoder('shift_jis').decode(e.bytes);
+  ok('Shift_JIS 往復', back === txt && e.bad === 0, [back, e.bad]);
+}
 // --- programs/ のサンプルファイルが読めて誤りがない ---
 const fs = require('fs'), path = require('path');
 for (const f of fs.readdirSync(path.join(__dirname, '../programs'))) {

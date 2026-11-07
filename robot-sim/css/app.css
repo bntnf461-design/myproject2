@@ -288,3 +288,8 @@ details[open] summary{margin-bottom:6px}
 
 .pendaway{text-align:center;padding:30px 10px}
 .pendaway[hidden]{display:none}
+/* DX200 */
+.pctl{text-align:center;font-size:10px;letter-spacing:.12em;opacity:.65;margin:-4px 0 6px}
+.ymsg{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.ytouch{font-size:10px;min-height:22px;padding:1px 8px;border-radius:4px;background:#fff;color:#1b3d78;border:1px solid #9fb0c8;font-family:system-ui,sans-serif}
+.ybot{display:flex;align-items:center;gap:8px;padding:3px;background:#dde3ec;font-size:10px;color:#b4350a;font-weight:700;font-family:system-ui,sans-serif}

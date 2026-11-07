@@ -31,7 +31,8 @@
       id: 'yaskawa',
       brand: 'YASKAWA',
       label: '安川電機',
-      model: 'MOTOMAN 汎用 20kg級（シミュレーション用）',
+      model: 'MOTOMAN 汎用 20kg級（DX200 想定・寸法はシミュレーション用）',
+      controller: 'DX200',
       axes: ['S', 'L', 'U', 'R', 'B', 'T'],
       axisJa: ['旋回', '下腕', '上腕', '手首回転', '手首振り', 'フランジ回転'],
       lim: [[-180, 180], [-90, 150], [-85, 160], [-200, 200], [-130, 130], [-360, 360]],
@@ -43,7 +44,7 @@
       home: [0, 0, 0, 0, 90, 0],
       j3abs: false,
       cart: ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'],
-      coordNames: { joint: '関節', base: 'ロボット', tool: 'ツール' }
+      coordNames: { joint: '関節', base: '直交', tool: 'ツール' }
     },
     fanuc: {
       id: 'fanuc',
