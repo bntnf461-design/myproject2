@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.3';
+  const VERSION = '3.4';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -1915,72 +1915,146 @@
     let html;
     if (Y) {
       const ang = { remote: -45, play: 0, teach: 45 }[pend.mode];
-      html = `<div class="pendant yp">
-        <div class="ptop">
-          <button class="keysw" data-act="mode" title="モード切替キー（REMOTE / PLAY / TEACH）"><span class="kl">REMOTE</span><span class="kl">PLAY</span><span class="kl">TEACH</span><span class="knob" style="transform:rotate(${ang}deg)"></span></button>
-          <button class="lampbtn start${on(run && !run.paused)}" data-act="run">START</button>
-          <button class="lampbtn hold${on(run && run.paused)}" data-act="hold">HOLD</button>
-          <button class="estopbtn${on(S.estop)}" data-act="estop" title="非常停止"><span>非常<br>停止</span></button>
+      // 実機（DX200 系プログラミングペンダント）の写真のキー配置どおりに並べる
+      const kb = (act, label, cls, title, hold) => `<button class="yk${cls ? ' ' + cls : ''}" ${hold ? 'data-hold' : 'data-act'}="${act}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`;
+      const pnd = op => pend.pending && pend.pending.op === op ? ' on' : '';
+      const kind = pend.coord === 'joint' ? 'j' : 'c';
+      const ax = (i, d, top, sub, rot) => `<button class="yax${rot ? ' rot' : ''}" data-jog='{"kind":"${kind}","axis":${i},"dir":${d},"pendant":true}'>${rot ? `<i>${d < 0 ? '↶' : '↷'}</i>` : ''}<b>${top}</b><small>${sub}</small></button>`;
+      const axNone = (t, title) => `<button class="yax off" data-act="na" title="${title}"><b>${t}</b></button>`;
+      html = `<div class="pendant yp2">
+        <div class="yhandle"></div>
+        <div class="ytop2">
+          <button class="keysw2" data-act="mode" title="モード切替キー（REMOTE / PLAY / TEACH）"><span class="knob2" style="transform:rotate(${ang}deg)"></span></button>
+          <button class="rbtn start${on(run && !run.paused)}" data-act="run" title="START"></button>
+          <button class="rbtn hold${on(run && run.paused)}" data-act="hold" title="HOLD"></button>
+          <button class="estop2${on(S.estop)}" data-act="estop" title="EMERGENCY STOP（非常停止）"><span></span></button>
+          <div class="ylabels"><span class="${pend.mode === 'remote' ? 'cur' : ''}">REMOTE</span><span class="${pend.mode === 'play' ? 'cur' : ''}">PLAY</span><span class="${pend.mode === 'teach' ? 'cur' : ''}">TEACH</span><span>START</span><span>HOLD</span><span>EMERGENCY STOP</span></div>
         </div>
-        <div class="pctl">${esc(robot.controller || '')} プログラミングペンダント</div>
-        <div class="pscreen yscr" id="lcd"></div>
-        <div class="ykeys">
-          <div class="ycol">
-            <div class="pk2"><button class="pk" data-act="coord">座標<br><small>${robot.coordNames[pend.coord]}</small></button><button class="pk" data-act="dopen">ダイレクト<br>オープン</button></div>
-            <button class="pk lampk${on(pend.ready)}" data-act="ready">サーボオン<br>レディ</button>
-            <div class="pk2"><button class="pk" data-act="speed+">手動速度<br>高</button><button class="pk" data-act="speed-">手動速度<br>低</button></div>
-            <div class="pk2"><button class="pk${on(pend.fast)}" data-act="fast">高速</button><button class="pk${on(pend.interlock)}" data-act="interlock">インター<br>ロック</button></div>
-            <div class="jgrid2">${jogKeys(true)}</div>
+        <div class="ybezel"><div class="pscreen yscr" id="lcd"></div></div>
+        <div class="ykp">
+          <div class="yrow1">
+            <div class="ycur"><button class="cu" data-act="up" title="カーソル↑">▲</button><button class="cl" data-act="na" title="カーソル←">◀</button><button class="cr" data-act="na" title="カーソル→">▶</button><button class="cd" data-act="down" title="カーソル↓">▼</button></div>
+            <div class="yfn">
+              ${kb('na', '<em>MULTI</em>LAYOUT', 'pu', '多画面（シミュレーターでは未対応）')}
+              ${kb('coord', `<em>TOOL SEL</em>COORD<small>${robot.coordNames[pend.coord]}</small>`, 'bl', '座標切替（関節／直交／ツール）')}
+              ${kb('dopen', 'DIRECT<br>OPEN', '', 'ダイレクトオープン（CALL 先のジョブを開く）')}
+              ${kb(pend.shift ? 'pageup' : 'page', '<em>GO BACK</em>PAGE', 'bl', 'ページ送り（SHIFT＋で戻る）')}
+              ${kb('na', 'AREA', 'bl', 'エリア（シミュレーターでは未対応）')}
+              ${kb('mainmenu', 'MAIN<br>MENU', '', 'メインメニュー')}
+              ${kb('view-prog', '<em>ENTRY</em>SIMPLE<br>MENU', 'bl', 'シンプルメニュー（ジョブ内容へ）')}
+              ${kb('ready', 'SERVO<br>ON<br>READY', 'lamp' + on(pend.ready), 'サーボオン レディ')}
+              ${kb('assist', 'ASSIST', 'pu', 'アシスト（操作の手順を表示）')}
+              ${kb('cancel', 'CANCEL', '', '取消')}
+            </div>
+            <button class="ysel" data-act="select" title="選択">SELECT</button>
           </div>
-          <div class="ycol">
-            <div class="pk2"><button class="pk" data-act="mainmenu">メイン<br>メニュー</button><button class="pk${on(pend.view === 'inst')}" data-act="instlist">命令<br>一覧</button></div>
-            <div class="pk2"><button class="pk" data-act="ins-type">補間<br>MOV${pend.ins}</button><button class="pk" data-hold="test">試運転</button></div>
-            <div class="pk2"><button class="pk" data-hold="bwdY">後退</button><button class="pk" data-hold="fwdY">前進</button></div>
-            <div class="pk2"><button class="pk${on(pend.pending && pend.pending.op === 'ins')}" data-act="ins">挿入</button><button class="pk${on(pend.pending && pend.pending.op === 'del')}" data-act="del">削除</button></div>
-            <div class="pk2"><button class="pk${on(pend.pending && pend.pending.op === 'upd')}" data-act="upd">修正</button><button class="pk ent" data-act="enter">エンター</button></div>
-            <div class="cross"><button class="pk" data-act="up">▲</button><button class="pk" data-act="down">▼</button></div>
-            <div class="pk2"><button class="pk" data-act="cancel">取消</button><button class="pk${on(ho)}" data-act="grip">ハンド<br>${io().fmt(io().handOut.kind, io().handOut.n)}</button></div>
+          <div class="yrow2">
+            <div class="yaxg">${ax(0, -1, 'X−', 'S−')}${ax(0, 1, 'X+', 'S+')}${ax(1, -1, 'Y−', 'L−')}${ax(1, 1, 'Y+', 'L+')}${ax(2, -1, 'Z−', 'U−')}${ax(2, 1, 'Z+', 'U+')}${axNone('E−', '外部軸（なし）')}${axNone('E+', '外部軸（なし）')}</div>
+            <div class="yspd">
+              <span class="svlamp${on(servoOn())}">SERVO ON</span>
+              <button class="ysp${on(pend.fast)}" data-act="fast" title="高速"><b>HIGH<br>SPEED</b></button>
+              <button class="ysp" data-act="speed+" title="手動速度 高"><b>FAST</b><small>▲</small></button>
+              <span class="mslbl">MANUAL SPEED<br><b>${YSP[pend.sp][0]}</b></span>
+              <button class="ysp" data-act="speed-" title="手動速度 低"><b>SLOW</b><small>▼</small></button>
+            </div>
+            <div class="yaxg">${ax(3, -1, 'X−', 'R−', true)}${ax(3, 1, 'X+', 'R+', true)}${ax(4, -1, 'Y−', 'B−', true)}${ax(4, 1, 'Y+', 'B+', true)}${ax(5, -1, 'Z−', 'T−', true)}${ax(5, 1, 'Z+', 'T+', true)}${axNone('8−', '第8軸（なし）')}${axNone('8+', '第8軸（なし）')}</div>
           </div>
+          <div class="ygrid">
+            ${kb('shift', 'SHIFT<i class="sq"></i>', 'bl' + on(pend.shift))}
+            ${kb('interlock', 'INTER<br>LOCK<i class="sq"></i>', 'pu' + on(pend.interlock), 'インターロック')}
+            ${kb('num7', '7<small>SINGLE/<br>SYNCRO</small>', 'bl')}
+            ${kb('num8', '8', 'bl')}
+            ${kb('num9', '9', 'bl')}
+            ${kb('test', 'TEST<br>START', 'pu', '試運転（インターロックと押している間だけ）', true)}
+            ${kb('shift', 'SHIFT<i class="sq"></i>', 'bl' + on(pend.shift))}
+            ${kb('na', 'ROBOT', '', 'ロボット切替（1台のみ）')}
+            ${kb('instlist', 'INFORM<br>LIST', on(pend.view === 'inst'), '命令一覧')}
+            ${kb('num4', '4<small>SMOV</small>', 'bl')}
+            ${kb('num5', '5', 'bl')}
+            ${kb('num6', '6', 'bl')}
+            ${kb('bwdY', 'BWD', 'pu', '後退（押している間だけ）', true)}
+            ${kb('fwdY', 'FWD', 'pu', '前進（押している間だけ）', true)}
+            ${kb('na', 'EX.AXIS', '', '外部軸切替（なし）')}
+            ${kb('assist', 'USAGE', '', '使い方')}
+            ${kb('num1', '1', 'bl')}
+            ${kb('num2', `2<small>TOOL ON</small>`, 'bl' + on(ho), '数字 2 ／［INTER LOCK］と同時でハンド ON')}
+            ${kb('num3', '3<small>TOOL ON<br>JOB</small>', 'bl', '数字 3 ／［INTER LOCK］と同時でハンド ON の命令を挿入')}
+            ${kb('del', 'DELETE', pnd('del'))}
+            ${kb('ins', 'INSERT', pnd('ins'))}
+            ${kb('na', 'AUX', '', '補助（シミュレーターでは未対応）')}
+            ${kb('ins-type', `MOTION<br>TYPE<small>MOV${pend.ins}</small>`, '', '補間方法の切替')}
+            ${kb('num0', '0', 'bl')}
+            ${kb('numdot', '.<small>TOOL OF</small>', 'bl', '小数点 ／［INTER LOCK］と同時でハンド OFF')}
+            ${kb('numminus', '−<small>TOOL OF<br>JOB</small>', 'bl', 'マイナス ／［INTER LOCK］と同時でハンド OFF の命令を挿入')}
+            ${kb('upd', 'MODIFY', pnd('upd'))}
+            ${kb('enter', 'ENTER', 'ent')}
+          </div>
+          <div class="ybrand">YASKAWA</div>
         </div>
-        <button class="enable${on(pend.enable)}" data-act="enable" title="裏面のイネーブルスイッチ（3ポジション）">イネーブルスイッチ：${pend.enable ? '握っている' : '離している'}</button>
+        <button class="enable${on(pend.enable)}" data-act="enable" title="側面のイネーブルスイッチ（3ポジション）">イネーブルスイッチ（側面）：${pend.enable ? '握っている' : '離している'}</button>
       </div>`;
     } else {
-      html = `<div class="pendant fp">
-        <div class="ptop">
-          <button class="tpsw${on(pend.tp)}" data-act="tp" title="TP 有効/無効スイッチ"><span>OFF</span><span class="sl"></span><span>ON</span></button>
-          <span class="ptag">Teach Pendant</span>
-          <button class="estopbtn${on(S.estop)}" data-act="estop" title="非常停止"><span>EMG<br>STOP</span></button>
+      // 実機（R-30iB Plus の iPendant）の写真のキー配置どおりに並べる
+      const fk = (act, label, cls, title, hold) => `<button class="fk${cls ? ' ' + cls : ''}" ${hold ? 'data-hold' : 'data-act'}="${act}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`;
+      const kindF = pend.coord === 'joint' ? 'j' : 'c';
+      const fj = (i, d, top, sub, rot) => `<button class="fk jog fjog${rot ? ' rot' : ''}" data-jog='{"kind":"${kindF}","axis":${i},"dir":${d},"pendant":true}'>${rot ? `<i>${d < 0 ? '↶' : '↷'}</i>` : ''}<b>${top}</b><small>${sub}</small></button>`;
+      const fjNone = (t, sub) => fk('na', `<b>${t}</b><small>${sub}</small>`, 'jog off', '付加軸（なし）');
+      html = `<div class="pendant fp2">
+        <div class="ftop2">
+          <button class="fkeysw${on(pend.tp)}" data-act="tp" title="TP 有効/無効スイッチ"><span class="knob3"></span><small>OFF　ON</small></button>
+          <div class="fhandle"></div>
+          <button class="estop2${on(S.estop)}" data-act="estop" title="非常停止ボタン"><span></span></button>
         </div>
-        <div class="pscreen fscr" id="lcd"></div>
-        <div class="frow5">${[1, 2, 3, 4, 5].map(i => `<button class="pk fkey" data-act="f${i}">F${i}</button>`).join('')}</div>
-        <div class="frow">
-          <button class="pk${on(pend.shift)} shiftk" data-act="shift">SHIFT</button>
-          <button class="pk" data-act="view-prog">EDIT</button><button class="pk" data-act="view-var">DATA</button>
-          <button class="pk" data-act="view-pos">POSN</button><button class="pk" data-act="view-io">I/O</button>
-          <button class="pk${on(pend.shift)} shiftk" data-act="shift">SHIFT</button>
-        </div>
-        <div class="fbody">
-          <div class="fcol">
-            <button class="pk" data-act="reset">RESET</button>
-            <div class="cross"><button class="pk" data-act="up">↑</button><button class="pk" data-act="down">↓</button></div>
-            <button class="pk ent" data-act="enter">ENTER</button>
-            <button class="pk${on(pend.step)}" data-act="step">STEP</button>
-            <button class="pk holdk" data-act="hold">HOLD</button>
-            <div class="pk2"><button class="pk" data-hold="fwdF">FWD</button><button class="pk" data-hold="bwdF">BWD</button></div>
-            <button class="pk" data-act="coord">COORD<br><small>${robot.coordNames[pend.coord]}</small></button>
-            <div class="pk2"><button class="pk" data-act="ovr-">−%</button><button class="pk" data-act="ovr+">+%</button></div>
+        <div class="fbezel"><div class="pscreen fscr" id="lcd"></div></div>
+        <div class="fsheet">
+          <div class="frowf">${fk('view-prog', 'PREV')}${[1, 2, 3, 4, 5].map(i => fk('f' + i, 'F' + i, 'fkey')).join('')}${fk('na', 'NEXT', '', '次のファンクションキー（シミュレーターでは未対応）')}</div>
+          <div class="frows">
+            ${fk('shift', 'SHIFT', 'blue' + on(pend.shift))}
+            ${fk('na', 'MENU', '', 'メニュー（画面は SELECT・EDIT・DATA・POSN・I/O で切替）')}
+            <div class="fteach"><span>TEACH</span>${fk('view-prog', 'SELECT')}${fk('view-prog', 'EDIT')}${fk('view-var', 'DATA')}</div>
+            ${fk('na', 'FCTN', '', '補助機能（シミュレーターでは未対応）')}
+            ${fk('shift', 'SHIFT', 'blue' + on(pend.shift))}
           </div>
-          <div class="jgrid2">${jogKeys(false)}</div>
+          <div class="fmain">
+            <button class="finfo" data-act="assist" title="i（操作の手順を表示）">i</button>
+            <div class="fleds"><span class="led${on(true)}">POWER</span><span class="led fault${on(!!S.alarm)}">FAULT</span></div>
+            ${fk('up', '⇧', 'cur cu')}
+            ${fk('assist', '?', 'help', 'ヘルプ')}
+            ${fk('step', 'STEP', 'g' + on(pend.step), 'ステップ運転の切替')}
+            ${fj(0, -1, '−X', '(J1)')}${fj(0, 1, '+X', '(J1)')}
+            ${fk('na', 'DISP', 'blue sm', '画面分割（シミュレーターでは未対応）')}
+            ${fk('na', '⇦', 'cur', 'カーソル←')}${fk('down', '⇩', 'cur')}${fk('na', '⇨', 'cur', 'カーソル→')}
+            ${fk('hold', 'HOLD', 'g')}
+            ${fj(1, -1, '−Y', '(J2)')}${fj(1, 1, '+Y', '(J2)')}
+            ${fk('reset', 'RESET', 'dk')}${fk('backspace', 'BACK<br>SPACE', 'dk')}${fk('na', 'ITEM', 'dk', '行番号を指定して移動（シミュレーターでは未対応）')}${fk('enter', 'ENTER', 'dk')}
+            ${fk('fwdF', 'FWD', 'g arr', 'SHIFT と押している間だけ前進', true)}
+            ${fj(2, -1, '−Z', '(J3)')}${fj(2, 1, '+Z', '(J3)')}
+            ${fk('num7', '7', 'dk')}${fk('num8', '8', 'dk')}${fk('num9', '9', 'dk')}${fk('na', 'TOOL<br>1', 'blue sm', 'ツール切替（シミュレーターでは未対応）')}
+            ${fk('bwdF', 'BWD', 'g arr', 'SHIFT と押している間だけ後退', true)}
+            ${fj(3, -1, '−X', '(J4)', true)}${fj(3, 1, '+X', '(J4)', true)}
+            ${fk('num4', '4', 'dk')}${fk('num5', '5', 'dk')}${fk('num6', '6', 'dk')}${fk('na', 'TOOL<br>2', 'blue sm', 'ツール切替（シミュレーターでは未対応）')}
+            ${fk('coord', `COORD<small>${robot.coordNames[pend.coord]}</small>`, 'g')}
+            ${fj(4, -1, '−Y', '(J5)', true)}${fj(4, 1, '+Y', '(J5)', true)}
+            ${fk('num1', '1', 'dk')}${fk('num2', '2', 'dk')}${fk('num3', '3', 'dk')}${fk('na', 'MOVE<br>MENU', 'blue sm', '（シミュレーターでは未対応）')}
+            ${fk('na', 'GROUP', 'g', '動作グループ切替（1 グループのみ）')}
+            ${fj(5, -1, '−Z', '(J6)', true)}${fj(5, 1, '+Z', '(J6)', true)}
+            ${fk('num0', '0', 'dk')}${fk('numdot', '.', 'dk')}${fk('numminus', '−<small>,</small>', 'dk')}${fk('na', 'SET<br>UP', 'blue sm', '（シミュレーターでは未対応）')}
+            ${fk('ovr+', `+%<small>${FOV[pend.ovrI]}%</small>`, 'g arrup', 'オーバーライド ＋')}
+            ${fjNone('−', '(J7)')}${fjNone('+', '(J7)')}
+            ${fk('assist', 'DIAG<br>HELP', 'blue sm')}${fk('view-pos', 'POSN', 'lt')}${fk('view-io', 'I/O', 'lt')}${fk('view-var', 'STATUS', 'blue sm', '状態（変数）')}
+            ${fk('ovr-', '−%', 'g arr', 'オーバーライド −')}
+            ${fjNone('−', '(J8)')}${fjNone('+', '(J8)')}
+          </div>
         </div>
-        <button class="enable${on(pend.dead)}" data-act="dead" title="裏面のデッドマンスイッチ">デッドマンスイッチ：${pend.dead ? '握っている' : '離している'}</button>
+        <button class="enable${on(pend.dead)}" data-act="dead" title="裏面のデッドマンスイッチ">デッドマンスイッチ（裏面）：${pend.dead ? '握っている' : '離している'}</button>
       </div>
       <div class="oppanel"><span>操作盤</span><span class="seg mini">${['T1', 'T2', 'AUTO'].map(m => `<button data-act="fmode-${m}" aria-pressed="${pend.fmode === m}">${m}</button>`).join('')}</span><button class="pk go" data-act="cycle">CYCLE START</button><span class="note">AUTO・TP 無効で自動運転</span></div>`;
     }
     const tools = `<div class="row pendtools"><button id="pendPop">${pend.float ? 'パネルに戻す' : '3D画面の上に出す'}</button><button id="pendBig">${pendEl.classList.contains('big') ? '標準の大きさ' : '大きく表示'}</button></div>`;
     const how = Y
-      ? '操作（DX200）：キーを TEACH に回す → ［サーボオン レディ］ → イネーブルスイッチを握る → 軸キーでジョグ（手動速度「微動」は押すたびに少しずつ、［高速］で速く）。［挿入］［削除］［修正］は［エンター］で確定、［取消］で中止。［前進］［後退］は押している間だけ動き、離すと止まります（もう一度押すと続きから）。［前進］は移動命令だけを実行し、ほかの命令は［インターロック］＋［前進］で実行。［試運転］は［インターロック］を押しながら、押している間だけ連続で動きます。教示モードの運転は手動速度に従い、TCP 250mm/s までに制限されます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
-      : '操作：TP を ON → デッドマンを握る → SHIFT を押しながら軸キーでジョグ。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD／BWD は押している間だけ動き、SHIFT・キー・デッドマンのどれかを離すと止まります（STEP 点灯中は1行ずつ）。T1 は 250mm/s まで、速度は ±% のオーバーライドに従います。自動運転は操作盤で AUTO にし、TP を OFF にして CYCLE START。';
-    pendEl.innerHTML = tools + html + `<p class="note">${how}</p><p class="note">実機の画面・キー配列を簡略化した再現です（メニュー階層・数値キーなどは省略）。マウスで操作しやすいよう、SHIFT・インターロック・高速・イネーブル／デッドマンは押すたびに ON/OFF が切り替わります。</p>`;
+      ? '操作（DX200）：キーを TEACH に回す → ［SERVO ON READY］ → 側面のイネーブルスイッチを握る → 軸キーでジョグ（MANUAL SPEED は FAST／SLOW、「微動」は押すたびに少しずつ、［HIGH SPEED］で速く）。数字を入れて ENTER で、選んだ移動命令の速度を変更。［INTER LOCK］＋［2 TOOL ON］／［. TOOL OF］でハンド出力、＋［3］／［−］でハンドの命令を挿入。キーの日本語名との対応：INSERT＝挿入、DELETE＝削除、MODIFY＝修正、ENTER＝エンター、CANCEL＝取消、FWD／BWD＝前進／後退、TEST START＝試運転、INFORM LIST＝命令一覧、MOTION TYPE＝補間。［挿入］［削除］［修正］は［エンター］で確定、［取消］で中止。［前進］［後退］は押している間だけ動き、離すと止まります（もう一度押すと続きから）。［前進］は移動命令だけを実行し、ほかの命令は［インターロック］＋［前進］で実行。［試運転］は［インターロック］を押しながら、押している間だけ連続で動きます。教示モードの運転は手動速度に従い、TCP 250mm/s までに制限されます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
+      : '操作（iPendant）：左上のキースイッチで TP を ON → 裏面のデッドマンを握る → SHIFT を押しながら軸キーでジョグ。数字を入れて ENTER で、選んだ移動命令の速度を変更（BACK SPACE で 1 文字消す）。POSN＝現在位置、I/O＝入出力、DATA／STATUS＝レジスタ、EDIT／SELECT＝プログラム。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD／BWD は押している間だけ動き、SHIFT・キー・デッドマンのどれかを離すと止まります（STEP 点灯中は1行ずつ）。T1 は 250mm/s まで、速度は ±% のオーバーライドに従います。自動運転は操作盤で AUTO にし、TP を OFF にして CYCLE START。';
+    pendEl.innerHTML = tools + html + `<p class="note">${how}</p><p class="note">キーの配置は実機の写真に合わせています。画面の中身（メニュー階層など）は簡略化した再現で、シミュレーターにない機能のキーは押すと「使えません」と表示します。マウスで操作しやすいよう、SHIFT・インターロック・高速・イネーブル／デッドマンは押すたびに ON/OFF が切り替わります。</p>`;
     lcdCache = ''; updateLcd();
   }
   bindHold(pendEl);
@@ -2081,7 +2155,43 @@
     switch (a) {
       case 'interlock': P.interlock = !P.interlock; break;
       case 'fast': P.fast = !P.fast; break;
-      case 'cancel': P.pending = null; P.msg = ''; if (P.view === 'inst') P.view = 'prog'; break;
+      case 'cancel': P.pending = null; P.num = ''; P.msg = ''; if (P.view === 'inst') P.view = 'prog'; break;
+      case 'na': P.msg = 'このキーはシミュレーターでは使えません'; break;
+      case 'backspace': P.num = (P.num || '').slice(0, -1); P.msg = P.num ? '入力：' + P.num : ''; break;
+      case 'assist':
+        if (!isY()) {
+          P.msg = P.fmode === 'AUTO' ? (P.tp ? 'AUTO：TP を OFF にして、操作盤の CYCLE START' : '操作盤の CYCLE START で自動運転')
+            : !P.tp ? '左上のキースイッチで TP を ON にしてください' : !P.dead ? '裏面のデッドマンスイッチを握ってください'
+            : 'SHIFT を押しながら軸キーでジョグ。F1 POINT、SHIFT＋F5 TOUCHUP、SHIFT＋FWD で実行';
+          break;
+        }
+        P.msg = P.mode !== 'teach' ? 'PLAY：［SERVO ON READY］→ START で自動運転'
+          : !P.ready ? '［SERVO ON READY］を押し、イネーブルスイッチを握ってください'
+          : !P.enable ? 'イネーブルスイッチを握ってください'
+          : '軸キーでジョグ。INSERT／DELETE／MODIFY は ENTER で確定。FWD は押している間だけ'; break;
+      case 'page': case 'pageup': {
+        const n = prog().lines.length; if (!n) break;
+        sel = clamp(sel + (a === 'page' ? 8 : -8), 0, n - 1); P.view = 'prog'; markPc(); renderLineEdit(); break;
+      }
+      case 'select':
+        if (P.view === 'inst') { P.msg = `「${instList()[P.instSel].t}」を選びました。［INSERT］→［ENTER］で追加`; break; }
+        if (P.view !== 'prog') { P.view = 'prog'; break; }
+        { const l = prog().lines[sel]; P.msg = l ? `${String(sel + 1).padStart(4, '0')} ${l}（数字を入れて ENTER で速度を変更）` : ''; }
+        break;
+      case 'num0': case 'num1': case 'num2': case 'num3': case 'num4': case 'num5': case 'num6': case 'num7': case 'num8': case 'num9': case 'numdot': case 'numminus': {
+        const ch = { numdot: '.', numminus: '-' }[a] || a.slice(3);
+        // INTER LOCK と同時：ハンドリング用の TOOL ON／OF キーとして使う（シミュレーターでの割り当て）
+        if (P.interlock && (a === 'num2' || a === 'numdot')) {
+          if (P.mode !== 'teach') { P.msg = 'モードを TEACH にしてください'; break; }
+          const h = io().handOut; setOut(h.kind, h.n, a === 'num2'); P.msg = `TOOL ${a === 'num2' ? 'ON' : 'OFF'}（${io().fmt(h.kind, h.n)}=${a === 'num2' ? 'ON' : 'OFF'}）`; break;
+        }
+        if (P.interlock && (a === 'num3' || a === 'numminus')) {
+          const why = editBlock(); if (why) { P.msg = why; break; }
+          const t = RS.lineOut('yaskawa', io().handOut, a === 'num3');
+          P.pending = { op: 'ins', inst: { t } }; P.msg = `［INSERT］：${t}　ENTER で確定／CANCEL で中止`; break;
+        }
+        P.num = ((P.num || '') + ch).slice(0, 8); P.msg = '入力：' + P.num; break;
+      }
       case 'mainmenu': P.menu = !P.menu; break;
       case 'instlist': P.view = P.view === 'inst' ? 'prog' : 'inst'; break;
       case 'dopen': {
@@ -2115,12 +2225,22 @@
       case 'ovr+': P.ovrI = Math.min(FOV.length - 1, P.ovrI + 1); break;
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
       case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; break;
-      case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); break;
+      case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); P.menu = a === 'view-prog' ? P.menu : P.menu; break;
       case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
       case 'up': if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
       case 'down': if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
       case 'enter':
         if (doPending()) break;
+        if (P.num) {   // 数字を入れて ENTER：選んだ移動命令の速度を変える
+          const v = +P.num; P.num = '';
+          const ins = RS.parseLine(S.sys, prog().lines[sel] || '');
+          const why = editBlock();
+          if (why) { P.msg = why; break; }
+          if (ins.op !== 'MOVE' || !(v > 0)) { P.msg = '移動命令の行を選んで、速度の数字を入れてください'; break; }
+          if (ins.speed.unit === '%' && v > 100) { P.msg = 'VJ は 100 以下です'; break; }
+          ins.speed.v = v; edit(() => { prog().lines[sel] = RS.formatMove(S.sys, ins); });
+          P.msg = '速度を変更しました：' + prog().lines[sel]; break;
+        }
         if (P.view === 'inst') { P.msg = `「${instList()[P.instSel].t}」を［挿入］→［エンター］で追加します`; break; }
         P.view = 'prog'; P.msg = ''; break;
       case 'grip': case 'f4': {

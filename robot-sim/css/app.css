@@ -297,3 +297,113 @@ details[open] summary{margin-bottom:6px}
 .signrow{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 8px;font-size:12px}
 .chk.confirm{margin:8px 0 2px;font-weight:600;align-items:flex-start}
 .oppanel{flex-wrap:wrap}
+
+/* ===== 安川 DX200 系ペンダント（実機の写真の配置どおり） ===== */
+.pendant.yp2{background:linear-gradient(#7d8185,#686c70 30%,#63676b);color:#eef0f2;border:1px solid #3e4245;border-radius:30px 30px 34px 34px;padding:10px 10px 12px;position:relative;margin-top:18px}
+.yhandle{position:absolute;left:50%;top:-18px;width:36%;height:22px;transform:translateX(-50%);border:6px solid #6a6e72;border-bottom:0;border-radius:10px 10px 0 0}
+.ytop2{display:grid;grid-template-columns:1fr 1fr 1fr 1.3fr;align-items:center;justify-items:center;padding:4px 4px 0}
+.keysw2{width:48px;height:48px;border-radius:50%;padding:0;min-height:0;background:radial-gradient(circle,#55595d 55%,#44484c);border:2px solid #3a3e41;position:relative}
+.knob2{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ffffff,#c9cdd1);transition:transform .2s}
+.knob2::after{content:"";position:absolute;left:50%;top:5px;width:4px;height:12px;margin-left:-2px;border-radius:2px;background:#4a4e52}
+.rbtn{width:44px;height:44px;border-radius:50%;padding:0;min-height:0;border:5px solid #44484c;box-shadow:inset 0 -3px 4px rgba(0,0,0,.25)}
+.rbtn.start{background:radial-gradient(circle at 40% 35%,#6bea8e,#1fa84a)}
+.rbtn.start.on{box-shadow:0 0 14px 4px #39e070}
+.rbtn.hold{background:radial-gradient(circle at 40% 35%,#ffffff,#d6d9dc)}
+.rbtn.hold.on{box-shadow:0 0 14px 4px #ffd27a}
+.estop2{width:64px;height:64px;border-radius:50%;padding:0;min-height:0;background:#f2c200;border:2px solid #b58f00;position:relative}
+.estop2 span{position:absolute;inset:7px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ff5a4a,#d0180c 60%,#930b04);box-shadow:0 3px 0 #6d0a03}
+.estop2.on span{transform:translateY(2px);box-shadow:none}
+.estop2:hover{border-color:#b58f00}
+.ylabels{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr) 1fr 1fr 1.3fr;font-size:7px;letter-spacing:.02em;color:#cfd3d6;text-align:center;margin-top:2px}
+.ylabels span:nth-child(-n+3){font-size:6.5px}
+.ylabels span.cur{color:#fff;font-weight:800;text-decoration:underline}
+.ylabels{grid-template-columns:16% 16% 16% 1fr 1fr 1.3fr}
+.ybezel{background:#3a3d40;border-radius:6px;padding:7px;margin:8px 10px 10px}
+.ybezel .pscreen{margin:0;border:0}
+.ykp{background:#3d4044;border-radius:10px 10px 18px 18px;padding:8px 8px 4px;margin:0 2px}
+.yrow1{display:grid;grid-template-columns:60px 1fr 60px;gap:6px;align-items:center}
+.ycur{position:relative;width:60px;height:60px;border-radius:50%;background:radial-gradient(circle,#e9ebed,#c9cdd1);box-shadow:0 2px 0 #222}
+.ycur button{position:absolute;width:20px;height:20px;min-height:0;padding:0;border:0;background:transparent;color:#2b2f33;font-size:11px}
+.ycur .cu{left:20px;top:2px}.ycur .cd{left:20px;bottom:2px}.ycur .cl{left:2px;top:20px}.ycur .cr{right:2px;top:20px}
+.ysel{width:60px;height:60px;border-radius:50%;padding:0;min-height:0;background:radial-gradient(circle,#e9ebed,#c9cdd1);color:#2b2f33;font-size:9.5px;font-weight:700;border:0;box-shadow:0 2px 0 #222}
+.yfn{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.yk{position:relative;min-height:34px;padding:7px 1px 2px;font-size:7.6px;font-weight:700;line-height:1.1;border-radius:5px;background:#e3e5e7;color:#2b2f33;border:0;box-shadow:0 2px 0 #1f2124;overflow:hidden;font-family:Arial,Helvetica,sans-serif;touch-action:manipulation}
+.yk::before{content:"";position:absolute;left:0;right:0;top:0;height:6px;background:#c7cacd}
+.yk.bl::before{background:#8fc2ea}
+.yk.pu::before{background:#c9a6e6}
+.yk em{display:block;font-style:normal;font-size:6px;color:#2a5fa0;margin-top:-6px;margin-bottom:1px;position:relative}
+.yk small{display:block;font-size:5.8px;font-weight:600;color:#3d4247}
+.yk .sq{display:block;width:8px;height:6px;border:1px solid #555;margin:1px auto 0}
+.yk.on{background:#bfe6c9}
+.yk.lamp.on{background:#bfdcff}
+.yk.ent{background:#e3e5e7}
+.yk:active,.yk.hold{transform:translateY(1px);box-shadow:none;filter:brightness(.88)}
+.yrow2{display:grid;grid-template-columns:1fr 64px 1fr;gap:8px;margin:10px 0 8px}
+.yaxg{display:grid;grid-template-columns:1fr 1fr;gap:6px 6px}
+.yax{position:relative;min-height:34px;padding:2px 0;border-radius:17px;background:radial-gradient(ellipse at 50% 35%,#f2f3f4,#cdd0d3);color:#22262a;border:0;box-shadow:0 2px 0 #1f2124;font-family:Arial,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;touch-action:none}
+.yax b{font-size:11px}
+.yax small{font-size:7px;font-weight:700;color:#4a4f54}
+.yax i{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-style:normal;font-size:8px;color:#444}
+.yax.rot b{margin-top:5px}
+.yax.off{opacity:.75}
+.yax.hold{filter:brightness(.82);transform:translateY(1px);box-shadow:none}
+.yspd{display:flex;flex-direction:column;align-items:center;gap:5px;border-left:1px solid #55595d;border-right:1px solid #55595d;padding:0 4px}
+.svlamp{font-size:7px;font-weight:800;color:#bfc3c6;padding:1px 3px;border-radius:3px}
+.svlamp.on{color:#04210f;background:#39e070}
+.ysp{width:52px;min-height:30px;padding:0;border-radius:15px;background:radial-gradient(ellipse at 50% 35%,#f2f3f4,#cdd0d3);color:#22262a;border:0;box-shadow:0 2px 0 #1f2124;font-family:Arial,Helvetica,sans-serif;font-size:8px;line-height:1}
+.ysp b{font-weight:800}
+.ysp small{display:block;font-size:6px}
+.ysp.on{background:#bfe6c9}
+.mslbl{font-size:6px;color:#cfd3d6;text-align:center;line-height:1.2}
+.mslbl b{font-size:8px;color:#fff}
+.ygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.ygrid .yk{min-height:34px;font-size:7.5px}
+.ybrand{text-align:center;font-size:8px;font-weight:800;letter-spacing:.12em;color:#cfd3d6;margin-top:5px}
+.yp2 .enable{color:#eef0f2;border-color:#9aa0a6}
+#pend.big .yk{font-size:9px}#pend.big .yax b{font-size:13px}
+
+/* ===== ファナック iPendant（R-30iB Plus の写真の配置どおり） ===== */
+.pendant.fp2{background:linear-gradient(#3b3e42,#2b2d30);color:#e8eaec;border:1px solid #111;border-radius:40px 40px 30px 30px;padding:10px 12px 12px}
+.ftop2{display:grid;grid-template-columns:70px 1fr 70px;align-items:center;justify-items:center;margin-bottom:6px}
+.fhandle{width:70%;height:26px;border-radius:13px;background:#1c1d1f;box-shadow:inset 0 2px 4px rgba(0,0,0,.6)}
+.fkeysw{width:54px;height:54px;border-radius:50%;padding:0;min-height:0;background:radial-gradient(circle,#2a2c2f 55%,#1d1e20);border:2px solid #111;color:#ccc;position:relative}
+.fkeysw small{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-size:7px;white-space:nowrap;color:#bbb}
+.knob3{position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#5a5d60,#222);transform:rotate(-40deg);transition:transform .2s}
+.knob3::after{content:"";position:absolute;left:50%;top:3px;width:3px;height:16px;margin-left:-1.5px;background:#bbb;border-radius:1px}
+.fkeysw.on .knob3{transform:rotate(40deg)}
+.fkeysw.on{box-shadow:0 0 0 2px #39e070}
+.fbezel{background:#1a1b1d;border-radius:6px;padding:8px;margin:8px 8px 10px;border:1px solid #000}
+.fbezel .pscreen{margin:0;border:0}
+.fsheet{background:linear-gradient(#e9ebec,#dcdfe1);border-radius:8px;padding:7px 6px 8px;margin:0 6px;color:#222}
+.fk{position:relative;min-height:30px;padding:2px 1px;font-size:8px;font-weight:700;line-height:1.1;border-radius:4px;background:linear-gradient(#ffffff,#e4e6e8);color:#2b2e31;border:1px solid #8c9196;box-shadow:0 1px 0 #6f757a;font-family:Arial,Helvetica,sans-serif;touch-action:manipulation}
+.fk small{display:block;font-size:6.5px;font-weight:600;opacity:.85}
+.fk.blue{background:linear-gradient(#5c9be4,#2f6fc4);color:#fff;border-color:#204f8c}
+.fk.blue.on{background:linear-gradient(#ffe27a,#f2c200);color:#111;box-shadow:0 0 8px #f2c200}
+.fk.sm{font-size:7px}
+.fk.dk{background:linear-gradient(#53575c,#3a3d41);color:#fff;border-color:#202225}
+.fk.g{background:linear-gradient(#cfd3d7,#aeb3b8);color:#222}
+.fk.g.on{box-shadow:inset 0 -4px 0 #2bd06b}
+.fk.lt{background:linear-gradient(#ffffff,#e9ebed)}
+.fk.arr{clip-path:polygon(0 0,100% 0,100% 72%,50% 100%,0 72%)}
+.fk.cur{background:linear-gradient(#ffffff,#dfe2e5);font-size:13px}
+.fk.help{border-radius:50%;width:26px;height:26px;min-height:0;justify-self:center;align-self:center}
+.fk.jog{background:linear-gradient(#5c9be4,#2f6fc4);color:#fff;border-color:#204f8c;min-height:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}
+.fk.jog b{font-size:10px}
+.fk.jog i{position:absolute;top:0;left:50%;transform:translateX(-50%);font-style:normal;font-size:7px}
+.fk.jog.rot b{margin-top:4px}
+.fk.jog.off{opacity:.55}
+.fk.hold,.fk:active{filter:brightness(.85);transform:translateY(1px);box-shadow:none}
+.frowf{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:5px}
+.frows{display:grid;grid-template-columns:1fr 1fr 3fr 1fr 1fr;gap:4px;margin-bottom:6px;align-items:end}
+.fteach{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;position:relative;border:1px solid #8c9196;border-top:0;padding:8px 3px 3px;border-radius:0 0 4px 4px}
+.fteach span{position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-size:6.5px;font-weight:800;background:#e3e5e7;padding:0 3px;color:#555}
+.fmain{display:grid;grid-template-columns:repeat(4,1fr) 1.05fr 1.15fr 1.15fr;gap:4px;align-items:stretch}
+.finfo{width:30px;height:30px;min-height:0;border-radius:50%;padding:0;font:italic 700 16px Georgia,serif;background:linear-gradient(#fff,#e4e6e8);border:1px solid #8c9196;justify-self:center;color:#333}
+.fleds{display:flex;flex-direction:column;gap:2px;justify-content:center;font-size:6px;font-weight:700;color:#555}
+.fleds .led::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#9aa0a6;margin-right:2px;vertical-align:middle}
+.fleds .led.on::before{background:#39e070}
+.fleds .led.fault.on::before{background:#ff4b3a}
+.fp2 .enable{color:#e8eaec;border-color:#888}
+#pend.big .fk{font-size:9.5px}#pend.big .fk.jog b{font-size:12px}
+.ytop2 button:hover,.ftop2 button:hover{border-color:inherit}
+.fk.arrup{clip-path:polygon(50% 0,100% 28%,100% 100%,0 100%,0 28%)}

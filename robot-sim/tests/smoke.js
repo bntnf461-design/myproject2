@@ -179,7 +179,7 @@ P[2]{
   // 9. ペンダント（安川・実機風）
   await tab('pend');
   const pk = async (sel, ms) => hold(sel, ms || 60);
-  const jogKey = '#pend .jgrid2 button[data-jog*="\\"axis\\":0,\\"dir\\":1"]';
+  const jogKey = '#pend button[data-jog*="\\"axis\\":0,\\"dir\\":1"]';
   const q0 = await ev(() => RSIM.state.q[0]);
   await pk(jogKey, 400);
   check('レディ前はジョグ不可', (await ev(() => RSIM.state.q[0])) === q0 && (await page.textContent('#lcd')).includes('サーボオン'));
