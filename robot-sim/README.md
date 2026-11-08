@@ -1,4 +1,4 @@
-# ロボットシミュレーター（安川 DX200／ファナック）v3.3
+# ロボットシミュレーター（安川 DX200／ファナック）v3.5
 
 社内の教育とプログラム検証に使う、6軸ロボットの 3D シミュレーターです。
 `index.html` をブラウザ（Chrome / Edge）で開くだけで動きます。インストールは不要で、インターネットにもつながりません（AI 機能を使うときだけ接続します）。
@@ -103,12 +103,14 @@ robot-sim/
   js/tools.js         ハンドとワークの定義              ← 用途別の変更はここ
   js/kinematics.js    順運動学・逆運動学・直線補間
   js/model.js         ロボットの 3D 形状
+  js/look.js          実写風の描画（工場の建屋・質感・陰り・画質の切替）
   js/program.js       命令の解析、JBI / LS / JSON の読み書き
   js/interp.js        プログラムの実行（ラベル・ジャンプ・CALL・変数・入出力）
   js/ai.js            AI によるプログラム作成
   js/app.js           画面・動作制御・ペンダント
   programs/           実機形式のサンプル（GLASS_PICK.JBI / .LS）
   vendor/three.min.js three.js r128（MIT ライセンス）
+  vendor/three-addons.js three.js r128 公式の追加機能（EffectComposer・SSAOPass・FXAA、MIT）
   tests/              自動テスト
 ```
 

@@ -185,6 +185,12 @@
           <label class="chk"><input type="checkbox" id="optTrail"> 軌跡表示</label>
           <label class="chk"><input type="checkbox" id="optReach"> 動作範囲表示</label>
         </div>
+        <h3>画質</h3>
+        <div class="row">
+          <label class="chk">描画 <select id="optQuality"><option value="auto">自動（実写風。重い PC では標準）</option><option value="high">実写風（陰り・周辺減光）</option><option value="std">標準</option><option value="low">軽量（古い PC 向け）</option></select></label>
+          <label class="chk"><input type="checkbox" id="optGrid"> 床の目盛り（250mm）</label>
+        </div>
+        <p class="note" id="qualityNote"></p>
         <dl class="info" id="cellInfo"></dl>
         <h3>入出力の割り当て</h3>
         <dl class="info" id="ioMapDoc"></dl>
@@ -215,9 +221,11 @@
 
 <script src="vendor/three.min.js"></script>
 <script>window.THREE || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');</script>
+<script src="vendor/three-addons.js"></script>
 <script src="js/robots.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/kinematics.js"></script>
+<script src="js/look.js"></script>
 <script src="js/model.js"></script>
 <script src="js/program.js"></script>
 <script src="js/interp.js"></script>

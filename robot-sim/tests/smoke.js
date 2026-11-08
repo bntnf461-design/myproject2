@@ -12,6 +12,8 @@ const shots = process.env.SHOTS || '';
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   page.on('dialog', d => d.accept());
+  // ソフトウェア描画（GPU なし）なので軽量画質で動かす。QUALITY=high で実写風も確認できる
+  await page.addInitScript(q => { localStorage.setItem('rs3-opts', JSON.stringify({ quality: q, ver: 4 })); }, process.env.QUALITY || 'low');
   await page.goto(url);
   await page.waitForFunction(() => window.RSIM);
   await page.evaluate(() => { RSIM.state.timeScale = 3; });

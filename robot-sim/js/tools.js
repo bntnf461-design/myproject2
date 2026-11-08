@@ -49,13 +49,16 @@
   /* ---------- 部品ヘルパー（ツール座標で配置） ---------- */
   RS.makeToolKit = function (T) {
     const mats = {
-      alu: new T.MeshStandardMaterial({ color: 0xc3c9d1, roughness: 0.35, metalness: 0.6 }),
-      dark: new T.MeshStandardMaterial({ color: 0x30363e, roughness: 0.6, metalness: 0.3 }),
-      rubber: new T.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.9, metalness: 0 }),
+      alu: new T.MeshStandardMaterial({ color: 0xc9ced4, roughness: 0.38, metalness: 0.85, roughnessMap: (RS.lookTex && RS.lookTex.brushR) || null }),
+      dark: new T.MeshStandardMaterial({ color: 0x30363e, roughness: 0.55, metalness: 0.5 }),
+      rubber: new T.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.85, metalness: 0 }),
+      hose: new T.MeshStandardMaterial({ color: 0x2f74c8, roughness: 0.35, metalness: 0, transparent: true, opacity: 0.85 }),
       blue: new T.MeshStandardMaterial({ color: 0x2f6fd0, roughness: 0.5, metalness: 0.2 }),
       white: new T.MeshStandardMaterial({ color: 0xe6eaef, roughness: 0.5, metalness: 0.1 }),
       led: new T.MeshStandardMaterial({ color: 0x777777, emissive: 0x000000, roughness: 0.4 })
     };
+    mats.led.userData.linear = true;   // 色は setLed が毎回変換して入れる
+    mats.hose.userData.noAO = true;
     function shadow(m) { m.castShadow = true; m.receiveShadow = true; return m; }
     return {
       T, mats,
@@ -73,15 +76,21 @@
         m.position.set(x || 0, y || 0, z || 0);
         return m;
       },
+      /* 曲がったホース（点列はツール座標） */
+      hose(pts, r, mat) {
+        const m = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts.map(p => new T.Vector3(p[0], p[1], p[2]))), 24, r, 8, false), mat);
+        m.castShadow = true; return m;
+      },
       group() { return new T.Group(); }
     };
   };
 
   /* LED（状態表示）共通 */
   function setLed(mat, st) {
-    if (!st.on) { mat.color.setHex(0x666666); mat.emissive.setHex(0x000000); }
-    else if (st.holding) { mat.color.setHex(0x22c55e); mat.emissive.setHex(0x0f7a35); }
-    else { mat.color.setHex(0xf59e0b); mat.emissive.setHex(0x7a4a00); }
+    const set = (c, h) => { c.setHex(h); if (RS.srgbColor) c.convertSRGBToLinear(); };
+    if (!st.on) { set(mat.color, 0x666666); set(mat.emissive, 0x000000); }
+    else if (st.holding) { set(mat.color, 0x22c55e); set(mat.emissive, 0x1fbf5a); }
+    else { set(mat.color, 0xf59e0b); set(mat.emissive, 0xd08400); }
   }
 
   /* ---------- ハンド ---------- */
@@ -111,7 +120,11 @@
           g.add(K.cylZ(0.008, 0.008, 0.035, M.dark, x, y, 0.096));    // 支柱
           g.add(K.cylZ(0.016, 0.016, 0.012, M.dark, x, y, 0.128));    // バネ部
           g.add(K.cylZ(0.018, this.cupR, 0.03, M.rubber, x, y, 0.14)); // ベローズ吸盤
+          g.add(K.cylZ(0.006, 0.006, 0.012, M.alu, x * 0.98, y * 0.98, 0.084)); // 継手
+          // 真空ホース（中央のエジェクタから各吸盤へ）
+          g.add(K.hose([[Math.sign(x) * 0.03, Math.sign(y) * 0.03, 0.06], [x * 0.45, y * 0.55, 0.05], [x * 0.85, y * 0.95, 0.06], [x, y, 0.078]], 0.004, M.hose));
         }
+        g.add(K.box(0.06, 0.03, 0.025, M.dark, 0, 0.06, 0.04));          // 真空エジェクタ
         return { group: g, update(st) { setLed(led, st); } };
       }
     },

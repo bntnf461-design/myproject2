@@ -10,7 +10,7 @@
 | ロボットのプログラムを書いて／直して | `programs/` に実機形式（.JBI / .LS）で置く。下の「プログラムを書くとき」を守る。書いたら `node tests/prog.test.js` で文法チェック（programs/ の全ファイルが検査される）。 |
 | 機種を実機に合わせる | `js/robots.js` の `dims` `lim` `vmax` `pulse`。数値は根拠（取扱説明書など）をユーザーに確認する。推測で実機名の数値を入れない。 |
 | 命令を増やす | `js/program.js`（parseY / parseF に解析を追加）→ `js/interp.js`（実行）→ `js/ai.js` の LANG（AI に教える命令一覧）→ README の命令一覧 → `tests/prog.test.js` |
-| 見た目 | `js/model.js`（関節の階層は `kinematics.js` の `fkKin` と必ず一致させる）、`css/app.css` |
+| 見た目 | `js/model.js`（関節の階層は `kinematics.js` の `fkKin` と必ず一致させる）、`js/look.js`（建屋・床・質感・画質）、`css/app.css` |
 
 ## プログラムを書くとき（安川 INFORM／ファナック TP）
 - 座標：ロボット座標、X 前・Y 左・Z 上（mm）。姿勢 R = Rz·Ry·Rx（安川 Rx/Ry/Rz、ファナック W/P/R）。ツール真下向き＝(180, 0, 0)。

@@ -12,32 +12,37 @@
   RS.buildRobotModel = function (T, robot) {
     const d = robot.dims, c = robot.colors, Y = robot.id === 'yaskawa';
     const a3 = d.a3 || 0;
-    const paint = new T.MeshPhysicalMaterial({ color: c.main, roughness: 0.36, metalness: 0.05, clearcoat: 0.8, clearcoatRoughness: 0.22 });
-    const paint2 = new T.MeshPhysicalMaterial({ color: c.sub, roughness: 0.4, metalness: 0.05, clearcoat: 0.6, clearcoatRoughness: 0.3 });
-    const motorM = new T.MeshStandardMaterial({ color: c.dark, roughness: 0.5, metalness: 0.45 });
-    const blackM = new T.MeshStandardMaterial({ color: 0x15171a, roughness: 0.7, metalness: 0.2 });
-    const steel = new T.MeshStandardMaterial({ color: 0xb8bec6, roughness: 0.28, metalness: 0.9 });
-    const cableM = new T.MeshStandardMaterial({ color: 0x1c1e22, roughness: 0.75, metalness: 0.05 });
-    const mats = [paint, paint2, motorM, blackM, steel, cableM];
+    const LT = RS.lookTex || {};
+    // 塗装（ゆず肌の細かい凹凸＋クリア層）、鋳物、金属は look.js のテクスチャで質感を付ける
+    const pN = LT.paintN || null, nS = new T.Vector2(0.22, 0.22);
+    const paint = new T.MeshPhysicalMaterial({ color: c.main, roughness: 0.42, metalness: 0.0, clearcoat: 0.65, clearcoatRoughness: 0.28, normalMap: pN, normalScale: nS });
+    const paint2 = new T.MeshPhysicalMaterial({ color: c.sub, roughness: 0.46, metalness: 0.0, clearcoat: 0.5, clearcoatRoughness: 0.32, normalMap: pN, normalScale: nS });
+    const motorM = new T.MeshStandardMaterial({ color: c.dark, roughness: 0.58, metalness: 0.35, normalMap: LT.castN || null, normalScale: new T.Vector2(0.3, 0.3) });
+    const blackM = new T.MeshStandardMaterial({ color: 0x15171a, roughness: 0.72, metalness: 0.15 });
+    const steel = new T.MeshStandardMaterial({ color: 0xc4c9cf, roughness: 0.32, metalness: 0.95, roughnessMap: LT.brushR || null });
+    const boltM = new T.MeshStandardMaterial({ color: 0x3a3d41, roughness: 0.45, metalness: 0.85 });
+    const cableM = new T.MeshStandardMaterial({ color: 0x1c1e22, roughness: 0.62, metalness: 0.05 });
+    const labelM = LT.caution ? new T.MeshStandardMaterial({ map: LT.caution, transparent: true, alphaTest: 0.3, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 }) : null;
+    const mats = [paint, paint2, motorM, blackM, steel, boltM, cableM];
 
     const sh = m => { m.castShadow = true; m.receiveShadow = true; return m; };
     const at = (m, x, y, z) => { m.position.set(x || 0, y || 0, z || 0); return m; };
 
     /* 回転体（Y軸まわり）。pts = [[半径, 高さ], ...] */
     function lathe(pts, mat, seg) {
-      return sh(new T.Mesh(new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), seg || 40), mat));
+      return sh(new T.Mesh(new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), seg || 56), mat));
     }
     /* 回転体を任意の軸に向ける */
     function latheAx(pts, mat, axis, seg) {
-      const g = new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), seg || 40);
+      const g = new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), seg || 56);
       if (axis === 'x') g.rotateZ(-Math.PI / 2);
       if (axis === 'z') g.rotateX(Math.PI / 2);
       return sh(new T.Mesh(g, mat));
     }
     /* 面取りした円柱（ハブ・キャップ） */
-    function hub(r, len, mat, axis, ch) {
+    function hub(r, len, mat, axis, ch, seg) {
       ch = ch == null ? Math.min(r * 0.18, len * 0.25) : ch;
-      return latheAx([[0, -len / 2], [r - ch, -len / 2], [r, -len / 2 + ch], [r, len / 2 - ch], [r - ch, len / 2], [0, len / 2]], mat, axis);
+      return latheAx([[0, -len / 2], [r - ch, -len / 2], [r, -len / 2 + ch], [r, len / 2 - ch], [r - ch, len / 2], [0, len / 2]], mat, axis, seg);
     }
     /* 2つの円を接線でつないだ板（鋳物の腕）。c1=(0,0) 半径 r1、c2=(0,L) 半径 r2。厚み th（Z方向、中心0） */
     function link(r1, r2, L, th, mat, bevel) {
@@ -49,7 +54,7 @@
       s.absarc(0, L, r2, phi, Math.PI - phi, false);
       s.lineTo(-r1 * Math.cos(phi), r1 * Math.sin(phi));
       s.absarc(0, 0, r1, Math.PI - phi, 2 * Math.PI + phi, false);
-      const g = new T.ExtrudeGeometry(s, { depth: th - 2 * bevel, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.9, bevelSegments: 4, curveSegments: 28 });
+      const g = new T.ExtrudeGeometry(s, { depth: th - 2 * bevel, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.9, bevelSegments: 6, curveSegments: 56 });
       g.translate(0, 0, -(th - 2 * bevel) / 2);
       return sh(new T.Mesh(g, mat));
     }
@@ -62,7 +67,7 @@
       s.lineTo(x, h / 2); s.absarc(x, h / 2 - r, r, Math.PI / 2, Math.PI, false);
       s.lineTo(-w / 2, y); s.absarc(x, y, r, Math.PI, Math.PI * 1.5, false);
       const b = Math.min(0.02, dp * 0.15);
-      const g = new T.ExtrudeGeometry(s, { depth: dp - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b * 0.9, bevelSegments: 3, curveSegments: 10 });
+      const g = new T.ExtrudeGeometry(s, { depth: dp - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b * 0.9, bevelSegments: 5, curveSegments: 14 });
       g.translate(0, 0, -(dp - 2 * b) / 2);
       return sh(new T.Mesh(g, mat));
     }
@@ -80,14 +85,44 @@
       return g;
     }
 
+    /* 六角ボルトを円周に並べる（axis 方向に面が向く） */
+    function bolts(parent, R, n, x, y, z, axis, size, a0) {
+      // 六角（6 分割）の頭を 1 つの形状にまとめる（描画を軽くするため）
+      const s = size || 0.009, parts = [];
+      for (let i = 0; i < n; i++) {
+        const a = (a0 || 0) + i / n * Math.PI * 2, u = Math.cos(a) * R, v = Math.sin(a) * R;
+        const g = hub(s, s * 0.9, boltM, axis, s * 0.15, 6).geometry.toNonIndexed();
+        if (axis === 'z') g.translate(x + u, y + v, z);
+        else if (axis === 'x') g.translate(x, y + u, z + v);
+        else g.translate(x + u, y, z + v);
+        parts.push(g);
+      }
+      const cnt = parts.reduce((t, g) => t + g.attributes.position.count, 0);
+      const pos = new Float32Array(cnt * 3), nor = new Float32Array(cnt * 3);
+      let k = 0;
+      for (const g of parts) { pos.set(g.attributes.position.array, k * 3); nor.set(g.attributes.normal.array, k * 3); k += g.attributes.position.count; g.dispose(); }
+      const geo = new T.BufferGeometry();
+      geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.BufferAttribute(nor, 3));
+      geo.computeBoundingSphere();
+      const m = new T.Mesh(geo, boltM); m.receiveShadow = true;   // 小さいので影は落とさない
+      parent.add(m);
+    }
+    /* 注意ラベル（面の法線 = +Z のローカル面に貼る） */
+    function label(parent, x, y, z, size, ry) {
+      if (!labelM) return;
+      const m = new T.Mesh(new T.PlaneGeometry(size, size), labelM);
+      m.position.set(x, y, z); if (ry) m.rotation.y = ry; parent.add(m);
+    }
+
     const root = new T.Group();
     /* ベース（床固定） */
     root.add(lathe([[0, 0], [0.33, 0], [0.33, 0.025], [0.3, 0.03], [0.28, 0.05], [0.27, 0.16], [0.25, 0.18], [0, 0.18]], Y ? motorM : paint));
-    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.3; root.add(at(hub(0.014, 0.02, steel, 'y'), Math.cos(a) * 0.305, 0.035, Math.sin(a) * 0.305)); }
+    bolts(root, 0.305, 6, 0, 0.035, 0, 'y', 0.014, 0.3);
 
     /* S 旋回部 */
     const sG = new T.Group(); root.add(sG);
     sG.add(lathe([[0, 0.18], [0.255, 0.18], [0.255, 0.2], [0.24, 0.215], [0.235, 0.31], [0.2, 0.33], [0, 0.33]], paint));
+    bolts(sG, 0.215, 12, 0, 0.334, 0, 'y', 0.007);
     // 肩（L 軸の支え）：下腕は Z+ 側、L モーターは Z− 側
     const shoulderH = d.pivY - 0.3;
     const sh1 = link(0.16, 0.15, shoulderH, 0.12, paint); sh1.position.set(d.pivR, 0.3, 0.13); sG.add(sh1);
@@ -101,11 +136,15 @@
     lG.add(at(hub(0.135, 0.06, paint2, 'z'), 0, 0, 0.215));
     const lower = link(0.13, 0.105, d.la, 0.14, paint); lower.position.z = 0.15; lG.add(lower);
     lG.add(at(hub(0.11, 0.05, paint2, 'z'), 0, d.la, 0.235));
+    bolts(lG, 0.105, 10, 0, 0, 0.248, 'z', 0.008);
+    bolts(lG, 0.085, 8, 0, d.la, 0.263, 'z', 0.007);
+    label(lG, 0, d.la * 0.45, 0.2215, 0.06);
 
     /* U 上腕付け根（肘） */
     const uG = new T.Group(); uG.position.set(0, d.la, 0); lG.add(uG);
     const elbow = link(0.125, 0.115, Math.max(0.05, a3), 0.2, paint); elbow.position.z = 0.0; uG.add(elbow);
     uG.add(at(rbox(0.34, 0.2, 0.22, 0.06, paint), -0.03, a3, 0));
+    label(uG, 0.02, a3 + 0.02, -0.1115, 0.05, Math.PI);
     const uMot = motor(0.06, 0.16, '-z'); uMot.position.set(0, 0, -0.1); uG.add(uMot);
     // 手首用モーター（後ろ側）
     const wMot = motor(0.055, 0.2, '-x'); wMot.position.set(-0.19, a3 + 0.03, 0.05); uG.add(wMot);
@@ -116,6 +155,7 @@
     const L1 = d.ua - 0.13;
     rG.add(latheAx([[0, 0.14], [0.095, 0.14], [0.098, 0.16], [0.085, 0.22], [0.072, L1 - 0.02], [0.075, L1], [0, L1]], paint, 'x'));
     rG.add(at(hub(0.1, 0.03, paint2, 'x'), 0.155, 0, 0));
+    bolts(rG, 0.082, 8, 0.172, 0, 0, 'x', 0.006);
     // 手首フォーク
     for (const z of [0.07, -0.07]) {
       const fk = link(0.06, 0.07, 0.11, 0.028, paint);
@@ -131,6 +171,7 @@
     const tG = new T.Group(); bG.add(tG);
     tG.add(latheAx([[0, 0], [0.058, 0], [0.058, d.fl * 0.55], [0.052, d.fl * 0.62], [0.05, d.fl - 0.012], [0, d.fl - 0.012]], paint, 'x'));
     tG.add(latheAx([[0, d.fl - 0.012], [0.05, d.fl - 0.012], [0.05, d.fl - 0.002], [0.048, d.fl], [0, d.fl]], steel, 'x'));
+    bolts(tG, 0.054, 6, d.fl * 0.58, 0, 0, 'x', 0.005);
     const pin = hub(0.004, 0.012, steel, 'x'); pin.position.set(d.fl + 0.004, 0.03, 0); tG.add(pin);
 
     const mount = new T.Group();
@@ -158,7 +199,7 @@
       root.updateMatrixWorld(true);
       inv.copy(sG.matrixWorld).invert();
       const pts = anchors.map(([g, p]) => (g === sG ? p.clone() : g.localToWorld(tmp.copy(p)).applyMatrix4(inv).clone()));
-      const g = new T.TubeGeometry(new T.CatmullRomCurve3(pts), 48, 0.02, 8, false);
+      const g = new T.TubeGeometry(new T.CatmullRomCurve3(pts), 64, 0.02, 14, false);
       if (cable) { cable.geometry.dispose(); cable.geometry = g; }
       else { cable = sh(new T.Mesh(g, cableM)); sG.add(cable); }
     }
@@ -166,27 +207,4 @@
     return { root, sG, lG, uG, rG, bG, tG, mount, update, mats };
   };
 
-  /* 映り込み用の環境マップ（スタジオ照明風） */
-  RS.makeEnvironment = function (T, renderer) {
-    const env = new T.Scene();
-    const geo = new T.SphereGeometry(20, 32, 16);
-    const cols = [];
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const y = pos.getY(i) / 20;
-      const v = y > 0 ? 0.32 + 0.12 * y : 0.12 + 0.18 * (1 + y);
-      cols.push(v, v, v * 1.02);
-    }
-    geo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
-    env.add(new T.Mesh(geo, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide })));
-    const panel = (x, y, z, w, h, s) => {
-      const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: new T.Color(s, s, s), side: T.DoubleSide }));
-      m.position.set(x, y, z); m.lookAt(0, 0, 0); env.add(m);
-    };
-    panel(0, 12, 0, 14, 6, 1.1); panel(10, 5, 8, 6, 5, 0.8); panel(-10, 6, -6, 6, 4, 0.6);
-    const pm = new T.PMREMGenerator(renderer);
-    const tex = pm.fromScene(env, 0.04).texture;
-    pm.dispose();
-    return tex;
-  };
 })(window.RS = window.RS || {});

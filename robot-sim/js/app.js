@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.4';
+  const VERSION = '3.5';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -51,7 +51,7 @@
   };
   /* 保存された設定を、型と範囲を確かめてから使う */
   function loadOpts() {
-    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, ver: 4 };
+    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, ver: 4 };
     const rng = { ovr: [5, 100], jogSpd: [1, 100], waitTimeout: [0, 3600], fanucTmout: [0.1, 3600] };
     const raw = store.get('rs3-opts', store.get('rs2-opts', {})) || {};
     const o = Object.assign({}, def);
@@ -102,38 +102,28 @@
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = T.PCFSoftShadowMap;
   const scene = new T.Scene();
-  try { scene.environment = RS.makeEnvironment(T, renderer); } catch (e) { /* 環境マップなしでも動く */ }
-  const camera = new T.PerspectiveCamera(40, 1, 0.05, 60);
-  scene.add(new T.HemisphereLight(0xffffff, 0x8b95a3, 0.6));
-  const sun = new T.DirectionalLight(0xffffff, 0.75);
-  sun.position.set(2.5, 5, 3);
+  const camera = new T.PerspectiveCamera(40, 1, 0.05, 50);
+  // 照明：天井の照明（真上寄りの主光源）＋建屋からの照り返し（環境マップ）
+  scene.add(new T.HemisphereLight(0xf4f6f8, 0x5d6f62, 0.55));
+  const sun = new T.DirectionalLight(0xfff6ea, 1.5);
+  sun.position.set(1.6, 7.5, 2.2);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.5, far: 14 });
-  sun.shadow.bias = -0.0004;
-  scene.add(sun);
-  const fill = new T.DirectionalLight(0xdfe8ff, 0.25); fill.position.set(-3, 2.5, -2); scene.add(fill);
+  sun.shadow.mapSize.set(4096, 4096);
+  Object.assign(sun.shadow.camera, { left: -3.2, right: 3.2, top: 3.2, bottom: -3.2, near: 1, far: 14 });
+  sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.002;
+  scene.add(sun); scene.add(sun.target); sun.target.position.set(0.45, 0, 0);
+  const fill = new T.DirectionalLight(0xe4ecf5, 0.35); fill.position.set(-4, 5, -3); scene.add(fill);
+  const look = RS.makeLook(T, renderer, scene, camera);
 
   function shadowed(m) { m.castShadow = true; m.receiveShadow = true; return m; }
   function mesh(geo, mat, x, y, z) { const m = shadowed(new T.Mesh(geo, mat)); m.position.set(x || 0, y || 0, z || 0); return m; }
 
   /* 床 */
-  let floor, grid, reachRing, cellFloor;
-  function cssVar(n, d) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d; }
-  function buildFloor() {
-    scene.background = new T.Color(cssVar('--scene', '#e3e8ee'));
-    [floor, grid, cellFloor].forEach(o => { if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); } });
-    floor = new T.Mesh(new T.PlaneGeometry(16, 16), new T.ShadowMaterial({ opacity: 0.22 }));
-    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-    const dark = cssVar('--panel', '#ffffff').toLowerCase() !== '#ffffff';
-    cellFloor = new T.Mesh(new T.PlaneGeometry(3.1, 3.2), new T.MeshStandardMaterial({ color: dark ? 0x2a3038 : 0xc9ced4, roughness: 0.9, metalness: 0 }));
-    cellFloor.rotation.x = -Math.PI / 2; cellFloor.position.set(0.45, 0.0005, 0); cellFloor.receiveShadow = true; scene.add(cellFloor);
-    const gc = new T.Color(cssVar('--grid', '#c4ccd7'));
-    grid = new T.GridHelper(8, 32, gc, gc);
-    grid.position.y = 0.001; scene.add(grid);
-  }
-  buildFloor();
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', buildFloor);
+  // 床は建屋（look.js）の塗り床。目盛り（250mm 格子）は設定で表示できる
+  let reachRing;
+  const grid = new T.GridHelper(8, 32, 0xdfe6dd, 0xdfe6dd);
+  grid.material.transparent = true; grid.material.opacity = 0.35; grid.material.depthWrite = false;
+  grid.position.y = 0.003; scene.add(grid);
 
   const FENCE = { x: [-1.1, 2.0], z: [-1.6, 1.6] };   // 安全柵（Three 座標）
   /* セル（供給台・排出台） */
@@ -142,8 +132,10 @@
     { id: 'B', name: '排出台', X: 0.95, Y: -0.75, w: 0.8, d: 0.6, h: 0.45 }
   ];
   {
-    const mFrame = new T.MeshStandardMaterial({ color: 0x8d99a8, roughness: 0.45, metalness: 0.6 });
-    const mTop = new T.MeshStandardMaterial({ color: 0x59636f, roughness: 0.75, metalness: 0.1 });
+    const LT = RS.lookTex || {};
+    const mFrame = new T.MeshStandardMaterial({ color: 0xc4c9cf, roughness: 0.4, metalness: 0.85, roughnessMap: LT.brushR || null });
+    const mTop = new T.MeshStandardMaterial({ color: 0xffffff, map: LT.top || null, roughness: 0.55, metalness: 0.05 });
+    const mFoot = new T.MeshStandardMaterial({ color: 0x2a2c2f, roughness: 0.8, metalness: 0.2 });
     const mMark = { A: new T.MeshBasicMaterial({ color: 0x1d9a5b }), B: new T.MeshBasicMaterial({ color: 0xd2691e }) };
     for (const t of TABLES) {
       const g = new T.Group();
@@ -152,7 +144,8 @@
       g.add(mesh(new T.BoxGeometry(t.w - 0.04, 0.05, t.d - 0.04), mFrame, 0, t.h - 0.05, 0));
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
         g.add(mesh(new T.BoxGeometry(0.04, t.h - 0.05, 0.04), mFrame, sx * (t.w / 2 - 0.04), (t.h - 0.05) / 2, sz * (t.d / 2 - 0.04)));
-        g.add(mesh(new T.CylinderGeometry(0.03, 0.03, 0.012, 16), mTop, sx * (t.w / 2 - 0.04), 0.006, sz * (t.d / 2 - 0.04)));
+        g.add(mesh(new T.CylinderGeometry(0.03, 0.033, 0.014, 24), mFoot, sx * (t.w / 2 - 0.04), 0.007, sz * (t.d / 2 - 0.04)));
+        g.add(mesh(new T.CylinderGeometry(0.008, 0.008, 0.03, 12), mFrame, sx * (t.w / 2 - 0.04), 0.028, sz * (t.d / 2 - 0.04)));
       }
       g.add(mesh(new T.BoxGeometry(t.w - 0.1, 0.03, 0.03), mFrame, 0, 0.12, t.d / 2 - 0.04));
       g.add(mesh(new T.BoxGeometry(t.w - 0.1, 0.03, 0.03), mFrame, 0, 0.12, -t.d / 2 + 0.04));
@@ -161,16 +154,43 @@
       scene.add(g);
     }
     /* 安全柵 */
-    const mPost = new T.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.5, metalness: 0.2 });
-    const mNet = new T.MeshBasicMaterial({ color: 0x9aa4b0, transparent: true, opacity: 0.12, side: T.DoubleSide, depthWrite: false });
+    const mPost = new T.MeshPhysicalMaterial({ color: 0xe8b80e, roughness: 0.42, metalness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.4 });
+    // 金網（50mm 目）。透けて見え、影も網目になる
+    const netMat = len => {
+      const t = LT.mesh ? LT.mesh.clone() : null;
+      if (t) { t.needsUpdate = true; t.repeat.set(len / 0.1, (H - 0.2) / 0.1); }
+      return t ? new T.MeshStandardMaterial({ color: 0x45494e, alphaMap: t, alphaTest: 0.02, alphaToCoverage: true, side: T.DoubleSide, roughness: 0.5, metalness: 0.6 })
+        : new T.MeshBasicMaterial({ color: 0x9aa4b0, transparent: true, opacity: 0.12, side: T.DoubleSide, depthWrite: false });
+    };
     const xs = FENCE.x, zs = FENCE.z, H = 1.4;
     const corners = [[xs[0], zs[0]], [xs[1], zs[0]], [xs[1], zs[1]], [xs[0], zs[1]]];
-    corners.forEach(([x, z]) => scene.add(mesh(new T.BoxGeometry(0.05, H, 0.05), mPost, x, H / 2, z)));
+    corners.forEach(([x, z]) => {
+      scene.add(mesh(new T.BoxGeometry(0.06, H, 0.06), mPost, x, H / 2, z));
+      scene.add(mesh(new T.BoxGeometry(0.16, 0.008, 0.16), mPost, x, 0.004, z));
+      for (const dx of [-0.055, 0.055]) for (const dz of [-0.055, 0.055]) scene.add(mesh(new T.CylinderGeometry(0.008, 0.008, 0.014, 6), mFrame, x + dx, 0.011, z + dz));
+    });
+    // ロボットの据付板（アンカーボルト付き）
+    const base = mesh(new T.BoxGeometry(0.86, 0.02, 0.86), new T.MeshStandardMaterial({ color: 0x4a4e53, roughness: 0.55, metalness: 0.75, roughnessMap: LT.brushR || null }), 0, 0.01, 0);
+    scene.add(base);
+    for (const dx of [-0.37, 0.37]) for (const dz of [-0.37, 0.37]) scene.add(mesh(new T.CylinderGeometry(0.016, 0.016, 0.03, 6), mFrame, dx, 0.02, dz));
     [[xs[0], 0, true, zs[1] - zs[0]], [xs[1], 0, true, zs[1] - zs[0]], [(xs[0] + xs[1]) / 2, zs[0], false, xs[1] - xs[0]], [(xs[0] + xs[1]) / 2, zs[1], false, xs[1] - xs[0]]].forEach(([x, z, side, len]) => {
-      const p = new T.Mesh(new T.PlaneGeometry(len, H - 0.2), mNet);
+      const nm = netMat(len);
+      const p = new T.Mesh(new T.PlaneGeometry(len, H - 0.2), nm);
       p.position.set(x, 0.1 + (H - 0.2) / 2, z);
       if (side) p.rotation.y = Math.PI / 2;
+      if (nm.alphaMap) { p.castShadow = true; p.customDepthMaterial = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking, alphaMap: nm.alphaMap, alphaTest: 0.5 }); }
+      p.userData.noAO = true;
       scene.add(p);
+      scene.add(mesh(new T.BoxGeometry(side ? 0.03 : len, 0.03, side ? len : 0.03), mPost, x, 0.1, z));
+      // 柵の外側の床にトラテープ
+      if (LT.hazard) {
+        const ht = LT.hazard.clone(); ht.needsUpdate = true; ht.repeat.set(len / 0.4, 1);
+        const tp = new T.Mesh(new T.PlaneGeometry(len, 0.05), new T.MeshStandardMaterial({ map: ht, roughness: 0.6 }));
+        tp.rotation.set(-Math.PI / 2, 0, side ? Math.PI / 2 : 0);
+        const out = side ? (x < 0.5 ? -0.12 : 0.12) : (z < 0 ? -0.12 : 0.12);
+        tp.position.set(side ? x + out : x, 0.0025, side ? z : z + out); tp.receiveShadow = true;
+        scene.add(tp);
+      }
       scene.add(mesh(new T.BoxGeometry(side ? 0.03 : len, 0.03, side ? len : 0.03), mPost, x, H - 0.05, z));
     });
   }
@@ -259,16 +279,19 @@
     const g = new T.Group();
     const glass = def.opacity < 1;
     const mat = glass
-      ? new T.MeshPhysicalMaterial({ color: def.color, roughness: 0.05, metalness: 0, transparent: true, opacity: def.opacity, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.05 })
-      : new T.MeshStandardMaterial({ color: def.color, roughness: 0.75, metalness: 0 });
-    const m = new T.Mesh(new T.BoxGeometry(sx, sz, sy), mat);
+      ? new T.MeshPhysicalMaterial({ color: 0xbfe3d8, roughness: 0.03, metalness: 0, transparent: true, opacity: Math.min(def.opacity, 0.34), depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6 })
+      : new T.MeshStandardMaterial({ color: def.color, roughness: 0.8, metalness: 0 });
+    // 板ガラスの端面（厚み方向）は緑がかった不透明に近い色に見える
+    const edgeM = glass ? new T.MeshPhysicalMaterial({ color: 0x5fa892, roughness: 0.15, metalness: 0, transparent: true, opacity: 0.85, clearcoat: 1 }) : null;
+    const m = new T.Mesh(new T.BoxGeometry(sx, sz, sy), glass ? [edgeM, edgeM, mat, mat, edgeM, edgeM] : mat);
     m.castShadow = !glass; m.receiveShadow = true;
     g.add(m);
-    g.add(new T.LineSegments(new T.EdgesGeometry(m.geometry), new T.LineBasicMaterial({ color: def.edge })));
+    // 板ガラスは端面が緑がかって見える。箱・部品は線を描かない（実物に輪郭線はない）
+    if (glass) g.add(new T.LineSegments(new T.EdgesGeometry(m.geometry), new T.LineBasicMaterial({ color: 0x9fd8c6, transparent: true, opacity: 0.7 })));
     scene.add(g);
     return { def, g, vy: 0, falling: false };
   }
-  function disposeWork(w) { if (w.g.parent) w.g.parent.remove(w.g); w.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  function disposeWork(w) { if (w.g.parent) w.g.parent.remove(w.g); w.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); }); }
   function clearWorks() {
     S.holding = null;
     for (const w of works) disposeWork(w);
@@ -1527,6 +1550,25 @@
   bindOpt('#autoOut', 'autoOut');
   bindOpt('#optSkip', 'skipUnknown');
   bindOpt('#optSjis', 'jbiSjis');
+  bindOpt('#optGrid', 'grid', () => { grid.visible = S.opts.grid; });
+  grid.visible = S.opts.grid;
+  const qs = $('#optQuality');
+  if (!['auto', 'high', 'std', 'low'].includes(S.opts.quality)) S.opts.quality = 'auto';
+  qs.value = S.opts.quality;
+  const QN = { high: '実写風（陰り・周辺減光あり）', std: '標準', low: '軽量（画素を粗く・影を簡略）' };
+  const qNote = () => { $('#qualityNote').textContent = '現在：' + QN[look.quality()] + (S.opts.quality === 'auto' && autoDropped ? '。描画が重いため自動で切り替えました（「実写風」を選ぶと固定できます）' : ''); };
+  let autoDropped = false;
+  look.onAutoDrop = () => { autoDropped = true; qNote(); };
+  // 画質に合わせて画素密度と影の解像度を変える
+  look.onChange = q => {
+    renderer.setPixelRatio(q === 'low' ? 0.6 : Math.min(2, window.devicePixelRatio || 1));
+    const ms = q === 'high' ? 4096 : q === 'std' ? 2048 : 1024;
+    if (sun.shadow.mapSize.x !== ms) { sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+    resize();
+  };
+  if (!['auto', 'high', 'std', 'low'].includes(S.opts.quality)) S.opts.quality = 'auto';
+  look.setQuality(S.opts.quality); look.onChange(look.quality()); qNote();
+  qs.addEventListener('change', () => { S.opts.quality = qs.value; saveOpts(); autoDropped = false; look.setQuality(qs.value); look.onChange(look.quality()); qNote(); });
   trail.visible = S.opts.trail;
   const wt = $('#waitTo'); wt.value = S.opts.waitTimeout;
   wt.addEventListener('change', () => { S.opts.waitTimeout = clamp(+wt.value || 0, 0, 3600); wt.value = S.opts.waitTimeout; saveOpts(); });
@@ -1757,7 +1799,7 @@
   function resize() {
     const w = stage.clientWidth, h = stage.clientHeight;
     if (!w || !h) return;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); look.setSize(w, h);
   }
   new ResizeObserver(resize).observe(stage);
 
@@ -2348,7 +2390,7 @@
     }
     if (pendVisible() && now - lcdT > 120) { lcdT = now; updateLcd(); }
     if (cableDirty) { cableDirty = false; model.update(); }
-    renderer.render(scene, camera);
+    look.render(now);
     requestAnimationFrame(frame);
   }
 
@@ -2376,6 +2418,6 @@
   window.RSIM = {
     get state() { return S; }, get prog() { return prog(); }, get lib() { return lib; }, get run() { return run; }, get mv() { return mv; },
     get works() { return works; }, get robot() { return robot; }, get tool() { return tool; }, get vars() { return vars; },
-    curPose, collisionCheck, G, TABLES, switchSystem, switchTool, makeSample, setOut, getIn, tcpMatrix, showAiResult, importProgs
+    scene, look, renderer, camera, curPose, collisionCheck, G, TABLES, switchSystem, switchTool, makeSample, setOut, getIn, tcpMatrix, showAiResult, importProgs
   };
 })();
