@@ -69,7 +69,8 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(-
 .read dd{margin:0;text-align:right;font-weight:600;min-width:64px}
 .status{margin-top:5px;font-size:12px;color:var(--muted);text-shadow:0 0 4px var(--scene)}
 .alarm{position:absolute;left:0;right:0;margin:0 auto;width:fit-content;top:10px;display:flex;gap:10px;align-items:center;background:#c0392b;color:#fff;padding:8px 10px 8px 14px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:calc(100% - 20px);z-index:2}
-.alarm[hidden]{display:none}
+.alarm[hidden],.hud[hidden]{display:none}
+.views button[aria-pressed="false"]{opacity:.75}
 .alarm button{background:#fff;color:#c0392b;border:0;font-weight:700;flex:none}
 @media (max-width:640px){
   .alarm{top:auto;bottom:50px}

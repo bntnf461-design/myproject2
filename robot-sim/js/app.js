@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.7.1';
+  const VERSION = '3.7.2';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -58,7 +58,7 @@
   };
   /* 保存された設定を、型と範囲を確かめてから使う */
   function loadOpts() {
-    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, fenceSee: true, pickDir: 'S', ver: 4 };
+    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, fenceSee: true, hud: true, pickDir: 'S', ver: 4 };
     const rng = { ovr: [5, 100], jogSpd: [1, 100], waitTimeout: [0, 3600], fanucTmout: [0.1, 3600] };
     const raw = store.get('rs3-opts', store.get('rs2-opts', {})) || {};
     const o = Object.assign({}, def);
@@ -1987,8 +1987,12 @@
       target.z + cam.r * Math.cos(cam.phi) * Math.cos(cam.theta));
     camera.lookAt(target);
   }
+  // 左上の位置表示（機種名・現在位置・状態）を出す／消す
+  const applyHud = () => { $('.hud').hidden = !S.opts.hud; $('#hudBtn').setAttribute('aria-pressed', String(!!S.opts.hud)); };
+  $('#hudBtn').addEventListener('click', e => { e.stopPropagation(); S.opts.hud = !S.opts.hud; saveOpts(); applyHud(); });
+  applyHud();
   $('#views').addEventListener('click', e => {
-    const b = e.target.closest('button');
+    const b = e.target.closest('button[data-v]');
     if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') { cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta; } else cam.r = Math.max(cam.r, CELL.view.r * 0.95); updateCam(); }
   });
   const ptrs = new Map(); let pinch = 0, panMode = false;
