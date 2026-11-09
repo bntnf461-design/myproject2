@@ -212,7 +212,8 @@ P[2]{
   await ev(() => { document.querySelector('#code li[data-i="1"]').click(); });   // SET I000 0（移動以外）
   await page.click('#pend [data-act="fast"]');
   await ev(() => { RSIM.state.timeScale = 12; });
-  await pk('#pend [data-hold="fwdY"]', 4000);
+  // 教示モードは 250mm/s 制限があり、ソフトウェア描画では 1 秒あたりのフレームも少ないので長めに押す
+  await pk('#pend [data-hold="fwdY"]', 8000);
   await ev(() => { RSIM.state.timeScale = 3; });
   await waitIdle(20000);
   await page.click('#pend [data-act="fast"]');

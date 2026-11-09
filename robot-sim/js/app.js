@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.6';
+  const VERSION = '3.7';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -141,7 +141,7 @@
 
   /* =================== セル（周りの設備：cell.js） =================== */
   let CELL = null, TABLES = [], FENCE = { x: [-9, 9], z: [-9, 9] }, FLOOR_Y = 0;
-  const lineKey = 'rs3-line';
+  const lineKey = 'rs3-line3';   // 配置の項目が変わったので別のキー
   { const sv = store.get(lineKey, null); if (sv && typeof sv === 'object') RS.setLine(sv); }
   function buildCellScene(id) {
     if (CELL) { scene.remove(CELL.group); CELL.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -322,7 +322,8 @@
   const rackOf = id => CELL.racks && CELL.racks.find(r => r.id === id);
   const rackHas = id => { const r = rackOf(id); return !!r && !r.rotating && r.faces[r.inside].count > 0; }
   function convWorks() { return works.filter(w => !w.rack && w !== S.holding && !w.falling && tableAt(w.g.position.x, w.g.position.z) === TABLES[0]); }
-  const placeBusy = () => convWorks().some(w => Math.abs(w.g.position.x - CELL.conveyor.placeX) < 0.75);
+  const convPos = (w, C) => _v.copy(w.g.position).sub(C.p0).dot(C.u);   // 上流端からの距離
+  const placeBusy = () => convWorks().some(w => Math.abs(convPos(w, CELL.conveyor) - CELL.conveyor.placeD) < 0.75);
   function tableAt(x, z) { return TABLES.find(t => Math.abs(x - t.X) <= t.w / 2 && Math.abs(-z - t.Y) <= t.d / 2); }
   function worksOn(tbl) { return works.filter(w => w !== S.holding && !w.falling && !w.rack && tableAt(w.g.position.x, w.g.position.z) === tbl); }
   function supportY(w) {
@@ -449,9 +450,9 @@
     if (C.running > 0) {
       C.running -= dt;
       const v = 0.6 * dt;
-      for (const w of on) w.g.position.x += v;
-      C.tex.offset.x -= v / 0.1;
-      const gone = on.filter(w => w.g.position.x > C.X1 - 0.55);
+      for (const w of on) w.g.position.addScaledVector(C.u, v);   // 上流端 → 下流端の向きへ
+      C.tex.offset.y -= v / 0.1;
+      const gone = on.filter(w => convPos(w, C) > C.len - 0.55);
       for (const w of gone) { disposeWork(w); works.splice(works.indexOf(w), 1); }
       if (gone.length) countOut(gone.length);
       if (C.running <= 0 && on.length > gone.length) C.running = 0.2;   // 載っている間は流し続ける
@@ -934,14 +935,18 @@
     const zt = nW.clone().negate(), xt = dW.clone(), yt = new T.Vector3().crossVectors(zt, xt);
     const rackPose = p => { const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
     const C = CELL.conveyor, zPl = (C.h + g.t) * 1000;
-    const placeP = dz => ({ X: C.placeX * 1000, Y: C.Y * 1000, Z: r3(zPl + dz), rx: 180, ry: 0, rz: 90 });
+    const placeP = dz => ({ X: r3(C.place.x * 1000), Y: r3(-C.place.z * 1000), Z: r3(zPl + dz), rx: 180, ry: 0, rz: C.axis === 'x' ? 90 : 0 });   // ガラスの長辺をコンベアの流れの向きに
     const targets = [
       rackPose(surf(g.t * g.count).addScaledVector(nW, 0.2)),   // 1: ラックの手前 200mm（満杯のときの 1 枚目から）
       rackPose(surf(0)),                                         // 2: 押し当ての終点（背もたれの面。ガラスがあれば手前で止まる）
       rackPose(surf(g.t * g.count).addScaledVector(nW, 0.25).add(new T.Vector3(0, 0.7, 0))),   // 3: 持ち上げ（ガラスの下辺をコンベアより上へ）
-      placeP(500),                                                // 3: コンベアの上
+      placeP(350),                                                // 3: コンベアの上
       placeP(150),                                                // 4: 置く手前
-      placeP(2)                                                   // 5: 置く（ガラスの下面がコンベアの 2mm 上）
+      placeP(2),                                                  // 5: 置く（ガラスの下面がコンベアの 2mm 上）
+      // 6: 旋回の前にロボットの近くへ引き寄せる（ガラスを持ったまま旋回しても柵・ラックに当たらないように）
+      rackPose((() => { const c = new T.Vector3(r.def.X, 0, -r.def.Y).setY(0).normalize().multiplyScalar(0.9); c.y = surf(g.t * g.count).y + 0.7; return c; })()),
+      // 7: コンベア側の引き寄せ位置（腕をたたんだまま旋回し終える）
+      (() => { const d = new T.Vector3(C.place.x, 0, C.place.z).normalize().multiplyScalar(0.9), zc = (surf(g.t * g.count).y + 0.7) * 1000; return { X: r3(d.x * 1000), Y: r3(-d.z * 1000), Z: r3(zc), rx: 180, ry: 0, rz: C.axis === 'x' ? 90 : 0 }; })()
     ];
     const qs = []; let ref = robot.home;
     for (const p of targets) {
@@ -967,7 +972,8 @@
     J('home', robot.home.slice(), 30, false);
     L.push(Y ? '*LOOP' : 'LBL[1]');
     L.push(RS.lineWait(sys, inRack, true));
-    J('lift', qs[2], 30, true);
+    J('carry', qs[6], 30, true);
+    Lm('lift', qs[2], 300);
     Lm('ap', qs[0], 300);
     // 押し当て：吸盤接触が来たら止まる
     pt('end', qs[1], true);
@@ -979,8 +985,10 @@
     L.push(RS.lineTimer(sys, 0.3));
     Lm('ap', qs[0], 200);
     Lm('lift', qs[2], 300);
+    Lm('carry', qs[6], 300);
     L.push(RS.lineWait(sys, inPlace, false));
-    J('up', qs[3], 30, true);
+    J('cf', qs[7], 30, true);
+    Lm('up', qs[3], 300);
     Lm('pa', qs[4], 300);
     Lm('pl', qs[5], 50);
     L.push(RS.lineOut(sys, ho, false));
@@ -989,6 +997,7 @@
     Lm('pa', qs[4], 200);
     L.push(doneOut);
     Lm('up', qs[3], 300);
+    Lm('cf', qs[7], 300);
     if (Y) { L.push('INC I000'); L.push('JUMP *LOOP IF I000<5'); }
     else { L.push('R[1]=R[1]+1'); L.push('IF R[1]<5,JMP LBL[1]'); }
     J('home', robot.home.slice(), 30, false);
@@ -1168,7 +1177,7 @@
     buildTool(); buildReach(); applyPose();
     resetWorks();
     S.stats = { count: 0, last: 0, t0: 0 };
-    target.set(...CELL.view.target); cam = { ...VIEWS.iso, r: CELL.view.r }; updateCam();
+    target.set(...CELL.view.target); cam = { ...VIEWS.iso, r: CELL.view.r, theta: CELL.view.theta != null ? CELL.view.theta : VIEWS.iso.theta }; updateCam();
     renderAll();
   }
   function switchTool(id) {
@@ -1713,6 +1722,7 @@
     $('#workSel').innerHTML = Object.entries(RS.WORKS).map(([k, w]) => `<option value="${k}"${k === S.workId ? ' selected' : ''}>${esc(w.name)}</option>`).join('');
     toolSel.value = tool.id;
     const line = CELL.id === 'line';
+    if (!/^[SC]$/.test(S.opts.pickDir)) S.opts.pickDir = 'S';
     $('#cellSel').value = CELL.id; $('#pickDir').value = S.opts.pickDir;
     $('#lineOpts').hidden = !line; $('#lineNote').hidden = !line; $('#lineLayout').hidden = !line; $('#workRow').hidden = line;
     $('#autoSupL').textContent = line ? 'ラックが空になったら補充してターンテーブルを回す' : '供給台に自動補充';
@@ -1724,8 +1734,8 @@
       const g = CELL.glassDef, C = CELL.conveyor, mm = v => Math.round(v * 1000);
       rows.push(['ワーク', `色付き板ガラス ${mm(g.w)}×${mm(g.h)}×${mm(g.t)}mm、1 面 ${g.count} 枚（推定）`],
         ['架台', `ロボットのベース面は床から ${mm(-FLOOR_Y)} mm（推定）`],
-        ...CELL.racks.map(r => [r.name, `中心 X ${mm(r.def.X)} / Y ${mm(r.def.Y)} mm、傾き ${RS.LINE.lean}°、受けの高さ 床から ${mm(RS.LINE.ledge)} mm（推定）`]),
-        ['コンベア', `置き場 X ${mm(C.placeX)} / Y ${mm(C.Y)} mm、上面 Z ${mm(C.h)} mm（ロボット座標・推定）`]);
+        ...CELL.racks.map(r => [r.name, `中心 X ${mm(r.def.X)} / Y ${mm(r.def.Y)} mm、傾き ${r.def.lean}°、受けの高さ 床から ${mm(r.def.ledge)} mm（推定）`]),
+        ['コンベア', `(${mm(C.p0.x)}, ${mm(-C.p0.z)}) → (${mm(C.p1.x)}, ${mm(-C.p1.z)}) へ流れる。置き場 X ${mm(C.place.x)} / Y ${mm(-C.place.z)}、上面 Z ${mm(C.h)} mm（ロボット座標）`]);
     } else rows.push(['ワーク', workDef().name],
       ['供給台', `X ${TABLES[0].X * 1000} / Y ${TABLES[0].Y * 1000} / 高さ ${TABLES[0].h * 1000} mm`],
       ['排出台', `X ${TABLES[1].X * 1000} / Y ${TABLES[1].Y * 1000} / 高さ ${TABLES[1].h * 1000} mm`]);
@@ -1977,7 +1987,7 @@
   }
   $('#views').addEventListener('click', e => {
     const b = e.target.closest('button');
-    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') cam.r = CELL.view.r; else cam.r = Math.max(cam.r, CELL.view.r * 0.95); updateCam(); }
+    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') { cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta; } else cam.r = Math.max(cam.r, CELL.view.r * 0.95); updateCam(); }
   });
   const ptrs = new Map(); let pinch = 0, panMode = false;
   canvas.addEventListener('pointerdown', e => {
@@ -2620,7 +2630,7 @@
 
   /* =================== 起動 =================== */
   buildCellScene(S.cellId);
-  target.set(...CELL.view.target); cam.r = CELL.view.r;
+  target.set(...CELL.view.target); cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta;
   buildRobot();
   applyPose();
   resetWorks();

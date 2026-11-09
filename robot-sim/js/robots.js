@@ -35,13 +35,13 @@
       id: 'yaskawa',
       brand: 'YASKAWA',
       label: '安川電機',
-      model: 'MOTOMAN 汎用 20kg級（DX200 想定・寸法はシミュレーション用）',
+      model: 'MOTOMAN 汎用 50kg級（DX200 想定・寸法はシミュレーション用）',
       controller: 'DX200',
       axes: ['S', 'L', 'U', 'R', 'B', 'T'],
       axisJa: ['旋回', '下腕', '上腕', '手首回転', '手首振り', 'フランジ回転'],
       lim: [[-180, 180], [-90, 150], [-85, 160], [-200, 200], [-130, 130], [-360, 360]],
       vmax: [180, 160, 170, 400, 400, 600],           // 各軸最高速度 deg/s
-      dims: { pivR: 0.15, pivY: 0.505, la: 0.76, a3: 0.20, ua: 0.795, fl: 0.10 },
+      dims: { pivR: 0.15, pivY: 0.54, la: 0.87, a3: 0.20, ua: 0.92, fl: 0.10 },   // 実機（MH50 系）に近い大きさ。寸法の根拠はなく、シミュレーション用
       pulse: null,                                     // 1度あたりのパルス数 [S,L,U,R,B,T]（JBI の PULSE 形式に必要。機種の取扱説明書の値）
       vlMax: 2000,                                     // 直線最高速度 mm/s
       colors: { main: 0x1d5fbf, sub: 0xe9edf2, dark: 0x2b323b },
