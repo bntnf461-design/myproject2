@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.5';
+  const VERSION = '3.6';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -35,10 +35,17 @@
     }
   };
 
+  /* 実機ライン（縦置きラック → コンベア）の入出力。保持確認・ハンドは共通 */
+  const CELL_IO = {
+    yaskawa: { auto: { IN1: 'ハンド保持確認', IN2: '直進ラック ワーク有', IN3: 'コンベア置き場 ワーク有', IN4: '吸盤接触（押し当て検出）', IN5: '曲進ラック ワーク有' }, outName: { OT1: 'ハンド（吸着）', OT2: '置き完了（コンベア搬送開始）' } },
+    fanuc: { auto: { RI1: 'ハンド保持確認', DI1: '直進ラック ワーク有', DI2: 'コンベア置き場 ワーク有', DI3: '吸盤接触（押し当て検出）', DI4: '曲進ラック ワーク有' }, outName: { RO1: 'ハンド（吸着）', DO1: '置き完了（コンベア搬送開始）' } }
+  };
+
   /* =================== 状態 =================== */
   const S = {
     sys: store.get('rs3-sys', store.get('rs2-sys', 'yaskawa')) === 'fanuc' ? 'fanuc' : 'yaskawa',
-    toolId: RS.toolById(store.get('rs3-tool', store.get('rs2-tool', RS.DEFAULT_TOOL))).id,
+    cellId: store.get('rs3-cell', 'line') === 'table' ? 'table' : 'line',
+    toolId: null,
     workId: null,
     q: null,
     holding: null, gripK: 0, gripWidth: null,
@@ -51,7 +58,7 @@
   };
   /* 保存された設定を、型と範囲を確かめてから使う */
   function loadOpts() {
-    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, ver: 4 };
+    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, pickDir: 'S', ver: 4 };
     const rng = { ovr: [5, 100], jogSpd: [1, 100], waitTimeout: [0, 3600], fanucTmout: [0.1, 3600] };
     const raw = store.get('rs3-opts', store.get('rs2-opts', {})) || {};
     const o = Object.assign({}, def);
@@ -84,6 +91,8 @@
     for (const [n, u] of Object.entries(raw)) if (u && ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].every(a => typeof u[a] === 'number' && isFinite(u[a]))) out[n] = u;
     return out;
   }
+  const cellTool = id => (id === 'line' ? 'glassV' : RS.DEFAULT_TOOL);
+  S.toolId = RS.toolById(store.get('rs3-tool', store.get('rs2-tool', cellTool(S.cellId)))).id;
   let robot = RS.ROBOTS[S.sys];
   let tool = RS.toolById(S.toolId);
   {
@@ -92,7 +101,12 @@
   }
   S.q = robot.home.slice();
   const saveOpts = () => store.set('rs3-opts', S.opts);
-  const io = () => IOMAP[S.sys];
+  let ioCache = null;
+  const io = () => {
+    const key = S.sys + (CELL ? CELL.id : '');
+    if (!ioCache || ioCache.key !== key) ioCache = { key, v: CELL && CELL.id === 'line' ? Object.assign({}, IOMAP[S.sys], CELL_IO[S.sys]) : IOMAP[S.sys] };
+    return ioCache.v;
+  };
   const handOn = () => !!S.io.out[io().handOut.kind + io().handOut.n];
 
   /* =================== Three.js シーン =================== */
@@ -125,74 +139,17 @@
   grid.material.transparent = true; grid.material.opacity = 0.35; grid.material.depthWrite = false;
   grid.position.y = 0.003; scene.add(grid);
 
-  const FENCE = { x: [-1.1, 2.0], z: [-1.6, 1.6] };   // 安全柵（Three 座標）
-  /* セル（供給台・排出台） */
-  const TABLES = [
-    { id: 'A', name: '供給台', X: 0.95, Y: 0.75, w: 0.8, d: 0.6, h: 0.45 },
-    { id: 'B', name: '排出台', X: 0.95, Y: -0.75, w: 0.8, d: 0.6, h: 0.45 }
-  ];
-  {
-    const LT = RS.lookTex || {};
-    const mFrame = new T.MeshStandardMaterial({ color: 0xc4c9cf, roughness: 0.4, metalness: 0.85, roughnessMap: LT.brushR || null });
-    const mTop = new T.MeshStandardMaterial({ color: 0xffffff, map: LT.top || null, roughness: 0.55, metalness: 0.05 });
-    const mFoot = new T.MeshStandardMaterial({ color: 0x2a2c2f, roughness: 0.8, metalness: 0.2 });
-    const mMark = { A: new T.MeshBasicMaterial({ color: 0x1d9a5b }), B: new T.MeshBasicMaterial({ color: 0xd2691e }) };
-    for (const t of TABLES) {
-      const g = new T.Group();
-      g.position.set(t.X, 0, -t.Y);
-      g.add(mesh(new T.BoxGeometry(t.w, 0.025, t.d), mTop, 0, t.h - 0.0125, 0));
-      g.add(mesh(new T.BoxGeometry(t.w - 0.04, 0.05, t.d - 0.04), mFrame, 0, t.h - 0.05, 0));
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-        g.add(mesh(new T.BoxGeometry(0.04, t.h - 0.05, 0.04), mFrame, sx * (t.w / 2 - 0.04), (t.h - 0.05) / 2, sz * (t.d / 2 - 0.04)));
-        g.add(mesh(new T.CylinderGeometry(0.03, 0.033, 0.014, 24), mFoot, sx * (t.w / 2 - 0.04), 0.007, sz * (t.d / 2 - 0.04)));
-        g.add(mesh(new T.CylinderGeometry(0.008, 0.008, 0.03, 12), mFrame, sx * (t.w / 2 - 0.04), 0.028, sz * (t.d / 2 - 0.04)));
-      }
-      g.add(mesh(new T.BoxGeometry(t.w - 0.1, 0.03, 0.03), mFrame, 0, 0.12, t.d / 2 - 0.04));
-      g.add(mesh(new T.BoxGeometry(t.w - 0.1, 0.03, 0.03), mFrame, 0, 0.12, -t.d / 2 + 0.04));
-      const mk = new T.Mesh(new T.PlaneGeometry(t.w, 0.03), mMark[t.id]);
-      mk.rotation.x = -Math.PI / 2; mk.position.set(0, t.h + 0.0005, t.d / 2 - 0.015); g.add(mk);
-      scene.add(g);
-    }
-    /* 安全柵 */
-    const mPost = new T.MeshPhysicalMaterial({ color: 0xe8b80e, roughness: 0.42, metalness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.4 });
-    // 金網（50mm 目）。透けて見え、影も網目になる
-    const netMat = len => {
-      const t = LT.mesh ? LT.mesh.clone() : null;
-      if (t) { t.needsUpdate = true; t.repeat.set(len / 0.1, (H - 0.2) / 0.1); }
-      return t ? new T.MeshStandardMaterial({ color: 0x45494e, alphaMap: t, alphaTest: 0.02, alphaToCoverage: true, side: T.DoubleSide, roughness: 0.5, metalness: 0.6 })
-        : new T.MeshBasicMaterial({ color: 0x9aa4b0, transparent: true, opacity: 0.12, side: T.DoubleSide, depthWrite: false });
-    };
-    const xs = FENCE.x, zs = FENCE.z, H = 1.4;
-    const corners = [[xs[0], zs[0]], [xs[1], zs[0]], [xs[1], zs[1]], [xs[0], zs[1]]];
-    corners.forEach(([x, z]) => {
-      scene.add(mesh(new T.BoxGeometry(0.06, H, 0.06), mPost, x, H / 2, z));
-      scene.add(mesh(new T.BoxGeometry(0.16, 0.008, 0.16), mPost, x, 0.004, z));
-      for (const dx of [-0.055, 0.055]) for (const dz of [-0.055, 0.055]) scene.add(mesh(new T.CylinderGeometry(0.008, 0.008, 0.014, 6), mFrame, x + dx, 0.011, z + dz));
-    });
-    // ロボットの据付板（アンカーボルト付き）
-    const base = mesh(new T.BoxGeometry(0.86, 0.02, 0.86), new T.MeshStandardMaterial({ color: 0x4a4e53, roughness: 0.55, metalness: 0.75, roughnessMap: LT.brushR || null }), 0, 0.01, 0);
-    scene.add(base);
-    for (const dx of [-0.37, 0.37]) for (const dz of [-0.37, 0.37]) scene.add(mesh(new T.CylinderGeometry(0.016, 0.016, 0.03, 6), mFrame, dx, 0.02, dz));
-    [[xs[0], 0, true, zs[1] - zs[0]], [xs[1], 0, true, zs[1] - zs[0]], [(xs[0] + xs[1]) / 2, zs[0], false, xs[1] - xs[0]], [(xs[0] + xs[1]) / 2, zs[1], false, xs[1] - xs[0]]].forEach(([x, z, side, len]) => {
-      const nm = netMat(len);
-      const p = new T.Mesh(new T.PlaneGeometry(len, H - 0.2), nm);
-      p.position.set(x, 0.1 + (H - 0.2) / 2, z);
-      if (side) p.rotation.y = Math.PI / 2;
-      if (nm.alphaMap) { p.castShadow = true; p.customDepthMaterial = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking, alphaMap: nm.alphaMap, alphaTest: 0.5 }); }
-      p.userData.noAO = true;
-      scene.add(p);
-      scene.add(mesh(new T.BoxGeometry(side ? 0.03 : len, 0.03, side ? len : 0.03), mPost, x, 0.1, z));
-      // 柵の外側の床にトラテープ
-      if (LT.hazard) {
-        const ht = LT.hazard.clone(); ht.needsUpdate = true; ht.repeat.set(len / 0.4, 1);
-        const tp = new T.Mesh(new T.PlaneGeometry(len, 0.05), new T.MeshStandardMaterial({ map: ht, roughness: 0.6 }));
-        tp.rotation.set(-Math.PI / 2, 0, side ? Math.PI / 2 : 0);
-        const out = side ? (x < 0.5 ? -0.12 : 0.12) : (z < 0 ? -0.12 : 0.12);
-        tp.position.set(side ? x + out : x, 0.0025, side ? z : z + out); tp.receiveShadow = true;
-        scene.add(tp);
-      }
-      scene.add(mesh(new T.BoxGeometry(side ? 0.03 : len, 0.03, side ? len : 0.03), mPost, x, H - 0.05, z));
-    });
+  /* =================== セル（周りの設備：cell.js） =================== */
+  let CELL = null, TABLES = [], FENCE = { x: [-9, 9], z: [-9, 9] }, FLOOR_Y = 0;
+  function buildCellScene(id) {
+    if (CELL) { scene.remove(CELL.group); CELL.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    CELL = RS.buildCell(T, id, RS.lookTex || {});
+    TABLES = CELL.TABLES; FENCE = CELL.FENCE; FLOOR_Y = CELL.FLOOR_Y;
+    scene.add(CELL.group);
+    look.hall.position.y = FLOOR_Y;
+    grid.position.y = FLOOR_Y + 0.003;
+    sun.target.position.y = FLOOR_Y;
+    ioCache = null;
   }
 
   /* =================== ロボット =================== */
@@ -222,7 +179,7 @@
     if (reachRing) { scene.remove(reachRing); reachRing.geometry.dispose(); }
     const d = robot.dims, R = d.pivR + d.la + Math.hypot(d.ua, d.a3 || 0) + d.fl + tool.tcp[2];
     reachRing = new T.Mesh(new T.RingGeometry(R - 0.012, R, 96), new T.MeshBasicMaterial({ color: 0x0a84ff, transparent: true, opacity: 0.6, side: T.DoubleSide }));
-    reachRing.rotation.x = -Math.PI / 2; reachRing.position.y = 0.003;
+    reachRing.rotation.x = -Math.PI / 2; reachRing.position.y = FLOOR_Y + 0.004;
     reachRing.visible = S.opts.reach;
     scene.add(reachRing);
   }
@@ -303,15 +260,75 @@
     works.push(w);
     return w;
   }
-  function resetWorks() { clearWorks(); spawnAt(TABLES[0]); updateToolVis(); }
+  function resetWorks() {
+    clearWorks();
+    if (CELL.id === 'line') {
+      CELL.conveyor.running = 0;
+      for (const r of CELL.racks) { r.rotating = 0; r.fillT = 0; for (const f of r.faces) { f.front = null; f.stack = disposeStack(r, f); setFace(r, f, CELL.glassDef.count); } }
+    } else spawnAt(TABLES[0]);
+    updateToolVis();
+  }
+  /* ---- 実機ライン：ラックに立てかけたガラス ---- */
+  let stackMats = null;
+  function disposeStack(r, f) { if (f.stack) { r.rot.remove(f.stack); f.stack.geometry.dispose(); } return null; }
+  /* 面 f の i 枚目（0＝背もたれ側）の位置・向き（ラックの回転部分の座標） */
+  function sheetMatrix(f, i, th) {
+    const g = CELL.glassDef, x = new T.Vector3(0, 0, 1), y = f.n.clone(), z = new T.Vector3().crossVectors(x, y);
+    const c = f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, th != null ? th / 2 : g.t * (i + 0.5));
+    return new T.Matrix4().makeBasis(x, y, z).setPosition(c);
+  }
+  function setFace(r, f, count) {
+    f.count = Math.max(0, count);
+    if (f.front && f.front.rack) { disposeWork(f.front); works.splice(works.indexOf(f.front), 1); }
+    f.front = null; f.stack = disposeStack(r, f);
+    if (!f.count) return;
+    const w = makeWork(RS.WORKS.glassDark);
+    r.rot.add(w.g);
+    sheetMatrix(f, f.count - 1).decompose(w.g.position, w.g.quaternion, w.g.scale);
+    w.rack = r; w.face = f; f.front = w; works.push(w);
+    if (f.count > 1) {
+      const g = CELL.glassDef, th = g.t * (f.count - 1);
+      if (!stackMats) {
+        const face = new T.MeshPhysicalMaterial({ color: 0x15191b, roughness: 0.05, metalness: 0, clearcoat: 1, envMapIntensity: 1.8 });
+        const side = new T.MeshStandardMaterial({ color: 0x24493d, roughness: 0.35 });
+        stackMats = [side, side, face, face, side, side];
+      }
+      const m = new T.Mesh(new T.BoxGeometry(g.w, th, g.h), stackMats);
+      sheetMatrix(f, 0, th).decompose(m.position, m.quaternion, m.scale);
+      m.castShadow = true; m.receiveShadow = true;
+      r.rot.add(m); f.stack = m;
+    }
+  }
+  /* 吸盤がガラス面に触れているか（接触センサー） */
+  function cupContact() {
+    if (tool.kind !== 'vacuum') return false;
+    const up = new T.Vector3(0, 0, 1).applyQuaternion(G.mount.getWorldQuaternion(_q));
+    const stroke = tool.stroke || 0.004;
+    for (const w of works) {
+      if (w === S.holding || w.falling) continue;
+      const wup = new T.Vector3(0, 1, 0).applyQuaternion(w.g.getWorldQuaternion(new T.Quaternion()));
+      if (up.dot(wup) > -0.9) continue;
+      const [sx, sy, sz] = w.def.size;
+      for (const [cx, cy] of tool.cups) {
+        _v.set(cx, cy, tool.tcp[2]); G.mount.localToWorld(_v); w.g.worldToLocal(_v);
+        const gap = _v.y - sz / 2;
+        if (Math.abs(_v.x) <= sx / 2 && Math.abs(_v.z) <= sy / 2 && gap <= 0.001 && gap > -stroke - 0.01) return true;
+      }
+    }
+    return false;
+  }
+  const rackOf = id => CELL.racks && CELL.racks.find(r => r.id === id);
+  const rackHas = id => { const r = rackOf(id); return !!r && !r.rotating && r.faces[r.inside].count > 0; }
+  function convWorks() { return works.filter(w => !w.rack && w !== S.holding && !w.falling && tableAt(w.g.position.x, w.g.position.z) === TABLES[0]); }
+  const placeBusy = () => convWorks().some(w => Math.abs(w.g.position.x - CELL.conveyor.placeX) < 0.75);
   function tableAt(x, z) { return TABLES.find(t => Math.abs(x - t.X) <= t.w / 2 && Math.abs(-z - t.Y) <= t.d / 2); }
-  function worksOn(tbl) { return works.filter(w => w !== S.holding && !w.falling && tableAt(w.g.position.x, w.g.position.z) === tbl); }
+  function worksOn(tbl) { return works.filter(w => w !== S.holding && !w.falling && !w.rack && tableAt(w.g.position.x, w.g.position.z) === tbl); }
   function supportY(w) {
     const p = w.g.position;
     let y = 0;
     const t = tableAt(p.x, p.z); if (t) y = t.h;
     for (const o of works) {
-      if (o === w || o === S.holding) continue;
+      if (o === w || o === S.holding || o.rack) continue;
       const lp = o.g.worldToLocal(p.clone());
       if (Math.abs(lp.x) <= o.def.size[0] / 2 && Math.abs(lp.z) <= o.def.size[1] / 2 && o.g.position.y < p.y)
         y = Math.max(y, o.g.position.y + o.def.size[2] / 2);
@@ -335,7 +352,7 @@
           w.g.worldToLocal(_v);
           const inX = Math.abs(_v.x) <= sx / 2 - tool.cupR * 0.5, inZ = Math.abs(_v.z) <= sy / 2 - tool.cupR * 0.5;
           const gap = _v.y - sz / 2;
-          if (inX && inZ && gap > -0.004 && gap < 0.004) ok++;
+          if (inX && inZ && gap > -(tool.stroke || 0.004) && gap < 0.004) ok++;
         }
         if (ok === tool.cups.length) { attach(w); return true; }
       }
@@ -355,7 +372,11 @@
     }
     return false;
   }
-  function attach(w) { G.mount.attach(w.g); S.holding = w; w.falling = false; w.vy = 0; updateToolVis(); }
+  function attach(w) {
+    G.mount.attach(w.g); S.holding = w; w.falling = false; w.vy = 0;
+    if (w.rack) { const r = w.rack, f = w.face; w.rack = null; w.face = null; f.front = null; setFace(r, f, f.count - 1); }   // 次の 1 枚が手前になる
+    updateToolVis();
+  }
   function dropWork(instant) {
     const w = S.holding; if (!w) return;
     scene.attach(w.g);
@@ -375,9 +396,11 @@
 
   /* I/O */
   function setOut(kind, n, v) {
+    const was = !!S.io.out[kind + n];
     S.io.out[kind + n] = !!v;
     const h = io().handOut;
     if (kind === h.kind && n === h.n) setHand(!!v);
+    if (v && !was && CELL && CELL.conveyor && /置き完了/.test(io().outName[kind + n] || '')) CELL.conveyor.running = 1.0;   // 搬送開始
   }
   function getOut(kind, n) { return !!S.io.out[kind + n]; }
   function getIn(kind, n) {
@@ -387,13 +410,56 @@
     if (a === 'ハンド保持確認') return !!S.holding;
     if (a === '供給台 ワーク有') return worksOn(TABLES[0]).length > 0;
     if (a === '排出台 ワーク有') return worksOn(TABLES[1]).length > 0;
+    if (a === '直進ラック ワーク有') return rackHas('S');
+    if (a === '曲進ラック ワーク有') return rackHas('C');
+    if (a === 'コンベア置き場 ワーク有') return placeBusy();
+    if (a === '吸盤接触（押し当て検出）') return cupContact();
     return false;
   }
 
   /* 自動供給・払い出し */
   let supT = 0, outT = 0;
   function near(t) { G.tcp.getWorldPosition(_v); return Math.hypot(_v.x - t.X, -_v.z - t.Y) < 0.6 && _v.y < t.h + 0.6; }
+  const ROT_T = 6;   // ターンテーブルが半回転する時間（秒、推定）
+  function countOut(n) {
+    const now = performance.now();
+    if (S.stats.t0) S.stats.last = (now - S.stats.t0) / 1000 / n / (S.timeScale || 1);
+    S.stats.t0 = now; S.stats.count += n;
+    updateCycle();
+  }
+  function lineTick(dt) {
+    G.tcp.getWorldPosition(_v2);
+    for (const r of CELL.racks) {
+      if (r.rotating > 0) {   // 半回転して、外で補充した面をロボット側へ
+        r.rotating = Math.max(0, r.rotating - dt);
+        const k = 1 - r.rotating / ROT_T;
+        r.rot.rotation.y = r.rotFrom + Math.PI * k * k * (3 - 2 * k);
+        if (!r.rotating) { r.inside = 1 - r.inside; r.rot.rotation.y = r.rotFrom + Math.PI; logMsg(`${r.name}：ターンテーブルが回転しました（新しいガラスがロボット側に来ました）`); }
+        continue;
+      }
+      const inF = r.faces[r.inside], outF = r.faces[1 - r.inside];
+      if (!S.opts.autoSup) continue;
+      if (!outF.count) { r.fillT = (r.fillT || 0) + dt; if (r.fillT > 3) { r.fillT = 0; setFace(r, outF, CELL.glassDef.count); } }   // 作業者が外側の面に補充
+      const away = Math.hypot(_v2.x - r.def.X, _v2.z + r.def.Y) > 1.25;
+      if (!inF.count && outF.count && away && !(S.holding && S.holding.face)) { r.rotating = ROT_T; r.rotFrom = r.rot.rotation.y; }
+    }
+    const C = CELL.conveyor, on = convWorks();
+    if (C.running > 0) {
+      C.running -= dt;
+      const v = 0.6 * dt;
+      for (const w of on) w.g.position.x += v;
+      C.tex.offset.x -= v / 0.1;
+      const gone = on.filter(w => w.g.position.x > C.X1 - 0.55);
+      for (const w of gone) { disposeWork(w); works.splice(works.indexOf(w), 1); }
+      if (gone.length) countOut(gone.length);
+      if (C.running <= 0 && on.length > gone.length) C.running = 0.2;   // 載っている間は流し続ける
+      outT = 0;
+    } else if (S.opts.autoOut && placeBusy() && !S.holding && !handOn() && (_v2.y > C.h + 0.25 || Math.hypot(_v2.x - C.placeX, _v2.z + C.Y) > 0.9)) {
+      outT += dt; if (outT > 1.5) { outT = 0; C.running = 1; }
+    } else outT = 0;
+  }
   function cellTick(dt) {
+    if (CELL.id === 'line') { lineTick(dt); return; }
     if (S.opts.autoSup && !worksOn(TABLES[0]).length && !works.some(w => w.falling) && !(S.holding && near(TABLES[0]))) {
       supT += dt; if (supT > 1.0) { supT = 0; spawnAt(TABLES[0]); }
     } else supT = 0;
@@ -403,10 +469,7 @@
       if (outT > 1.5) {
         outT = 0;
         for (const w of onB) { disposeWork(w); works.splice(works.indexOf(w), 1); }
-        const now = performance.now();
-        if (S.stats.t0) S.stats.last = (now - S.stats.t0) / 1000 / onB.length / (S.timeScale || 1);
-        S.stats.t0 = now; S.stats.count += onB.length;
-        updateCycle();
+        countOut(onB.length);
       }
     } else outT = 0;
   }
@@ -431,10 +494,12 @@
     }
     for (const it of pts) {
       const { p, r } = it, tol = it.tol != null ? it.tol : 0.002;
-      if (p.y - r < -tol) return it.what + 'が床に当たります';
-      if (p.x - r < FENCE.x[0] || p.x + r > FENCE.x[1] || p.z - r < FENCE.z[0] || p.z + r > FENCE.z[1]) return it.what + 'が安全柵に当たります';
+      if (p.y - r < FLOOR_Y - tol) return it.what + 'が床に当たります';
+      for (const ob of CELL.OBST) if (ob.test(p)) return `${it.what}が${ob.name}に当たります`;
+      if ((p.x - r < FENCE.x[0] || p.x + r > FENCE.x[1] || p.z - r < FENCE.z[0] || p.z + r > FENCE.z[1]) &&
+        !(FENCE.open || []).some(o => p.x >= o.x[0] && p.x <= o.x[1] && p.z >= o.z[0] && p.z <= o.z[1])) return it.what + 'が安全柵に当たります';
       for (const t of TABLES) {
-        if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tol && p.y > -0.01)
+        if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tol && p.y > (t.y0 != null ? t.y0 : 0) - 0.01)
           return `${it.what}が${t.name}に当たります`;
       }
     }
@@ -445,7 +510,9 @@
         for (let i = 0; i < tool.probes.length; i++) {
           const lp = w.g.worldToLocal(pts[i].p.clone());
           // ワーク上面から 2mm 以上めり込んだら干渉（薄い板ガラスでも検出できるよう、上面基準で判定）
-          if (Math.abs(lp.x) < sx / 2 - 0.003 && Math.abs(lp.z) < sy / 2 - 0.003 && lp.y < sz / 2 - 0.002 && lp.y > -sz / 2 - 0.05) return 'ハンドがワークに当たります';
+          // 吸盤（probes の先頭）はバネの縮み代までは押し当ててよい
+          const allow = i < tool.cups.length ? Math.max(0.002, tool.stroke || 0) : 0.002;
+          if (Math.abs(lp.x) < sx / 2 - 0.003 && Math.abs(lp.z) < sy / 2 - 0.003 && lp.y < sz / 2 - allow && lp.y > -sz / 2 - 0.05) return 'ハンドがワークに当たります';
         }
       }
     }
@@ -558,6 +625,11 @@
   }
   function stepMotion(dt) {
     if (!mv || (run && run.paused)) return;
+    // 入力で止まる移動は細かく刻んで、行き過ぎを小さくする
+    const n = mv.stopIf ? 8 : 1;
+    for (let s = 0; s < n && mv; s++) stepMotion1(dt / n);
+  }
+  function stepMotion1(dt) {
     mv.t += dt;
     const k = Math.min(1, mv.t / mv.dur), e = smooth(k);
     const prev = S.q.slice();
@@ -572,7 +644,8 @@
     if (c) { S.q = prev; applyPose(); raiseAlarm('coll', c); return; }
     if (handOn() && !S.holding) tryGrasp();
     if (S.opts.trail && run) addTrail();
-    if (k >= 1) { const cb = mv.done; mv = null; if (cb) cb(); }
+    if (mv.stopIf && mv.stopIf()) { const cb = mv.done; mv = null; if (cb) cb(true); return; }
+    if (k >= 1) { const cb = mv.done; mv = null; if (cb) cb(false); }
   }
   function stopAll() {
     mv = null;
@@ -737,11 +810,17 @@
     if (!a) return;
     switch (a.t) {
       case 'move':
-        execMove(a, () => {
+        execMove(a, met => {
           if (!run) return;
-          run.interp.done(); syncPc();
+          // ファナック Skip：条件が来ないまま目標に着いたら LBL へ。来たらそこで止まって次の行へ
+          if (a.stop && a.stop.lbl != null && !met) {
+            if (!run.interp.jump(a.stop.lbl)) { raiseAlarm('prog', `Skip の飛び先 LBL[${a.stop.lbl}] がありません`); return; }
+          } else run.interp.done();
+          if (a.stop && !met) logMsg(`入力が来ないまま目標に着きました（${a.prog} ${a.line + 1}行目）`, 'warn');
+          syncPc();
           if (run.single) finishSingle();
         });
+        if (a.stop && mv) { const c = a.stop.cond, it = run.interp; mv.stopIf = () => it.cond(c); }
         break;
       case 'stepped': finishSingle(); break;
       case 'pause': run.paused = true; logMsg('PAUSE で一時停止しました（再生で続行）'); refreshState(); break;
@@ -788,6 +867,7 @@
 
   /* サンプルプログラム（供給台 → 排出台、3回繰り返し） */
   function makeSample() {
+    if (CELL.id === 'line') return makeLineSample();
     const def = workDef(), A = TABLES[0], B = TABLES[1];
     const grasp = tool.kind === 'gripper' ? Math.min(def.size[2] * 0.5, tool.grip.depth * 0.6) : 0;
     const zA = A.h + def.size[2] - grasp, zB = B.h + def.size[2] - grasp, ap = tool.approach;
@@ -840,6 +920,89 @@
     resetWorks();
     setOut(ho.kind, ho.n, false);
     flash('#progMsg', 'サンプル（3回繰り返し）を作成しました。「▶ 再生」で動かせます', true);
+  }
+
+  /* 実機ライン用のサンプル：ラックのガラスを押し当てで探して吸着 → コンベアに平置き → 搬送開始 */
+  function makeLineSample() {
+    const dirId = S.opts.pickDir === 'C' ? 'C' : 'S', r = rackOf(dirId), f = r.faces[r.inside], g = CELL.glassDef;
+    const wq = r.rot.getWorldQuaternion(new T.Quaternion());
+    const nW = f.n.clone().applyQuaternion(wq), dW = f.d.clone().applyQuaternion(wq);
+    const surf = off => r.rot.localToWorld(f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, off));
+    const zt = nW.clone().negate(), xt = dW.clone(), yt = new T.Vector3().crossVectors(zt, xt);
+    const rackPose = p => { const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
+    const C = CELL.conveyor, zPl = (C.h + g.t) * 1000;
+    const placeP = dz => ({ X: C.placeX * 1000, Y: C.Y * 1000, Z: r3(zPl + dz), rx: 180, ry: 0, rz: 90 });
+    const targets = [
+      rackPose(surf(g.t * g.count).addScaledVector(nW, 0.2)),   // 1: ラックの手前 200mm（満杯のときの 1 枚目から）
+      rackPose(surf(0)),                                         // 2: 押し当ての終点（背もたれの面。ガラスがあれば手前で止まる）
+      rackPose(surf(g.t * g.count).addScaledVector(nW, 0.25).add(new T.Vector3(0, 0.7, 0))),   // 3: 持ち上げ（ガラスの下辺をコンベアより上へ）
+      placeP(500),                                                // 3: コンベアの上
+      placeP(150),                                                // 4: 置く手前
+      placeP(2)                                                   // 5: 置く（ガラスの下面がコンベアの 2mm 上）
+    ];
+    const qs = []; let ref = robot.home;
+    for (const p of targets) {
+      const res = RS.ik(robot, RS.matrixFromPose(p), tool.tcp, ref);
+      if (!res.q) { flash('#progMsg', `サンプルの位置（${qs.length + 1} 点目）に届きません。ハンド・機種寸法・セルの寸法を確認してください`); return; }
+      qs.push({ q: res.q.map(v => +v.toFixed(4)), p }); ref = res.q;
+    }
+    const sys = S.sys, Y = sys === 'yaskawa', ho = io().handOut, hi = io().handIn;
+    const inRack = Y ? { kind: 'IN', n: dirId === 'S' ? 2 : 5 } : { kind: 'DI', n: dirId === 'S' ? 1 : 4 };
+    const inPlace = Y ? { kind: 'IN', n: 3 } : { kind: 'DI', n: 2 };
+    const doneOut = Y ? 'PULSE OT#(2) T=0.50' : 'DO[1]=PULSE,0.5sec';
+    const name = dirId === 'S' ? 'GLASS_S' : 'GLASS_C';
+    const P2 = RS.emptyProgram(sys, name, tool.id);
+    P2.comment = dirId === 'S' ? 'RACK S TO CONV' : 'RACK C TO CONV';
+    const L = [], id = {};
+    const pt = (k, t, cart) => { if (!id[k]) { id[k] = RS.nextPosId(sys, P2); P2.pos[id[k]] = cart ? { k: 'c', p: Object.assign({}, t.p), cfg: RS.configOf(t.q), uf: 0, ut: 1, q: t.q } : { k: 'j', q: t }; P2.lines = L; } return id[k]; };
+    const J = (k, t, v, cart) => { const ref2 = pt(k, t, cart); L.push(RS.lineMove(sys, 'J', ref2, v)); };
+    const Lm = (k, t, v) => { const ref2 = pt(k, t, true); L.push(RS.lineMove(sys, 'L', ref2, v)); };
+    L.push(RS.lineComment(sys, (dirId === 'S' ? 'STRAIGHT' : 'CURVED') + ' RACK TO CONVEYOR'));
+    if (!Y) { L.push('UFRAME_NUM=0'); L.push('UTOOL_NUM=1'); }
+    L.push(RS.lineOut(sys, ho, false));
+    L.push(Y ? 'SET I000 0' : 'R[1]=0');
+    J('home', robot.home.slice(), 30, false);
+    L.push(Y ? '*LOOP' : 'LBL[1]');
+    L.push(RS.lineWait(sys, inRack, true));
+    J('lift', qs[2], 30, true);
+    Lm('ap', qs[0], 300);
+    // 押し当て：吸盤接触が来たら止まる
+    pt('end', qs[1], true);
+    if (Y) L.push(`MOVL ${id.end} V=50.0 UNTIL IN#(4)=ON`);
+    else { L.push('SKIP CONDITION DI[3]=ON'); L.push(`L ${id.end} 50mm/sec FINE Skip,LBL[9]`); }
+    if (Y) L.push('JUMP *NOGLASS IF IN#(4)=OFF');
+    L.push(RS.lineOut(sys, ho, true));
+    L.push(RS.lineWait(sys, hi, true));
+    L.push(RS.lineTimer(sys, 0.3));
+    Lm('ap', qs[0], 200);
+    Lm('lift', qs[2], 300);
+    L.push(RS.lineWait(sys, inPlace, false));
+    J('up', qs[3], 30, true);
+    Lm('pa', qs[4], 300);
+    Lm('pl', qs[5], 50);
+    L.push(RS.lineOut(sys, ho, false));
+    L.push(RS.lineWait(sys, hi, false));
+    L.push(RS.lineTimer(sys, 0.3));
+    Lm('pa', qs[4], 200);
+    L.push(doneOut);
+    Lm('up', qs[3], 300);
+    if (Y) { L.push('INC I000'); L.push('JUMP *LOOP IF I000<5'); }
+    else { L.push('R[1]=R[1]+1'); L.push('IF R[1]<5,JMP LBL[1]'); }
+    J('home', robot.home.slice(), 30, false);
+    L.push(Y ? 'JUMP *FIN' : 'JMP LBL[99]');
+    L.push(Y ? '*NOGLASS' : 'LBL[9]');
+    L.push(RS.lineComment(sys, 'NO GLASS FOUND'));
+    L.push(RS.lineOut(sys, ho, false));
+    Lm('ap', qs[0], 200);
+    L.push('PAUSE');
+    L.push(Y ? 'JUMP *LOOP' : 'JMP LBL[1]');
+    L.push(Y ? '*FIN' : 'LBL[99]');
+    P2.lines = L;
+    edit(() => { lib.progs[name] = P2; lib.cur = name; sel = 0; });
+    renderProgSelect();
+    resetWorks();
+    setOut(ho.kind, ho.n, false);
+    flash('#progMsg', `サンプル ${name}（${r.name}から 5 枚）を作成しました。「▶ 再生」で動かせます`, true);
   }
 
   /* =================== 軌跡 =================== */
@@ -988,6 +1151,23 @@
   const toolSel = $('#toolSel');
   toolSel.innerHTML = RS.TOOLS.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
   toolSel.addEventListener('change', () => switchTool(toolSel.value));
+  function switchCell(id) {
+    id = id === 'table' ? 'table' : 'line';
+    if (CELL && CELL.id === id) return;
+    stopAll();
+    if (S.holding) dropWork(true);
+    clearWorks();
+    S.io.out = {}; S.gripK = 0;
+    S.cellId = id; store.set('rs3-cell', id);
+    buildCellScene(id);
+    tool = RS.toolById(cellTool(id)); S.toolId = tool.id; store.set('rs3-tool', tool.id);
+    S.workId = tool.work; store.set('rs3-work', S.workId);
+    buildTool(); buildReach(); applyPose();
+    resetWorks();
+    S.stats = { count: 0, last: 0, t0: 0 };
+    target.set(...CELL.view.target); cam = { ...VIEWS.iso, r: CELL.view.r }; updateCam();
+    renderAll();
+  }
   function switchTool(id) {
     if (id === tool.id) return;
     stopAll();
@@ -1529,16 +1709,30 @@
     $('#toolCards').innerHTML = RS.TOOLS.map(t => `<button class="tcard" data-tool="${t.id}" aria-pressed="${t.id === tool.id}"><span class="ic">${ic[t.kind] || '■'}</span><b>${esc(t.name)}</b><span class="d">${esc(t.desc)}<br>TCP Z=${Math.round(t.tcp[2] * 1000)}mm ／ ${t.kind === 'vacuum' ? '吸盤 ' + t.cups.length + '個' : '爪 開き ' + Math.round(t.grip.open * 1000) + 'mm'} ／ 標準ワーク：${esc(RS.WORKS[t.work].name)}</span></button>`).join('');
     $('#workSel').innerHTML = Object.entries(RS.WORKS).map(([k, w]) => `<option value="${k}"${k === S.workId ? ' selected' : ''}>${esc(w.name)}</option>`).join('');
     toolSel.value = tool.id;
+    const line = CELL.id === 'line';
+    $('#cellSel').value = CELL.id; $('#pickDir').value = S.opts.pickDir;
+    $('#lineOpts').hidden = !line; $('#lineNote').hidden = !line; $('#workRow').hidden = line;
+    $('#autoSupL').textContent = line ? 'ラックが空になったら補充してターンテーブルを回す' : '供給台に自動補充';
+    $('#autoOutL').textContent = line ? '置き完了の信号がなくてもコンベアで流す' : '排出台から自動払い出し';
     const d = robot.dims;
-    $('#cellInfo').innerHTML = [
-      ['機種', robot.model], ['リーチ', Math.round((d.pivR + d.la + Math.hypot(d.ua, d.a3 || 0) + d.fl) * 1000) + ' mm（フランジまで）'],
-      ['ハンド', tool.name], ['ワーク', workDef().name],
+    const rows = [['機種', robot.model], ['リーチ', Math.round((d.pivR + d.la + Math.hypot(d.ua, d.a3 || 0) + d.fl) * 1000) + ' mm（フランジまで）'],
+      ['ハンド', tool.name]];
+    if (CELL.id === 'line') {
+      const g = CELL.glassDef, C = CELL.conveyor, mm = v => Math.round(v * 1000);
+      rows.push(['ワーク', `色付き板ガラス ${mm(g.w)}×${mm(g.h)}×${mm(g.t)}mm、1 面 ${g.count} 枚（推定）`],
+        ['架台', `ロボットのベース面は床から ${mm(-FLOOR_Y)} mm（推定）`],
+        ...CELL.racks.map(r => [r.name, `中心 X ${mm(r.def.X)} / Y ${mm(r.def.Y)} mm、傾き ${RS.LINE.lean}°、受けの高さ 床から ${mm(RS.LINE.ledge)} mm（推定）`]),
+        ['コンベア', `置き場 X ${mm(C.placeX)} / Y ${mm(C.Y)} mm、上面 Z ${mm(C.h)} mm（ロボット座標・推定）`]);
+    } else rows.push(['ワーク', workDef().name],
       ['供給台', `X ${TABLES[0].X * 1000} / Y ${TABLES[0].Y * 1000} / 高さ ${TABLES[0].h * 1000} mm`],
-      ['排出台', `X ${TABLES[1].X * 1000} / Y ${TABLES[1].Y * 1000} / 高さ ${TABLES[1].h * 1000} mm`]
-    ].map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
+      ['排出台', `X ${TABLES[1].X * 1000} / Y ${TABLES[1].Y * 1000} / 高さ ${TABLES[1].h * 1000} mm`]);
+    $('#cellInfo').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
     renderRobotForm(); renderUF(); renderIOMapDoc();
   }
   $('#toolCards').addEventListener('click', e => { const b = e.target.closest('[data-tool]'); if (b) switchTool(b.dataset.tool); });
+  $('#cellSel').innerHTML = RS.CELLS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+  $('#cellSel').addEventListener('change', e => switchCell(e.target.value));
+  $('#pickDir').addEventListener('change', e => { S.opts.pickDir = e.target.value === 'C' ? 'C' : 'S'; saveOpts(); });
   $('#workSel').addEventListener('change', e => { stopAll(); S.workId = e.target.value; store.set('rs3-work', S.workId); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell(); });
   $('#resetWork').addEventListener('click', () => { stopAll(); if (S.holding) dropWork(true); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); S.stats = { count: 0, last: 0, t0: 0 }; updateCycle(); });
   $('#trailClr').addEventListener('click', clearTrail);
@@ -1765,7 +1959,7 @@
   }
   $('#views').addEventListener('click', e => {
     const b = e.target.closest('button');
-    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(0.5, 0.6, 0); updateCam(); }
+    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') cam.r = CELL.view.r; else cam.r = Math.max(cam.r, CELL.view.r * 0.95); updateCam(); }
   });
   const ptrs = new Map(); let pinch = 0, panMode = false;
   canvas.addEventListener('pointerdown', e => {
@@ -2390,6 +2584,7 @@
     }
     if (pendVisible() && now - lcdT > 120) { lcdT = now; updateLcd(); }
     if (cableDirty) { cableDirty = false; model.update(); }
+    if (CELL.update) CELL.update(dt, { alarm: !!S.alarm, running: !!run });
     look.render(now);
     requestAnimationFrame(frame);
   }
@@ -2406,6 +2601,8 @@
   }
 
   /* =================== 起動 =================== */
+  buildCellScene(S.cellId);
+  target.set(...CELL.view.target); cam.r = CELL.view.r;
   buildRobot();
   applyPose();
   resetWorks();
@@ -2418,6 +2615,7 @@
   window.RSIM = {
     get state() { return S; }, get prog() { return prog(); }, get lib() { return lib; }, get run() { return run; }, get mv() { return mv; },
     get works() { return works; }, get robot() { return robot; }, get tool() { return tool; }, get vars() { return vars; },
-    scene, look, renderer, camera, curPose, collisionCheck, G, TABLES, switchSystem, switchTool, makeSample, setOut, getIn, tcpMatrix, showAiResult, importProgs
+    get TABLES() { return TABLES; }, get CELL() { return CELL; }, switchCell, cupContact,
+    scene, look, renderer, camera, curPose, collisionCheck, G, switchSystem, switchTool, makeSample, setOut, getIn, tcpMatrix, showAiResult, importProgs
   };
 })();

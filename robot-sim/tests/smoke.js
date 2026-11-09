@@ -13,7 +13,8 @@ const shots = process.env.SHOTS || '';
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   page.on('dialog', d => d.accept());
   // ソフトウェア描画（GPU なし）なので軽量画質で動かす。QUALITY=high で実写風も確認できる
-  await page.addInitScript(q => { localStorage.setItem('rs3-opts', JSON.stringify({ quality: q, ver: 4 })); }, process.env.QUALITY || 'low');
+  // 既存の確認は標準セル（平置きの台）で行い、最後に実機ラインを確認する
+  await page.addInitScript(q => { if (!sessionStorage.getItem('rs-init')) { sessionStorage.setItem('rs-init', '1'); localStorage.setItem('rs3-opts', JSON.stringify({ quality: q, ver: 4 })); localStorage.setItem('rs3-cell', JSON.stringify('table')); } }, process.env.QUALITY || 'low');
   await page.goto(url);
   await page.waitForFunction(() => window.RSIM);
   await page.evaluate(() => { RSIM.state.timeScale = 3; });
@@ -319,6 +320,21 @@ P[2]{
   const sw = await ev(() => document.documentElement.scrollWidth);
   check('スマホ幅で横スクロールなし', sw <= 390, sw);
   if (shots) await page.screenshot({ path: shots + '/08-mobile.png' });
+
+  // 実機ライン：ラック → コンベア（押し当てで止まる移動を含むサンプルが 1 枚運べる）
+  await page.setViewportSize({ width: 1360, height: 820 });
+  await ev(() => { RSIM.switchSystem('yaskawa'); RSIM.switchCell('line'); RSIM.state.timeScale = 6; });
+  check('実機ラインに切替', await ev(() => RSIM.CELL.id === 'line' && RSIM.tool.id === 'glassV' && RSIM.collisionCheck() === ''));
+  await tab('prog');
+  await page.click('#sampleBtn');
+  const lText = await page.textContent('#code');
+  check('ラインのサンプルに UNTIL', lText.includes('UNTIL IN#(4)=ON') && lText.includes('PULSE OT#(2)'), lText.slice(0, 200));
+  await page.click('#runBtn');
+  await page.waitForFunction(() => RSIM.state.stats.count >= 1 || RSIM.state.alarm, null, { timeout: 240000 });
+  const lr = await ev(() => ({ alarm: RSIM.state.alarm, cnt: RSIM.state.stats.count, left: RSIM.CELL.racks[0].faces[RSIM.CELL.racks[0].inside].count }));
+  check('ラックから取ってコンベアで流れた', !lr.alarm && lr.cnt >= 1 && lr.left < 20, lr);
+  await ev(() => { if (RSIM.run) document.querySelector('#stopBtn').click(); });
+  if (shots) await page.screenshot({ path: shots + '/09-line.png' });
 
   check('JSエラーなし', errors.length === 0, errors);
   console.log('OK:\n  ' + ok.join('\n  '));

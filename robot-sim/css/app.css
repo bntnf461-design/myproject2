@@ -105,6 +105,8 @@ h3{font-size:13px;margin:14px 0 6px;display:flex;align-items:center;gap:8px;just
 .chk{display:flex;gap:6px;align-items:center;font-size:13px}
 .pname{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);flex:1}
 .pname input,.pname select{flex:1;min-width:0}
+.pname select{width:0;flex:1 1 0;text-overflow:ellipsis}
+#optQuality{max-width:100%}
 
 /* 関節スライダー */
 .jrow{display:grid;grid-template-columns:62px 28px 1fr 28px 64px;align-items:center;gap:4px;padding:3px 0}

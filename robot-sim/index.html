@@ -170,6 +170,13 @@
         <p class="note">ハンドの種類は <code>js/tools.js</code> で定義しています。新しい用途のハンドが必要なときは、AI に「○○用のハンドを追加して」と依頼してください。</p>
         <h3>ワーク・セル</h3>
         <div class="row">
+          <label class="pname">セル <select id="cellSel"></select></label>
+        </div>
+        <div class="row" id="lineOpts">
+          <label class="pname">取り出し方向（サンプル） <select id="pickDir"><option value="S">直進ラック</option><option value="C">曲進ラック</option></select></label>
+        </div>
+        <p class="note" id="lineNote">実機ラインは、いただいた写真から寸法を推定して作っています（架台・ラック・コンベアの位置と高さ、ガラスの大きさ）。実測値があれば合わせます。</p>
+        <div class="row" id="workRow">
           <label class="pname">ワーク <select id="workSel"></select></label>
         </div>
         <div class="row grow">
@@ -177,8 +184,8 @@
           <button id="trailClr">軌跡を消す</button>
         </div>
         <div class="row">
-          <label class="chk"><input type="checkbox" id="autoSup"> 供給台に自動補充</label>
-          <label class="chk"><input type="checkbox" id="autoOut"> 排出台から自動払い出し</label>
+          <label class="chk"><input type="checkbox" id="autoSup"> <span id="autoSupL">供給台に自動補充</span></label>
+          <label class="chk"><input type="checkbox" id="autoOut"> <span id="autoOutL">排出台から自動払い出し</span></label>
         </div>
         <div class="row">
           <label class="chk"><input type="checkbox" id="optColl"> 干渉チェック</label>
@@ -224,6 +231,7 @@
 <script src="vendor/three-addons.js"></script>
 <script src="js/robots.js"></script>
 <script src="js/tools.js"></script>
+<script src="js/cell.js"></script>
 <script src="js/kinematics.js"></script>
 <script src="js/look.js"></script>
 <script src="js/model.js"></script>

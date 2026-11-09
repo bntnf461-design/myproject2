@@ -78,8 +78,15 @@
       const rest = m[3];
       const ins = { op: 'MOVE', mode: m[1].toUpperCase() === 'J' ? 'J' : 'L', ref: m[2].toUpperCase(), extra: [] };
       if (m[1].toUpperCase() === 'C') ins.warn = 'MOVC（円弧）は直線で近似します';
-      for (const tok of rest.split(/\s+/).filter(Boolean)) {
+      const toks = rest.split(/\s+/).filter(Boolean);
+      for (let k = 0; k < toks.length; k++) {
+        const tok = toks[k];
         let t;
+        if (/^UNTIL$/i.test(tok)) {   // 入力が来たら止まる（押し当て・サーチ）：UNTIL IN#(n)[=ON|OFF]
+          const u = (toks[k + 1] || '').match(/^IN#\((\d+)\)(?:=(ON|OFF))?$/i);
+          if (!u) return { op: 'ERR', msg: 'UNTIL の後は IN#(番号) または IN#(番号)=ON/OFF と書きます' };
+          ins.until = { t: 'io', kind: 'IN', n: +u[1], val: u[2] ? ONOFF(u[2]) : true }; k++; continue;
+        }
         if ((t = tok.match(/^VJ=([\d.]+)$/i))) ins.speed = { v: +t[1], unit: '%' };
         else if ((t = tok.match(/^V=([\d.]+)$/i))) ins.speed = { v: +t[1], unit: 'mm/s' };
         else if ((t = tok.match(/^VR=([\d.]+)$/i))) ins.speed = { v: +t[1], unit: 'deg/s' };
@@ -230,6 +237,7 @@
         let t;
         if ((t = tok.match(new RegExp(`^Offset,${PR}$`, 'i')))) ins.offset = { type: 'user', pr: +t[1] };
         else if ((t = tok.match(new RegExp(`^Tool_Offset,${PR}$`, 'i')))) ins.offset = { type: 'tool', pr: +t[1] };
+        else if ((t = tok.match(/^Skip,LBL\[(\d+)(?::[^\]]*)?\]$/i))) ins.skip = { lbl: t[1] };   // SKIP CONDITION が来たら止まる。来なければ LBL へ
         else ins.extra.push(tok);
       }
       { const r = extraCheck(ins, /^ACC\d+$/i, s); if (r) return r; }
@@ -258,7 +266,11 @@
     if ((m = s.match(/^OVERRIDE\s*=\s*(\d+)\s*%$/i))) return { op: 'OVERRIDE', v: +m[1] };
     if ((m = s.match(/^(UFRAME_NUM|UTOOL_NUM)\s*=\s*(\d+)$/i))) return { op: 'FRAME', which: m[1].toUpperCase() === 'UFRAME_NUM' ? 'uf' : 'ut', n: +m[2] };
     if ((m = s.match(/^MESSAGE\[(.*)\]$/i))) return { op: 'MESSAGE', text: m[1] };
-    if (/^(PAYLOAD\[|TIMER\[|UALM\[|JOINT_MAX_SPEED|LINEAR_MAX_SPEED|RSR|TOOL_OFFSET_CONDITION|OFFSET CONDITION|SKIP CONDITION)/i.test(s)) return { op: 'IGNORE', msg: s.split(/[\[=\s]/)[0] + ' は無視します' };
+    if ((m = s.match(/^SKIP\s+CONDITION\s+(.+)$/i))) {
+      const c = fCond(m[1]); if (!c || c.t !== 'io') return { op: 'ERR', msg: 'SKIP CONDITION の条件は DI[n]=ON のように書きます' };
+      return { op: 'SKIPCOND', cond: c };
+    }
+    if (/^(PAYLOAD\[|TIMER\[|UALM\[|JOINT_MAX_SPEED|LINEAR_MAX_SPEED|RSR|TOOL_OFFSET_CONDITION|OFFSET CONDITION)/i.test(s)) return { op: 'IGNORE', msg: s.split(/[\[=\s]/)[0] + ' は無視します' };
     return { op: 'UNKNOWN', text: s };
   }
 
@@ -270,13 +282,15 @@
     if (sys === 'yaskawa') {
       const sp = ins.mode === 'J' ? `VJ=${f(ins.speed.v, 2)}` : (ins.speed.unit === 'deg/s' ? `VR=${f(ins.speed.v, 1)}` : `V=${f(ins.speed.v, 1)}`);
       const pl = ins.term && ins.term.pl != null ? ` PL=${ins.term.pl}` : '';
-      return `MOV${ins.mode} ${ins.ref} ${sp}${pl}${extra ? ' ' + extra : ''}`;
+      const un = ins.until ? ` UNTIL IN#(${ins.until.n})=${ins.until.val ? 'ON' : 'OFF'}` : '';
+      return `MOV${ins.mode} ${ins.ref} ${sp}${pl}${un}${extra ? ' ' + extra : ''}`;
     }
     const u = { '%': '%', 'mm/s': 'mm/sec', 'cm/min': 'cm/min', 'inch/min': 'inch/min', 'deg/s': 'deg/sec', sec: 'sec', msec: 'msec' }[ins.speed.unit] || '%';
     const v = ins.speed.unit === 'sec' ? f(ins.speed.v, 1) : Math.round(ins.speed.v);
     const term = ins.term && ins.term.cnt != null ? `CNT${ins.term.cnt}` : 'FINE';
     const off = ins.offset ? (ins.offset.type === 'tool' ? ` Tool_Offset,PR[${ins.offset.pr}]` : (ins.offset.pr ? ` Offset,PR[${ins.offset.pr}]` : ' Offset')) : '';
-    return `${ins.mode} ${ins.ref} ${v}${u} ${term}${off}${extra ? ' ' + extra : ''}`;
+    const sk = ins.skip ? ` Skip,LBL[${ins.skip.lbl}]` : '';
+    return `${ins.mode} ${ins.ref} ${v}${u} ${term}${off}${sk}${extra ? ' ' + extra : ''}`;
   };
 
   /* 教示で作る命令の文字列 */
@@ -404,6 +418,8 @@
     if (circ.length) w.push(`円弧（MOVC）の行は直線で近似して確認しています（${lst(circ)} 行目）`);
     const off = linesOf(x => (x.op === 'MOVE' && x.offset) || x.op === 'SFTON' || x.op === 'IMOV');
     if (off.length) w.push(`オフセット／シフトの行があります（${lst(off)} 行目）。姿勢成分（${Y ? 'Rx/Ry/Rz' : 'W/P/R'}）を 0 以外にする場合の動きは実機で確認してください`);
+    const srch = linesOf(x => x.op === 'MOVE' && (x.until || x.skip));
+    if (srch.length) w.push(`入力で止まる移動（${Y ? 'UNTIL' : 'Skip'}）があります（${lst(srch)} 行目）。止まるまでの行き過ぎ量・センサーの位置・${Y ? '書式（UNTIL IN#(n)=ON）とオプションの有無' : 'SKIP CONDITION の信号'}を実機で確認し、必ず低速で試してください`);
     const wt = linesOf(x => x.op === 'WAITIN' && x.timeout != null);
     if (wt.length && Y) w.push(`WAIT … T= の行は、時間切れでもそのまま先へ進みます（${lst(wt)} 行目）。後で状態を確かめていますか`);
     if (prog.lines.some(l => !isAscii(l)) || !isAscii(prog.comment || '')) w.push(Y ? '全角文字（日本語のコメント等）があります。Shift_JIS で書き出します（コントローラの言語設定によっては表示できません）' : '全角文字があります。LS の日本語は文字化けしやすいので、英数字にすることを勧めます');

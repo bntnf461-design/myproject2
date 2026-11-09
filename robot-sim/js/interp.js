@@ -23,7 +23,7 @@
       this.host = host;
       this.stack = [];
       this.wait = null;
-      this.shift = null;
+      this.shift = null; this.skipCond = null;
       this.warned = new Set();
     }
     get frame() { return this.stack[this.stack.length - 1]; }
@@ -34,7 +34,7 @@
       const prog = this.host.lib()[name];
       if (!prog) return 'プログラム ' + name + ' がありません';
       this.stack = [this.mkFrame(prog, pc || 0)];
-      this.wait = null; this.shift = null;
+      this.wait = null; this.shift = null; this.skipCond = null;
       return '';
     }
     mkFrame(prog, pc) {
@@ -202,6 +202,7 @@
             this.shift = { p: p.p, frame: i.frame }; F.pc++; break;
           }
           case 'SFTOF': this.shift = null; F.pc++; break;
+          case 'SKIPCOND': this.skipCond = i.cond; F.pc++; break;
           case 'MOVE': {
             let pos;
             if (/^(C\d{5}|P\[\d+\])$/.test(i.ref)) pos = F.prog.pos[i.ref];
@@ -215,7 +216,13 @@
             }
             if (i.warn) this.warnOnce('mv' + F.pc, i.warn);
             if ((i.term && (i.term.cnt > 0 || i.term.pl > 0))) this.warnOnce('cnt', 'CNT／PL（通過動作）は FINE（位置決め）として動かします');
-            return { t: 'move', mode: i.mode, pos, offset, shift: this.shift, speed: i.speed, line: F.pc, prog: F.prog.name };
+            let stop = null;
+            if (i.until) stop = { cond: i.until };
+            if (i.skip) {
+              if (!this.skipCond) return { t: 'alarm', key: 'prog', msg: `${F.prog.name} ${F.pc + 1}行目：Skip の前に SKIP CONDITION がありません` };
+              stop = { cond: this.skipCond, lbl: i.skip.lbl };
+            }
+            return { t: 'move', mode: i.mode, pos, offset, shift: this.shift, speed: i.speed, line: F.pc, prog: F.prog.name, stop };
           }
           case 'IMOV': {
             const p = H.vars.pos[i.ref];

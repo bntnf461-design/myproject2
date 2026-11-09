@@ -29,9 +29,13 @@ ok('IF 通常形式', F('IF DI[1]=ON AND R[2]=0,JMP LBL[1]').cond.t === 'multi')
 ok('IF 外側かっこなしの (条件) は誤り', F('IF (DI[1]=ON) AND (R[2]=0),JMP LBL[1]').op === 'ERR');
 ok('IF AND/OR 混在は誤り', F('IF DI[1]=ON AND R[2]=0 OR DI[3]=ON,JMP LBL[1]').op === 'ERR');
 ok('INC オプションは未対応', F('L P[1] 100mm/sec FINE INC').op === 'UNKNOWN');
-ok('Skip は未対応', F('L P[1] 100mm/sec FINE Skip,LBL[2]').op === 'UNKNOWN');
+{ const m = F('L P[1] 100mm/sec FINE Skip,LBL[2]'); ok('Skip,LBL を解析', m.op === 'MOVE' && m.skip && m.skip.lbl === '2' && RS.formatMove('fanuc', m).includes('Skip,LBL[2]'), m); }
+{ const c = F('SKIP CONDITION DI[3]=ON'); ok('SKIP CONDITION を解析', c.op === 'SKIPCOND' && c.cond.kind === 'DI' && c.cond.n === 3 && c.cond.val === true, c); }
+ok('SKIP CONDITION の書式誤り', F('SKIP CONDITION R[1]<3').op === 'ERR');
 ok('ACC は無視して警告', (x => x.op === 'MOVE' && !!x.warn)(F('L P[1] 100mm/sec FINE ACC50')));
-ok('UNTIL は未対応', Y('MOVL C00000 V=100.0 UNTIL IN#(1)=ON').op === 'UNKNOWN');
+{ const m = Y('MOVL C00000 V=100.0 UNTIL IN#(4)=ON'); ok('UNTIL を解析', m.op === 'MOVE' && m.until && m.until.n === 4 && m.until.val === true && RS.formatMove('yaskawa', m) === 'MOVL C00000 V=100.0 UNTIL IN#(4)=ON', m); }
+ok('UNTIL（=ON 省略）', Y('MOVL C00000 V=100.0 UNTIL IN#(4)').until.val === true);
+ok('UNTIL の書式誤り', Y('MOVL C00000 V=100.0 UNTIL OT#(4)').op === 'ERR');
 ok('PL=9 は誤り', Y('MOVJ C00000 VJ=50.00 PL=9').op === 'ERR');
 ok('式の余分な項は誤り', F('R[1]=1 2').op === 'ERR' && F('R[1]=(1+2').op === 'ERR' && F('R[1]=3)').op === 'ERR');
 ok('式 正しい形', F('R[1]=(R[2]+3)*2').op === 'CALC');
