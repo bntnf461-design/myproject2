@@ -175,6 +175,13 @@
         <div class="row" id="lineOpts">
           <label class="pname">取り出し方向（サンプル） <select id="pickDir"><option value="S">直進ラック</option><option value="C">曲進ラック</option></select></label>
         </div>
+        <details id="lineLayout">
+          <summary>ラック・コンベアの位置を実測値に合わせる（mm）</summary>
+          <p class="note">ロボットの据付中心を原点（0, 0）として、X＝ロボットの前、Y＝ロボットの左です。ロボットの正面は、ペンダントで「ロボット座標」の X＋方向に動かしたときに向く方向です。</p>
+          <div class="vgrid w2" id="lineForm"></div>
+          <div class="row grow"><button id="lineApply">適用</button><button id="lineReset">初期値に戻す</button></div>
+          <p class="note" id="lineMsg"></p>
+        </details>
         <p class="note" id="lineNote">実機ラインは、いただいた写真から寸法を推定して作っています（架台・ラック・コンベアの位置と高さ、ガラスの大きさ）。実測値があれば合わせます。</p>
         <div class="row" id="workRow">
           <label class="pname">ワーク <select id="workSel"></select></label>

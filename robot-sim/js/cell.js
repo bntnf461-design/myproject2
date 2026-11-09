@@ -34,6 +34,35 @@
     fence: { x: [-1.3, 1.85], y: [-2.1, 1.85] }   // ロボット座標の X/Y 範囲
   };
 
+  RS.LINE_DEFAULT = JSON.parse(JSON.stringify(RS.LINE));
+  /* 利用者が入れた実測値（mm）で配置を上書きする。{ 'racks.0.X': 1850, ... } */
+  RS.LINE_FIELDS = [
+    ['racks.0.X', '直進ラック 中心 X'], ['racks.0.Y', '直進ラック 中心 Y'],
+    ['racks.1.X', '曲進ラック 中心 X'], ['racks.1.Y', '曲進ラック 中心 Y'],
+    ['conveyor.X0', 'コンベア 手前端 X'], ['conveyor.X1', 'コンベア 奥端 X'], ['conveyor.Y', 'コンベア 中心 Y'], ['conveyor.placeX', 'ガラスを置く位置 X'],
+    ['conveyor.top', 'コンベア上面（床から）'], ['floor', 'ロボットのベース面（床から、マイナス）']
+  ];
+  const getp = (o, k) => k.split('.').reduce((a, p) => a && a[p], o);
+  const setp = (o, k, v) => { const ks = k.split('.'); const last = ks.pop(); const t = ks.reduce((a, p) => a[p], o); t[last] = v; };
+  RS.lineValues = () => Object.fromEntries(RS.LINE_FIELDS.map(([k]) => [k, Math.round(getp(RS.LINE, k) * 1000)]));
+  RS.setLine = function (vals) {
+    const ok = {};
+    for (const [k] of RS.LINE_FIELDS) {
+      const v = vals && vals[k];
+      if (typeof v !== 'number' || !isFinite(v) || Math.abs(v) > 8000) continue;
+      ok[k] = v / 1000;
+    }
+    const L = RS.LINE;
+    for (const k in ok) setp(L, k, ok[k]);
+    if (L.conveyor.X1 <= L.conveyor.X0 + 0.5) { L.conveyor.X1 = L.conveyor.X0 + 0.5; }
+    L.conveyor.placeX = Math.min(Math.max(L.conveyor.placeX, L.conveyor.X0 + 0.3), L.conveyor.X1 - 0.3);
+    if (L.floor > -0.1) L.floor = -0.1;
+    // 柵は配置に合わせて広げる
+    const S = L.racks[0], C = L.racks[1], cv = L.conveyor;
+    L.fence = { x: [-1.3, Math.max(1.3, S.X)], y: [Math.min(-1.3, cv.Y - cv.w / 2 - 0.15), Math.max(1.3, C.Y)] };
+  };
+  RS.resetLine = function () { Object.assign(RS.LINE, JSON.parse(JSON.stringify(RS.LINE_DEFAULT))); };
+
   function helpers(T, group) {
     const sh = m => { m.castShadow = true; m.receiveShadow = true; return m; };
     const box = (w, h, d, mat, x, y, z, parent) => { const m = sh(new T.Mesh(new T.BoxGeometry(w, h, d), mat)); m.position.set(x, y, z); (parent || group).add(m); return m; };

@@ -141,6 +141,8 @@
 
   /* =================== セル（周りの設備：cell.js） =================== */
   let CELL = null, TABLES = [], FENCE = { x: [-9, 9], z: [-9, 9] }, FLOOR_Y = 0;
+  const lineKey = 'rs3-line';
+  { const sv = store.get(lineKey, null); if (sv && typeof sv === 'object') RS.setLine(sv); }
   function buildCellScene(id) {
     if (CELL) { scene.remove(CELL.group); CELL.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     CELL = RS.buildCell(T, id, RS.lookTex || {});
@@ -1711,7 +1713,7 @@
     toolSel.value = tool.id;
     const line = CELL.id === 'line';
     $('#cellSel').value = CELL.id; $('#pickDir').value = S.opts.pickDir;
-    $('#lineOpts').hidden = !line; $('#lineNote').hidden = !line; $('#workRow').hidden = line;
+    $('#lineOpts').hidden = !line; $('#lineNote').hidden = !line; $('#lineLayout').hidden = !line; $('#workRow').hidden = line;
     $('#autoSupL').textContent = line ? 'ラックが空になったら補充してターンテーブルを回す' : '供給台に自動補充';
     $('#autoOutL').textContent = line ? '置き完了の信号がなくてもコンベアで流す' : '排出台から自動払い出し';
     const d = robot.dims;
@@ -1732,6 +1734,21 @@
   $('#toolCards').addEventListener('click', e => { const b = e.target.closest('[data-tool]'); if (b) switchTool(b.dataset.tool); });
   $('#cellSel').innerHTML = RS.CELLS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
   $('#cellSel').addEventListener('change', e => switchCell(e.target.value));
+  function renderLineForm() {
+    const v = RS.lineValues();
+    $('#lineForm').innerHTML = RS.LINE_FIELDS.map(([k, n]) => `<label>${n}<input type="number" step="10" data-ln="${k}" value="${v[k]}"></label>`).join('');
+  }
+  function rebuildLine() { const was = CELL.id; CELL.id = ''; switchCell(was); renderLineForm(); }
+  $('#lineApply').addEventListener('click', () => {
+    const vals = {};
+    $$('#lineForm input').forEach(i => { if (i.value.trim() === '' || !isFinite(+i.value)) return; vals[i.dataset.ln] = +i.value; });
+    RS.setLine(vals);
+    store.set(lineKey, vals);
+    rebuildLine();
+    $('#lineMsg').textContent = '適用しました。サンプルは「サンプル」を押し直すと、新しい位置で作り直されます（今のプログラムの位置は変わりません）。';
+  });
+  $('#lineReset').addEventListener('click', () => { RS.resetLine(); RS.setLine({}); store.set(lineKey, null); rebuildLine(); $('#lineMsg').textContent = '初期値に戻しました'; });
+  renderLineForm();
   $('#pickDir').addEventListener('change', e => { S.opts.pickDir = e.target.value === 'C' ? 'C' : 'S'; saveOpts(); });
   $('#workSel').addEventListener('change', e => { stopAll(); S.workId = e.target.value; store.set('rs3-work', S.workId); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell(); });
   $('#resetWork').addEventListener('click', () => { stopAll(); if (S.holding) dropWork(true); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); S.stats = { count: 0, last: 0, t0: 0 }; updateCycle(); });
