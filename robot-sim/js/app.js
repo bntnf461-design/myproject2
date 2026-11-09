@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.7.2';
+  const VERSION = '3.8';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -2093,16 +2093,26 @@
     return '';
   }
   /* 画面の行 */
+  /* 行ごとのステップ番号（実機は移動命令に 0001 から番号を振る）。移動命令でない行は直前の番号 */
+  function moveStepOf(P) {
+    let n = 0;
+    return P.lines.map(l => { if (/^\s*(MOV[JLC]|IMOV)\b/i.test(l)) n++; return n; });
+  }
   function screenRows() {
     const Y = isY(), P = prog(), rows = [];
     let selRow = -1, title = '';
     const v = pend.view;
     if (v === 'prog') {
       if (Y) {
-        title = `ジョブ内容　J:${P.name}　S:${String(Math.max(0, sel) + 1).padStart(4, '0')}　ツール:00`;
-        rows.push({ t: '0000 NOP' });
-        P.lines.forEach((l, k) => { rows.push({ t: `${String(k + 1).padStart(4, '0')} ${l}`, i: k, pc: run && run.interp.progName === P.name && run.interp.pc === k }); if (k === sel) selRow = rows.length - 1; });
-        rows.push({ t: `${String(P.lines.length + 1).padStart(4, '0')} END` });
+        title = 'ジョブ内容';
+        const steps = moveStepOf(P);
+        rows.push({ t: '0000      NOP' });
+        P.lines.forEach((l, k) => {
+          const st = steps[k] && /^\s*(MOV|IMOV)/i.test(l) ? String(steps[k]).padStart(4, '0') : '    ';
+          rows.push({ t: `${String(k + 1).padStart(4, '0')} ${st} ${l}`, i: k, pc: run && run.interp.progName === P.name && run.interp.pc === k });
+          if (k === sel) selRow = rows.length - 1;
+        });
+        rows.push({ t: `${String(P.lines.length + 1).padStart(4, '0')}      END` });
       } else {
         title = `${P.name}　　　　　　LINE ${Math.max(0, sel) + 1}`;
         P.lines.forEach((l, k) => { rows.push({ t: `${String(k + 1).padStart(4, ' ')}:  ${l} ;`, i: k, pc: run && run.interp.progName === P.name && run.interp.pc === k }); if (k === sel) selRow = rows.length - 1; });
@@ -2147,12 +2157,35 @@
     const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (run.interp.status() || (Y ? '再生中' : '')) : ''));
     const cn = robot.coordNames[pend.coord];
     if (Y) {
-      const menu = [['prog', 'ジョブ'], ['var', '変数'], ['io', '入出力'], ['pos', 'ロボット'], ['sys', 'システム<br>情報']].map(([k, n]) => `<button class="ymenu-b${pend.view === k ? ' on' : ''}" data-view="${k}">${n}</button>`).join('');
-      const icon = (txt, cls) => `<span class="ysi${cls ? ' ' + cls : ''}">${esc(txt)}</span>`;
-      return `<div class="ysb">${icon(cn)}${icon(pend.fast ? '高速' : YSP[pend.sp][0])}${icon({ teach: 'TEACH', play: 'PLAY', remote: 'REMOTE' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl')}${icon(servoOn() ? 'サーボON' : (pend.ready ? 'レディ' : 'サーボOFF'), servoOn() ? 'sv' : '')}${icon(run ? (run.paused ? 'ホールド' : '運転中') : '停止', run && !run.paused ? 'rn' : '')}${icon('挿入 MOV' + pend.ins)}</div>` +
-        `<div class="ymain">${pend.menu ? `<div class="ymenu">${menu}</div>` : ''}<div class="ycont"><div class="ytitle">${esc(title)}</div><div class="ylist">${list}</div></div></div>` +
-        `<div class="ymsg${S.alarm ? ' alm' : ''}"><span>${esc(msg)}</span>${S.alarm ? '<button class="ytouch" data-act="reset">リセット</button>' : ''}</div>` +
-        `<div class="ybot"><button class="ytouch" data-act="mainmenu">メインメニュー</button><span>${pend.interlock ? 'インターロック' : ''}${pend.fast ? '　高速' : ''}</span></div>`;
+      const v = pend.view, P = prog();
+      // 上のメニュー（ジョブ画面は ジョブ／編集／表示／ユーティリティ、他は データ／編集／表示／ユーティリティ）
+      const top = (v === 'prog' || v === 'inst' ? ['ジョブ', '編集', '表示', 'ユーティリティ'] : ['データ', '編集', '表示', 'ユーティリティ']).map(t => `<span class="ytm">${t}</span>`).join('');
+      // 状態表示（実機の並び：制御グループ・座標・手動速度・セキュリティ・動作サイクル・状態・モード）
+      const icon = (txt, title, cls) => `<span class="ysi${cls ? ' ' + cls : ''}" title="${esc(title)}">${txt}</span>`;
+      const coordI = { joint: '関', base: '直', tool: 'ツ' }[pend.coord] || '直';
+      const spdI = pend.fast ? '<i class="bars b3"></i>' : `<i class="bars b${pend.sp}"></i>`;
+      const stI = run ? (run.paused ? '‖' : '▶') : '■';
+      const modeI = { teach: '教', play: '再', remote: 'R' }[pend.mode];
+      const status = icon('1<small>⇅</small>', '制御グループ R1') + icon(coordI, '座標：' + cn) + icon(spdI, '手動速度：' + (pend.fast ? '高速' : YSP[pend.sp][0])) +
+        icon('🔑', 'セキュリティ：運転モード') + icon(pend.step ? '1' : '∞', '動作サイクル：' + (pend.step ? 'ステップ' : '連続')) +
+        icon(stI, '状態：' + (run ? (run.paused ? 'ホールド中' : '再生中') : '停止中'), run && !run.paused ? 'rn' : '') +
+        icon(modeI, 'モード：' + { teach: 'ティーチ', play: 'プレイ', remote: 'リモート' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl') +
+        icon(servoOn() ? '<b>S</b>' : 's', servoOn() ? 'サーボオン' : (pend.ready ? 'サーボオンレディ' : 'サーボオフ'), servoOn() ? 'sv' : '');
+      // 左のメインメニュー（実機：ジョブ・汎用・変数・入出力・ロボット・システム情報）
+      const mm = [['prog', 'ジョブ', '<span class="mi doc">DOUT<br>MOVE<br>END</span>'], ['na', '汎用', '<span class="mi">⊤</span>'], ['var', '変数', '<span class="mi box">B001</span>'],
+        ['io', '入出力', '<span class="mi">In⊖Out</span>'], ['pos', 'ロボット', '<span class="mi">⌐</span>'], ['sys', 'システム情報', '<span class="mi">∿◷</span>']]
+        .map(([k, n, ic]) => `<button class="ymenu-b${v === k ? ' on' : ''}" ${k === 'na' ? 'data-act="na"' : `data-view="${k}"`}>${n}${ic}</button>`).join('') +
+        '<div class="ymarrow"><span>◀</span><span>▶</span></div>';
+      // 画面の見出し（実機の「ジョブ内容」画面：プレイバック中は「プレイバック」）
+      let head = `<div class="yth"><b>${esc(title)}</b></div>`;
+      if (v === 'prog') {
+        const steps = moveStepOf(P), cur = sel >= 0 ? steps[sel] || 0 : 0;
+        head = `<div class="yth"><div><b>${run || pend.mode !== 'teach' ? 'プレイバック' : 'ジョブ内容'}</b><br>J:${esc(P.name)}<br>制御グループ: R1</div><div class="ythr">S:${String(cur).padStart(4, '0')}<br>ツール: ${tool ? '00' : '**'}</div></div>`;
+      }
+      return `<div class="ysb"><div class="ytopm">${top}</div><div class="ysicons">${status}</div></div>` +
+        `<div class="ymain">${pend.menu ? `<div class="ymenu">${mm}</div>` : ''}<div class="ycont">${head}<div class="ylist">${list}</div><div class="yfk"><span></span><span></span><span></span><span></span></div></div></div>` +
+        `<div class="ybot"><button class="ytouch mmb${pend.menu ? ' on' : ''}" data-act="mainmenu">メインメニュー</button><button class="ytouch" data-act="view-prog">簡単メニュー</button>` +
+        `<div class="ymsg${S.alarm ? ' alm' : ''}"><span class="mic">▤</span><span>${esc(msg || (pend.interlock ? 'インタロック中' : ''))}</span>${S.alarm ? '<button class="ytouch" data-act="reset">リセット</button>' : ''}</div></div>`;
     }
     const lamp = (n, on) => `<span class="flamp${on ? ' on' : ''}">${n}</span>`;
     const status = run ? (run.paused ? 'PAUSED' : 'RUNNING') : 'ABORTED';
@@ -2195,71 +2228,70 @@
         <div class="yhandle"></div>
         <div class="ytop2">
           <button class="keysw2" data-act="mode" title="モード切替キー（REMOTE / PLAY / TEACH）"><span class="knob2" style="transform:rotate(${ang}deg)"></span></button>
-          <button class="rbtn start${on(run && !run.paused)}" data-act="run" title="START"></button>
-          <button class="rbtn hold${on(run && run.paused)}" data-act="hold" title="HOLD"></button>
+          <button class="rbtn start${on(run && !run.paused)}" data-act="run" title="START（スタート）"></button>
+          <button class="rbtn hold${on(run && run.paused)}" data-act="hold" title="HOLD（ホールド）"></button>
           <button class="estop2${on(S.estop)}" data-act="estop" title="EMERGENCY STOP（非常停止）"><span></span></button>
           <div class="ylabels"><span class="${pend.mode === 'remote' ? 'cur' : ''}">REMOTE</span><span class="${pend.mode === 'play' ? 'cur' : ''}">PLAY</span><span class="${pend.mode === 'teach' ? 'cur' : ''}">TEACH</span><span>START</span><span>HOLD</span><span>EMERGENCY STOP</span></div>
         </div>
         <div class="ybezel"><div class="pscreen yscr" id="lcd"></div></div>
-        <div class="ykp">
+        <div class="ykp jp">
           <div class="yrow1">
             <div class="ycur"><button class="cu" data-act="up" title="カーソル↑">▲</button><button class="cl" data-act="na" title="カーソル←">◀</button><button class="cr" data-act="na" title="カーソル→">▶</button><button class="cd" data-act="down" title="カーソル↓">▼</button></div>
             <div class="yfn">
-              ${kb('na', '<em>MULTI</em>LAYOUT', 'pu', '多画面（シミュレーターでは未対応）')}
-              ${kb('coord', `<em>TOOL SEL</em>COORD<small>${robot.coordNames[pend.coord]}</small>`, 'bl', '座標切替（関節／直交／ツール）')}
-              ${kb('dopen', 'DIRECT<br>OPEN', '', 'ダイレクトオープン（CALL 先のジョブを開く）')}
-              ${kb(pend.shift ? 'pageup' : 'page', '<em>GO BACK</em>PAGE', 'bl', 'ページ送り（SHIFT＋で戻る）')}
-              ${kb('na', 'AREA', 'bl', 'エリア（シミュレーターでは未対応）')}
-              ${kb('mainmenu', 'MAIN<br>MENU', '', 'メインメニュー')}
-              ${kb('view-prog', '<em>ENTRY</em>SIMPLE<br>MENU', 'bl', 'シンプルメニュー（ジョブ内容へ）')}
-              ${kb('ready', 'SERVO<br>ON<br>READY', 'lamp' + on(pend.ready), 'サーボオン レディ')}
-              ${kb('assist', 'ASSIST', 'pu', 'アシスト（操作の手順を表示）')}
-              ${kb('cancel', 'CANCEL', '', '取消')}
+              ${kb('na', '<em>マルチ画面</em>窓選択<i class="ic">⊞</i>', 'pf tp', '窓選択（シミュレーターでは未対応）')}
+              ${kb('coord', `<em>ツール選択</em>座標<small>${robot.coordNames[pend.coord]}</small>`, 'tb', '座標の切替（関節／直交／ツール）')}
+              ${kb('dopen', 'ダイレクト<br>オープン', 'led', 'ダイレクトオープン（CALL 先のジョブを開く）')}
+              ${kb(pend.shift ? 'pageup' : 'page', '<em>戻る</em>ページ<i class="ic">▶</i>', 'tb led', 'ページ送り（シフト＋ページで戻る）')}
+              ${kb('na', '<em>言語切替</em>エリア', 'tb', 'エリア（シミュレーターでは未対応）')}
+              ${kb('mainmenu', 'メイン<br>メニュー', '', 'メインメニュー')}
+              ${kb('view-prog', '<em>登録</em>簡単<br>メニュー', 'tb', '簡単メニュー（ジョブ内容へ）')}
+              ${kb('ready', 'サーボオン<br>レディ', 'lamp' + on(pend.ready), 'サーボオンレディ')}
+              ${kb('assist', 'アシスト<i class="ic">[!?]</i>', 'pf', 'アシスト（操作の手順を表示）')}
+              ${kb('cancel', 'キャンセル', 'cn', 'キャンセル（取消）')}
             </div>
-            <button class="ysel" data-act="select" title="選択">SELECT</button>
+            <button class="ysel" data-act="select" title="選択">選択</button>
           </div>
           <div class="yrow2">
             <div class="yaxg">${ax(0, -1, 'X−', 'S−')}${ax(0, 1, 'X+', 'S+')}${ax(1, -1, 'Y−', 'L−')}${ax(1, 1, 'Y+', 'L+')}${ax(2, -1, 'Z−', 'U−')}${ax(2, 1, 'Z+', 'U+')}${axNone('E−', '外部軸（なし）')}${axNone('E+', '外部軸（なし）')}</div>
             <div class="yspd">
-              <span class="svlamp${on(servoOn())}">SERVO ON</span>
-              <button class="ysp${on(pend.fast)}" data-act="fast" title="高速"><b>HIGH<br>SPEED</b></button>
-              <button class="ysp" data-act="speed+" title="手動速度 高"><b>FAST</b><small>▲</small></button>
-              <span class="mslbl">MANUAL SPEED<br><b>${YSP[pend.sp][0]}</b></span>
-              <button class="ysp" data-act="speed-" title="手動速度 低"><b>SLOW</b><small>▼</small></button>
+              <span class="svlamp${on(servoOn())}">サーボオン</span>
+              <button class="ysp${on(pend.fast)}" data-act="fast" title="高速"><b>高速</b><small>▲▲</small></button>
+              <button class="ysp" data-act="speed+" title="手動速度 高"><b>高</b><small>▲</small></button>
+              <span class="mslbl">手動速度<br><b>${YSP[pend.sp][0]}</b></span>
+              <button class="ysp" data-act="speed-" title="手動速度 低"><b>低</b><small>▽</small></button>
             </div>
             <div class="yaxg">${ax(3, -1, 'X−', 'R−', true)}${ax(3, 1, 'X+', 'R+', true)}${ax(4, -1, 'Y−', 'B−', true)}${ax(4, 1, 'Y+', 'B+', true)}${ax(5, -1, 'Z−', 'T−', true)}${ax(5, 1, 'Z+', 'T+', true)}${axNone('8−', '第8軸（なし）')}${axNone('8+', '第8軸（なし）')}</div>
           </div>
           <div class="ygrid">
-            ${kb('shift', 'SHIFT<i class="sq"></i>', 'bl' + on(pend.shift))}
-            ${kb('interlock', 'INTER<br>LOCK<i class="sq"></i>', 'pu' + on(pend.interlock), 'インターロック')}
-            ${kb('num7', '7<small>SINGLE/<br>SYNCRO</small>', 'bl')}
+            ${kb('shift', 'シフト<i class="sq"></i>', 'bl' + on(pend.shift))}
+            ${kb('interlock', 'インタ<br>ロック<i class="sq"></i>', 'pf' + on(pend.interlock), 'インタロック')}
+            ${kb('num7', '7<small>連動<br>単独</small>', 'bl')}
             ${kb('num8', '8', 'bl')}
             ${kb('num9', '9', 'bl')}
-            ${kb('test', 'TEST<br>START', 'pu', '試運転（インターロックと押している間だけ）', true)}
-            ${kb('shift', 'SHIFT<i class="sq"></i>', 'bl' + on(pend.shift))}
-            ${kb('na', 'ROBOT', '', 'ロボット切替（1台のみ）')}
-            ${kb('instlist', 'INFORM<br>LIST', on(pend.view === 'inst'), '命令一覧')}
-            ${kb('num4', '4<small>SMOV</small>', 'bl')}
+            ${kb('test', 'テスト<br>運転', 'pf', 'テスト運転（インタロックと押している間だけ）', true)}
+            ${kb('shift', 'シフト<i class="sq"></i>', 'bl' + on(pend.shift))}
+            ${kb('na', 'ロボット<br>切替', 'led', 'ロボット切替（1台のみ）')}
+            ${kb('instlist', '命令<br>一覧', 'led' + on(pend.view === 'inst'), '命令一覧')}
+            ${kb('num4', '4', 'bl')}
             ${kb('num5', '5', 'bl')}
             ${kb('num6', '6', 'bl')}
-            ${kb('bwdY', 'BWD', 'pu', '後退（押している間だけ）', true)}
-            ${kb('fwdY', 'FWD', 'pu', '前進（押している間だけ）', true)}
-            ${kb('na', 'EX.AXIS', '', '外部軸切替（なし）')}
-            ${kb('assist', 'USAGE', '', '使い方')}
+            ${kb('bwdY', 'バック', 'pf', 'バック（押している間だけ後退）', true)}
+            ${kb('fwdY', 'ネクスト', 'pf', 'ネクスト（押している間だけ前進）', true)}
+            ${kb('na', '外部軸<br>切替', 'led', '外部軸切替（なし）')}
+            ${kb('na', '用途', '', '用途キー（シミュレーターでは未対応）')}
             ${kb('num1', '1', 'bl')}
-            ${kb('num2', `2<small>TOOL ON</small>`, 'bl' + on(ho), '数字 2 ／［INTER LOCK］と同時でハンド ON')}
-            ${kb('num3', '3<small>TOOL ON<br>JOB</small>', 'bl', '数字 3 ／［INTER LOCK］と同時でハンド ON の命令を挿入')}
-            ${kb('del', 'DELETE', pnd('del'))}
-            ${kb('ins', 'INSERT', pnd('ins'))}
-            ${kb('na', 'AUX', '', '補助（シミュレーターでは未対応）')}
-            ${kb('ins-type', `MOTION<br>TYPE<small>MOV${pend.ins}</small>`, '', '補間方法の切替')}
+            ${kb('num2', `2<small>TOOL ON</small>`, 'bl' + on(ho), '数字 2 ／［インタロック］と同時でハンド ON')}
+            ${kb('num3', '3<small>TOOL ON<br>ジョブ</small>', 'bl', '数字 3 ／［インタロック］と同時でハンド ON の命令を挿入')}
+            ${kb('del', '消去', 'led' + pnd('del'), '消去（エンターで確定）')}
+            ${kb('ins', '追加', 'led' + pnd('ins'), '追加（エンターで確定）')}
+            ${kb('na', '補助', '', '補助（シミュレーターでは未対応）')}
+            ${kb('ins-type', `補間<small>MOV${pend.ins}</small>`, 'bl', '補間方法の切替（MOVJ／MOVL）')}
             ${kb('num0', '0', 'bl')}
-            ${kb('numdot', '.<small>TOOL OF</small>', 'bl', '小数点 ／［INTER LOCK］と同時でハンド OFF')}
-            ${kb('numminus', '−<small>TOOL OF<br>JOB</small>', 'bl', 'マイナス ／［INTER LOCK］と同時でハンド OFF の命令を挿入')}
-            ${kb('upd', 'MODIFY', pnd('upd'))}
-            ${kb('enter', 'ENTER', 'ent')}
+            ${kb('numdot', '.<small>TOOL OF</small>', 'bl', '小数点 ／［インタロック］と同時でハンド OFF')}
+            ${kb('numminus', '−<small>TOOL OF<br>ジョブ</small>', 'bl', 'マイナス ／［インタロック］と同時でハンド OFF の命令を挿入')}
+            ${kb('upd', '変更', 'led' + pnd('upd'), '変更（エンターで確定）')}
+            ${kb('enter', 'エンター', 'ent')}
           </div>
-          <div class="ybrand">YASKAWA</div>
         </div>
         <button class="enable${on(pend.enable)}" data-act="enable" title="側面のイネーブルスイッチ（3ポジション）">イネーブルスイッチ（側面）：${pend.enable ? '握っている' : '離している'}</button>
       </div>`;

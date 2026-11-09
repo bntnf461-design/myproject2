@@ -311,7 +311,7 @@ details[open] summary{margin-bottom:6px}
 .rbtn{width:44px;height:44px;border-radius:50%;padding:0;min-height:0;border:5px solid #44484c;box-shadow:inset 0 -3px 4px rgba(0,0,0,.25)}
 .rbtn.start{background:radial-gradient(circle at 40% 35%,#6bea8e,#1fa84a)}
 .rbtn.start.on{box-shadow:0 0 14px 4px #39e070}
-.rbtn.hold{background:radial-gradient(circle at 40% 35%,#ffffff,#d6d9dc)}
+.rbtn.hold{background:radial-gradient(circle at 40% 35%,#ffb27a,#e0561e);border-color:#7a3a1a}
 .rbtn.hold.on{box-shadow:0 0 14px 4px #ffd27a}
 .estop2{width:64px;height:64px;border-radius:50%;padding:0;min-height:0;background:#f2c200;border:2px solid #b58f00;position:relative}
 .estop2 span{position:absolute;inset:7px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ff5a4a,#d0180c 60%,#930b04);box-shadow:0 3px 0 #6d0a03}
@@ -361,7 +361,7 @@ details[open] summary{margin-bottom:6px}
 .mslbl b{font-size:8px;color:#fff}
 .ygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .ygrid .yk{min-height:34px;font-size:7.5px}
-.ybrand{text-align:center;font-size:8px;font-weight:800;letter-spacing:.12em;color:#cfd3d6;margin-top:5px}
+.ybrand{display:none}
 .yp2 .enable{color:#eef0f2;border-color:#9aa0a6}
 #pend.big .yk{font-size:9px}#pend.big .yax b{font-size:13px}
 
@@ -410,3 +410,55 @@ details[open] summary{margin-bottom:6px}
 #pend.big .fk{font-size:9.5px}#pend.big .fk.jog b{font-size:12px}
 .ytop2 button:hover,.ftop2 button:hover{border-color:inherit}
 .fk.arrup{clip-path:polygon(50% 0,100% 28%,100% 100%,0 100%,0 28%)}
+
+/* ===== 安川 DX200 日本語キーシート・画面（実機の写真に合わせる） ===== */
+.ykp.jp .yk{font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;font-size:8.5px;letter-spacing:-.02em}
+.ykp.jp .yk::before{display:none}
+.ykp.jp .yk.tb,.ykp.jp .yk.tp{padding-top:11px}
+.ykp.jp .yk em{position:absolute;left:3px;right:3px;top:2px;margin:0;height:9px;line-height:9px;font-size:6.5px;border-radius:2px;color:#1d2a38;background:#8fc2ea}
+.ykp.jp .yk.tp em{background:#e4b3dc}
+.ykp.jp .yk.bl{box-shadow:inset 0 5px 0 #8fc2ea,0 2px 0 #1f2124;padding-top:8px}
+.ykp.jp .yk.pf{outline:2px solid #d79ad0;outline-offset:-2px}
+.ykp.jp .yk.led::after{content:"";position:absolute;left:-1px;top:-1px;width:7px;height:7px;border-radius:50%;background:#16181a;box-shadow:0 0 0 1px #444}
+.ykp.jp .yk.led.on::after{background:#39e070}
+.ykp.jp .yk.cn{box-shadow:inset 3px 0 0 #16181a,0 2px 0 #1f2124}
+.ykp.jp .yk .ic{display:block;font-style:normal;font-size:8px;line-height:1;margin-top:1px}
+.ykp.jp .yk small{font-size:6px}
+.ykp.jp .ysel{font-size:14px;font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif}
+.ykp.jp .ysp b{font-size:11px}.ykp.jp .svlamp,.ykp.jp .mslbl{font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif}
+.ykp.jp .mslbl{font-size:7px}
+.ysb{display:flex;align-items:stretch;gap:3px;background:#c7d3e4;padding:2px;flex-wrap:nowrap}
+.ytopm{display:flex;gap:2px;flex:0 0 auto}
+.ytm{background:linear-gradient(#e6ebf2,#c4cfde);border:1px solid #8ea2bf;border-radius:3px;font-size:9px;padding:2px 6px;color:#1b2a40;white-space:nowrap}
+.ysicons{display:flex;gap:2px;flex:1;justify-content:flex-end;background:linear-gradient(#e6ebf2,#c4cfde);border:1px solid #8ea2bf;border-radius:3px;padding:1px 3px;flex-wrap:wrap}
+.yscr .ysi{background:transparent;color:#1d4fa0;font-size:10px;font-weight:800;min-width:14px;text-align:center;padding:0 1px;border-radius:2px}
+.yscr .ysi small{font-size:7px}
+.yscr .ysi.tc{background:#ffd56a;color:#3a2a00}.yscr .ysi.pl{background:#9ee0a8;color:#063}.yscr .ysi.sv{background:#9ee0a8;color:#063}.yscr .ysi.rn{background:#ffb070;color:#5a2200}
+.bars{display:inline-block;width:12px;height:10px;vertical-align:middle;background:linear-gradient(90deg,#1d4fa0 0 3px,transparent 3px 4px,#1d4fa0 4px 7px,transparent 7px 8px,#1d4fa0 8px 11px,transparent 11px);clip-path:polygon(0 100%,100% 100%,100% 0)}
+.bars.b0{opacity:.45}.bars.b1{opacity:.7}.bars.b2,.bars.b3{opacity:1}.bars.b3{filter:hue-rotate(-120deg) saturate(3)}
+.yscr .ymenu{width:64px;background:#c7d3e4;gap:2px}
+.yscr .ymenu-b{display:flex;flex-direction:column;align-items:center;font-size:8.5px;min-height:30px;padding:2px 1px;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;color:#1b2a40;font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif}
+.yscr .ymenu-b.on{background:#1e5fd0;color:#fff}
+.yscr .ymenu-b .mi{font-size:7px;line-height:1;margin-top:1px;color:#2b3d58}
+.yscr .ymenu-b.on .mi{color:#dfe9ff}
+.yscr .ymenu-b .mi.doc{font-size:4.5px;border:1px solid #6d7d94;background:#fff;padding:0 2px;color:#333}
+.yscr .ymenu-b .mi.box{border:1px solid #6d7d94;background:#fff;padding:0 2px;font-weight:700;color:#111}
+.ymarrow{display:flex;justify-content:space-around;font-size:9px;color:#1b2a40;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:3px}
+.yth{display:flex;justify-content:space-between;background:#1e5fd0;color:#fff;padding:2px 6px;font-size:10px;line-height:1.25;font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif}
+.yth b{font-size:11px}.ythr{text-align:right;font-size:9.5px}
+.yscr .ylist{border:2px solid #1e5fd0;border-top:0;background:#fff}
+.yfk{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px;background:#c7d3e4}
+.yfk span{height:12px;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:2px}
+.ybot{display:flex;align-items:stretch;gap:3px;padding:2px;background:#c7d3e4}
+.ybot .ytouch{font-size:9px;border-radius:3px}
+.ybot .ytouch.mmb.on{background:#1e5fd0;color:#fff}
+.ybot .ymsg{flex:1;display:flex;align-items:center;gap:6px;border:1px solid #8ea2bf;border-radius:3px;min-height:20px;padding:1px 6px;font-size:9.5px;background:#eef2f7}
+.ymsg .mic{color:#c08a00}
+
+.ykp.jp .yfn .yk{font-size:7px;letter-spacing:-.06em;line-height:1.05;padding-left:0;padding-right:0}
+.ykp.jp .yfn .yk em{font-size:5.6px;letter-spacing:-.08em}
+.ykp.jp .yfn .yk small{display:none}
+.ysicons{flex-wrap:nowrap;align-items:center}
+.yscr .ysi{font-size:9px;min-width:11px}
+.ytm{font-size:8.5px;padding:2px 4px}
+.ykp.jp .ygrid .yk{font-size:8px}

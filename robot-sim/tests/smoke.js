@@ -227,7 +227,7 @@ P[2]{
   check('試運転は離すと止まる', !tr.run, tr);
   await page.click('#pend [data-act="interlock"]');
   await page.click('#pend [data-act="mode"]');
-  check('モードキー PLAY', (await page.textContent('#lcd')).includes('PLAY'));
+  check('モードキー PLAY', !!(await page.$('#lcd [title="モード：プレイ"]')));   // 画面右上の状態表示（実機と同じくアイコンで表示）
   await ev(() => { document.querySelector('#code li[data-i="0"]').click(); });
   await page.click('#pend [data-act="run"]');
   check('START で自動運転', !!(await ev(() => RSIM.run)));
