@@ -29,17 +29,24 @@
     floor: -0.6,               // 架台の高さ 600mm（ロボットのベース面から床まで、推定）
     glass: { w: 1.0, h: 0.75, t: 0.004, count: 20 },   // 板ガラス 1000×750×4mm、1 面 20 枚（シミュレーション用）
     racks: [
-      { id: 'S', name: '直進ラック（パレット型）', type: 'pallet', X: -2.1, Y: 0, lean: 8, ledge: 0.8 },
-      { id: 'C', name: '曲進ラック（A型）', type: 'aframe', X: 0, Y: 2.15, lean: 15, ledge: 0.35 }
+      // fence：'half'＝柵がラックの真ん中を通る（半分が柵の外。外側で補充）、'inside'＝ラック全体が柵の中
+      { id: 'S', name: '直進ラック（パレット型）', type: 'pallet', X: -2.1, Y: 0, lean: 8, ledge: 0.8, fence: 'half' },
+      { id: 'C', name: '曲進ラック（A型）', type: 'aframe', X: 0, Y: 2.15, lean: 15, ledge: 0.35, fence: 'inside' }
     ],
     // コンベア：上流端 (X0,Y0) → 下流端 (X1,Y1) へ流れる（X か Y に平行）。place＝上流端からガラスの中心までの距離。top は床から
-    conveyor: { X0: 1.2, Y0: 0, X1: 6.0, Y1: 0, w: 0.95, top: 0.85, place: 0.5 },
+    conveyor: { X0: 1.2, Y0: 0, X1: 6.0, Y1: 0, w: 1.6, top: 0.85, place: 0.5 },   // w＝幅（流れと直角）
     fence: null
   };
   function fenceOf(L) {
-    const c = L.conveyor, xs = L.racks.map(r => r.X), ys = L.racks.map(r => r.Y);
+    // ラックの中心（柵が真ん中を通る）か、ラック全体（柵の中）を囲む
+    const c = L.conveyor, xs = [], ys = [];
+    for (const r of L.racks) {
+      const m = r.fence === 'inside' ? 1.25 : 0, horiz = Math.abs(r.X) >= Math.abs(r.Y);
+      xs.push(r.X + (horiz ? Math.sign(r.X) * m : 0)); ys.push(r.Y + (horiz ? 0 : Math.sign(r.Y) * m));
+    }
     const len = Math.hypot(c.X1 - c.X0, c.Y1 - c.Y0) || 1, px = c.X0 + (c.X1 - c.X0) / len * c.place, py = c.Y0 + (c.Y1 - c.Y0) / len * c.place;
-    return { x: [Math.min(-1.3, ...xs), Math.max(1.3, ...xs, px + 0.9)], y: [Math.min(-1.9, ...ys, py - 0.9), Math.max(1.3, ...ys, py + 0.9)] };
+    const half = Math.abs(c.Y1 - c.Y0) > Math.abs(c.X1 - c.X0) ? 0.9 : c.w / 2 + 0.4;
+    return { x: [Math.min(-1.3, ...xs), Math.max(1.3, ...xs, px + 0.9)], y: [Math.min(-1.9, ...ys, py - half), Math.max(1.3, ...ys, py + half)] };
   }
   RS.LINE.fence = fenceOf(RS.LINE);
 
@@ -49,7 +56,7 @@
     ['racks.0.X', '直進ラック 中心 X'], ['racks.0.Y', '直進ラック 中心 Y'],
     ['racks.1.X', '曲進ラック 中心 X'], ['racks.1.Y', '曲進ラック 中心 Y'],
     ['conveyor.X0', 'コンベア 上流端 X'], ['conveyor.Y0', 'コンベア 上流端 Y'], ['conveyor.X1', 'コンベア 下流端 X'], ['conveyor.Y1', 'コンベア 下流端 Y'],
-    ['conveyor.place', 'ガラスを置く位置（上流端から）'], ['conveyor.top', 'コンベア上面（床から）'], ['floor', 'ロボットのベース面（床から、マイナス）']
+    ['conveyor.place', 'ガラスを置く位置（上流端から）'], ['conveyor.w', 'コンベアの幅'], ['conveyor.top', 'コンベア上面（床から）'], ['floor', 'ロボットのベース面（床から、マイナス）']
   ];
   const getp = (o, k) => k.split('.').reduce((a, p) => a && a[p], o);
   const setp = (o, k, v) => { const ks = k.split('.'); const last = ks.pop(); const t = ks.reduce((a, p) => a[p], o); t[last] = v; };
@@ -166,7 +173,11 @@
         group.add(tp);
       }
     });
-    return { id: 'table', name: '標準（平置きの台 → 台）', group, FLOOR_Y: 0, FENCE, TABLES, OBST: [], racks: [], conveyor: null, view: { target: [0.5, 0.6, 0], r: 4.3 } };
+    const setFenceSee = on => {
+      mPost.transparent = on; mPost.opacity = on ? 0.25 : 1; mPost.depthWrite = !on; mPost.needsUpdate = true;
+      group.traverse(o => { if (o.isMesh && o.material && o.material.alphaMap) { o.visible = !on; } });
+    };
+    return { id: 'table', name: '標準（平置きの台 → 台）', group, FLOOR_Y: 0, FENCE, TABLES, OBST: [], racks: [], conveyor: null, setFenceSee, view: { target: [0.5, 0.6, 0], r: 4.3 } };
   }
 
   /* ---------------- 実機ライン（ラック → コンベア） ---------------- */
@@ -337,7 +348,7 @@
       const span = [Math.min(v - sgn * 0.1, v + sgn * outward), Math.max(v - sgn * 0.1, v + sgn * outward)];
       FENCE.open.push(k === 'x' ? { x: span, z: [a0, a1] } : { x: [a0, a1], z: span });
     };
-    for (const r of racks) { const x = r.def.X, z = -r.def.Y, sd = sideOf(x, z); if (sd[0] === 'x') addOpen(sd, z - 1.0, z + 1.0, 0.8, true); else addOpen(sd, x - 1.0, x + 1.0, 0.8, true); }
+    for (const r of racks) { if (r.def.fence === 'inside') continue; const x = r.def.X, z = -r.def.Y, sd = sideOf(x, z); if (sd[0] === 'x') addOpen(sd, z - 1.0, z + 1.0, 0.8, true); else addOpen(sd, x - 1.0, x + 1.0, 0.8, true); }
     for (const pe of [p0, p1]) {
       const hw = C.w / 2 + 0.05;
       if (conveyor.axis === 'x') {
@@ -410,8 +421,14 @@
         if (on[k]) { m.emissive = m.userData.base.clone().multiplyScalar(3); m.opacity = 1; } else { m.emissive = new T.Color(0, 0, 0); m.opacity = 0.75; }
       }
     };
+    // 柵を透かして見やすくする（枠を半透明に、樹脂板をほぼ見えなく）
+    const setFenceSee = on => {
+      yellowAlu.transparent = on; yellowAlu.opacity = on ? 0.22 : 1; yellowAlu.depthWrite = !on; yellowAlu.needsUpdate = true;
+      poly.opacity = on ? 0.025 : 0.1;
+    };
+    group.traverse(o => { if (o.isMesh && o.material === yellowAlu) o.userData.noAO = true; });
     return {
-      id: 'line', name: '実機ライン（縦置きラック → コンベア）', group, FLOOR_Y: F, FENCE, TABLES, OBST, racks, conveyor, update,
+      id: 'line', name: '実機ライン（縦置きラック → コンベア）', group, FLOOR_Y: F, FENCE, TABLES, OBST, racks, conveyor, update, setFenceSee,
       glassDef: { w: G.w, h: G.h, t: G.t, count: G.count },
       view: { target: [0.3, -0.1, -0.3], r: 6.8, theta: 0.25 }   // 右側（Y−、青い通路）からセル全体を見る
     };

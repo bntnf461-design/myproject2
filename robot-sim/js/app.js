@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.7';
+  const VERSION = '3.7.1';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -58,7 +58,7 @@
   };
   /* 保存された設定を、型と範囲を確かめてから使う */
   function loadOpts() {
-    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, pickDir: 'S', ver: 4 };
+    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, fenceSee: true, pickDir: 'S', ver: 4 };
     const rng = { ovr: [5, 100], jogSpd: [1, 100], waitTimeout: [0, 3600], fanucTmout: [0.1, 3600] };
     const raw = store.get('rs3-opts', store.get('rs2-opts', {})) || {};
     const o = Object.assign({}, def);
@@ -141,7 +141,7 @@
 
   /* =================== セル（周りの設備：cell.js） =================== */
   let CELL = null, TABLES = [], FENCE = { x: [-9, 9], z: [-9, 9] }, FLOOR_Y = 0;
-  const lineKey = 'rs3-line3';   // 配置の項目が変わったので別のキー
+  const lineKey = 'rs3-line4';   // 配置の項目が変わったので別のキー
   { const sv = store.get(lineKey, null); if (sv && typeof sv === 'object') RS.setLine(sv); }
   function buildCellScene(id) {
     if (CELL) { scene.remove(CELL.group); CELL.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -149,6 +149,7 @@
     TABLES = CELL.TABLES; FENCE = CELL.FENCE; FLOOR_Y = CELL.FLOOR_Y;
     scene.add(CELL.group);
     look.hall.position.y = FLOOR_Y;
+    if (CELL.setFenceSee) CELL.setFenceSee(S.opts.fenceSee);
     grid.position.y = FLOOR_Y + 0.003;
     sun.target.position.y = FLOOR_Y;
     ioCache = null;
@@ -1773,6 +1774,7 @@
   bindOpt('#optSkip', 'skipUnknown');
   bindOpt('#optSjis', 'jbiSjis');
   bindOpt('#optGrid', 'grid', () => { grid.visible = S.opts.grid; });
+  bindOpt('#optFence', 'fenceSee', () => { if (CELL.setFenceSee) CELL.setFenceSee(S.opts.fenceSee); });
   grid.visible = S.opts.grid;
   const qs = $('#optQuality');
   if (!['auto', 'high', 'std', 'low'].includes(S.opts.quality)) S.opts.quality = 'auto';
