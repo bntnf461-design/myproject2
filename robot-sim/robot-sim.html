@@ -6490,8 +6490,9 @@ JSON だけを返す（前後に文章を付けない）。形式：
       if (gone.length) countOut(gone.length);
       if (C.running <= 0 && on.length > gone.length) C.running = 0.2;   // 載っている間は流し続ける
       outT = 0;
-    } else if (S.opts.autoOut && placeBusy() && !S.holding && !handOn() && (_v2.y > C.h + 0.25 || Math.hypot(_v2.x - C.placeX, _v2.z + C.Y) > 0.9)) {
-      outT += dt; if (outT > 1.5) { outT = 0; C.running = 1; }
+    } else if (on.length && !S.holding && !handOn()) {
+      // ガラスをコンベアに置いて手を離したら、信号がなくても流れ始める（実機のコンベアは置いたら搬送する）
+      outT += dt; if (outT > 0.8) { outT = 0; C.running = 1; }
     } else outT = 0;
   }
   function cellTick(dt) {
