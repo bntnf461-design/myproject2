@@ -26,6 +26,7 @@
 
 <div id="reorder-area">
 {% if items %}
+<div class="table-scroll">
 <table class="table">
   <thead>
     <tr><th>{{ _("状態") }}</th><th>{{ _("コード") }}</th><th>{{ _("品名 / 規格") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th>{{ _("仕入先") }}</th><th>{{ _("発注担当") }}</th>
@@ -70,6 +71,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
   <p class="empty-ok">{{ _("補充が必要な品目はありません") }}</p>
 {% endif %}

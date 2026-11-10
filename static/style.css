@@ -782,6 +782,7 @@ h2 .step-num { display: inline-grid; vertical-align: middle; width: 1.8rem; heig
 .period-form label { display: flex; flex-direction: column; font-size: .85rem; }
 @media print { .folder-pane, .address-bar .folder-cmds, .context-menu { display: none !important; } .explorer { display: block; } }
 .folder-main { min-width: 0; }
-.folder-main .table-scroll { overflow-x: auto; border-radius: var(--radius-sm); }
+.table-scroll { overflow-x: auto; border-radius: var(--radius); }
+.table-scroll > .table { margin: 0; }
 .items-table th, .items-table td { white-space: nowrap; }
 .items-table td.item-name-cell { white-space: normal; min-width: 9em; }

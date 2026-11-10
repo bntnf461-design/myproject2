@@ -42,7 +42,7 @@ from i18n import tr
 import report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "2026.11.10-1"  # 画面の右下に表示 (どの版が動いているかの確認用)
+APP_VERSION = "2026.11.10-2"  # 画面の右下に表示 (どの版が動いているかの確認用)
 APP_COPYRIGHT = "© 2026 All rights reserved."  # 著作権表示 (画面の右下に表示)
 USAGE_DAYS = 30  # 平均使用量を計算する期間(日)
 CODE_RE = re.compile(r"^[A-Z0-9\-]{1,32}$")
@@ -456,9 +456,13 @@ def parse_price(text):
     s = re.sub(r"[\s,¥￥円]", "", s)
     if s == "":
         return 0
-    if not re.fullmatch(r"\d{1,9}(\.\d{1,2})?", s):
+    if not re.fullmatch(r"\d{1,9}(\.\d+)?", s):
         return None
-    value = float(s)
+    # 1円未満は小数2桁まで。Excel は 33.3 を「33.299999999999997」のように保存することがあるので、
+    # 2桁に丸めても変わらない数 (誤差だけの桁) は受け付ける
+    value = round(float(s), 2)
+    if abs(float(s) - value) > 1e-6:
+        return None
     return int(value) if value.is_integer() else value
 
 
@@ -1538,7 +1542,8 @@ def folder_action():
         if why:
             flash(why, "error")
             return back_to_folder(path)
-        flash(tr("フォルダを「{name}」にしました", name=new), "ok")
+        if new != path:
+            flash(tr("フォルダを「{name}」にしました", name=new), "ok")
         return back_to_folder(new)
     if action == "delete":
         moved = delete_folder(db, path)
@@ -1766,7 +1771,7 @@ def item_delete(item_id):
                (f"{item['code']}~DEL{item_id}", item_id))
     db.commit()
     flash(tr("{name} を削除しました", name=item_label(item)), "ok")
-    return redirect(url_for("items_list"))
+    return back_to_folder(item["category"])
 
 
 @app.route("/items/<int:item_id>/ordered", methods=["POST"])

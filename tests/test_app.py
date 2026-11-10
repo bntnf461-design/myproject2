@@ -1303,3 +1303,69 @@ def test_stocktake_period_in_range(client):
     client.post("/stocktake/period", data={"from": (today - timedelta(days=3)).isoformat(),
                                            "to": (today + timedelta(days=28)).isoformat()})
     assert "今日は棚卸しの期間中です" in client.get("/stocktake").get_data(as_text=True)
+
+
+def test_folder_and_price_edge_cases(client):
+    import io
+    import xlsxwriter
+    # 名前が長すぎる・深すぎる・空のフォルダは作らない
+    page = client.post("/folders", data={"action": "new", "path": "", "name": "あ" * 41},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "40文字までです" in page
+    deep = "/".join(str(n) for n in range(6))
+    page = client.post("/folders", data={"action": "new", "path": deep, "name": "7"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "6段までです" in page
+    page = client.post("/folders", data={"action": "new", "path": "", "name": "  "},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "フォルダの名前を入れてください" in page
+    # 無いフォルダの名前の変更・削除は、理由を出して何もしない
+    page = client.post("/folders", data={"action": "delete", "path": "無いフォルダ"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "フォルダが見つかりません" in page
+    # 同じ名前への名前の変更はできない
+    add_item(client, name="A", category="甲")
+    add_item(client, name="B", category="乙")
+    page = client.post("/folders", data={"action": "rename", "path": "甲", "name": "乙"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "すでにあります" in page and item_by_name("A")["category"] == "甲"
+    # 画面に出すフォルダの名前は、そのまま文字として出す (HTML として動かない)
+    client.post("/folders", data={"action": "new", "path": "", "name": "<i>x"})
+    page = client.get("/items").get_data(as_text=True)
+    assert "<i>x" not in page and "&lt;i&gt;x" in page
+    # 無いフォルダを開いた時は、すべての品目を出す
+    assert client.get("/items?cat=../無い").status_code == 200
+    # 品目を削除すると、その品目のフォルダに戻る (フォルダは残る)
+    item = item_by_name("A")
+    res = client.post(f"/items/{item['id']}/delete")
+    assert "cat=" in res.headers["Location"]
+    assert "このフォルダは空です" in client.get("/items?cat=甲").get_data(as_text=True)
+    # Excel が誤差の桁を付けて保存した単価も読める。桁の多すぎる単価は理由を出す
+    buf = io.BytesIO()
+    wb = xlsxwriter.Workbook(buf)
+    ws = wb.add_worksheet("品目")
+    ws.write_row(0, 0, ["品名", "単価（税込）"])
+    ws.write_row(1, 0, ["ウエス", "33.299999999999997"])
+    ws.write_row(2, 0, ["軍手", "123456789012"])
+    wb.close()
+    page = client.post("/items/import", data={"file": (io.BytesIO(buf.getvalue()), "x.xlsx")},
+                       follow_redirects=True).get_data(as_text=True)
+    assert item_by_name("ウエス")["price"] == 33.3
+    assert "3行目: 単価は0以上の数で入れてください" in page and item_by_name("軍手") is None
+
+
+def test_stocktake_period_bad_dates(client):
+    page = client.post("/stocktake/period", data={"from": "2026-02-30", "to": "2026-03-01"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "両方入れてください" in page
+    page = client.post("/stocktake/period", data={"from": "2026-10-28", "to": ""},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "両方入れてください" in page
+    # 期間を決めていない時は、警告を出さない
+    add_item(client, name="手袋", stock="5")
+    client.post("/stocktake/start")
+    import sqlite3
+    with sqlite3.connect(stock_app.app.config["DATABASE"]) as db:
+        st_id = db.execute("SELECT id FROM stocktakes").fetchone()[0]
+    res = client.post(f"/api/stocktake/{st_id}/count", json={"code": item_by_name("手袋")["code"], "counted": 5})
+    assert res.get_json()["out_of_period"] is False
