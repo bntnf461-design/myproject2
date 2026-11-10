@@ -32,11 +32,17 @@
     <small class="muted">{{ _("画面をインドネシア語にした時に出る品名です。音声のお知らせもこの名前で読みます。空欄なら日本語の品名を出します。") }}</small>
   </label>
   <label>{{ _("規格") }} <input name="spec" value="{{ item.spec }}" placeholder="{{ _('例: Lサイズ, 50mm×25m') }}"></label>
+  <label>{{ _("フォルダ（分類）") }}
+    <input name="category" value="{{ item.category }}" list="folder-options" maxlength="200" placeholder="{{ _('例: 手袋、清掃/ゴミ袋（なければ空欄）') }}">
+    <datalist id="folder-options">{% for p in folder_list() %}<option value="{{ p }}">{% endfor %}</datalist>
+    <small class="muted">{{ _("品目を入れるフォルダです。一覧から選ぶか、新しい名前を入れると、そのフォルダができます。「清掃/ゴミ袋」のように / で区切ると、フォルダの中のフォルダになります。") }}</small>
+  </label>
   <div class="row">
-    <label>{{ _("分類") }} <input name="category" value="{{ item.category }}" placeholder="{{ _('例: 手袋, テープ') }}"></label>
     {% if use_loc %}<label>{{ _("棚番（任意）") }} <input name="location" value="{{ item.location }}" placeholder="{{ _('例: A-1-2（なければ空欄）') }}"></label>
     {% else %}<input type="hidden" name="location" value="{{ item.location }}">{% endif %}
     <label>{{ _("単位") }} <input name="unit" value="{{ item.unit }}"></label>
+    <label>{{ _("単価（税込）") }} <input name="price" value="{{ (item.price|yen)[1:] if item.price else '' }}" inputmode="decimal" maxlength="14" placeholder="{{ _('例: 1200') }}">
+      <small class="muted">{{ _("1単位あたりの値段（円・税込）。在庫金額・棚卸しの金額に使います。") }}</small></label>
   </div>
   <div class="row">
     {% if is_new %}<label>{{ _("初期在庫") }} <input name="stock" type="number" value="{{ item.stock }}" min="0"></label>{% endif %}

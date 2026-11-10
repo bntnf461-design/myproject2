@@ -1,0 +1,9 @@
+{# 棚卸しの期間の表示 (期間外でも数えられる。警告だけ出す) #}
+{% if period %}
+<div class="period-box {{ 'period-in' if period.in_period else 'period-out' }}" role="status">
+  <span>📅 {{ _("棚卸しの期間") }}: <strong>{{ period_label(period.start, period.end) }}</strong></span>
+  {% if period.state == "before" %}<strong>⚠ {{ _("まだ棚卸しの期間前です。このまま数えることはできます。") }}</strong>
+  {% elif period.state == "after" %}<strong>⚠ {{ _("棚卸しの期間を過ぎています。このまま数えることはできます。") }}</strong>
+  {% else %}<span>{{ _("今日は棚卸しの期間中です") }}</span>{% endif %}
+</div>
+{% endif %}

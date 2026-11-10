@@ -22,7 +22,7 @@ import queue
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from urllib.parse import quote, urlsplit
 
@@ -42,7 +42,7 @@ from i18n import tr
 import report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "2026.10.24-1"  # 画面の右下に表示 (どの版が動いているかの確認用)
+APP_VERSION = "2026.11.10-1"  # 画面の右下に表示 (どの版が動いているかの確認用)
 APP_COPYRIGHT = "© 2026 All rights reserved."  # 著作権表示 (画面の右下に表示)
 USAGE_DAYS = 30  # 平均使用量を計算する期間(日)
 CODE_RE = re.compile(r"^[A-Z0-9\-]{1,32}$")
@@ -140,18 +140,25 @@ CREATE TABLE IF NOT EXISTS stocktake_counts (
     user         TEXT NOT NULL DEFAULT '',
     UNIQUE (stocktake_id, item_id)
 );
+CREATE TABLE IF NOT EXISTS categories (
+    path       TEXT PRIMARY KEY,  -- フォルダ (分類) の場所。「清掃/ゴミ袋」のように / で区切る
+    created_at TEXT NOT NULL
+);
 """
 
 KIND_LABELS = {"OUT": "出庫", "IN": "入庫(補充)", "ADJ": "棚卸調整"}
 
 ITEM_FIELDS = [
     ("code", "コード"), ("name", "品名"), ("reading", "読み方"), ("name_id", "品名（インドネシア語）"), ("spec", "規格"), ("category", "分類"),
-    ("location", "棚番"), ("unit", "単位"), ("stock", "在庫数"),
+    ("location", "棚番"), ("unit", "単位"), ("price", "単価（税込）"), ("stock", "在庫数"),
     ("reorder_point", "発注点"), ("order_qty", "発注数"),
     ("out_qty", "1回にとる数"), ("in_qty", "1回にいれる数"),
     ("supplier", "仕入先"), ("note", "備考"),
 ]
 INT_FIELDS = {"stock", "reorder_point", "order_qty", "out_qty", "in_qty"}
+PRICE_MAX = 99_999_999  # 単価の上限 (円・税込)
+# 取り込む Excel・CSV で、単価の見出しとして受け付ける言い方
+PRICE_ALIASES = ("単価（税込）", "単価(税込)", "単価", "金額", "価格")
 PER_SCAN_FIELDS = {"out_qty", "in_qty"}  # 空欄なら1
 
 # スキャン画面で読み取るコマンド用コード
@@ -217,6 +224,14 @@ def init_db():
             db.execute("ALTER TABLE items ADD COLUMN name_id TEXT NOT NULL DEFAULT ''")
         if "buyer_id" not in cols:  # 発注担当者
             db.execute("ALTER TABLE items ADD COLUMN buyer_id INTEGER")
+        if "price" not in cols:  # 単価 (円・税込)
+            db.execute("ALTER TABLE items ADD COLUMN price REAL NOT NULL DEFAULT 0")
+        st_cols = {r[1] for r in db.execute("PRAGMA table_info(stocktakes)")}
+        for col in ("period_from", "period_to"):  # 棚卸しを始めた時に決めていた期間
+            if col not in st_cols:
+                db.execute(f"ALTER TABLE stocktakes ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+        if "price" not in {r[1] for r in db.execute("PRAGMA table_info(stocktake_counts)")}:  # 数えた時の単価
+            db.execute("ALTER TABLE stocktake_counts ADD COLUMN price REAL")
         if "short" not in {r[1] for r in db.execute("PRAGMA table_info(transactions)")}:
             db.execute("ALTER TABLE transactions ADD COLUMN short INTEGER NOT NULL DEFAULT 0")
         # 以前の版でマイナスになった在庫は、0 に直して履歴に残す (在庫はマイナスにしない)
@@ -292,6 +307,7 @@ def enrich(items, usage):
         if item["stock"] <= 0 and daily > 0:
             item["days_left"] = 0
         item["suggest_qty"] = suggest_qty(item) if item["status"] != "ok" else 0
+        item["value"] = item["stock"] * (item.get("price") or 0)  # 在庫金額 (税込)
         level_base = max(item["reorder_point"] * 2, item["reorder_point"] + item["order_qty"], 1)
         item["level_pct"] = max(0, min(100, round(item["stock"] / level_base * 100)))
         item["reorder_pct"] = max(0, min(100, round(item["reorder_point"] / level_base * 100)))
@@ -320,6 +336,147 @@ def active_items(db, order=None):
 
 def active_count(db):
     return db.execute("SELECT COUNT(*) FROM items WHERE active = 1").fetchone()[0]
+
+
+# ---------------------------------------------------------------- フォルダ (分類)
+# 品目の「分類」を、Windows のフォルダのように入れ子にできる。「清掃/ゴミ袋」は「清掃」フォルダの中の「ゴミ袋」。
+# 品目には分類の文字 (フォルダの場所) をそのまま持たせ、品目の入っていない空のフォルダは categories に残す。
+
+FOLDER_NAME_MAX = 40
+FOLDER_DEPTH_MAX = 6
+# 「\」「¥」(Windows の区切り) や全角の「／」で入れても、同じフォルダの区切りとして扱う
+_FOLDER_SEPS = str.maketrans({"／": "/", "\\": "/", "¥": "/", "￥": "/"})
+
+
+def norm_category(text):
+    """分類 (フォルダの場所) を「清掃/ゴミ袋」の形にそろえる。空の段や前後の空白は除く。"""
+    parts = [p.strip() for p in str(text or "").translate(_FOLDER_SEPS).split("/")]
+    return "/".join(p for p in parts if p)
+
+
+def category_error(path):
+    """フォルダの場所として使えない時の理由 (使える時は空)。"""
+    parts = path.split("/") if path else []
+    if len(parts) > FOLDER_DEPTH_MAX:
+        return tr("フォルダの中のフォルダは{n}段までです", n=FOLDER_DEPTH_MAX)
+    if any(len(p) > FOLDER_NAME_MAX for p in parts):
+        return tr("フォルダの名前は{n}文字までです", n=FOLDER_NAME_MAX)
+    return ""
+
+
+def in_folder(category, path):
+    """品目の分類が、そのフォルダ (中のフォルダも含む) に入っているか。path が空なら全部。"""
+    return not path or category == path or category.startswith(path + "/")
+
+
+def parent_folder(path):
+    return path.rsplit("/", 1)[0] if "/" in path else ""
+
+
+def folder_paths(db):
+    """今あるフォルダ全部 (品目の入っているフォルダ・空のフォルダと、その上のフォルダ)。並びはフォルダの順。"""
+    paths = {r[0] for r in db.execute("SELECT path FROM categories")}
+    paths |= {r[0] for r in db.execute("SELECT DISTINCT category FROM items WHERE active = 1 AND category != ''")}
+    result = set()
+    for p in paths:
+        parts = p.split("/")
+        result.update("/".join(parts[:n]) for n in range(1, len(parts) + 1))
+    return sorted(result, key=lambda p: [x.lower() for x in p.split("/")])
+
+
+def folder_tree(db, items):
+    """フォルダの一覧 (左の木の表示用)。各フォルダの品目数・在庫金額は、中のフォルダの分も足す。"""
+    paths = folder_paths(db)
+    nodes = []
+    for p in paths:
+        inside = [i for i in items if in_folder(i["category"], p)]
+        nodes.append({"path": p, "name": p.rsplit("/", 1)[-1], "depth": p.count("/"), "parent": parent_folder(p),
+                      "count": len(inside), "value": sum(i["value"] for i in inside),
+                      "has_children": any(q.startswith(p + "/") for q in paths)})
+    return nodes
+
+
+def touch_folder(db, path):
+    """フォルダを覚えておく (品目を全部外しても、空のフォルダとして残る)。"""
+    if path:
+        db.execute("INSERT OR IGNORE INTO categories (path, created_at) VALUES (?, ?)", (path, now_str()))
+
+
+def _folder_where(column):
+    """そのフォルダと、中のフォルダに当たる行を選ぶ条件 (LIKE は % や _ を含む名前で誤るので使わない)。"""
+    return f"({column} = ? OR substr({column}, 1, ?) = ?)"
+
+
+def _folder_args(path):
+    return (path, len(path) + 1, path + "/")
+
+
+def move_folder(db, old, new):
+    """フォルダの名前を変える・別のフォルダへ移す (中の品目・フォルダも一緒に)。できない時は理由を返す。"""
+    if not old or not new or old == new:
+        return ""
+    if new.startswith(old + "/"):
+        return tr("フォルダを、自分の中のフォルダへは移せません")
+    if new in folder_paths(db):
+        return tr("「{name}」というフォルダは、すでにあります", name=new)
+    why = category_error(new)
+    if why:
+        return why
+    n = len(old)
+    # 品目 (削除した品目も含めて、履歴の表示がずれないように) の分類と、空のフォルダの場所を付け替える
+    db.execute(f"UPDATE items SET category = ? || substr(category, ?) WHERE {_folder_where('category')}",
+               (new, n + 1, *_folder_args(old)))
+    rows = db.execute(f"SELECT path FROM categories WHERE {_folder_where('path')}", _folder_args(old)).fetchall()
+    db.execute(f"DELETE FROM categories WHERE {_folder_where('path')}", _folder_args(old))
+    for (p,) in rows:
+        touch_folder(db, new + p[n:])
+    touch_folder(db, new)
+    touch_folder(db, parent_folder(old))  # 元の親フォルダが空になっても消えないように
+    db.commit()
+    return ""
+
+
+def delete_folder(db, path):
+    """フォルダを消す。中の品目は消さずに、1つ上のフォルダへ移す。移した品目の数を返す。"""
+    parent = parent_folder(path)
+    cur = db.execute(f"UPDATE items SET category = ? WHERE active = 1 AND {_folder_where('category')}",
+                     (parent, *_folder_args(path)))
+    db.execute(f"DELETE FROM categories WHERE {_folder_where('path')}", _folder_args(path))
+    touch_folder(db, parent)
+    db.commit()
+    return cur.rowcount
+
+
+# ---------------------------------------------------------------- 金額 (税込)
+
+def parse_price(text):
+    """単価の入力 (「1,200」「¥1200」「１２００」「12.5」) を数にする。空なら 0。読めない時は None。"""
+    s = str(text if text is not None else "").strip().translate(
+        str.maketrans("０１２３４５６７８９．，", "0123456789.,"))
+    s = re.sub(r"[\s,¥￥円]", "", s)
+    if s == "":
+        return 0
+    if not re.fullmatch(r"\d{1,9}(\.\d{1,2})?", s):
+        return None
+    value = float(s)
+    return int(value) if value.is_integer() else value
+
+
+def plain_price(value):
+    """単価を、表やファイル用の数にする (12.0 は 12 に)。"""
+    value = value or 0
+    return int(value) if float(value).is_integer() else round(value, 2)
+
+
+@app.template_filter("yen")
+def fmt_yen(value):
+    """金額を「¥1,234」の形にする (1円未満がある時だけ小数2桁)。"""
+    value = round(value or 0, 2)
+    if value < 0:
+        return "-" + fmt_yen(-value)
+    if float(value).is_integer():
+        return f"¥{int(value):,}"
+    return f"¥{value:,.2f}"
 
 
 SHORT_NOTE = "記録上の在庫より多く取ったため0に"
@@ -831,7 +988,7 @@ def inject_globals():
     return {"_": tr, "_h": lambda text, **kw: Markup(tr(text, **kw)), "lang": i18n.current(), "LANGS": i18n.LANGS,
             "js_i18n": i18n.js_dict(), "iname": item_label, "bare_name": bare_name, "license_msg": license_message, "note_keys": ("初期在庫", "CSV取込", "CSV取込(初期在庫)", SHORT_NOTE, NEGATIVE_FIX_NOTE),
             "site_name": site_name(), "has_sites": bool(other_sites()), "use_loc": use_location(),
-            "buyer_list": lambda: active_buyers(get_db()),
+            "buyer_list": lambda: active_buyers(get_db()), "folder_list": lambda: folder_paths(get_db()),
             "KIND_LABELS": KIND_LABELS, "nav": request.endpoint, "app_version": APP_VERSION, "app_copyright": APP_COPYRIGHT,
             "asset": lambda name: url_for("static", filename=name, v=APP_VERSION)}
 
@@ -1316,13 +1473,106 @@ def settings_page():
 def items_list():
     db = get_db()
     q = request.args.get("q", "").strip()
-    rows = active_items(db)
-    items = enrich(rows, usage_by_item(db))
+    folder = norm_category(request.args.get("cat", ""))
+    all_items = enrich(active_items(db), usage_by_item(db))
+    tree = folder_tree(db, all_items)
+    if folder and folder not in {n["path"] for n in tree}:
+        folder = ""  # 消えたフォルダを開こうとした時は、すべての品目を出す
+    items = [i for i in all_items if in_folder(i["category"], folder)]
     if q:
         ql = q.lower()
         items = [i for i in items if any(ql in str(i[k]).lower()
                  for k in ("code", "name", "name_id", "reading", "spec", "category", "location", "supplier"))]
-    return render_template("items.html", items=items, q=q, copies_max=LABEL_COPIES_MAX)
+    # 開いているフォルダのすぐ中のフォルダ (エクスプローラーのように、品目の上に並べる)
+    subfolders = [n for n in tree if n["parent"] == folder] if not q else []
+    crumbs = []
+    if folder:
+        parts = folder.split("/")
+        crumbs = [{"name": parts[n - 1], "path": "/".join(parts[:n])} for n in range(1, len(parts) + 1)]
+    return render_template("items.html", items=items, q=q, copies_max=LABEL_COPIES_MAX, folder=folder, tree=tree,
+                           subfolders=subfolders, crumbs=crumbs, folders=[n["path"] for n in tree],
+                           total_value=sum(i["value"] for i in items), all_count=len(all_items),
+                           all_value=sum(i["value"] for i in all_items),
+                           loose_count=sum(1 for i in all_items if not i["category"]))
+
+
+def back_to_folder(path):
+    return redirect(url_for("items_list", cat=path) if path else url_for("items_list"))
+
+
+@app.post("/folders")
+def folder_action():
+    """フォルダを作る・名前を変える・移す・消す (品目一覧の左のフォルダ)。"""
+    db = get_db()
+    action = request.form.get("action", "")
+    path = norm_category(request.form.get("path", ""))
+    name = norm_category(request.form.get("name", "")).replace("/", "")
+    if action == "new":
+        if not name:
+            flash(tr("フォルダの名前を入れてください"), "error")
+            return back_to_folder(path)
+        new = f"{path}/{name}" if path else name
+        why = category_error(new) or (tr("「{name}」というフォルダは、すでにあります", name=new)
+                                      if new in folder_paths(db) else "")
+        if why:
+            flash(why, "error")
+            return back_to_folder(path)
+        touch_folder(db, new)
+        db.commit()
+        flash(tr("フォルダ「{name}」を作りました", name=new), "ok")
+        return back_to_folder(new)
+    if not path or path not in folder_paths(db):
+        flash(tr("フォルダが見つかりません"), "error")
+        return back_to_folder("")
+    if action in ("rename", "move"):
+        if action == "rename":
+            if not name:
+                flash(tr("フォルダの名前を入れてください"), "error")
+                return back_to_folder(path)
+            parent = parent_folder(path)
+            new = f"{parent}/{name}" if parent else name
+        else:
+            to = norm_category(request.form.get("to", ""))
+            new = f"{to}/{path.rsplit('/', 1)[-1]}" if to else path.rsplit("/", 1)[-1]
+        why = move_folder(db, path, new)
+        if why:
+            flash(why, "error")
+            return back_to_folder(path)
+        flash(tr("フォルダを「{name}」にしました", name=new), "ok")
+        return back_to_folder(new)
+    if action == "delete":
+        moved = delete_folder(db, path)
+        parent = parent_folder(path)
+        msg = tr("フォルダ「{name}」を削除しました", name=path)
+        if moved:
+            msg += tr("（中の品目 {n} 件は「{to}」へ移しました）", n=moved, to=parent or tr("すべての品目"))
+        flash(msg, "ok")
+        return back_to_folder(parent)
+    abort(400)
+
+
+@app.post("/items/move")
+def items_move():
+    """選んだ品目を、フォルダへ移す (チェックして移す・品目をフォルダへドラッグする)。"""
+    db = get_db()
+    to = norm_category(request.form.get("to", ""))
+    back = norm_category(request.form.get("back", ""))
+    why = category_error(to)
+    if why:
+        flash(why, "error")
+        return back_to_folder(back)
+    ids = [i for i in (to_int(v) for v in request.form.getlist("id")) if i]
+    if not ids:
+        flash(tr("移す品目を選んでください"), "error")
+        return back_to_folder(back)
+    marks = ",".join("?" * len(ids))
+    for (old,) in db.execute(f"SELECT DISTINCT category FROM items WHERE id IN ({marks})", ids).fetchall():
+        touch_folder(db, old)  # 品目を全部移しても、元のフォルダは空のまま残す
+    db.executemany("UPDATE items SET category = ? WHERE id = ? AND active = 1", [(to, i) for i in ids])
+    touch_folder(db, to)
+    db.commit()
+    flash(tr("{n} 件の品目を「{to}」へ移しました", n=len(ids), to=to or tr("すべての品目（フォルダなし）")), "ok")
+    return back_to_folder(back)
 
 
 def form_to_item(form):
@@ -1330,7 +1580,13 @@ def form_to_item(form):
     errors = []
     for key, label in ITEM_FIELDS:
         val = form.get(key, "").strip()
-        if key in INT_FIELDS:
+        if key == "price":
+            price = parse_price(val)
+            if price is None or price > PRICE_MAX:
+                errors.append(tr("単価は0以上の数で入れてください（例: 1200、12.5）"))
+                price = 0
+            data[key] = price
+        elif key in INT_FIELDS:
             val = val.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
             try:
                 data[key] = int(val or (1 if key in PER_SCAN_FIELDS else 0))
@@ -1344,6 +1600,10 @@ def form_to_item(form):
         else:
             data[key] = val
     data["code"] = normalize_code(data["code"])
+    data["category"] = norm_category(data["category"])
+    why = category_error(data["category"])
+    if why:
+        errors.append(why)
     if not data["name"]:
         errors.append(tr("品名は必須です"))
     if data["code"] and not CODE_RE.match(data["code"]):
@@ -1378,14 +1638,16 @@ def item_new():
             f"INSERT INTO items ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
             [*data.values(), 0, now_str()],
         )
+        touch_folder(db, data["category"])
         db.commit()
         if initial:
             item = db.execute("SELECT * FROM items WHERE id = ?", (cur.lastrowid,)).fetchone()
             record(db, item, "ADJ", initial, note="初期在庫")
         flash(tr("{name} を登録しました", name=item_label(data)), "ok")
-        return redirect(url_for("items_list"))
+        return back_to_folder(data["category"])
     blank = {k: "" for k, _ in ITEM_FIELDS}
-    blank.update(stock=0, reorder_point=0, order_qty=0, out_qty=1, in_qty=1, unit="個")
+    blank.update(stock=0, reorder_point=0, order_qty=0, out_qty=1, in_qty=1, unit="個", price=0,
+                 category=norm_category(request.args.get("cat", "")))  # 開いていたフォルダに入れる
     return render_template("item_form.html", item=blank, is_new=True, next_code=next_code(db))
 
 
@@ -1418,9 +1680,12 @@ def item_edit(item_id):
             f"UPDATE items SET {', '.join(f'{k} = ?' for k in data)} WHERE id = ?",
             [*data.values(), item_id],
         )
+        # フォルダは、品目を移して空になっても残す (Windows のフォルダと同じ)
+        touch_folder(db, item["category"])
+        touch_folder(db, data["category"])
         db.commit()
         flash(tr("{name} を更新しました", name=item_label(data)), "ok")
-        return redirect(url_for("items_list"))
+        return back_to_folder(data["category"])
     history = db.execute(
         "SELECT * FROM transactions WHERE item_id = ? ORDER BY id DESC LIMIT 30", (item_id,)
     ).fetchall()
@@ -1495,7 +1760,8 @@ def item_receive(item_id):
 def item_delete(item_id):
     db = get_db()
     item = get_item_or_404(item_id)
-    # 履歴を残すため論理削除にする
+    # 履歴を残すため論理削除にする (品目が入っていたフォルダは残す)
+    touch_folder(db, item["category"])
     db.execute("UPDATE items SET active = 0, code = ? WHERE id = ?",
                (f"{item['code']}~DEL{item_id}", item_id))
     db.commit()
@@ -1590,12 +1856,17 @@ def history_csv():
     )
 
 
+def item_row(item):
+    """品目を、CSV・Excel の1行にする (列は ITEM_FIELDS の順)。"""
+    return [plain_price(item[k]) if k == "price" else item[k] for k, _ in ITEM_FIELDS]
+
+
 @app.route("/items.csv")
 def items_csv():
     items = active_items(get_db(), "code")
     return csv_response(
         [label for _, label in ITEM_FIELDS],
-        [[i[k] for k, _ in ITEM_FIELDS] for i in items],
+        [item_row(i) for i in items],
         f"items_{datetime.now():%Y%m%d}.csv",
     )
 
@@ -1605,7 +1876,7 @@ def items_xlsx():
     """今の品目を、品目登録シート (Excel) で出す。直して、そのまま取り込める。"""
     items = active_items(get_db(), "code")
     labels = [label for _, label in ITEM_FIELDS]
-    rows = [[i[k] for k, _ in ITEM_FIELDS] for i in items]
+    rows = [item_row(i) for i in items]
     data = item_sheet.build(labels, rows, use_location=use_location())
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
         "Content-Disposition": f"attachment; filename=items_{datetime.now():%Y%m%d}.xlsx"})
@@ -1654,6 +1925,8 @@ def items_import():
         rows = list(enumerate(csv.DictReader(io.StringIO(text)), start=2))
     label_to_key = {label: key for key, label in ITEM_FIELDS}
     label_to_key.update({key: key for key, _ in ITEM_FIELDS})
+    label_to_key.update({alias: "price" for alias in PRICE_ALIASES})
+    label_to_key.update({"フォルダ": "category", "カテゴリ": "category", "カテゴリー": "category"})
     if not rows or not any(k and str(k).strip() in label_to_key for k in rows[0][1]):
         flash(tr("見出しの行が見つかりません。1行目に「品名」などの見出しを入れてください（Excelのひな形を使うと確実です）"), "error")
         return redirect(url_for("items_list"))
@@ -1688,6 +1961,8 @@ def items_import():
             if cols:
                 db.execute(f"UPDATE items SET {', '.join(f'{k} = ?' for k in cols)} WHERE id = ?",
                            [*(data[k] for k in cols), existing["id"]])
+            touch_folder(db, existing["category"])
+            touch_folder(db, data["category"])
             db.commit()
             if form.get("stock", "").strip() and stock != existing["stock"]:
                 item = db.execute("SELECT * FROM items WHERE id = ?", (existing["id"],)).fetchone()
@@ -1699,6 +1974,7 @@ def items_import():
                 f"INSERT INTO items ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
                 [*data.values(), 0, now_str()],
             )
+            touch_folder(db, data["category"])
             db.commit()
             if stock:
                 item = db.execute("SELECT * FROM items WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -1830,6 +2106,26 @@ def api_worker(code):
 
 # ---------------------------------------------------------------- 棚卸し
 
+def stocktake_period():
+    """棚卸しの期間 (設定で決める)。決めていなければ None。
+
+    期間外でも数えられる (画面に「期間外」と出すだけ)。
+    """
+    start, end = get_setting("stocktake_from") or "", get_setting("stocktake_to") or ""
+    if not start or not end:
+        return None
+    today = datetime.now().date().isoformat()
+    state = "before" if today < start else "after" if today > end else "in"
+    return {"start": start, "end": end, "state": state, "in_period": state == "in"}
+
+
+def period_label(start, end):
+    """「2026/10/28 〜 2026/11/28」の形。"""
+    if not start or not end:
+        return ""
+    return f"{start.replace('-', '/')} 〜 {end.replace('-', '/')}"
+
+
 def open_stocktake(db):
     return db.execute("SELECT * FROM stocktakes WHERE finished_at IS NULL ORDER BY id DESC LIMIT 1").fetchone()
 
@@ -1842,8 +2138,11 @@ def get_stocktake_or_404(st_id):
 
 
 def stocktake_counts(db, st_id):
+    # 単価は数えた時のもの (無い時は今の単価)。金額は「数えた数 × 単価」、ズレの金額は「ズレ × 単価」
     return db.execute(
-        "SELECT c.*, i.code, i.name, i.name_id, i.spec, i.unit, i.location, i.stock FROM stocktake_counts c "
+        "SELECT c.*, i.code, i.name, i.name_id, i.spec, i.unit, i.location, i.stock, i.category, "
+        "COALESCE(c.price, i.price) AS unit_price, c.counted * COALESCE(c.price, i.price) AS value, "
+        "c.diff * COALESCE(c.price, i.price) AS diff_value FROM stocktake_counts c "
         "JOIN items i ON i.id = c.item_id WHERE c.stocktake_id = ? AND i.active = 1 ORDER BY c.ts DESC, c.id DESC",
         (st_id,)).fetchall()
 
@@ -1868,7 +2167,11 @@ def stocktake_summary(db, st):
     diffs = sorted([c for c in counts if c["diff"]], key=lambda c: (-abs(c["diff"]), c["code"]))
     return {"counts": counts, "remaining": remaining, "diffs": diffs,
             "total": len(counts) + len(remaining), "done": len(counts),
-            "missing_qty": sum(-c["diff"] for c in counts if c["diff"] < 0)}
+            "missing_qty": sum(-c["diff"] for c in counts if c["diff"] < 0),
+            "counted_value": sum(c["value"] or 0 for c in counts),
+            "diff_value": sum(c["diff_value"] or 0 for c in counts),
+            "remaining_value": sum(i["stock"] * (i["price"] or 0) for i in remaining),
+            "period": stocktake_period()}
 
 
 def frequently_missed(db, limit=10):
@@ -1890,7 +2193,36 @@ def stocktake_index():
         "FROM stocktakes s LEFT JOIN stocktake_counts c ON c.stocktake_id = s.id "
         "WHERE s.finished_at IS NOT NULL GROUP BY s.id ORDER BY s.id DESC LIMIT 12").fetchall()
     return render_template("stocktake_index.html", current=current, past=past,
-                           missed=frequently_missed(db), total=active_count(db))
+                           missed=frequently_missed(db), total=active_count(db), period=stocktake_period(),
+                           period_label=period_label)
+
+
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.post("/stocktake/period")
+def stocktake_period_save():
+    """棚卸しの期間を決める (例: 10月28日〜11月28日)。「期間を消す」で決めない状態に戻す。"""
+    if request.form.get("action") == "clear":
+        set_setting("stocktake_from", "")
+        set_setting("stocktake_to", "")
+        flash(tr("棚卸しの期間を消しました"), "ok")
+        return redirect(url_for("stocktake_index"))
+    start, end = request.form.get("from", "").strip(), request.form.get("to", "").strip()
+    try:
+        if not (DATE_RE.match(start) and DATE_RE.match(end)):
+            raise ValueError
+        date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError:
+        flash(tr("期間の始まりと終わりの日付を、両方入れてください"), "error")
+        return redirect(url_for("stocktake_index"))
+    if start > end:
+        flash(tr("終わりの日付は、始まりの日付より後にしてください"), "error")
+        return redirect(url_for("stocktake_index"))
+    set_setting("stocktake_from", start)
+    set_setting("stocktake_to", end)
+    flash(tr("棚卸しの期間を {p} にしました", p=period_label(start, end)), "ok")
+    return redirect(url_for("stocktake_index"))
 
 
 @app.post("/stocktake/start")
@@ -1898,10 +2230,15 @@ def stocktake_start():
     db = get_db()
     current = open_stocktake(db)
     if current is None:
-        cur = db.execute("INSERT INTO stocktakes (started_at, user) VALUES (?, ?)",
-                         (now_str(), request.form.get("user", "").strip()[:40]))
+        period = stocktake_period()
+        cur = db.execute("INSERT INTO stocktakes (started_at, user, period_from, period_to) VALUES (?, ?, ?, ?)",
+                         (now_str(), request.form.get("user", "").strip()[:40],
+                          period["start"] if period else "", period["end"] if period else ""))
         db.commit()
         st_id = cur.lastrowid
+        if period and not period["in_period"]:
+            flash(tr("今日は棚卸しの期間（{p}）の外です。このまま数えることはできます。",
+                     p=period_label(period["start"], period["end"])), "warn")
     else:
         st_id = current["id"]
     # ふつうは一覧で手入力。「スキャンで始める」の時だけスキャンの画面へ
@@ -1916,7 +2253,7 @@ def stocktake_page(st_id):
     st = get_stocktake_or_404(st_id)
     summary = stocktake_summary(db, st)
     template = "stocktake_result.html" if st["finished_at"] else "stocktake.html"
-    return render_template(template, st=st, **summary)
+    return render_template(template, st=st, period_label=period_label, **summary)
 
 
 @app.route("/stocktake/<int:st_id>/list")
@@ -1933,8 +2270,10 @@ def stocktake_list(st_id):
     for i in active_items(db):
         c = counts.get(i["id"])
         rows.append({"item": i, "counted": c["counted"] if c else None, "diff": c["diff"] if c else None,
-                     "system": i["stock"] - adjusted.get(i["id"], 0)})
-    return render_template("stocktake_list.html", st=st, rows=rows, done=len(counts), total=len(rows))
+                     "system": i["stock"] - adjusted.get(i["id"], 0),
+                     "price": c["unit_price"] if c else (i["price"] or 0)})
+    return render_template("stocktake_list.html", st=st, rows=rows, done=len(counts), total=len(rows),
+                           period=stocktake_period(), period_label=period_label, folders=folder_paths(db))
 
 
 @app.post("/stocktake/<int:st_id>/finish")
@@ -1953,11 +2292,13 @@ def stocktake_csv(st_id):
     db = get_db()
     st = get_stocktake_or_404(st_id)
     summary = stocktake_summary(db, st)
-    rows = [[c["ts"], c["code"], c["name"], c["spec"], c["counted"] - c["diff"], c["counted"],
-             c["diff"], c["unit"], c["user"]] for c in reversed(summary["counts"])]
-    rows += [["", i["code"], i["name"], i["spec"], i["stock"], "", "未棚卸", i["unit"], ""]
-             for i in summary["remaining"]]
-    return csv_response(["日時", "コード", "品名", "規格", "記録上の数", "数えた数", "ズレ", "単位", "担当者"],
+    rows = [[c["ts"], c["code"], c["name"], c["spec"], c["category"], c["counted"] - c["diff"], c["counted"],
+             c["diff"], c["unit"], plain_price(c["unit_price"]), plain_price(c["value"]), plain_price(c["diff_value"]),
+             c["user"]] for c in reversed(summary["counts"])]
+    rows += [["", i["code"], i["name"], i["spec"], i["category"], i["stock"], "", "未棚卸", i["unit"],
+              plain_price(i["price"]), "", "", ""] for i in summary["remaining"]]
+    return csv_response(["日時", "コード", "品名", "規格", "分類", "記録上の数", "数えた数", "ズレ", "単位",
+                         "単価（税込）", "金額（税込）", "ズレの金額（税込）", "担当者"],
                         rows, f"stocktake_{st['started_at'][:10].replace('-', '')}.csv")
 
 
@@ -2003,17 +2344,18 @@ def api_stocktake_count(st_id):
     record(db, item, "ADJ", 0, user=user, note=note, set_to=counted)
     # ズレ = この棚卸しで行った調整の合計 (数え直し・取り消しがあっても正しくなる)
     diff = stocktake_diff(db, st_id, item["id"])
-    db.execute("INSERT INTO stocktake_counts (stocktake_id, item_id, counted, diff, ts, user) "
-               "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(stocktake_id, item_id) DO UPDATE SET "
-               "counted = excluded.counted, diff = excluded.diff, ts = excluded.ts, user = excluded.user",
-               (st_id, item["id"], counted, diff, now_str(), user))
+    db.execute("INSERT INTO stocktake_counts (stocktake_id, item_id, counted, diff, ts, user, price) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(stocktake_id, item_id) DO UPDATE SET "
+               "counted = excluded.counted, diff = excluded.diff, ts = excluded.ts, user = excluded.user, "
+               "price = excluded.price", (st_id, item["id"], counted, diff, now_str(), user, item["price"] or 0))
     db.commit()
     done = db.execute("SELECT COUNT(*) FROM stocktake_counts c JOIN items i ON i.id = c.item_id "
                       "WHERE c.stocktake_id = ? AND i.active = 1", (st_id,)).fetchone()[0]
     return jsonify(ok=True, item={"code": item["code"], "name": item["name"], "spec": item["spec"],
                                   "unit": item["unit"], "location": loc(item["location"]), "name_id": item["name_id"]},
                    counted=counted, system=counted - diff, diff=diff, recount=bool(prev),
-                   done=done, total=active_count(db))
+                   done=done, total=active_count(db), price=plain_price(item["price"]),
+                   out_of_period=bool((p := stocktake_period()) and not p["in_period"]))
 
 
 # ---------------------------------------------------------------- 月次レポート

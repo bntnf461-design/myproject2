@@ -16,6 +16,7 @@
   </div>
 </div>
 
+{% include "_period.html" %}
 <div class="st-progress card">
   <div class="st-progress-text">{{ _("数えた品目") }} <strong id="st-done">{{ done }}</strong> / <span id="st-total">{{ total }}</span>
     <span class="muted small">{{ _h("（のこり {n}）", n='<span id="st-remaining-count">%d</span>'|format(remaining|length)) }}</span></div>

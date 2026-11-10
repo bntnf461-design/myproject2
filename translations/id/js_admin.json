@@ -44,5 +44,13 @@
   "答え": "Jawaban",
   "コード {p}": "Kode {p}",
   "拠点コード「{p}」が同じ現場があります（{names}）。品目コードが被るので、「設定」→「現場名・ほかの現場」で別の文字にしてください。": "Ada lokasi dengan kode lokasi \"{p}\" yang sama ({names}). Kode barang bisa sama; ganti dengan huruf lain di Pengaturan → Nama lokasi & lokasi lain.",
-  "拠点コードを決めていない現場が複数あります（{names}）。品目コードが被ることがあるので、「設定」→「現場名・ほかの現場」で拠点ごとに別の文字を決めてください。": "Beberapa lokasi belum menentukan kode lokasi ({names}). Kode barang bisa sama; tentukan huruf berbeda per lokasi di Pengaturan → Nama lokasi & lokasi lain."
+  "拠点コードを決めていない現場が複数あります（{names}）。品目コードが被ることがあるので、「設定」→「現場名・ほかの現場」で拠点ごとに別の文字を決めてください。": "Beberapa lokasi belum menentukan kode lokasi ({names}). Kode barang bisa sama; tentukan huruf berbeda per lokasi di Pengaturan → Nama lokasi & lokasi lain.",
+  "「{name}」の中に作るフォルダの名前": "Nama folder baru di dalam \"{name}\"",
+  "新しいフォルダの名前": "Nama folder baru",
+  "新しいフォルダ": "Folder baru",
+  "新しい名前": "Nama baru",
+  "フォルダ「{name}」を削除しますか？\n中の品目 {n} 件は消さずに「{to}」へ移します。": "Hapus folder \"{name}\"?\n{n} barang di dalamnya tidak dihapus, tetapi dipindahkan ke \"{to}\".",
+  "フォルダ「{name}」を削除しますか？": "Hapus folder \"{name}\"?",
+  "すべての品目": "Semua barang",
+  "{n} 件の品目": "{n} barang"
 }

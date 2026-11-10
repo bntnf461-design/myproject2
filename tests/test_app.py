@@ -1082,8 +1082,8 @@ def test_items_excel_import_export(client):
     wb = xlsxwriter.Workbook(buf)
     ws = wb.add_worksheet("品目")
     ws.write_row(0, 0, labels)
-    ws.write_row(1, 0, ["", "ニトリル手袋", "", "", "Mサイズ", "手袋", "A-1-1", "箱", 12, 5, 10.0, 1, 1, "○○商事", ""])
-    ws.write_row(3, 0, ["", "", "", "", "", "", "", "", 3])     # 品名なし (Excel の4行目)
+    ws.write_row(1, 0, ["", "ニトリル手袋", "", "", "Mサイズ", "手袋", "A-1-1", "箱", 850, 12, 5, 10.0, 1, 1, "○○商事", ""])
+    ws.write_row(3, 0, ["", "", "", "", "", "", "", "", "", 3])     # 品名なし (Excel の4行目)
     wb.close()
     page = client.post("/items/import", data={"file": (io.BytesIO(buf.getvalue()), "items.xlsx")},
                        follow_redirects=True).get_data(as_text=True)
@@ -1155,3 +1155,151 @@ def test_site_prefix_codes(client):
     for bad in ("1A", "ABCDE", "CMD", "A-B"):
         r = client.post("/settings", data={"action": "site", "site_name": "", "site_prefix": bad, "site_urls": ""})
         assert r.status_code == 400, bad
+
+
+# ---------------------------------------------------------------- フォルダ・金額・棚卸しの期間
+
+def item_by_name(name):
+    import sqlite3
+    db = sqlite3.connect(stock_app.app.config["DATABASE"])
+    db.row_factory = sqlite3.Row
+    try:
+        return db.execute("SELECT * FROM items WHERE name = ? AND active = 1", (name,)).fetchone()
+    finally:
+        db.close()
+
+
+def test_folder_paths_are_normalized():
+    n = stock_app.norm_category
+    assert n(" 清掃 ／ ゴミ袋 ") == "清掃/ゴミ袋"
+    assert n("清掃\\ゴミ袋") == n("清掃¥ゴミ袋") == "清掃/ゴミ袋"
+    assert n("//清掃//") == "清掃" and n("") == ""
+    assert stock_app.in_folder("清掃/ゴミ袋", "清掃") and not stock_app.in_folder("清掃用品", "清掃")
+
+
+def test_folders_create_rename_move_delete(client):
+    add_item(client, name="ゴミ袋", category="清掃/ゴミ袋", price="165")
+    add_item(client, name="洗剤", category="清掃")
+    add_item(client, name="軍手", category="手袋")
+    page = client.get("/items").get_data(as_text=True)
+    assert "清掃" in page and "ゴミ袋" in page and "手袋" in page
+    # フォルダを開くと、中のフォルダの品目も出る。ほかのフォルダの品目は出ない
+    page = client.get("/items?cat=清掃").get_data(as_text=True)
+    assert "洗剤" in page and "ゴミ袋" in page and "軍手" not in page
+    # 空のフォルダも作れて、残る
+    client.post("/folders", data={"action": "new", "path": "清掃", "name": "モップ"})
+    page = client.get("/items?cat=清掃/モップ").get_data(as_text=True)
+    assert "このフォルダは空です" in page
+    # 同じ名前は作れない
+    page = client.post("/folders", data={"action": "new", "path": "清掃", "name": "モップ"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "すでにあります" in page
+    # 名前を変えると、中のフォルダ・品目も一緒に変わる
+    client.post("/folders", data={"action": "rename", "path": "清掃", "name": "清掃用品"})
+    assert item_by_name("ゴミ袋")["category"] == "清掃用品/ゴミ袋"
+    assert item_by_name("洗剤")["category"] == "清掃用品"
+    page = client.get("/items?cat=清掃用品/モップ").get_data(as_text=True)
+    assert "このフォルダは空です" in page
+    # フォルダを別のフォルダへ移す (自分の中へは移せない)
+    client.post("/folders", data={"action": "move", "path": "清掃用品/ゴミ袋", "to": "手袋"})
+    assert item_by_name("ゴミ袋")["category"] == "手袋/ゴミ袋"
+    page = client.post("/folders", data={"action": "move", "path": "手袋", "to": "手袋/ゴミ袋"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "自分の中のフォルダへは移せません" in page
+    # 削除すると、中の品目は消さずに1つ上へ
+    page = client.post("/folders", data={"action": "delete", "path": "手袋/ゴミ袋"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "1 件は「手袋」へ移しました" in page
+    assert item_by_name("ゴミ袋")["category"] == "手袋"
+    client.post("/folders", data={"action": "delete", "path": "手袋"})
+    assert item_by_name("ゴミ袋")["category"] == "" and item_by_name("軍手")["category"] == ""
+
+
+def test_folder_names_with_like_characters(client):
+    # % や _ を含む名前でも、ほかのフォルダを巻き込まない
+    add_item(client, name="A", category="50%_off")
+    add_item(client, name="B", category="50xxoff")
+    client.post("/folders", data={"action": "rename", "path": "50%_off", "name": "セール"})
+    assert item_by_name("A")["category"] == "セール" and item_by_name("B")["category"] == "50xxoff"
+
+
+def test_move_items_to_folder(client):
+    add_item(client, name="軍手")
+    add_item(client, name="マスク")
+    ids = [str(item_by_name("軍手")["id"]), str(item_by_name("マスク")["id"])]
+    page = client.post("/items/move", data={"id": ids, "to": "衛生/マスク類"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "2 件の品目を「衛生/マスク類」へ移しました" in page
+    assert item_by_name("マスク")["category"] == "衛生/マスク類"
+    # フォルダなしへ戻す。品目を全部移しても、元のフォルダは空のまま残る
+    client.post("/items/move", data={"id": ids, "to": ""})
+    assert item_by_name("軍手")["category"] == ""
+    page = client.get("/items?cat=衛生/マスク類").get_data(as_text=True)
+    assert "このフォルダは空です" in page
+
+
+def test_item_price_tax_included(client):
+    assert stock_app.parse_price("１，２００円") == 1200 and stock_app.parse_price("¥12.5") == 12.5
+    assert stock_app.parse_price("") == 0 and stock_app.parse_price("-5") is None and stock_app.parse_price("1.234") is None
+    page = add_item(client, name="手袋", stock="12", price="abc").get_data(as_text=True)
+    assert "単価は0以上の数で入れてください" in page
+    add_item(client, name="手袋", stock="12", price="880")
+    add_item(client, name="テープ", stock="3", price="12.5")
+    page = client.get("/items").get_data(as_text=True)
+    # 在庫金額 = 在庫 × 単価 (税込)。合計も出る
+    assert "¥10,560" in page and "¥37.50" in page and "¥10,597.50" in page
+    # 編集画面に単価が出る
+    item = item_by_name("手袋")
+    assert 'value="880"' in client.get(f"/items/{item['id']}/edit").get_data(as_text=True)
+
+
+def test_price_in_excel_and_csv(client):
+    import io
+    import item_sheet
+    add_item(client, name="手袋", price="880", category="手袋")
+    rows = item_sheet.read_rows(client.get("/items.xlsx").data)
+    assert rows[0]["単価（税込）"] == "880" and rows[0]["分類"] == "手袋"
+    assert "単価（税込）" in client.get("/items.csv").get_data(as_text=True)
+    # 「単価」という見出しでも取り込める。分類は「清掃/ゴミ袋」でフォルダの中のフォルダになる
+    csv_text = "品名,単価,分類,在庫数\nゴミ袋,165,清掃/ゴミ袋,20\n"
+    client.post("/items/import", data={"file": (io.BytesIO(csv_text.encode()), "x.csv")})
+    item = item_by_name("ゴミ袋")
+    assert item["price"] == 165 and item["category"] == "清掃/ゴミ袋"
+
+
+def test_stocktake_period_warns_but_allows(client):
+    add_item(client, name="手袋", stock="10", price="100")
+    code = item_by_name("手袋")["code"]
+    # 日付が足りない・逆の期間は保存しない
+    page = client.post("/stocktake/period", data={"from": "2026-11-28", "to": "2026-10-28"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "終わりの日付は、始まりの日付より後に" in page
+    # 期間外 (過去) の期間でも、数えられる。警告だけ出る
+    page = client.post("/stocktake/period", data={"from": "2020-10-28", "to": "2020-11-28"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "2020/10/28 〜 2020/11/28" in page and "棚卸しの期間を過ぎています" in page
+    page = client.post("/stocktake/start", data={"user": "山田"}, follow_redirects=True).get_data(as_text=True)
+    assert "の外です。このまま数えることはできます" in page
+    import sqlite3
+    with sqlite3.connect(stock_app.app.config["DATABASE"]) as db:
+        st_id, pfrom = db.execute("SELECT id, period_from FROM stocktakes ORDER BY id DESC").fetchone()
+    assert pfrom == "2020-10-28"  # 始めた時の期間を、棚卸しの記録に残す
+    res = client.post(f"/api/stocktake/{st_id}/count", json={"code": code, "counted": 8}).get_json()
+    assert res["ok"] and res["out_of_period"] is True and res["diff"] == -2
+    client.post(f"/stocktake/{st_id}/finish")
+    page = client.get(f"/stocktake/{st_id}").get_data(as_text=True)
+    # 結果に、数えた金額・ズレの金額・期間が出る
+    assert "¥800" in page and "-¥200" in page and "期間外に始めました" in page
+    csv_text = client.get(f"/stocktake/{st_id}.csv").get_data(as_text=True)
+    assert "ズレの金額（税込）" in csv_text and ",-200," in csv_text
+    # 期間を消すと、警告も出ない
+    client.post("/stocktake/period", data={"action": "clear"})
+    assert "棚卸しの期間を過ぎています" not in client.get("/stocktake").get_data(as_text=True)
+
+
+def test_stocktake_period_in_range(client):
+    from datetime import date, timedelta
+    today = date.today()
+    client.post("/stocktake/period", data={"from": (today - timedelta(days=3)).isoformat(),
+                                           "to": (today + timedelta(days=28)).isoformat()})
+    assert "今日は棚卸しの期間中です" in client.get("/stocktake").get_data(as_text=True)

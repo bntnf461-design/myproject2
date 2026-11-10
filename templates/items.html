@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>{{ _("品目一覧") }}</h1>
   <div class="actions">
-    <a class="btn btn-primary" href="{{ url_for('item_new') }}">＋ {{ _("品目を登録") }}</a>
+    <a class="btn btn-primary" href="{{ url_for('item_new', cat=folder) if folder else url_for('item_new') }}">＋ {{ _("品目を登録") }}</a>
     <a class="btn" href="{{ url_for('receive_page') }}">{{ _("入庫（一覧で入力）") }}</a>
     <a class="btn" href="{{ url_for('items_xlsx') }}">{{ _("Excel出力") }}</a>
     <a class="btn" href="{{ url_for('items_csv') }}">{{ _("CSV出力") }}</a>
@@ -14,6 +14,7 @@
 
 <div class="toolbar">
   <form method="get" class="inline">
+    {% if folder %}<input type="hidden" name="cat" value="{{ folder }}">{% endif %}
     <input type="search" name="q" value="{{ q }}" placeholder="{{ _('品名・コード・棚番で検索') if use_loc else _('品名・コードで検索') }}">
     <button class="btn">{{ _("検索") }}</button>
   </form>
@@ -25,25 +26,87 @@
   </form>
 </div>
 
+<div class="explorer" id="explorer" data-folder="{{ folder }}" data-items-url="{{ url_for('items_list') }}">
+  {# 左: フォルダの木 (Windows のエクスプローラーのように) #}
+  <aside class="folder-pane" aria-label="{{ _('フォルダ') }}">
+    <div class="folder-pane-head">
+      <strong>{{ _("フォルダ") }}</strong>
+      <button type="button" class="btn btn-small" data-folder-cmd="new" data-path="{{ folder }}">＋ {{ _("新しいフォルダ") }}</button>
+    </div>
+    <ul class="folder-tree" id="folder-tree">
+      <li class="folder-li" data-path="">
+        <a class="folder-node folder-root{{ ' active' if not folder }}" href="{{ url_for('items_list') }}" data-path="" data-drop="1">
+          <span class="folder-ico" aria-hidden="true">🗂</span><span class="folder-name">{{ _("すべての品目") }}</span><span class="folder-count">{{ all_count }}</span>
+        </a>
+      </li>
+      {% for n in tree %}
+      <li class="folder-li" data-path="{{ n.path }}" data-parent="{{ n.parent }}" style="--depth: {{ n.depth + 1 }}">
+        {% if n.has_children %}<button type="button" class="folder-toggle" aria-expanded="true" title="{{ _('開く・閉じる') }}">▾</button>{% else %}<span class="folder-toggle-space"></span>{% endif %}
+        <a class="folder-node{{ ' active' if n.path == folder }}" href="{{ url_for('items_list', cat=n.path) }}" data-path="{{ n.path }}"
+           data-count="{{ n.count }}" data-drop="1" draggable="true" title="{{ n.path }}">
+          <span class="folder-ico" aria-hidden="true">{{ '📂' if folder == n.path or folder.startswith(n.path ~ '/') else '📁' }}</span><span class="folder-name">{{ n.name }}</span><span class="folder-count">{{ n.count }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="muted small folder-tip">{{ _("右クリックで、フォルダの作成・名前の変更・削除ができます。品目をフォルダへドラッグすると移せます。") }}</p>
+  </aside>
+
+  {# 右: 開いているフォルダの中身 #}
+  <section class="folder-main">
+    <div class="address-bar">
+      <nav class="crumbs" aria-label="{{ _('今のフォルダ') }}">
+        <a href="{{ url_for('items_list') }}" data-path="" data-drop="1">🗂 {{ _("すべての品目") }}</a>
+        {% for c in crumbs %}<span class="crumb-sep">›</span><a href="{{ url_for('items_list', cat=c.path) }}" data-path="{{ c.path }}" data-drop="1">{{ c.name }}</a>{% endfor %}
+      </nav>
+      {% if folder %}
+      <div class="folder-cmds">
+        <button type="button" class="btn btn-small" data-folder-cmd="rename" data-path="{{ folder }}">{{ _("名前の変更") }}</button>
+        <button type="button" class="btn btn-small btn-danger" data-folder-cmd="delete" data-path="{{ folder }}"
+                data-count="{{ items|length }}">{{ _("フォルダを削除") }}</button>
+      </div>
+      {% endif %}
+    </div>
+    <div class="folder-summary">
+      {% if q %}{{ _("「{q}」の検索結果", q=q) }}・{% endif %}
+      <strong>{{ items|length }}</strong> {{ _("品目") }}・{{ _("在庫金額") }} <strong class="money">{{ total_value|yen }}</strong> <span class="muted small">{{ _("（税込）") }}</span>
+      {% if folder %}<span class="muted small">{{ _("（中のフォルダの品目も含みます）") }}</span>{% endif %}
+    </div>
+
 <form method="get" action="{{ url_for('labels') }}" id="label-form">
+<div class="table-scroll">
 <table class="table items-table">
   <thead>
     <tr>
       <th><input type="checkbox" id="check-all" title="{{ _('すべて選択') }}"></th>
-      <th class="opt">{{ _("コード") }}</th><th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th><th class="opt">{{ _("分類") }}</th>{% if use_loc %}<th class="opt">{{ _("棚番") }}</th>{% endif %}
-      <th class="r">{{ _("在庫") }}</th><th class="r opt">{{ _("発注点") }}</th><th class="r opt" title="{{ _('とる / いれる') }}">{{ _("1回の数") }}</th><th class="r opt">{{ _("30日使用") }}</th><th class="opt">{{ _("状態") }}</th><th class="opt">{{ _("発注担当") }}</th><th></th>
+      <th class="opt">{{ _("コード") }}</th><th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th><th class="opt">{{ _("フォルダ") }}</th>{% if use_loc %}<th class="opt">{{ _("棚番") }}</th>{% endif %}
+      <th class="r">{{ _("在庫") }}</th><th class="r opt">{{ _("単価（税込）") }}</th><th class="r">{{ _("在庫金額") }}</th><th class="r opt">{{ _("発注点") }}</th><th class="r opt" title="{{ _('とる / いれる') }}">{{ _("1回の数") }}</th><th class="r opt">{{ _("30日使用") }}</th><th class="opt">{{ _("状態") }}</th><th class="opt">{{ _("発注担当") }}</th><th></th>
     </tr>
   </thead>
   <tbody>
+  {% for n in subfolders %}
+    <tr class="folder-row" data-path="{{ n.path }}">
+      <td></td>
+      <td colspan="{{ 5 if use_loc else 4 }}">
+        <a class="folder-row-link" href="{{ url_for('items_list', cat=n.path) }}" data-path="{{ n.path }}" data-count="{{ n.count }}" data-drop="1" draggable="true">
+          <span aria-hidden="true">📁</span> <strong>{{ n.name }}</strong></a>
+        <span class="muted small">{{ _("フォルダ・{n} 品目", n=n.count) }}</span>
+      </td>
+      <td></td><td class="opt"></td><td class="r money">{{ n.value|yen }}</td>
+      <td colspan="6" class="row-actions opt"></td>
+    </tr>
+  {% endfor %}
   {% for i in items %}
-    <tr class="row-{{ i.status }}">
+    <tr class="row-{{ i.status }} item-row" data-id="{{ i.id }}" draggable="true">
       <td><input type="checkbox" name="id" value="{{ i.id }}"></td>
       <td class="mono opt">{{ i.code }}</td>
-      <td><a href="{{ url_for('item_edit', item_id=i.id) }}" title="{{ _('押すと編集できます') }}">{{ iname(i) }}</a></td>
+      <td class="item-name-cell"><a href="{{ url_for('item_edit', item_id=i.id) }}" title="{{ _('押すと編集できます') }}">{{ iname(i) }}</a></td>
       <td class="opt">{{ i.spec }}</td>
-      <td class="opt">{{ i.category }}</td>
+      <td class="opt small">{% if i.category %}<a href="{{ url_for('items_list', cat=i.category) }}" class="muted">📁 {{ i.category }}</a>{% endif %}</td>
       {% if use_loc %}<td class="opt">{{ i.location }}</td>{% endif %}
       <td class="r stock-cell">{{ i.stock }}{{ _(i.unit) }}</td>
+      <td class="r opt">{% if i.price %}{{ i.price|yen }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="r money">{% if i.price %}{{ i.value|yen }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="r opt">{{ i.reorder_point }}</td>
       <td class="r opt">{% if i.out_qty != 1 or i.in_qty != 1 %}<span class="per-scan-cell">{{ i.out_qty }} / {{ i.in_qty }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="r opt">{{ i.used_30d }}</td>
@@ -56,10 +119,19 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="13" class="muted">{{ _("品目がありません") }}</td></tr>
+    {% if not subfolders %}<tr><td colspan="15" class="muted">{{ _("このフォルダは空です") if folder else _("品目がありません") }}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
+  {% if items %}
+  <tfoot>
+    <tr class="total-row">
+      <td></td><td colspan="{{ 5 if use_loc else 4 }}"><strong>{{ _("合計") }}</strong> <span class="muted small">{{ _("{n} 品目", n=items|length) }}</span></td>
+      <td></td><td class="opt"></td><td class="r money"><strong>{{ total_value|yen }}</strong></td><td colspan="6" class="opt"></td>
+    </tr>
+  </tfoot>
+  {% endif %}
 </table>
+</div>
 <div class="toolbar">
   <select name="type">
     <option value="both">{{ _("QR + バーコード") }}</option>
@@ -70,6 +142,15 @@
     <input type="number" name="copies" value="1" min="1" max="{{ copies_max }}" inputmode="numeric" class="copies-input">{{ _("枚") }}
   </label>
   <button class="btn" formtarget="_blank">{{ _("選択した品目のラベルを印刷") }}</button>
+  <span class="toolbar-sep"></span>
+  <input type="hidden" name="back" value="{{ folder }}">
+  <label class="inline-label">{{ _("フォルダ") }}
+    <select name="to">
+      <option value="">{{ _("（フォルダなし）") }}</option>
+      {% for p in folders %}<option value="{{ p }}" {{ 'selected' if p == folder }}>{{ p }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="btn" formaction="{{ url_for('items_move') }}" formmethod="post">{{ _("選択した品目をフォルダへ移す") }}</button>
   {% if bl %}
   <span class="toolbar-sep"></span>
   <label class="inline-label">{{ _("発注担当者") }}
@@ -82,6 +163,23 @@
   {% endif %}
 </div>
 </form>
+  </section>
+</div>
+
+{# フォルダの操作と、ドラッグで移す時に送るフォーム #}
+<form id="folder-form" method="post" action="{{ url_for('folder_action') }}" hidden>
+  <input type="hidden" name="action"><input type="hidden" name="path"><input type="hidden" name="name"><input type="hidden" name="to">
+</form>
+<form id="move-form" method="post" action="{{ url_for('items_move') }}" hidden>
+  <input type="hidden" name="to"><input type="hidden" name="back" value="{{ folder }}">
+</form>
+<div class="context-menu" id="folder-menu" role="menu" hidden>
+  <button type="button" role="menuitem" data-menu="open">{{ _("開く") }}</button>
+  <button type="button" role="menuitem" data-menu="new">＋ {{ _("新しいフォルダ") }}</button>
+  <button type="button" role="menuitem" data-menu="rename">{{ _("名前の変更") }}</button>
+  <button type="button" role="menuitem" data-menu="delete" class="danger">{{ _("削除") }}</button>
+</div>
+
 {# 削除ボタン用のフォーム (ラベル印刷のフォームの中には置けないため、外に置く) #}
 {% for i in items %}
 <form id="del-{{ i.id }}" method="post" action="{{ url_for('item_delete', item_id=i.id) }}" hidden
@@ -94,4 +192,5 @@ document.getElementById("check-all").addEventListener("change", (e) => {
   document.querySelectorAll('#label-form input[name="id"]').forEach((c) => { c.checked = e.target.checked; });
 });
 </script>
+<script src="{{ asset('folders.js') }}"></script>
 {% endblock %}

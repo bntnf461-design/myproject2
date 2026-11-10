@@ -17,21 +17,26 @@
   <div class="kpi"><div class="kpi-label">{{ _("数えた品目") }}</div><div class="kpi-value">{{ done }}<small>/ {{ total }}</small></div></div>
   <div class="kpi {{ 'kpi-alert' if diffs else 'kpi-ok' }}"><div class="kpi-label">{{ _("ズレがあった品目") }}</div><div class="kpi-value">{{ diffs|length }}<small>{{ _("品目") }}</small></div></div>
   <div class="kpi"><div class="kpi-label">{{ _("数えていない品目") }}</div><div class="kpi-value">{{ remaining|length }}<small>{{ _("品目") }}</small></div></div>
+  <div class="kpi"><div class="kpi-label">{{ _("数えた品目の金額（税込）") }}</div><div class="kpi-value money">{{ counted_value|yen }}</div></div>
+  <div class="kpi {{ 'kpi-alert' if diff_value < 0 else '' }}"><div class="kpi-label">{{ _("ズレの金額（税込）") }}</div><div class="kpi-value money">{{ ('+' if diff_value > 0 else '') ~ (diff_value|yen) }}</div></div>
 </section>
+{% if st.period_from %}<p class="muted small">{{ _("棚卸しの期間") }}: {{ period_label(st.period_from, st.period_to) }}{% if not (st.period_from <= st.started_at[:10] <= st.period_to) %} <strong class="warn-text">{{ _("（期間外に始めました）") }}</strong>{% endif %}</p>{% endif %}
 
 <h2>{{ _("記録とのズレ一覧") }}</h2>
 <p class="muted small">{{ _("マイナス（−）は「記録より実物が少なかった」＝取った時の読み忘れが考えられます。プラス（＋）は補充の読み忘れなどです。在庫数はすでに数えた数に合わせてあります。") }}</p>
 <table class="table">
-  <thead><tr><th>{{ _("品名") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th class="r">{{ _("記録上の数") }}</th><th class="r">{{ _("数えた数") }}</th><th class="r">{{ _("ズレ") }}</th><th>{{ _("担当者") }}</th></tr></thead>
+  <thead><tr><th>{{ _("品名") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th class="r">{{ _("記録上の数") }}</th><th class="r">{{ _("数えた数") }}</th><th class="r">{{ _("ズレ") }}</th><th class="r">{{ _("単価（税込）") }}</th><th class="r">{{ _("ズレの金額") }}</th><th>{{ _("担当者") }}</th></tr></thead>
   <tbody>
   {% for c in diffs %}
     <tr class="{{ 'row-empty' if c.diff < 0 else 'row-low' }}">
       <td>{{ iname(c) }} <span class="muted small">{{ c.spec }}</span></td>{% if use_loc %}<td>{{ c.location }}</td>{% endif %}
       <td class="r">{{ c.counted - c.diff }}{{ _(c.unit) }}</td><td class="r">{{ c.counted }}{{ _(c.unit) }}</td>
-      <td class="r stock-cell"><strong>{{ '%+d'|format(c.diff) }}</strong></td><td>{{ c.user }}</td>
+      <td class="r stock-cell"><strong>{{ '%+d'|format(c.diff) }}</strong></td>
+      <td class="r">{% if c.unit_price %}{{ c.unit_price|yen }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="r money">{% if c.unit_price %}{{ ('+' if c.diff_value > 0 else '') ~ (c.diff_value|yen) }}{% endif %}</td><td>{{ c.user }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6"><span class="empty-ok">{{ _("ズレはありませんでした") }}</span></td></tr>
+    <tr><td colspan="8"><span class="empty-ok">{{ _("ズレはありませんでした") }}</span></td></tr>
   {% endfor %}
   </tbody>
 </table>

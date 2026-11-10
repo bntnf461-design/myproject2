@@ -733,3 +733,55 @@ h2 .step-num { display: inline-grid; vertical-align: middle; width: 1.8rem; heig
 .site-setup .code-now { display: block; margin-top: .2rem; }
 .recode-box { margin-top: 1rem; padding: .8rem 1rem; border-radius: var(--radius-sm); background: var(--low-soft, #FEF3C7); }
 .recode-box p { margin: 0 0 .5rem; }
+
+/* ---- 品目のフォルダ (Windows のエクスプローラーのように、左にフォルダ・右に中身) */
+.flash-warn { background: var(--low-soft); color: var(--low-text); }
+.explorer { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 1rem; align-items: start; }
+.folder-pane { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .7rem .5rem; box-shadow: var(--shadow); position: sticky; top: .6rem; max-height: calc(100vh - 1.2rem); overflow: auto; }
+.folder-pane-head { display: flex; justify-content: space-between; align-items: center; gap: .4rem; padding: 0 .3rem .5rem; border-bottom: 1px solid var(--line); margin-bottom: .4rem; }
+.folder-tree { list-style: none; margin: 0; padding: 0; }
+.folder-li { display: flex; align-items: center; padding-left: calc(var(--depth, 0) * 14px); }
+.folder-li[hidden] { display: none; }
+.folder-toggle, .folder-toggle-space { flex: 0 0 1.4rem; width: 1.4rem; height: 1.6rem; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: .85rem; padding: 0; }
+.folder-node { flex: 1; min-width: 0; display: flex; align-items: center; gap: .35rem; padding: .28rem .45rem; border-radius: 10px; color: var(--text); text-decoration: none; border: 2px solid transparent; }
+.folder-root { margin-left: 1.4rem; }
+.folder-node:hover { background: var(--surface-2); color: var(--text); }
+.folder-node.active { background: var(--accent-soft); color: var(--accent-dark); font-weight: 900; }
+.folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-count { font-size: .78rem; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 0 .45rem; }
+.folder-tip { margin: .7rem .3rem 0; }
+.address-bar { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .45rem .8rem; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.crumbs a { text-decoration: none; padding: .1rem .35rem; border-radius: 8px; border: 2px solid transparent; }
+.crumbs a:last-child { font-weight: 900; color: var(--text); }
+.crumb-sep { color: var(--muted); }
+.folder-cmds { display: flex; gap: .4rem; }
+.folder-summary { margin: .6rem .2rem; }
+.money { font-variant-numeric: tabular-nums; }
+.folder-row td { background: var(--surface-2); }
+.folder-row-link { text-decoration: none; color: var(--text); padding: .1rem .3rem; border-radius: 8px; border: 2px solid transparent; }
+.total-row td { border-top: 2px solid var(--line); background: var(--surface-2); }
+.item-row[draggable] { cursor: grab; }
+.explorer.dragging [data-drop="1"] { border-style: dashed; border-color: var(--line); }
+.drop-here, .explorer.dragging .drop-here { background: var(--in-soft) !important; border-color: var(--in) !important; border-style: solid !important; }
+.context-menu { position: fixed; z-index: 50; min-width: 180px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(60, 40, 20, .18); padding: .3rem; display: flex; flex-direction: column; }
+.context-menu[hidden] { display: none; }
+.context-menu button { text-align: left; border: 0; background: none; padding: .5rem .8rem; border-radius: 8px; font: inherit; cursor: pointer; color: var(--text); }
+.context-menu button:hover, .context-menu button:focus { background: var(--accent-soft); outline: none; }
+.context-menu button.danger { color: var(--empty-text); }
+.context-menu button[hidden] { display: none; }
+@media (max-width: 900px) {
+  .explorer { grid-template-columns: minmax(0, 1fr); }
+  .folder-pane { position: static; max-height: 40vh; }
+}
+/* 棚卸しの期間 */
+.period-box { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; padding: .6rem .9rem; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); margin: .8rem 0; }
+.period-box.period-out { background: var(--low-soft); border-color: var(--low-track); color: var(--low-text); }
+.period-box.period-in { background: var(--ok-soft); border-color: #BBF7D0; color: var(--ok); }
+.period-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
+.period-form label { display: flex; flex-direction: column; font-size: .85rem; }
+@media print { .folder-pane, .address-bar .folder-cmds, .context-menu { display: none !important; } .explorer { display: block; } }
+.folder-main { min-width: 0; }
+.folder-main .table-scroll { overflow-x: auto; border-radius: var(--radius-sm); }
+.items-table th, .items-table td { white-space: nowrap; }
+.items-table td.item-name-cell { white-space: normal; min-width: 9em; }

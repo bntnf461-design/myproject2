@@ -24,6 +24,25 @@
     span.textContent = diff ? (diff > 0 ? "+" : "") + diff : "✓";
     cell.appendChild(span);
   }
+  // 金額 (数えた数 × 単価・税込)。単価の無い品目は出さない
+  function yen(v) {
+    const r = Math.round(v * 100) / 100;
+    return "¥" + r.toLocaleString("ja-JP", { minimumFractionDigits: Number.isInteger(r) ? 0 : 2, maximumFractionDigits: 2 });
+  }
+  function setValue(row, counted) {
+    const price = parseFloat(row.dataset.price || "0");
+    row.querySelector(".stl-value").textContent = price ? yen(counted * price) : "";
+  }
+  function updateTotal() {
+    const el = document.getElementById("stl-value");
+    if (!el) return;
+    let sum = 0;
+    rows.forEach((r) => {
+      const v = r.querySelector(".stl-input").dataset.saved;
+      if (v !== undefined && v !== "") sum += parseInt(v, 10) * parseFloat(r.dataset.price || "0");
+    });
+    el.textContent = yen(sum);
+  }
   function setProgress(done, total) {
     document.getElementById("stl-done").textContent = done;
     document.getElementById("stl-total").textContent = total;
@@ -61,6 +80,8 @@
       row.classList.remove("stl-error");
       row.classList.add("stl-done");
       setDiff(row, data.diff);
+      setValue(row, parseInt(v, 10));
+      updateTotal();
       setProgress(data.done, data.total);
       return true;
     } catch (e) {
@@ -92,14 +113,20 @@
   // 絞り込み
   const filter = document.getElementById("stl-filter");
   const onlyTodo = document.getElementById("stl-only-todo");
+  const folder = document.getElementById("stl-folder");  // フォルダ (中のフォルダも含む) で絞り込む
   function applyFilter() {
     const q = filter.value.trim().toLowerCase();
+    const f = folder ? folder.value : "";
     rows.forEach((r) => {
-      r.hidden = (q && !r.dataset.search.includes(q)) || (onlyTodo.checked && r.classList.contains("stl-done"));
+      const cat = r.dataset.cat || "";
+      r.hidden = (q && !r.dataset.search.includes(q)) || (onlyTodo.checked && r.classList.contains("stl-done")) ||
+        (f && cat !== f && !cat.startsWith(f + "/"));
     });
   }
   filter.addEventListener("input", applyFilter);
   onlyTodo.addEventListener("change", applyFilter);
+  if (folder) folder.addEventListener("change", applyFilter);
+  updateTotal();
 
   const first = visibleInputs().find((i) => i.value === "") || visibleInputs()[0];
   if (first && window.matchMedia("(min-width: 700px)").matches) first.focus();

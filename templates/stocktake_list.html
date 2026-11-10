@@ -15,6 +15,7 @@
   </div>
 </div>
 
+{% include "_period.html" %}
 <div class="st-progress card">
   <div class="st-progress-text">{{ _("数えた品目") }} <strong id="stl-done">{{ done }}</strong> / <span id="stl-total">{{ total }}</span></div>
   <div class="remain-track"><div class="remain-fill st-fill" id="stl-fill" style="width: {{ (done / (total or 1) * 100)|round(1) }}%"></div></div>
@@ -24,7 +25,16 @@
 
 <div class="toolbar">
   <input type="search" id="stl-filter" placeholder="{{ _('品名・コード・棚番で絞り込み') if use_loc else _('品名・コードで絞り込み') }}">
+  {% if folders %}
+  <label class="inline-label">{{ _("フォルダ") }}
+    <select id="stl-folder">
+      <option value="">{{ _("すべて") }}</option>
+      {% for p in folders %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
   <label class="inline-label"><input type="checkbox" id="stl-only-todo"> {{ _("まだ数えていない品目だけ") }}</label>
+  <span class="stl-total-value">{{ _("数えた金額") }}: <strong class="money" id="stl-value">¥0</strong> <span class="muted small">{{ _("（税込）") }}</span></span>
 </div>
 
 <table class="table stl-table" id="stl-table" data-id="{{ st.id }}">
@@ -32,11 +42,12 @@
     <tr>
       {% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th>
       <th class="r">{{ _("今の在庫") }}</th><th class="r">{{ _("数えた数") }}</th><th class="r">{{ _("ズレ") }}</th>
+      <th class="r opt">{{ _("単価（税込）") }}</th><th class="r">{{ _("金額") }}</th>
     </tr>
   </thead>
   <tbody>
   {% for r in rows %}
-    <tr data-code="{{ r.item.code }}" data-system="{{ r.system }}"
+    <tr data-code="{{ r.item.code }}" data-system="{{ r.system }}" data-price="{{ r.price or 0 }}" data-cat="{{ r.item.category }}"
         data-search="{{ (r.item.code ~ ' ' ~ r.item.name ~ ' ' ~ r.item.name_id ~ ' ' ~ r.item.location ~ ' ' ~ r.item.spec)|lower }}"
         class="{{ 'stl-done' if r.counted is not none }}">
       {% if use_loc %}<td class="mono">{{ r.item.location }}</td>{% endif %}
@@ -46,9 +57,11 @@
       <td class="r"><input class="stl-input" type="text" inputmode="numeric" autocomplete="off" maxlength="6"
                            value="{{ r.counted if r.counted is not none else '' }}" aria-label="{{ _('数えた数') }}: {{ iname(r.item) }}"></td>
       <td class="r stl-diff">{% if r.diff is not none %}{% if r.diff %}<span class="stl-diff-ng">{{ '%+d'|format(r.diff) }}</span>{% else %}<span class="stl-diff-ok">✓</span>{% endif %}{% endif %}</td>
+      <td class="r opt">{% if r.price %}{{ r.price|yen }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="r money stl-value">{% if r.counted is not none and r.price %}{{ (r.counted * r.price)|yen }}{% endif %}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="muted">{{ _("品目がありません") }}</td></tr>
+    <tr><td colspan="8" class="muted">{{ _("品目がありません") }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

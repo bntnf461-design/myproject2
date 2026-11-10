@@ -6,7 +6,20 @@
 </div>
 <p class="muted">{{ _h("棚のラベルを読んで、<strong>実際に数えた数</strong>を入れるだけで、在庫を実物に合わせます。終わると「記録とのズレ一覧」が出ます。") }}</p>
 
-<div class="grid-2">
+{% include "_period.html" %}
+<section class="card">
+  <h2>{{ _("棚卸しの期間") }}</h2>
+  <p class="muted small">{{ _("棚卸しをする期間を決めておくと、期間の外で数える時に「期間外です」と知らせます（期間外でも数えることはできます）。") }}</p>
+  <form method="post" action="{{ url_for('stocktake_period_save') }}" class="period-form">
+    <label>{{ _("始まり") }} <input type="date" name="from" value="{{ period.start if period else '' }}" required></label>
+    <span aria-hidden="true">〜</span>
+    <label>{{ _("終わり") }} <input type="date" name="to" value="{{ period.end if period else '' }}" required></label>
+    <button class="btn btn-primary">{{ _("期間を保存") }}</button>
+    {% if period %}<button class="btn btn-ghost" name="action" value="clear" formnovalidate>{{ _("期間を消す") }}</button>{% endif %}
+  </form>
+</section>
+
+<div class="grid-2 mt">
   <section class="card">
     {% if current %}
       <h2>{{ _("棚卸しの途中です") }}</h2>
@@ -49,16 +62,17 @@
 
 <h2>{{ _("これまでの棚卸し") }}</h2>
 <table class="table">
-  <thead><tr><th>{{ _("始めた日時") }}</th><th>{{ _("終わった日時") }}</th><th>{{ _("担当者") }}</th><th class="r">{{ _("数えた品目") }}</th><th class="r">{{ _("ズレがあった品目") }}</th><th></th></tr></thead>
+  <thead><tr><th>{{ _("始めた日時") }}</th><th>{{ _("終わった日時") }}</th><th class="opt">{{ _("棚卸しの期間") }}</th><th>{{ _("担当者") }}</th><th class="r">{{ _("数えた品目") }}</th><th class="r">{{ _("ズレがあった品目") }}</th><th></th></tr></thead>
   <tbody>
   {% for p in past %}
     <tr>
-      <td>{{ p.started_at[:16] }}</td><td>{{ p.finished_at[:16] }}</td><td>{{ p.user }}</td>
+      <td>{{ p.started_at[:16] }}</td><td>{{ p.finished_at[:16] }}</td>
+      <td class="opt small">{{ period_label(p.period_from, p.period_to) or "—" }}{% if p.period_from and not (p.period_from <= p.started_at[:10] <= p.period_to) %} <span class="warn-text">{{ _("（期間外）") }}</span>{% endif %}</td><td>{{ p.user }}</td>
       <td class="r">{{ p.n }}</td><td class="r">{% if p.n_diff %}<strong class="warn-text">{{ p.n_diff }}</strong>{% else %}0{% endif %}</td>
       <td class="r"><a class="btn btn-small" href="{{ url_for('stocktake_page', st_id=p.id) }}">{{ _("結果") }}</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="muted">{{ _("まだありません") }}</td></tr>
+    <tr><td colspan="7" class="muted">{{ _("まだありません") }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

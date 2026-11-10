@@ -23,9 +23,10 @@ HELP = {
     "読み方": "音声が読み間違える時だけ、ひらがなで（例: ようじょうテープ）。",
     "品名（インドネシア語）": "インドネシア語の画面で出す品名（なくても可）。",
     "規格": "サイズ・色・入数など（例: Lサイズ 100枚）。",
-    "分類": "手袋・テープ・清掃 など、まとめ方は自由。",
+    "分類": "品目を入れるフォルダ。手袋・テープ・清掃 など、まとめ方は自由。「清掃/ゴミ袋」のように / で区切ると、フォルダの中のフォルダになります。",
     "棚番": "棚の場所（例: A-1-2）。棚番を使わない時は空欄。",
     "単位": "個・箱・袋・本・巻 など。空欄なら「個」。",
+    "単価（税込）": "1単位あたりの値段（円・税込）。在庫金額や棚卸しの金額に使います。空欄なら0。1円未満は小数2桁まで（例: 12.5）。",
     "在庫数": "今の在庫（実際に数えた数）。0以上の整数。",
     "発注点": "この数以下になったら「補充してください」と知らせる。",
     "発注数": "1回に注文する数（発注の目安と、届いた時の確認に使う）。",
@@ -36,12 +37,14 @@ HELP = {
 }
 INT_COLS = {"在庫数", "発注点", "発注数", "1回にとる数", "1回にいれる数"}
 PER_SCAN_COLS = {"1回にとる数", "1回にいれる数"}
+PRICE_COLS = {"単価（税込）"}
 UNITS = ["個", "箱", "袋", "本", "巻", "枚", "双", "組", "缶", "kg", "L", "m"]
 
 EXAMPLES = [
-    ["", "ニトリル手袋", "", "", "Mサイズ 100枚", "手袋", "A-1-1", "箱", 12, 5, 10, 1, 1, "○○商事", ""],
-    ["", "養生テープ", "ようじょうテープ", "Selotip masking", "緑 50mm×25m", "テープ", "A-2-1", "巻", 30, 10, 30, 1, 1, "△△資材", ""],
-    ["", "軍手", "", "Sarung tangan kerja", "フリー 12双", "手袋", "A-1-3", "袋", 9, 3, 10, 1, 1, "○○商事", "1袋=12双"],
+    ["", "ニトリル手袋", "", "", "Mサイズ 100枚", "手袋", "A-1-1", "箱", 880, 12, 5, 10, 1, 1, "○○商事", ""],
+    ["", "養生テープ", "ようじょうテープ", "Selotip masking", "緑 50mm×25m", "テープ", "A-2-1", "巻", 198, 30, 10, 30, 1, 1, "△△資材", ""],
+    ["", "軍手", "", "Sarung tangan kerja", "フリー 12双", "手袋", "A-1-3", "袋", 550, 9, 3, 10, 1, 1, "○○商事", "1袋=12双"],
+    ["", "ゴミ袋 45L", "", "", "半透明 10枚", "清掃/ゴミ袋", "B-2-1", "袋", 165, 20, 5, 20, 1, 1, "△△資材", "フォルダの中のフォルダの例"],
 ]
 
 
@@ -58,11 +61,15 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
                           "align": "center", "valign": "vcenter", "text_wrap": True})
     text = wb.add_format({"num_format": "@", "border": 1, "border_color": "#E7DED3"})
     num = wb.add_format({"num_format": "0", "border": 1, "border_color": "#E7DED3"})
+    # 単価: 入力する欄は「標準」(12.5 も そのまま見える)、書き出す数は整数なら 1,200、小数なら 12.50
+    money_col = wb.add_format({"border": 1, "border_color": "#E7DED3"})
+    money = wb.add_format({"num_format": "#,##0", "border": 1, "border_color": "#E7DED3"})
+    money2 = wb.add_format({"num_format": "#,##0.00", "border": 1, "border_color": "#E7DED3"})
     note = wb.add_format({"text_wrap": True, "valign": "top"})
     big = wb.add_format({"bold": True, "font_size": 14})
     bold = wb.add_format({"bold": True, "text_wrap": True, "valign": "top"})
     widths = {"コード": 10, "品名": 22, "読み方": 16, "品名（インドネシア語）": 20, "規格": 18, "分類": 10, "棚番": 9,
-              "単位": 7, "仕入先": 14, "備考": 18}
+              "単位": 7, "単価（税込）": 11, "仕入先": 14, "備考": 18}
 
     def sheet(name, data, protect_examples=False):
         ws = wb.add_worksheet(name)
@@ -70,7 +77,8 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
         ws.set_row(0, 34)
         for c, label in enumerate(labels):
             ws.write_string(0, c, label, need if label == "品名" else head)
-            ws.set_column(c, c, widths.get(label, 9), text if label not in INT_COLS else num)
+            ws.set_column(c, c, widths.get(label, 9),
+                          num if label in INT_COLS else money_col if label in PRICE_COLS else text)
             if label in HELP:
                 ws.write_comment(0, c, HELP[label], {"x_scale": 2, "y_scale": 1.2})
         for r, values in enumerate(data, start=1):
@@ -79,6 +87,8 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
                     continue
                 if label in INT_COLS and isinstance(v, int):
                     ws.write_number(r, c, v, num)
+                elif label in PRICE_COLS and isinstance(v, (int, float)):
+                    ws.write_number(r, c, v, money if float(v).is_integer() else money2)
                 else:
                     ws.write_string(r, c, str(v), text)
         last = max(ROWS_BLANK, len(data) + 50)
@@ -90,6 +100,9 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
             elif label in INT_COLS:
                 ws.data_validation(1, c, last, c, {"validate": "integer", "criteria": ">=", "value": 0, "ignore_blank": True,
                                                    "error_title": label, "error_message": "0以上の整数を入れてください"})
+            elif label in PRICE_COLS:
+                ws.data_validation(1, c, last, c, {"validate": "decimal", "criteria": ">=", "value": 0, "ignore_blank": True,
+                                                   "error_title": label, "error_message": "0以上の数を入れてください（円・税込）"})
             elif label == "単位":
                 ws.data_validation(1, c, last, c, {"validate": "list", "source": UNITS, "ignore_blank": True,
                                                    "error_type": "information", "error_title": "単位",
