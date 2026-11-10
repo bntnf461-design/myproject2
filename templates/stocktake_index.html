@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ _("棚卸し") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("棚卸し") }}</h1>
+</div>
+<p class="muted">{{ _h("棚のラベルを読んで、<strong>実際に数えた数</strong>を入れるだけで、在庫を実物に合わせます。終わると「記録とのズレ一覧」が出ます。") }}</p>
+
+<div class="grid-2">
+  <section class="card">
+    {% if current %}
+      <h2>{{ _("棚卸しの途中です") }}</h2>
+      <p>{{ _("{t} に始めた棚卸しが終わっていません。続きから数えられます。", t=current.started_at[:16]) }}</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="{{ url_for('stocktake_list', st_id=current.id) }}">{{ _("続きを数える") }}</a>
+        <a class="btn" href="{{ url_for('stocktake_page', st_id=current.id) }}">{{ _("スキャンで数える") }}</a>
+      </div>
+    {% else %}
+      <h2>{{ _("棚卸しを始める") }}</h2>
+      <p>{{ _("登録している品目 {n} 品目を数えます。途中でやめても、あとから続きを数えられます。", n=total) }}</p>
+      <form method="post" action="{{ url_for('stocktake_start') }}" class="form">
+        <label>{{ _("担当者（任意）") }} <input name="user" maxlength="40"></label>
+        <div class="actions">
+          <button class="btn btn-primary" name="mode" value="list">{{ _("棚卸しを始める") }}</button>
+          <button class="btn" name="mode" value="scan">{{ _("スキャンで始める") }}</button>
+        </div>
+        <p class="muted small">{{ _("品目の一覧に、今の在庫と並べて数えた数を打ち込みます（Enter で次の品目へ）。ラベルを読んで1品目ずつ数えたい時は「スキャンで始める」。") }}</p>
+      </form>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>{{ _("読み忘れが多い品目") }}</h2>
+    <p class="muted small">{{ _("これまでの棚卸しで「記録より実物が少なかった」品目です。取る時にラベルを読み忘れている可能性があります。棚のラベルを目立つ所に貼り直すなどの対策に使ってください。") }}</p>
+    {% if missed %}
+    <table class="table">
+      <thead><tr><th>{{ _("品名") }}</th><th class="r">{{ _("回数") }}</th><th class="r">{{ _("足りなかった数") }}</th></tr></thead>
+      <tbody>
+      {% for m in missed %}
+        <tr><td>{{ iname(m) }} <span class="muted small">{{ m.spec }}</span></td><td class="r">{{ _("{n}回", n=m.times) }}</td><td class="r">{{ m.qty }}{{ _(m.unit) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="empty-ok">{{ _("まだありません") }}</p>
+    {% endif %}
+  </section>
+</div>
+
+<h2>{{ _("これまでの棚卸し") }}</h2>
+<table class="table">
+  <thead><tr><th>{{ _("始めた日時") }}</th><th>{{ _("終わった日時") }}</th><th>{{ _("担当者") }}</th><th class="r">{{ _("数えた品目") }}</th><th class="r">{{ _("ズレがあった品目") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for p in past %}
+    <tr>
+      <td>{{ p.started_at[:16] }}</td><td>{{ p.finished_at[:16] }}</td><td>{{ p.user }}</td>
+      <td class="r">{{ p.n }}</td><td class="r">{% if p.n_diff %}<strong class="warn-text">{{ p.n_diff }}</strong>{% else %}0{% endif %}</td>
+      <td class="r"><a class="btn btn-small" href="{{ url_for('stocktake_page', st_id=p.id) }}">{{ _("結果") }}</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">{{ _("まだありません") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

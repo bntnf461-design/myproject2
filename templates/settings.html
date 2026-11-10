@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}{{ _("設定") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("設定") }}</h1>
+  <div class="actions">
+    <a class="pill-btn" href="#site">{{ _("現場名") }}</a>
+    <a class="pill-btn" href="{{ url_for('buyers_page') }}">{{ _("発注担当者・通知") }}</a>
+    <a class="pill-btn" href="#qty">{{ _("数量ボタン") }}</a>
+    <a class="pill-btn" href="#check">{{ _("入力ミスの確認") }}</a>
+    <a class="pill-btn" href="#backup">{{ _("自動バックアップ") }}</a>
+    <a class="pill-btn" href="#connect">{{ _("ほかのPCからつなぐ") }}</a>
+    <a class="pill-btn" href="#autostart">{{ _("自動起動") }}</a>
+    <a class="pill-btn" href="{{ url_for('license_page') }}">{{ _("ライセンス") }}</a>
+    <a class="pill-btn" href="{{ url_for('workers') }}">{{ _("担当者カード") }}</a>
+  </div>
+</div>
+
+<h2 id="site">{{ _("現場名・ほかの現場") }}</h2>
+<section class="card site-setup">
+  <p class="muted">{{ _("複数の現場で使う時の設定です。1つの現場だけで使う時は、①の名前だけ入れれば十分です。") }}</p>
+  <form method="post" class="form" id="site-form">
+    <input type="hidden" name="action" value="site">
+    <div class="setup-step">
+      <span class="step-num">1</span>
+      <label>{{ _("この現場の名前") }}
+        <input name="site_name" value="{{ site_name_value }}" maxlength="{{ site_name_max }}" placeholder="{{ _('例: 第1工場 組立ライン') }}">
+        <small class="muted">{{ _("画面の上・ブラウザのタブ・月次レポートに出ます。") }}</small>
+      </label>
+    </div>
+    <div class="setup-step">
+      <span class="step-num">1b</span>
+      <label>{{ _("拠点コード（品目コードの頭の文字）") }}
+        <input name="site_prefix" value="{{ site_prefix_value }}" maxlength="4" class="mono prefix-input" autocomplete="off"
+               pattern="[A-Za-zＡ-Ｚａ-ｚ][A-Za-z0-9Ａ-Ｚａ-ｚ０-９]{0,3}" placeholder="{{ _('例: A') }}">
+        <small class="muted">{{ _h("拠点（課・現場）ごとに<strong>ちがう文字</strong>を決めると、新しく登録する品目のコードがその文字で始まり（例: A課は <span class=\"mono\">A0001</span>、B課は <span class=\"mono\">B0001</span>）、コードが被りません。ほかの拠点のラベルを読んだ時も「ほかの拠点のラベルのようです」と出るので、取り違えに気づけます。英字で始まる半角英数字1〜4文字。1つの拠点だけで使う時は空欄でかまいません（<span class=\"mono\">SZ0001</span> のまま）。") }}</small>
+        <small class="muted code-now">{{ _("今のコードの付き方:") }} <strong class="mono">{{ code_head }}0001</strong></small>
+      </label>
+    </div>
+    <div class="setup-step">
+      <span class="step-num">2</span>
+      <div class="setup-body">
+        <div class="setup-title">{{ _("ほかの現場を登録する") }}</div>
+        <p class="muted small">{{ _("ボタンを押すと、社内のネットワークにあるほかの現場の備品・副資材管理アプリを探します（数秒かかります）。見つかった現場にチェックを入れて登録します。") }}</p>
+        <button type="button" class="btn" id="site-scan">🔍 {{ _("ほかの現場を探す") }}</button>
+        <div id="site-scan-result" class="site-scan-result" hidden></div>
+        <div class="site-registered">
+          <div class="muted small">{{ _("登録している現場") }}</div>
+          {% set regs = site_urls_saved %}
+          {% if regs %}<ul class="site-chips">{% for u in regs %}<li class="mono">{{ u }}</li>{% endfor %}</ul>
+          {% else %}<div class="muted small">{{ _("（まだありません）") }}</div>{% endif %}
+        </div>
+        <details class="mt"{% if site_error %} open{% endif %}>
+          <summary class="small">{{ _("見つからない時・登録を消す時（アドレスを直接入力）") }}</summary>
+          <textarea name="site_urls" id="site-urls" rows="4" placeholder="192.168.1.21&#10;192.168.2.30">{{ site_urls_value }}</textarea>
+          <small class="muted">{{ _("1行に1つ。ほかの現場のPCの「設定」→「ほかのPCからつなぐ」に出るアドレスを入れます（「192.168.1.21」だけでも可）。消したい行を消して保存すると、登録が消えます。") }}<br>
+          {{ _("別のネットワークにある現場は、探しても見つかりません。その現場のアドレスをここに入れてください。") }}</small>
+          <div class="addr-help">
+            <strong>{{ _("アドレスの調べ方（その現場のPCで）") }}</strong>
+            <ol>
+              <li>{{ _h("備品・副資材管理アプリの<strong>「設定」→「ほかのPCからつなぐ」</strong>に出ている <span class=\"mono\">http://…:5000/</span>（いちばん簡単）") }}</li>
+              <li>{{ _h("アプリの<strong>黒い画面</strong>の「パソコン・タブレット : http://…」の行") }}</li>
+              <li>{{ _h("Windows の<strong>スタート</strong>で「cmd」と入れて開き、<span class=\"mono\">ipconfig</span> と入れて Enter →「IPv4 アドレス」の数字（例: 192.168.1.21）") }}</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="setup-step">
+      <span class="step-num">3</span>
+      <div class="setup-body">
+        <div class="actions"><button class="btn btn-primary">{{ _("保存する") }}</button>
+          {% if has_sites %}<a class="btn" href="{{ url_for('sites_page') }}">{{ _("全現場を見る") }}</a>{% endif %}</div>
+        <small class="muted">{{ _h("保存すると、メニューに<strong>「全現場」</strong>が出ます。<strong>どの現場も、ほかの現場を1つ登録すれば十分です。</strong>登録した現場が知っている現場も、自動で「全現場」に出ます。") }}</small>
+      </div>
+    </div>
+  </form>
+  {% if recode_count %}
+  <form method="post" class="recode-box"
+        onsubmit="return confirm({{ _('今の品目のコード（{old}0001 など）を、拠点コード付き（{new}0001 など）に変えます。棚のラベルは印刷し直して、貼り替える必要があります。変えますか？', old=default_head, new=code_head)|tojson|forceescape }})">
+    <input type="hidden" name="action" value="recode">
+    <p class="small">{{ _h("拠点コードを決める前に登録した品目が <strong>{n} 件</strong> あります（<span class=\"mono\">{old}0001</span> など）。", n=recode_count, old=default_head) }}
+      {{ _("ほかの拠点と被らないよう、拠点コード付きのコードに変えられます（記録はそのまま残ります。ラベルは印刷し直しです）。") }}</p>
+    <button class="btn">{{ _("今の品目のコードを「{head}」付きに変える", head=code_head) }}</button>
+  </form>
+  {% endif %}
+</section>
+
+<h2 id="qty" class="section-gap">{{ _("数量ボタン") }}</h2>
+<p class="muted">{{ _("スキャン画面で数量ボタンを押した時に出る、ワンタッチの数字を決めます。よく取る数・よく補充する数を入れておくと、1回押すだけで数量が決まります。空欄の所は使いません（最大{n}個）。", n=max_count) }}</p>
+
+<form method="post" class="qty-settings">
+  {% for mode, label, note in [('OUT', 'とる（出庫）', '棚から取る時'), ('IN', 'いれる（補充）', '届いた品物を補充する時')] %}
+  <section class="card qty-set qty-set-{{ mode }}">
+    <h2>{{ _(label) }}<span class="muted small">　{{ _(note) }}</span></h2>
+    <div class="qty-inputs">
+      {% for i in range(max_count) %}
+        {% set v = quick[mode][i] if i < quick[mode]|length else '' %}
+        <input type="number" name="qty_{{ mode }}" value="{{ v }}" min="1" max="9999" inputmode="numeric" aria-label="{{ _('{label}の数量 {n}', label=_(label), n=i + 1) }}">
+      {% endfor %}
+    </div>
+    <div class="qty-preview" aria-hidden="true">
+      <span class="muted small">{{ _("今の表示:") }}</span>
+      {% for n in quick[mode] %}<span class="qty-chip">{{ n }}</span>{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <div class="actions">
+    <button class="btn btn-primary">{{ _("保存する") }}</button>
+    <a class="btn" href="{{ url_for('command_labels') }}" target="_blank">{{ _("数量カードを印刷する") }}</a>
+  </div>
+</form>
+
+<form method="post" class="mt" onsubmit="return confirm({{ _('数量ボタンを最初の設定に戻しますか？')|tojson|forceescape }})">
+  <input type="hidden" name="action" value="reset">
+  <button class="btn btn-ghost btn-small btn-wrap">{{ _("最初の設定に戻す（とる: 1・2・3・5・10・20 ／ いれる: 1・5・10・20・30・50）") }}</button>
+</form>
+<p class="muted small mt">{{ _("数量カード（操作用コード）を印刷している場合は、ここを変えたあとに印刷し直してください。") }}</p>
+
+<h2 id="location" class="section-gap">{{ _("棚番") }}</h2>
+<section class="card">
+  <p>{{ _("棚番（例: A-1-2）を決めていない時は、使わない設定にできます。品目の画面・一覧・ラベル・補充リスト・棚卸し・通知から棚番が消えます。入れてある棚番は消えないので、あとで戻せます。") }}</p>
+  <form method="post" class="toolbar">
+    <input type="hidden" name="action" value="location">
+    <label class="inline-label"><input type="radio" name="use_location" value="1" {{ 'checked' if use_loc }}> {{ _("棚番を使う") }}</label>
+    <label class="inline-label"><input type="radio" name="use_location" value="0" {{ 'checked' if not use_loc }}> {{ _("棚番を使わない") }}</label>
+    <button class="btn btn-primary">{{ _("保存する") }}</button>
+  </form>
+</section>
+
+<h2 id="check" class="section-gap">{{ _("入力ミスの確認") }}</h2>
+<section class="card">
+  <p>{{ _h("「いつも1個なのに50個」のように、<strong>いつもより大幅に多い数</strong>で記録しようとした時だけ、スキャン画面に「本当に50個？」と確認を出します。") }}<br>
+  {{ _("「いつもの数」は、その品目の最近20回の記録と「1回の数」から決まります。{n}以下の数は確認しません。", n=check_min) }}</p>
+  <form method="post" class="toolbar">
+    <input type="hidden" name="action" value="check">
+    <select name="factor" aria-label="{{ _('確認を出す目安') }}">
+      {% for v, label in factor_choices %}<option value="{{ v }}" {{ 'selected' if v == factor }}>{{ _(label) }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary">{{ _("保存する") }}</button>
+  </form>
+</section>
+
+<h2 id="backup" class="section-gap">{{ _("自動バックアップ") }}</h2>
+<section class="card">
+  <p>{{ _h("アプリが動いている間、<strong>1日1回</strong>、在庫データ（stock.db）のコピーを下のフォルダに自動で保存します。古いコピーは、決めた日数がたつと自動で消えます。") }}<br>
+  {{ _h("PCの故障に備えて、<strong>社内の共有フォルダやUSBメモリなど、別の場所</strong>を保存先にするのがおすすめです。") }}</p>
+  {% if backup_error %}<div class="flash flash-error">{{ _("前回のバックアップに失敗しました:") }} {{ backup_error }}</div>{% endif %}
+  <form method="post" class="form">
+    <input type="hidden" name="action" value="backup">
+    <label>{{ _("保存先のフォルダ") }}
+      <span class="inline-field">
+        <input name="backup_dir" id="backup-dir" value="{{ backup_dir_value }}" placeholder="backup">
+        <button type="button" class="btn" id="folder-pick">📁 {{ _("フォルダを選ぶ") }}</button>
+      </span>
+      <small class="muted">{{ _h("例: <span class=\"mono\">\\\\fileserver\\共有\\在庫バックアップ</span> ／ <span class=\"mono\">D:\\在庫バックアップ</span>。「backup」のままなら、アプリのフォルダの中に作ります。") }}<br>{{ _("今の保存先:") }} <span class="mono">{{ backup_path }}</span></small>
+    </label>
+    <label>{{ _("残す日数") }} <input name="backup_keep" type="number" min="1" max="3650" value="{{ backup_keep }}" inputmode="numeric"></label>
+    <div class="actions"><button class="btn btn-primary">{{ _("保存する") }}</button></div>
+  </form>
+  <form method="post" class="mt">
+    <input type="hidden" name="action" value="backup_now">
+    <button class="btn">{{ _("今すぐバックアップする") }}</button>
+  </form>
+  <h3 class="mt">{{ _("最近のバックアップ") }}</h3>
+  {% if backup_files %}
+  <table class="table">
+    <thead><tr><th>{{ _("日時") }}</th><th>{{ _("ファイル") }}</th><th class="r">{{ _("大きさ") }}</th></tr></thead>
+    <tbody>
+    {% for when, name, size in backup_files %}
+      <tr><td>{{ when.strftime('%Y-%m-%d %H:%M') }}</td><td class="mono">{{ name }}</td><td class="r">{{ (size / 1024)|round(0)|int }} KB</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">{{ _("まだありません。アプリを起動すると、その日のうちに最初のバックアップが作られます。") }}</p>
+  {% endif %}
+  <p class="muted small mt">{{ _h("元に戻す時: アプリの黒い画面を閉じ、使いたいバックアップのファイルをアプリのフォルダにコピーして、名前を <span class=\"mono\">stock.db</span> に変えてから起動します（今の stock.db は念のため別名で残してください）。") }}</p>
+</section>
+
+<h2 id="connect" class="section-gap">{{ _("ほかのPC・タブレットからつなぐ") }}</h2>
+<section class="card">
+  <p>{{ _h("このアプリは<strong>サーバPC 1台だけ</strong>で動かし、ほかのPC・タブレット・スマホは<strong>ブラウザで下のアドレスを開くだけ</strong>で使えます。") }}
+  {{ _("データはサーバPCの1か所にまとまるので、どの端末で「ピッ」としても、全部の画面に同じ在庫が出ます。台数の制限はありません。") }}</p>
+  <div class="connect-grid">
+    <div>
+      <h3>{{ _("PC・タブレット（スキャナをつなぐ端末・事務所のモニター）") }}</h3>
+      <p class="connect-url mono">{{ connect.ip_url }}</p>
+      {% if connect.name_url %}<p class="muted small">{{ _("または") }} <span class="mono">{{ connect.name_url }}</span>{{ _("（PCの名前で開くアドレス。サーバPCのアドレスが変わってもつながります）") }}</p>{% endif %}
+      <div class="connect-qr" aria-hidden="true">{{ connect.ip_qr }}</div>
+    </div>
+    {% if connect.scan_url %}
+    <div>
+      <h3>{{ _("スマホ（カメラで読む）") }}</h3>
+      <p class="connect-url mono">{{ connect.scan_url }}</p>
+      <p class="muted small">{{ _("スマホのカメラでこのQRを読むと開きます。初回の「安全ではありません」は「詳細」→「アクセスする」。") }}</p>
+      <div class="connect-qr" aria-hidden="true">{{ connect.scan_qr }}</div>
+    </div>
+    {% endif %}
+  </div>
+  <ol>
+    <li>{{ _("サーバPCで start.bat を起動しておく（自動起動にしておくと安心です）。") }}</li>
+    <li>{{ _("つなぎたいPCで Edge か Chrome を開き、上のアドレスを入れる。") }}</li>
+    <li>{{ _("開いたら「お気に入り」に入れておく。スキャナはその端末のUSBにつなぐ（Bluetoothでも可）。") }}</li>
+  </ol>
+  <p class="muted small">{{ _("つながらない時: ① サーバPCの電源と黒い画面が動いているか ② 同じ社内のネットワーク（同じWi-Fi・同じLAN）か ③ 初回に出た Windows の「アクセスを許可する」を押したか（押し忘れた時は社内のPC担当者に、5000番と5443番を通すよう相談してください）。") }}<br>
+  {{ _h("ほかのPCにアプリを入れる必要はありません。<strong>2台目のPCでもアプリを起動すると、在庫データが別々になってしまう</strong>ので注意してください。ライセンスキーもサーバPCの1つだけで使えます。") }}</p>
+</section>
+
+<h2 id="autostart" class="section-gap">{{ _("PCを起動したら自動で立ち上げる") }}</h2>
+<section class="card">
+  <p>{{ _("サーバPCの電源を入れてサインインするだけで、アプリが自動で起動するようにできます。朝の start.bat のダブルクリックが不要になり、再起動や停電のあとの「起動し忘れ」を防げます。") }}</p>
+  <ol>
+    <li>{{ _h("サーバPCで、アプリのフォルダにある <strong>自動起動_オン.bat</strong> をダブルクリックする。") }}</li>
+    <li>{{ _("「自動起動をオンにしました」と出たら、何かキーを押して閉じる。") }}</li>
+    <li>{{ _("次からは、サインインすると黒い画面が最小化された状態で起動し、ダッシュボードが開きます。") }}</li>
+  </ol>
+  <p class="muted small">{{ _h("やめる時は <strong>自動起動_オフ.bat</strong>。すでに起動している時に start.bat を押しても、二重には起動せず画面が開くだけです。") }}<br>
+  {{ _("停電のあとに自動で電源を入れたい時は、PCの設定（BIOS の「電源復旧時に電源を入れる」）と Windows の自動サインインが必要です。社内のPC担当者に相談してください。") }}</p>
+</section>
+
+<dialog id="folder-dialog" class="folder-dialog" aria-labelledby="folder-title">
+  <h3 id="folder-title">{{ _("バックアップの保存先を選ぶ") }}</h3>
+  <p class="muted small">{{ _("サーバPC（アプリを動かしているPC）のフォルダです。USBメモリやネットワークのドライブもここに出ます。") }}</p>
+  <div class="folder-path">
+    <button type="button" class="btn btn-small" id="folder-up">⬆ {{ _("上へ") }}</button>
+    <button type="button" class="btn btn-small" id="folder-top">🏠 {{ _("最初の画面") }}</button>
+    <span class="mono" id="folder-current"></span>
+  </div>
+  <div id="folder-error" class="flash flash-error" hidden></div>
+  <ul class="folder-list" id="folder-list"></ul>
+  <div class="folder-new" id="folder-new-row" hidden>
+    <input id="folder-new-name" placeholder="{{ _('例: 在庫バックアップ') }}" maxlength="80">
+    <button type="button" class="btn btn-small" id="folder-new">＋ {{ _("新しいフォルダを作る") }}</button>
+  </div>
+  <p class="muted small">{{ _h("社内の共有フォルダ（<span class=\"mono\">\\\\サーバ名\\共有</span>）は、ここに出ない時があります。その時は欄に直接入力してください。") }}</p>
+  <div class="actions">
+    <button type="button" class="btn btn-primary" id="folder-ok" disabled>{{ _("このフォルダにする") }}</button>
+    <button type="button" class="btn" id="folder-cancel">{{ _("やめる") }}</button>
+  </div>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('folder_picker.js') }}"></script>
+<script src="{{ asset('site_setup.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ _("履歴") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("入出庫履歴") }}</h1>
+  <div class="actions"><a class="btn" href="{{ url_for('history_csv', **args) }}">{{ _("CSV出力") }}</a></div>
+</div>
+<form method="get" class="toolbar">
+  <select name="item">
+    <option value="">{{ _("全品目") }}</option>
+    {% for i in items %}<option value="{{ i.id }}" {{ 'selected' if args.get('item') == i.id|string }}>{{ i.code }} {{ iname(i) }}</option>{% endfor %}
+  </select>
+  <select name="kind">
+    <option value="">{{ _("全区分") }}</option>
+    {% for k, label in KIND_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if args.get('kind') == k }}>{{ _(label) }}</option>{% endfor %}
+  </select>
+  <input type="date" name="from" value="{{ args.get('from', '') }}"> 〜
+  <input type="date" name="to" value="{{ args.get('to', '') }}">
+  <input type="text" name="user" value="{{ args.get('user', '') }}" placeholder="{{ _('担当者') }}">
+  <button class="btn">{{ _("絞り込み") }}</button>
+  <a class="btn btn-ghost" href="{{ url_for('history') }}">{{ _("クリア") }}</a>
+</form>
+<table class="table">
+  <thead><tr><th>{{ _("日時") }}</th><th>{{ _("区分") }}</th><th>{{ _("コード") }}</th><th>{{ _("品名") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th class="r">{{ _("数量") }}</th><th class="r">{{ _("処理後在庫") }}</th><th>{{ _("担当者") }}</th><th>{{ _("備考") }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{{ 'voided' if r.voided }}">
+      <td>{{ r.ts }}</td>
+      <td><span class="kind kind-{{ r.kind }}">{{ _(KIND_LABELS[r.kind]) }}</span>{% if r.voided %} <span class="small muted">{{ _("(取消)") }}</span>{% endif %}</td>
+      <td class="mono">{{ r.code }}</td>
+      <td>{{ iname(r) }}</td>
+      {% if use_loc %}<td>{{ r.location }}</td>{% endif %}
+      <td class="r">{{ r.qty }}{{ _(r.unit) }}</td>
+      <td class="r">{{ r.stock_after }}</td>
+      <td>{{ r.user }}</td>
+      <td>{{ _(r.note) if r.note in note_keys else r.note }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted">{{ _("該当する記録はありません") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small">{{ _("最新500件まで表示します。全件はCSV出力してください。") }}</p>
+{% endblock %}

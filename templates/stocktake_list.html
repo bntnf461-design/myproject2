@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ _("棚卸し（一覧で入力）") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _("棚卸し（一覧で入力）") }}</h1>
+    <div class="muted small">{{ _("{t} 開始", t=st.started_at[:16]) }}{% if st.user %}・{{ st.user }}{% endif %}</div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('stocktake_page', st_id=st.id) }}">{{ _("スキャンで数える") }}</a>
+    <form method="post" action="{{ url_for('stocktake_finish', st_id=st.id) }}" class="inline"
+          onsubmit="return confirm(document.getElementById('stl-done').textContent !== document.getElementById('stl-total').textContent ? {{ _("まだ数えていない品目があります。終わってもいいですか？（数えていない品目は、在庫を変えません）")|tojson|forceescape }} : {{ _("棚卸しを終わりますか？")|tojson|forceescape }})">
+      <button class="btn btn-primary">{{ _("終わって結果を見る") }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="st-progress card">
+  <div class="st-progress-text">{{ _("数えた品目") }} <strong id="stl-done">{{ done }}</strong> / <span id="stl-total">{{ total }}</span></div>
+  <div class="remain-track"><div class="remain-fill st-fill" id="stl-fill" style="width: {{ (done / (total or 1) * 100)|round(1) }}%"></div></div>
+</div>
+
+<p class="muted">{{ _h("数えた数を<strong>「数えた数」</strong>の欄に入れて <strong>Enter</strong>（または欄の外を押す）で保存し、次の行に進みます。空欄の品目は在庫を変えません。") }}</p>
+
+<div class="toolbar">
+  <input type="search" id="stl-filter" placeholder="{{ _('品名・コード・棚番で絞り込み') if use_loc else _('品名・コードで絞り込み') }}">
+  <label class="inline-label"><input type="checkbox" id="stl-only-todo"> {{ _("まだ数えていない品目だけ") }}</label>
+</div>
+
+<table class="table stl-table" id="stl-table" data-id="{{ st.id }}">
+  <thead>
+    <tr>
+      {% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th>
+      <th class="r">{{ _("今の在庫") }}</th><th class="r">{{ _("数えた数") }}</th><th class="r">{{ _("ズレ") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr data-code="{{ r.item.code }}" data-system="{{ r.system }}"
+        data-search="{{ (r.item.code ~ ' ' ~ r.item.name ~ ' ' ~ r.item.name_id ~ ' ' ~ r.item.location ~ ' ' ~ r.item.spec)|lower }}"
+        class="{{ 'stl-done' if r.counted is not none }}">
+      {% if use_loc %}<td class="mono">{{ r.item.location }}</td>{% endif %}
+      <td>{{ iname(r.item) }}<div class="muted small mono">{{ r.item.code }}</div></td>
+      <td class="opt">{{ r.item.spec }}</td>
+      <td class="r stl-system">{{ r.system }}<small>{{ _(r.item.unit) }}</small></td>
+      <td class="r"><input class="stl-input" type="text" inputmode="numeric" autocomplete="off" maxlength="6"
+                           value="{{ r.counted if r.counted is not none else '' }}" aria-label="{{ _('数えた数') }}: {{ iname(r.item) }}"></td>
+      <td class="r stl-diff">{% if r.diff is not none %}{% if r.diff %}<span class="stl-diff-ng">{{ '%+d'|format(r.diff) }}</span>{% else %}<span class="stl-diff-ok">✓</span>{% endif %}{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">{{ _("品目がありません") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('stocktake_list.js') }}"></script>
+{% endblock %}

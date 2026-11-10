@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ _("全現場") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _("全現場の在庫") }}</h1>
+    <div class="muted small" id="sites-updated"></div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="sites-reload">↻ {{ _("読み直す") }}</button>
+    <a class="btn" href="{{ url_for('settings_page') }}#site">{{ _("現場を追加・変更") }}</a>
+  </div>
+</div>
+
+<div class="flash flash-error" id="sites-https" hidden>
+  {{ _("この画面（https のアドレス）からは、ほかの現場を読み込めません。") }}
+  <a id="sites-http-link" href="#">{{ _("ふつうのアドレスで開き直す") }}</a>
+</div>
+<div class="flash flash-error" id="sites-prefix-warn" hidden></div>
+<div class="site-cards" id="site-cards"></div>
+
+<h2 class="section-gap">{{ _("補充が必要な品目（全現場）") }}</h2>
+<table class="table" id="sites-low">
+  <thead><tr><th>{{ _("現場") }}</th><th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th><th class="opt">{{ _("棚番") }}</th>
+    <th class="r">{{ _("在庫") }}</th><th class="r">{{ _("発注点") }}</th><th>{{ _("状態") }}</th><th></th></tr></thead>
+  <tbody><tr><td colspan="8" class="muted">{{ _("読み込み中…") }}</td></tr></tbody>
+</table>
+
+<h2 class="section-gap">{{ _("全品目") }}</h2>
+<div class="toolbar">
+  <input type="search" id="sites-q" placeholder="{{ _('品名・コード・棚番で絞り込み') }}">
+  <select id="sites-filter"><option value="">{{ _("すべての現場") }}</option></select>
+</div>
+<table class="table" id="sites-all">
+  <thead><tr><th>{{ _("現場") }}</th><th class="opt">{{ _("コード") }}</th><th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th>
+    <th class="opt">{{ _("棚番") }}</th><th class="r">{{ _("在庫") }}</th><th class="r opt">{{ _("発注点") }}</th><th>{{ _("状態") }}</th></tr></thead>
+  <tbody></tbody>
+</table>
+<p class="muted small mt">{{ _("各現場のPCから直接読み込んでいます（1分ごとに自動で読み直し）。つながらない現場は、前回つながった時の在庫を薄く出します。PCのアドレスが変わった現場は、自動で探し直して登録し直します。") }}</p>
+
+<script id="sites-data" type="application/json">{{ {"self": site_name or _("この現場"), "others": others, "known": known, "http_port": http_port, "version": version}|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('sites.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ _("作業者用 手順書") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block body_class %}poster-page{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h1>{{ _("作業者用 手順書（A4 1枚）") }}</h1>
+  <div class="actions">
+    <button class="pill-btn pill-primary" onclick="window.print()">{{ _("印刷する") }}</button>
+  </div>
+</div>
+<p class="muted no-print">{{ _("A4・縦・倍率100%で印刷し、スキャン端末のそばや棚に貼ってください。") }}</p>
+
+<article class="poster">
+  <header class="poster-head">
+    <div>
+      <h1>{{ _h("備品・副資材の <span class=\"c-out\">とり方</span>・<span class=\"c-in\">いれ方</span>") }}</h1>
+      <p>{{ _h("取る時も、補充する時も、<strong>ラベルを「ピッ」と読むだけ</strong>。紙への記入はいりません。<br>\n        作業を始める時は、自分の<strong>担当者カード</strong>を1回読みます。") }}</p>
+    </div>
+    <span class="poster-mark" aria-hidden="true">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6v12"/><path d="M8 6v12"/><path d="M11 6v12"/><path d="M15 6v12"/><path d="M20 6v12"/></svg>
+    </span>
+  </header>
+
+  <section class="poster-block block-out">
+    <h2><span class="tag">{{ _("とる") }}</span>{{ _("棚から取る時") }}　<small>{{ _("（ふだんはこちら・画面はオレンジ）") }}</small></h2>
+    <ol class="steps">
+      <li><b>1</b><span>{{ _("棚から品物を取る") }}</span></li>
+      <li><b>2</b><span>{{ _h("棚のラベルを<strong>「ピッ」</strong>と読む") }}</span></li>
+      <li><b>3</b><span>{{ _("「とりました」と出たら完了") }}</span></li>
+    </ol>
+    <p class="note">{{ _h("<strong>2個以上取った時:</strong> 先に画面の<strong>［数量］</strong>を押して数字を選ぶ（または「数量」カードを読む）→ ラベルを読む。<br>\n      数量が<strong>「ラベルの数」</strong>の時は、棚ラベルに書いてある<strong>「1回 ○個」</strong>の数で記録されます。") }}</p>
+  </section>
+
+  <section class="poster-block block-in">
+    <h2><span class="tag">{{ _("いれる") }}</span>{{ _("補充する時") }}　<small>{{ _("（画面は青）") }}</small></h2>
+    <ol class="steps">
+      <li><b>1</b><span>{{ _h("画面の<strong>［いれる］</strong>を押す") }}</span></li>
+      <li><b>2</b><span>{{ _h("<strong>［数量］</strong>で入れた数を選ぶ") }}</span></li>
+      <li><b>3</b><span>{{ _h("ラベルを<strong>「ピッ」</strong>と読む") }}</span></li>
+    </ol>
+    <p class="note">{{ _("30秒さわらないと、自動で「とる」に戻ります。") }}</p>
+  </section>
+
+  <section class="poster-block block-signal">
+    <h2>{{ _("画面の色と音") }}</h2>
+    <table class="signal-table">
+      <tr class="sig-ok"><td><span class="swatch"></span>{{ _("緑で「とりました」・ピッ") }}</td><td>{{ _("記録できました。そのまま作業を続ける") }}</td></tr>
+      <tr class="sig-low"><td><span class="swatch"></span>{{ _h("<strong>黄色に点滅</strong>・ピンポーン") }}</td><td>{{ _h("残りが少なくなりました → <strong>管理者に伝える</strong>") }}</td></tr>
+      <tr class="sig-empty"><td><span class="swatch"></span>{{ _h("<strong>赤く点滅</strong>・警報音") }}</td><td>{{ _h("在庫切れです → <strong>すぐ管理者に伝える</strong>") }}</td></tr>
+      <tr class="sig-err"><td><span class="swatch"></span>{{ _("赤い表示・ブー") }}</td><td>{{ _h("<strong>記録されていません</strong> → もう一度読む。直らなければ管理者へ") }}</td></tr>
+    </table>
+    <p class="note">{{ _("点滅は、画面にさわるか次のラベルを読むと消えます。") }}</p>
+  </section>
+
+  <div class="poster-cols">
+    <section class="poster-block block-plain">
+      <h2>{{ _("まちがえた時") }}</h2>
+      <p>{{ _h("すぐに画面の<strong>［とりけし］</strong>を押す（または「取消」カードを読む）。直前の1件が取り消されます。それより前の記録は管理者へ。") }}</p>
+    </section>
+    <section class="poster-block block-plain">
+      <h2>{{ _("やらないこと") }}</h2>
+      <ul>
+        <li>{{ _("読まずに取る・あとでまとめて読む") }}</li>
+        <li>{{ _h("品物の箱のバーコードを読む（<strong>棚のラベル</strong>を読む）") }}</li>
+        <li>{{ _("サーバPCの黒い画面を閉じる") }}</li>
+      </ul>
+    </section>
+  </div>
+
+  <section class="poster-block block-scanner">
+    <h2>{{ _("スキャナで読む") }} <small>{{ _("（USB・Bluetooth）") }}</small></h2>
+    <ul>
+      <li>{{ _h("ラベルに<strong>赤い光</strong>を当て、<strong>「ピッ」</strong>と鳴ればOK") }}</li>
+      <li>{{ _h("<strong>USB:</strong> 端末に挿したまま使う。抜けていないか確認") }}</li>
+      <li>{{ _h("<strong>Bluetooth:</strong> 使い終わったら<strong>充電台へ</strong>。しばらく使わないと眠るので、1回ボタンを押して起こす") }}</li>
+      <li>{{ _("読んでも画面が変わらない時は、画面を1回タッチしてから読む") }}</li>
+    </ul>
+  </section>
+
+  <footer class="poster-foot">
+    <span>{{ _("わからない時は管理者へ") }}</span>
+    <span>{{ _("備品・副資材管理アプリ") }}　{{ app_copyright }}</span>
+  </footer>
+</article>
+{% endblock %}

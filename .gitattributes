@@ -1,1 +1,6 @@
-* -text
+# Windows のバッチファイルは Shift_JIS + CRLF のまま保持する
+*.bat -text
+tools/license export-ignore
+tools/promo export-ignore
+docs export-ignore
+tools export-ignore

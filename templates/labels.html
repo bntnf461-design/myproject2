@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ _("ラベル印刷") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block body_class %}print-page{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h1>{{ _("棚ラベル印刷") }} <span class="muted small">{{ _("{n}枚", n=labels|length) }}{% if copies > 1 or qtys|length > 1 %}（{{ _("{items}品目 × {copies}枚", items=item_count, copies=labels|length // item_count if item_count else copies) }}）{% endif %}</span></h1>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('command_labels') }}">{{ _("操作用コード(モード切替・数量)") }}</a>
+    <a class="btn" href="{{ url_for('poster') }}">{{ _("作業者用 手順書（A4）") }}</a>
+    <a class="btn" href="{{ url_for('poster', lang='id') }}">{{ _("作業者用 手順書（インドネシア語）") }}</a>
+    <button class="btn btn-primary" onclick="window.print()">{{ _("印刷") }}</button>
+  </div>
+</div>
+<form method="get" class="toolbar no-print label-copies">
+  {% for i in ids %}<input type="hidden" name="id" value="{{ i }}">{% endfor %}
+  <input type="hidden" name="type" value="{{ kind }}">
+  <label>{{ _("1品目あたりの枚数") }}
+    <input type="number" name="copies" value="{{ copies }}" min="1" max="{{ copies_max }}" inputmode="numeric">
+  </label>
+  <label>{{ _("1回の数を入れたラベル") }}
+    <input type="text" name="qtys" value="{{ qtys_text }}" placeholder="{{ _('例: 1, 5') }}" inputmode="numeric" class="qtys-input">
+  </label>
+  <button class="btn">{{ _("ラベルを作り直す") }}</button>
+  <span class="muted small">{{ _("「1, 5」と入れると、品目ごとに「1回 1」と「1回 5」のラベルを作ります。読んだラベルの数で記録されます。空欄なら、品目に登録した「1回の数」のラベルです。") }}<br>
+  {{ _("「1品目あたりの枚数」は、同じラベルを何枚ずつ作るかです（棚の表と裏、予備など）。") }}</span>
+</form>
+<p class="muted no-print">{{ _("棚の取り出し口に貼ってください。品目一覧でチェックした品目だけを印刷することもできます。A4用紙・倍率100%で印刷すると 1枚 約63×38mm です。") }}</p>
+<div class="labels">
+{% for l in labels %}
+  <div class="label">
+    {% if l.qr %}<div class="label-qr">{{ l.qr }}</div>{% endif %}
+    <div class="label-text {{ 'label-only-text' if not l.qr }}">
+      <div class="label-name">{{ iname(l.item) }}</div>
+      <div class="label-spec">{{ l.item.spec }}</div>
+      {% if l.qty %}
+      <div class="label-meta">{% if use_loc and l.item.location %}{{ _("棚") }} {{ l.item.location }} · {% endif %}<strong class="label-qty-fixed">{{ _("1回 {n}", n=l.qty ~ _(l.item.unit)) }}</strong></div>
+      {% else %}
+      <div class="label-meta">{% if use_loc and l.item.location %}{{ _("棚") }} {{ l.item.location }} · {% endif %}<strong class="{{ 'label-qty-many' if l.item.out_qty > 1 }}">{{ _("1回 {n}", n=l.item.out_qty ~ _(l.item.unit)) }}</strong>{% if l.item.in_qty != 1 %}{{ _("（補充 {n}）", n=l.item.in_qty) }}{% endif %}</div>
+      {% endif %}
+    </div>
+    {% if l.bar %}<div class="label-bar">{{ l.bar }}</div>{% endif %}
+    <div class="label-code mono">{{ l.code }}</div>
+  </div>
+{% else %}
+  <p class="muted">{{ _("印刷する品目がありません") }}</p>
+{% endfor %}
+</div>
+{% endblock %}

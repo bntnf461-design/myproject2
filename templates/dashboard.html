@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ _("ダッシュボード") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block body_class %}{{ 'tv' if tv }}{% endblock %}
+{% block content %}
+<div class="live-bar no-print">
+  <button type="button" id="sound-btn" class="pill-btn">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+    {{ _("補充お知らせの音声をオンにする") }}
+  </button>
+  <span id="live-status" class="muted small"></span>
+</div>
+<div id="live-banner" class="live-banner" hidden></div>
+
+<div id="live-area">
+{% if license_warn and not tv %}
+<div class="flash flash-error no-print">{{ license_warn }}{{ _h('<a href="{url}">ライセンス</a>から新しいキーを登録してください。', url=url_for('license_page')) }}</div>
+{% endif %}
+{% if backup_error and not tv %}
+<div class="flash flash-error no-print">{{ _("自動バックアップに失敗しています（{error}）。", error=backup_error) }}{{ _h('<a href="{url}#backup">設定</a>で保存先を確かめてください。', url=url_for('settings_page')) }}</div>
+{% endif %}
+<div class="page-head">
+  <div class="page-title">
+    <span class="title-mark" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+    </span>
+    <div>
+      <h1>{{ _("今日の在庫") }}</h1>
+      <div class="muted small">{{ _("{time} 更新", time=now_label) }}{% if tv %}{{ _("（自動更新中）") }}{% endif %}</div>
+    </div>
+  </div>
+  <div class="actions no-print">
+    {% if tv %}
+      <a class="pill-btn" href="{{ url_for('dashboard') }}">{{ _("通常表示") }}</a>
+    {% else %}
+      <a class="pill-btn" href="{{ url_for('dashboard', tv=1) }}">{{ _("掲示用モニター表示") }}</a>
+      <a class="pill-btn" href="{{ url_for('reorder') }}">{{ _("補充リスト") }}</a>
+      <a class="pill-btn pill-primary" href="{{ url_for('scan') }}">{{ _("スキャンをひらく") }}</a>
+    {% endif %}
+  </div>
+</div>
+
+<section class="kpis">
+  <div class="kpi"><div class="kpi-label">{{ _("登録している品目") }}</div><div class="kpi-value">{{ items|length }}<small>{{ _("品目") }}</small></div></div>
+  <div class="kpi {{ 'kpi-alert' if alerts else 'kpi-ok' }}">
+    <div class="kpi-label">{{ _("補充が必要") }}</div>
+    <div class="kpi-value">{{ alerts|length }}<small>{{ _("品目") }}</small></div>
+  </div>
+  <div class="kpi"><div class="kpi-label">{{ _("きょう取った回数") }}</div><div class="kpi-value">{{ out_today.n }}<small>{{ _("回") }}</small></div></div>
+  <div class="kpi"><div class="kpi-label">{{ _("今月の補充") }}</div><div class="kpi-value">{{ in_month.n }}<small>{{ _("回") }}</small></div></div>
+</section>
+
+<section class="card">
+  <h2>{{ _("補充をおねがいします") }}</h2>
+  {% if alerts %}
+  <div class="alert-cards">
+    {% for i in alerts %}
+    <a class="alert-card alert-{{ i.status }}" href="{{ url_for('item_edit', item_id=i.id) }}">
+      <span class="alert-tag">{{ _('在庫切れ') if i.status == 'empty' else _('そろそろ') }}</span>
+      <span class="alert-text">
+        <strong>{{ iname(i) }}</strong>
+        <span>{{ i.spec }}{% if use_loc and i.location %} ・ {{ _("棚 {loc}", loc=i.location) }}{% endif %}{% if i.days_left %} ・ {{ _("あと{n}日分", n=i.days_left|num(0)) }}{% endif %}{% if i.ordered_at %} ・ {{ _("発注済み") }}{% endif %}</span>
+      </span>
+      <span class="alert-num">{{ i.stock }}<small>{{ _(i.unit) }}</small></span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="empty-ok">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+      {{ _("補充が必要なものはありません") }}
+    </p>
+  {% endif %}
+</section>
+
+<div class="dash-row">
+  <section class="card dash-main">
+    <h2>{{ _("すべての品目") }}</h2>
+    <div class="stock-grid">
+    {% for i in items %}
+      <a class="stock-tile tile-{{ i.status }}" data-item-id="{{ i.id }}" href="{{ url_for('item_edit', item_id=i.id) }}">
+        <div class="tile-top"><span class="tile-loc">{{ _('棚 {loc}', loc=i.location) if use_loc and i.location else ('—' if use_loc else '') }}</span><span class="tile-dot" title="{{ _(i.status_label) }}"></span></div>
+        <div class="tile-name">{{ iname(i) }}</div>
+        <div class="tile-spec">{{ i.spec }}</div>
+        <div class="tile-stock"><strong>{{ i.stock }}</strong><small>{{ _(i.unit) }}</small></div>
+        <div class="level" title="{{ _('発注点 {n}', n=i.reorder_point) }}">
+          <span class="level-fill" style="width: {{ i.level_pct }}%"></span>
+          <span class="level-mark" style="left: {{ i.reorder_pct }}%"></span>
+        </div>
+        <div class="tile-foot">{{ _("発注点 {n}", n=i.reorder_point) }}{% if i.days_left is not none %} ・ {{ _("あと{n}日", n=i.days_left|num(0)) }}{% endif %}</div>
+      </a>
+    {% else %}
+      <p class="muted">{{ _h('品目が登録されていません。<a href="{url}">品目を登録</a>してください。', url=url_for('item_new')) }}</p>
+    {% endfor %}
+    </div>
+  </section>
+
+  <section class="card dash-side">
+    <h2>{{ _("この2週間の出庫") }}</h2>
+    {% set two_weeks = daily[-14:] %}
+    {% set two_max = (two_weeks|map(attribute='count')|max) or 1 %}
+    <div class="daily-chart" role="img" aria-label="{{ _('この2週間の日別出庫回数') }}">
+      {% for d in two_weeks %}
+        <div class="day {{ 'today' if loop.last }}{{ ' weekend' if d.date.weekday() >= 5 }}" title="{{ d.date.month }}/{{ d.date.day }}: {{ _('{n}回', n=d.count) }}">
+          <span class="bar-val">{{ d.count if d.count else '' }}</span>
+          <span class="bar" style="height: {{ (d.count / two_max * 100)|round(1) }}%"></span>
+          <span class="day-label">{{ d.date.day }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <h2 class="mt">{{ _("よく使うもの") }}</h2>
+    {% if top_used %}
+      <ol class="rank-list">
+      {% for i in top_used[:5] %}
+        <li><span class="rank">{{ loop.index }}</span><span class="rank-name">{{ iname(i) }} <span class="muted small">{{ i.spec }}</span></span><span class="rank-val">{{ i.used_30d }}{{ _(i.unit) }}</span></li>
+      {% endfor %}
+      </ol>
+      <p class="muted small">{{ _("直近{n}日の出庫数", n=usage_days) }}</p>
+    {% else %}
+      <p class="muted">{{ _("まだ出庫の記録がありません") }}</p>
+    {% endif %}
+  </section>
+</div>
+
+{% if not tv %}
+<section class="card">
+  <h2>{{ _("さいきんの記録") }} <a class="small" href="{{ url_for('history') }}">{{ _("すべて見る") }}</a></h2>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>{{ _("日時") }}</th><th>{{ _("区分") }}</th><th>{{ _("品名") }}</th><th class="r">{{ _("数量") }}</th><th class="r">{{ _("のこり") }}</th><th>{{ _("担当") }}</th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr class="{{ 'voided' if r.voided }}">
+        <td>{{ r.ts[5:16] }}</td>
+        <td><span class="kind kind-{{ r.kind }}">{{ _(KIND_LABELS[r.kind]) }}</span></td>
+        <td>{{ iname(r) }}</td>
+        <td class="r">{{ r.qty }}{{ _(r.unit) }}</td>
+        <td class="r">{{ r.stock_after }}</td>
+        <td>{{ r.user }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">{{ _("記録がありません") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('notify.js') }}"></script>
+<script src="{{ asset('dashboard.js') }}"></script>
+{% endblock %}

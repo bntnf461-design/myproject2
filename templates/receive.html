@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ _("入庫（一覧で入力）") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("入庫（一覧で入力）") }}</h1>
+  <div class="actions no-print">
+    <a class="btn" href="{{ url_for('scan', mode='IN') }}">{{ _("スキャンで入庫する") }}</a>
+  </div>
+</div>
+
+<p class="muted">{{ _h("<strong>品名で探して</strong>（Enter で入庫数の欄へ）、その行の<strong>「入庫数」</strong>に届いた数を入れて <strong>Enter</strong>（または「入庫」ボタン）を押すだけで記録できます。在庫に足されます。") }}</p>
+
+<div class="toolbar rcv-toolbar">
+  <input type="search" id="rcv-filter" autocomplete="off"
+         placeholder="{{ _('品名・コード・棚番で探す') if use_loc else _('品名・コードで探す') }}">
+  <label class="inline-label"><input type="checkbox" id="rcv-only-low"> {{ _("補充が必要な品目だけ") }}</label>
+  <label class="inline-label">{{ _("担当者") }}
+    <input id="rcv-user" list="rcv-workers" maxlength="40" placeholder="{{ _('事務所') }}" autocomplete="off">
+  </label>
+  <datalist id="rcv-workers">{% for w in workers %}<option value="{{ w }}">{% endfor %}</datalist>
+</div>
+
+<table class="table rcv-table" id="rcv-table" data-office="{{ _('事務所') }}">
+  <thead>
+    <tr>
+      <th class="opt">{{ _("状態") }}</th>{% if use_loc %}<th class="opt">{{ _("棚番") }}</th>{% endif %}<th>{{ _("品名") }}</th><th class="opt">{{ _("規格") }}</th>
+      <th class="r">{{ _("今の在庫") }}</th><th class="r">{{ _("入庫数") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for i in items %}
+    <tr data-code="{{ i.code }}" data-unit="{{ _(i.unit) }}" data-name="{{ iname(i) }}" data-status="{{ i.status }}" data-rp="{{ i.reorder_point }}"
+        data-search="{{ (i.code ~ ' ' ~ i.name ~ ' ' ~ i.name_id ~ ' ' ~ i.reading ~ ' ' ~ i.location ~ ' ' ~ i.spec ~ ' ' ~ i.category)|lower }}">
+      <td class="opt"><span class="badge badge-{{ i.status }} rcv-badge">{{ _(i.status_label) }}</span></td>
+      {% if use_loc %}<td class="mono opt">{{ i.location }}</td>{% endif %}
+      <td>{{ iname(i) }}<div class="muted small mono">{{ i.code }}{% if use_loc and i.location %}<span class="rcv-loc">・{{ i.location }}</span>{% endif %}</div>
+        <div class="rcv-result small" aria-live="polite"></div></td>
+      <td class="opt">{{ i.spec }}</td>
+      <td class="r"><span class="rcv-stock">{{ i.stock }}</span><small>{{ _(i.unit) }}</small></td>
+      <td class="r"><input class="rcv-input" type="text" inputmode="numeric" autocomplete="off" maxlength="5"
+                           aria-label="{{ _('入庫数') }}: {{ iname(i) }}"><small>{{ _(i.unit) }}</small>
+        <button type="button" class="btn btn-small btn-primary rcv-btn">{{ _("入庫") }}</button></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">{{ _("品目がありません") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small" id="rcv-none" hidden>{{ _("見つかりません") }}</p>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('receive.js') }}"></script>
+{% endblock %}

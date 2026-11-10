@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ _("ライセンス") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("ライセンス") }}</h1>
+</div>
+
+{% if ok %}
+<section class="card">
+  <p class="empty-ok">{{ _("このPCは登録されています") }}</p>
+  <table class="table">
+    <tr><th>{{ _('使用者') }}</th><td>{{ info.name or _('（記載なし）') }}</td></tr>
+    <tr><th>{{ _("マシンコード") }}</th><td class="mono">{{ info.machine }}</td></tr>
+    <tr><th>{{ _('期限') }}</th><td>{{ info.expires or _('なし（無期限）') }}</td></tr>
+    <tr><th>{{ _("発行日") }}</th><td>{{ info.issued }}</td></tr>
+  </table>
+  <p class="mt"><a class="btn btn-primary" href="{{ url_for('dashboard') }}">{{ _("ダッシュボードへ") }}</a></p>
+</section>
+{% else %}
+<section class="card">
+  <h2>{{ _("このPCでは、まだ使えません") }}</h2>
+  <p>{{ _("備品・副資材管理アプリは、ライセンスキーを登録したPCだけで動きます。") }}<br>
+  {{ _h("下の<strong>マシンコード</strong>を管理者（発行者）に伝えて、ライセンスキーを受け取ってください。") }}</p>
+  {% if reason and reason != 'ライセンスキーが登録されていません' %}<div class="flash flash-error">{{ license_msg(reason) }}</div>{% endif %}
+  <div class="license-code">
+    <span class="muted small">{{ _("このPCのマシンコード") }}</span>
+    <strong class="mono" id="machine-code">{{ code }}</strong>
+    <button type="button" class="btn btn-small" onclick="navigator.clipboard && navigator.clipboard.writeText('{{ code }}').then(function(){ this.textContent={{ _('コピーしました')|tojson|forceescape }}; }.bind(this))">{{ _('コピー') }}</button>
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>{{ _('ライセンスキーを入れ替える') if ok else _('ライセンスキーを登録する') }}</h2>
+  <form method="post" enctype="multipart/form-data" class="form">
+    <label>{{ _("受け取ったキーを貼り付ける") }}
+      <textarea name="key" rows="4" spellcheck="false" class="mono" placeholder="{{ _('PS1. から始まる文字を、全部貼り付けてください') }}"></textarea>
+    </label>
+    <label>{{ _("または、キーのファイル（.key）を選ぶ") }}
+      <input type="file" name="file" accept=".key,.txt">
+    </label>
+    <div class="actions"><button class="btn btn-primary">{{ _("登録する") }}</button></div>
+  </form>
+  <p class="muted small">{{ _("キーはこのPC専用です。別のPCにコピーしても使えません。PCを入れ替えた時は、新しいPCのマシンコードで発行し直してもらってください。") }}<br>
+  {{ _("記録したデータ（stock.db）はライセンスとは別に保存されているので、登録し直しても消えません。") }}</p>
+</section>
+{% endblock %}

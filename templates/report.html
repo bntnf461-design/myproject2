@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ _("月次レポート") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+{% set y, m = month.split('-') %}
+<div class="page-head">
+  <h1>{{ _("月次レポート") }} <span class="muted small">{{ _("{y}年{m}月", y=y, m=m|int) }}</span></h1>
+  <div class="actions">
+    <form method="get" class="toolbar inline">
+      <select name="month" onchange="this.form.submit()" aria-label="{{ _('月') }}">
+        {% for mo in months %}<option value="{{ mo }}" {{ 'selected' if mo == month }}>{{ _('{y}年{m}月', y=mo[:4], m=mo[5:]|int) }}</option>{% endfor %}
+      </select>
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('report_xlsx', month=month) }}">{{ _("Excelでダウンロード") }}</a>
+  </div>
+</div>
+<p class="muted">{{ _("Excelには、品目別・日別・月別推移（12か月）・担当者別・棚卸・履歴のシートと、グラフが入ります。会議資料や予算の検討に使えます。") }}</p>
+
+<section class="kpis">
+  <div class="kpi"><div class="kpi-label">{{ _("出庫（とる）") }}</div><div class="kpi-value">{{ rep.totals.out_n }}<small>{{ _("回") }}</small></div></div>
+  <div class="kpi"><div class="kpi-label">{{ _("補充（いれる）") }}</div><div class="kpi-value">{{ rep.totals.in_n }}<small>{{ _("回") }}</small></div></div>
+  <div class="kpi"><div class="kpi-label">{{ _("使われた品目") }}</div><div class="kpi-value">{{ rep.totals.items_used }}<small>{{ _("品目") }}</small></div></div>
+  <div class="kpi"><div class="kpi-label">{{ _("棚卸調整") }}</div><div class="kpi-value">{{ rep.totals.adj_n }}<small>{{ _("回") }}</small></div></div>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>{{ _("よく使った品目（出庫回数の多い順）") }}</h2>
+    {% if rep.top %}
+    {% set top_max = rep.top[0].out_n or 1 %}
+    <ol class="rank-list report-rank">
+      {% for r in rep.top %}
+        <li>
+          <span class="rank">{{ loop.index }}</span>
+          <span class="rank-name">{{ iname(r) }} <span class="muted small">{{ r.spec }}</span></span>
+          <span class="report-bar"><span style="width: {{ (r.out_n / top_max * 100)|round(1) }}%"></span></span>
+          <span class="rank-val">{{ _("{n}回", n=r.out_n) }}<small class="muted"> / {{ r.out_qty }}{{ _(r.unit) }}</small></span>
+        </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+      <p class="muted">{{ _("この月の出庫はありません") }}</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>{{ _("出庫回数の推移（6か月）") }}</h2>
+    <div class="daily-chart month-chart" role="img" aria-label="{{ _('月別の出庫回数') }}">
+      {% for lb in trend_labels %}
+        <div class="day {{ 'today' if lb == month }}" title="{{ lb }}: {{ _('{n}回', n=trend_counts[lb]) }}">
+          <span class="bar-val">{{ trend_counts[lb] if trend_counts[lb] else '' }}</span>
+          <span class="bar" style="height: {{ (trend_counts[lb] / trend_max * 100)|round(1) }}%"></span>
+          <span class="day-label">{{ _("{m}月", m=lb[5:]|int) }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <h2 class="mt">{{ _("担当者別") }}</h2>
+    <table class="table">
+      <thead><tr><th>{{ _("担当者") }}</th><th class="r">{{ _("出庫") }}</th><th class="r">{{ _("補充") }}</th></tr></thead>
+      <tbody>
+      {% for u in rep.users %}<tr><td>{{ _(u.who) if u.who == "（未入力）" else u.who }}</td><td class="r">{{ _("{n}回", n=u.out_n) }}</td><td class="r">{{ _("{n}回", n=u.in_n) }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">{{ _("記録がありません") }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

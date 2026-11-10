@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ _("補充リスト") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("補充リスト") }} <span class="muted small">{{ _("{date} 時点", date=today) }}</span></h1>
+  <div class="actions no-print">
+    <button class="btn" onclick="window.print()">{{ _("印刷") }}</button>
+    <a class="btn" href="{{ url_for('receive_page') }}">{{ _("入庫（一覧で入力）") }}</a>
+    <a class="btn btn-primary" href="{{ url_for('scan', mode='IN') }}">{{ _("入庫(補充)をスキャン") }}</a>
+  </div>
+</div>
+{% if buyers %}
+<div class="toolbar no-print buyer-watch">
+  <label class="inline-label">👤 {{ _("担当者で絞り込み") }}
+    <select id="buyer-filter">
+      <option value="">{{ _("全員") }}</option>
+      {% for b in buyers.values() %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+      <option value="none">{{ _("担当者なし") }}</option>
+    </select>
+  </label>
+  <span class="muted small" id="buyer-watch-note">{{ _("自分の名前を選んでおくと、自分の担当の品目が発注点を下回った時に、この画面が音と音声で知らせます（この画面を開いている間）。") }}</span>
+</div>
+{% endif %}
+<p class="muted no-print">{{ _("在庫が発注点以下の品目です。発注したら「発注済にする」を押すと、二重発注を防げます。補充して在庫が発注点を上回ると自動で解除されます（一部だけ届いた時は残ります）。") }}<br>
+{{ _h("<strong>事務所で補充を受けた時など、スキャンしない時</strong>は、右の欄に届いた数を入れて「補充した」を押すと記録できます。") }}</p>
+
+<div id="reorder-area">
+{% if items %}
+<table class="table">
+  <thead>
+    <tr><th>{{ _("状態") }}</th><th>{{ _("コード") }}</th><th>{{ _("品名 / 規格") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th>{{ _("仕入先") }}</th><th>{{ _("発注担当") }}</th>
+      <th class="r">{{ _("在庫") }}</th><th class="r">{{ _("発注点") }}</th><th class="r">{{ _("日平均") }}</th><th class="r">{{ _("残日数") }}</th>
+      <th class="r">{{ _("発注目安") }}</th><th>{{ _("発注") }}</th><th class="no-print">{{ _("届いたら（補充を記録）") }}</th></tr>
+  </thead>
+  <tbody>
+  {% for i in items %}
+    <tr class="row-{{ i.status }}" data-buyer="{{ i.buyer_id or 'none' }}" data-code="{{ i.code }}">
+      <td><span class="badge badge-{{ i.status }}">{{ _(i.status_label) }}</span></td>
+      <td class="mono">{{ i.code }}</td>
+      <td><a href="{{ url_for('item_edit', item_id=i.id) }}">{{ iname(i) }}</a> <span class="muted small">{{ i.spec }}</span></td>
+      {% if use_loc %}<td>{{ i.location }}</td>{% endif %}
+      <td>{{ i.supplier }}</td>
+      <td>{{ buyers[i.buyer_id].name if i.buyer_id in buyers else '' }}</td>
+      <td class="r stock-cell">{{ i.stock }}{{ _(i.unit) }}</td>
+      <td class="r">{{ i.reorder_point }}</td>
+      <td class="r">{{ i.daily_avg|num(1) }}</td>
+      <td class="r">{{ _('{n}日', n=i.days_left|num(1)) if i.days_left is not none else '-' }}</td>
+      <td class="r"><strong>{{ i.suggest_qty }}</strong>{{ _(i.unit) }}</td>
+      <td>
+        <form method="post" action="{{ url_for('item_ordered', item_id=i.id) }}" class="inline">
+          {% if i.ordered_at %}
+            <span class="badge badge-ordered">{{ _("発注済") }} {{ i.ordered_at[5:16] }}</span>
+            <button class="link no-print" title="{{ _('発注済を解除') }}">{{ _("解除") }}</button>
+          {% else %}
+            <button class="btn btn-small no-print">{{ _("発注済にする") }}</button>
+            <span class="print-only">□</span>
+          {% endif %}
+        </form>
+      </td>
+      <td class="no-print">
+        <form method="post" action="{{ url_for('item_receive', item_id=i.id) }}" class="receive-form"
+              onsubmit="return confirm({{ _('「{name}」の補充を記録しますか？', name=iname(i))|tojson|forceescape }} + '\n' + this.qty.value + {{ _(i.unit)|tojson|forceescape }})">
+          <input type="hidden" name="next" value="{{ url_for('reorder') }}">
+          <input name="qty" type="text" inputmode="numeric" maxlength="5" value="{{ i.suggest_qty or i.order_qty or 1 }}"
+                 aria-label="{{ _('補充した数') }}: {{ iname(i) }}"><span class="small">{{ _(i.unit) }}</span>
+          <button class="btn btn-small btn-primary">{{ _("補充した") }}</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty-ok">{{ _("補充が必要な品目はありません") }}</p>
+{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if buyers %}
+<script src="{{ asset('notify.js') }}"></script>
+<script src="{{ asset('reorder_watch.js') }}"></script>
+{% endif %}
+{% endblock %}

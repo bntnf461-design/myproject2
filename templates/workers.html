@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ _("担当者カード") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("担当者カード") }}</h1>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('worker_cards') }}" target="_blank">{{ _("全員のカードを印刷") }}</a>
+    <a class="btn btn-ghost" href="{{ url_for('settings_page') }}">{{ _("設定に戻る") }}</a>
+  </div>
+</div>
+<p class="muted">{{ _h("名札などに貼ったカードを、スキャン画面で<strong>1回読む</strong>だけで担当者が切り替わります。名前を手で入力する必要はありません。<br>\n記録には「誰が取ったか」が残り、履歴や月次レポートで担当者ごとに見られます。") }}</p>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>{{ _("担当者を登録") }}</h2>
+    <form method="post" class="form">
+      <label>{{ _("名前（1行に1人。まとめて入れられます）") }}
+        <textarea name="names" rows="4" maxlength="2000" placeholder="{{ _h("山田&#10;佐藤&#10;鈴木") }}"></textarea>
+      </label>
+      <div class="actions"><button class="btn btn-primary">{{ _("登録する") }}</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>{{ _("登録している担当者") }} <span class="muted small">{{ _("{n}人", n=workers|length) }}</span></h2>
+    <table class="table">
+      <thead><tr><th>{{ _("名前") }}</th><th>{{ _("カードのコード") }}</th><th></th></tr></thead>
+      <tbody>
+      {% for w in workers %}
+        <tr>
+          <td><strong>{{ w.name }}</strong></td>
+          <td class="mono">{{ worker_code(w.id) }}</td>
+          <td class="r">
+            <a class="btn btn-small" href="{{ url_for('worker_cards', id=w.id) }}" target="_blank">{{ _("印刷") }}</a>
+            <form method="post" action="{{ url_for('worker_delete', worker_id=w.id) }}" class="inline"
+                  onsubmit="return confirm({{ _('{name} さんのカードを使えなくしますか？（記録は残ります）', name=bare_name(w.name))|tojson|forceescape }})">
+              <button class="btn btn-small btn-danger">{{ _("削除") }}</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">{{ _("まだ登録されていません") }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small">{{ _("カードをなくした時は、削除してから登録し直してください（なくしたカードは使えなくなります）。") }}</p>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}{{ _('品目登録') if is_new else iname(item) }} - {{ _('備品・副資材管理アプリ') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _('品目を登録') if is_new else _('品目を編集') }}</h1>
+  {% if not is_new %}
+  <div class="actions">
+    <a class="btn" href="{{ url_for('labels', id=item.id) }}" target="_blank">{{ _("ラベル印刷") }}</a>
+    <a class="btn" href="{{ url_for('history', item=item.id) }}">{{ _("履歴") }}</a>
+    <button class="btn btn-danger" form="del-item">{{ _("品目を削除") }}</button>
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid-2">
+<form method="post" class="card form">
+  <label>{{ _("コード") }}
+    <input name="code" value="{{ item.code }}" maxlength="32" class="mono"
+           {% if is_new %}placeholder="{{ _('空欄なら自動採番 ({code})', code=next_code) }}"{% else %}required{% endif %}>
+    <small class="muted">{{ _("バーコードに印字されます。半角英数字とハイフン。既存のJAN等をそのまま使うこともできます。") }}</small>
+  </label>
+  <label>{{ _("品名") }} <input name="name" value="{{ item.name }}" required></label>
+  <label>{{ _("読み方（読み上げ用・任意）") }}
+    <span class="inline-field">
+      <input name="reading" id="reading" value="{{ item.reading or '' }}" maxlength="60" placeholder="{{ _('例: ピーピーバンド、きいろ') }}">
+      <button type="button" class="btn btn-small" id="reading-test">{{ _("試しに聞く") }}</button>
+    </span>
+    <small class="muted">{{ _("音声で品名を読み間違える時だけ、正しい読み方をひらがな・カタカナで入れます。空欄なら品名と規格をそのまま読みます。") }}</small>
+  </label>
+  <label>{{ _("品名（インドネシア語・任意）") }}
+    <input name="name_id" value="{{ item.name_id or '' }}" maxlength="80" placeholder="{{ _('例: Sarung tangan nitril') }}">
+    <small class="muted">{{ _("画面をインドネシア語にした時に出る品名です。音声のお知らせもこの名前で読みます。空欄なら日本語の品名を出します。") }}</small>
+  </label>
+  <label>{{ _("規格") }} <input name="spec" value="{{ item.spec }}" placeholder="{{ _('例: Lサイズ, 50mm×25m') }}"></label>
+  <div class="row">
+    <label>{{ _("分類") }} <input name="category" value="{{ item.category }}" placeholder="{{ _('例: 手袋, テープ') }}"></label>
+    {% if use_loc %}<label>{{ _("棚番（任意）") }} <input name="location" value="{{ item.location }}" placeholder="{{ _('例: A-1-2（なければ空欄）') }}"></label>
+    {% else %}<input type="hidden" name="location" value="{{ item.location }}">{% endif %}
+    <label>{{ _("単位") }} <input name="unit" value="{{ item.unit }}"></label>
+  </div>
+  <div class="row">
+    {% if is_new %}<label>{{ _("初期在庫") }} <input name="stock" type="number" value="{{ item.stock }}" min="0"></label>{% endif %}
+    <label>{{ _("発注点") }} <input name="reorder_point" type="number" value="{{ item.reorder_point }}" min="0">
+      <small class="muted">{{ _("在庫がこの数以下で「要補充」") }}</small></label>
+    <label>{{ _("発注数") }} <input name="order_qty" type="number" value="{{ item.order_qty }}" min="0">
+      <small class="muted">{{ _("1回の補充で発注する数") }}</small></label>
+  </div>
+  <div class="per-scan" role="group" aria-labelledby="per-scan-title">
+    <div class="per-scan-title" id="per-scan-title">{{ _("ラベルを1回読んだ時の数") }} <small class="muted">{{ _("（数量を指定しなかった時に使います）") }}</small></div>
+    <div class="row">
+      <label class="per-scan-out">{{ _("1回にとる数（出庫）") }}
+        <input name="out_qty" type="number" value="{{ item.out_qty or 1 }}" min="1" max="9999" inputmode="numeric">
+        <small class="muted">{{ _("例: いつも2箱ずつ取るなら 2") }}</small></label>
+      <label class="per-scan-in">{{ _("1回にいれる数（補充）") }}
+        <input name="in_qty" type="number" value="{{ item.in_qty or 1 }}" min="1" max="9999" inputmode="numeric">
+        <small class="muted">{{ _("例: 1ケース12個で届くなら 12") }}</small></label>
+    </div>
+  </div>
+  <label>{{ _("仕入先") }} <input name="supplier" value="{{ item.supplier }}"></label>
+  <label>{{ _("発注担当者") }}
+    <select name="buyer_id">
+      <option value="">{{ _("（なし）") }}</option>
+      {% for b in buyer_list() %}<option value="{{ b.id }}" {{ 'selected' if item.buyer_id == b.id }}>{{ b.name }}{% if not b.email %} {{ _("（メールなし）") }}{% endif %}</option>{% endfor %}
+    </select>
+    <small class="muted">{{ _h("発注点を下回った時に知らせる人です。<a href=\"{url}\">発注担当者の登録・メールの設定</a>", url=url_for('buyers_page')) }}</small>
+  </label>
+  <label>{{ _("備考") }} <textarea name="note" rows="2">{{ item.note }}</textarea></label>
+  <div class="actions">
+    <button class="btn btn-primary">{{ _('登録') if is_new else _('保存') }}</button>
+    <a class="btn btn-ghost" href="{{ url_for('items_list') }}">{{ _("戻る") }}</a>
+  </div>
+</form>
+
+{% if not is_new %}
+<div>
+  <section class="card">
+    <h2>{{ _("補充を記録（スキャンしない時）") }}</h2>
+    <p class="muted small">{{ _("事務所で補充を受けた時などに、届いた数を入れて記録します。在庫に足されます。") }}
+      <a href="{{ url_for('receive_page') }}">{{ _("いくつもの品物をまとめて入庫する時は「入庫」の画面が便利です") }}</a></p>
+    <form method="post" action="{{ url_for('item_receive', item_id=item.id) }}" class="form">
+      <input type="hidden" name="next" value="{{ url_for('item_edit', item_id=item.id) }}">
+      <div class="row">
+        <label>{{ _("補充した数") }} <input name="qty" type="text" inputmode="numeric" maxlength="5" required value="{{ item.order_qty or item.in_qty or 1 }}"></label>
+        <label>{{ _("担当者") }} <input name="user" placeholder="{{ _('事務所') }}"></label>
+      </div>
+      <label>{{ _("メモ") }} <input name="note" maxlength="200" placeholder="{{ _('例: 事務所で受け取り') }}"></label>
+      <button class="btn btn-primary">{{ _("補充を記録する") }}</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>{{ _("棚卸（実在庫に合わせる）") }}</h2>
+    <p>{{ _("システム上の在庫:") }} <strong class="big">{{ item.stock }}</strong> {{ _(item.unit) }}</p>
+    <form method="post" action="{{ url_for('item_adjust', item_id=item.id) }}" class="form">
+      <div class="row">
+        <label>{{ _("実際の数") }} <input name="actual" type="number" required value="{{ item.stock }}"></label>
+        <label>{{ _("担当者") }} <input name="user"></label>
+      </div>
+      <label>{{ _("メモ") }} <input name="note" placeholder="{{ _('棚卸') }}"></label>
+      <button class="btn btn-primary">{{ _("在庫数を調整") }}</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>{{ _("最近の動き") }}</h2>
+    <table class="table">
+      <thead><tr><th>{{ _("日時") }}</th><th>{{ _("区分") }}</th><th class="r">{{ _("数量") }}</th><th class="r">{{ _("在庫") }}</th><th>{{ _("担当") }}</th></tr></thead>
+      <tbody>
+      {% for r in history or [] %}
+        <tr class="{{ 'voided' if r.voided }}">
+          <td>{{ r.ts[:16] }}</td>
+          <td><span class="kind kind-{{ r.kind }}">{{ _(KIND_LABELS[r.kind]) }}</span></td>
+          <td class="r">{{ r.qty }}</td><td class="r">{{ r.stock_after }}</td><td>{{ r.user }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">{{ _("記録がありません") }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <form id="del-item" method="post" action="{{ url_for('item_delete', item_id=item.id) }}"
+        onsubmit="return confirm({{ _('この品目を削除しますか？（履歴は残ります）')|tojson|forceescape }})">
+    <button class="btn btn-danger">{{ _("品目を削除") }}</button>
+  </form>
+</div>
+{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('notify.js') }}"></script>
+<script>
+document.getElementById("reading-test").addEventListener("click", function () {
+  var f = this.form.elements;
+  var item = { name: f.namedItem("name").value, spec: f.namedItem("spec").value, reading: f.namedItem("reading").value.trim(), name_id: f.namedItem("name_id").value };
+  window.StockNotify.speak(T("{name}が、発注点を下回りました。", { name: window.StockNotify.itemName(item) }));
+});
+</script>
+{% endblock %}

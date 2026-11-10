@@ -1,0 +1,21 @@
+{
+  "先に［決定］を押してください": "Tekan [OK] dulu",
+  "いま数えている品目に {value} と入力中です。やめる時は［やめる］を押してから読んでください": "Anda sedang memasukkan {value} untuk barang ini. Untuk berhenti, tekan [Batal] lalu pindai lagi",
+  "棚": "Rak",
+  "この棚卸しで前に数えた数: {n}（数え直すと上書きします）": "Hitungan sebelumnya di stok opname ini: {n} (hitung ulang akan menimpanya)",
+  "「{name}」を数えてください": "Hitung “{name}”",
+  "数えた数を入れて［決定］。棚が空なら 0 で決定": "Masukkan jumlah hitungan lalu tekan [OK]. Jika rak kosong, masukkan 0 lalu [OK]",
+  "サーバに接続できません": "Tidak bisa terhubung ke server",
+  "ネットワークを確認してください": "Periksa jaringan",
+  "ズレなし": "Tidak ada selisih",
+  "記録とのズレ {d}": "Selisih dengan catatan {d}",
+  "{name}  {n} で記録しました": "{name}  {n} sudah dicatat",
+  "{diff}。次のラベルを読んでください": "{diff}. Pindai label berikutnya",
+  "記録されていません。もう一度［決定］を押してください": "Belum tercatat. Tekan [OK] sekali lagi",
+  "ズレ": "Selisih",
+  "棚のラベルを読んでください": "Pindai label rak",
+  "読んだ品目の数を数えて、数字を入れて［決定］": "Hitung barang yang dipindai, masukkan angkanya, lalu tekan [OK]",
+  "保存できません": "Tidak bisa disimpan",
+  "今の在庫（記録）: {n}": "Stok sekarang (catatan): {n}",
+  "数字で入れてください": "Masukkan dengan angka"
+}

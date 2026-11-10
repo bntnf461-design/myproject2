@@ -1,0 +1,9 @@
+{
+  "取り消しました（在庫 {stock}{unit}）": "Dibatalkan (stok {stock}{unit})",
+  "取り消し": "Batalkan",
+  "1以上の数字で入れてください": "Masukkan angka 1 atau lebih",
+  "この入庫を取り消しますか？": "Batalkan pengisian stok ini?",
+  "記録できません": "Tidak dapat dicatat",
+  "取り消せませんでした": "Gagal membatalkan",
+  "+{n}{unit} 入庫しました（在庫 {stock}{unit}）": "+{n}{unit} masuk (stok {stock}{unit})"
+}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ _("棚卸しの結果") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _("棚卸しの結果") }}</h1>
+    <div class="muted small">{{ st.started_at[:16] }} 〜 {{ st.finished_at[:16] }}{% if st.user %}・{{ st.user }}{% endif %}</div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('stocktake_csv', st_id=st.id) }}">{{ _("CSV出力") }}</a>
+    <button class="btn" onclick="window.print()">{{ _("印刷") }}</button>
+    <a class="btn btn-ghost no-print" href="{{ url_for('stocktake_index') }}">{{ _("棚卸しの一覧") }}</a>
+  </div>
+</div>
+
+<section class="kpis">
+  <div class="kpi"><div class="kpi-label">{{ _("数えた品目") }}</div><div class="kpi-value">{{ done }}<small>/ {{ total }}</small></div></div>
+  <div class="kpi {{ 'kpi-alert' if diffs else 'kpi-ok' }}"><div class="kpi-label">{{ _("ズレがあった品目") }}</div><div class="kpi-value">{{ diffs|length }}<small>{{ _("品目") }}</small></div></div>
+  <div class="kpi"><div class="kpi-label">{{ _("数えていない品目") }}</div><div class="kpi-value">{{ remaining|length }}<small>{{ _("品目") }}</small></div></div>
+</section>
+
+<h2>{{ _("記録とのズレ一覧") }}</h2>
+<p class="muted small">{{ _("マイナス（−）は「記録より実物が少なかった」＝取った時の読み忘れが考えられます。プラス（＋）は補充の読み忘れなどです。在庫数はすでに数えた数に合わせてあります。") }}</p>
+<table class="table">
+  <thead><tr><th>{{ _("品名") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th class="r">{{ _("記録上の数") }}</th><th class="r">{{ _("数えた数") }}</th><th class="r">{{ _("ズレ") }}</th><th>{{ _("担当者") }}</th></tr></thead>
+  <tbody>
+  {% for c in diffs %}
+    <tr class="{{ 'row-empty' if c.diff < 0 else 'row-low' }}">
+      <td>{{ iname(c) }} <span class="muted small">{{ c.spec }}</span></td>{% if use_loc %}<td>{{ c.location }}</td>{% endif %}
+      <td class="r">{{ c.counted - c.diff }}{{ _(c.unit) }}</td><td class="r">{{ c.counted }}{{ _(c.unit) }}</td>
+      <td class="r stock-cell"><strong>{{ '%+d'|format(c.diff) }}</strong></td><td>{{ c.user }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6"><span class="empty-ok">{{ _("ズレはありませんでした") }}</span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if remaining %}
+<h2 class="mt">{{ _("数えていない品目") }}</h2>
+<p class="muted small">{{ _("この品目の在庫数は変えていません。") }}</p>
+<table class="table">
+  <thead><tr><th>{{ _("品名") }}</th>{% if use_loc %}<th>{{ _("棚番") }}</th>{% endif %}<th class="r">{{ _("記録上の数") }}</th></tr></thead>
+  <tbody>
+  {% for i in remaining %}<tr><td>{{ iname(i) }} <span class="muted small">{{ i.spec }}</span></td>{% if use_loc %}<td>{{ i.location }}</td>{% endif %}<td class="r">{{ i.stock }}{{ _(i.unit) }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

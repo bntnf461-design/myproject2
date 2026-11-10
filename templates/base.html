@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if site_name %}{{ site_name }} | {% endif %}{% block title %}{{ _("備品・副資材管理アプリ") }}{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- 文字の形 (ネットにつながらないPCでは、このPCの文字で表示する。画面の表示は待たせない) -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="{{ asset('style.css') }}">
+<link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+<script>window.LANG = {{ lang|tojson }}; window.I18N = {{ js_i18n|tojson }};</script>
+<script src="{{ asset('i18n.js') }}"></script>
+{% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<header class="topbar no-print">
+  <a class="brand" href="{{ url_for('dashboard') }}">
+    <span class="brand-mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+    </span>
+    <span class="brand-text"><span class="brand-name">{{ _("備品・副資材管理アプリ") }}</span><small class="brand-sub">{{ _("バーコード・QRで在庫管理") }}</small></span>
+  </a>
+  {% if site_name %}<span class="site-badge" title="{{ _('この現場') }}">📍 {{ site_name }}</span>{% endif %}
+  <nav>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if nav == 'dashboard' }}">{{ _("ダッシュボード") }}</a>
+    <a href="{{ url_for('scan') }}" class="{{ 'active' if nav == 'scan' }}">{{ _("スキャン") }}</a>
+    <a href="{{ url_for('receive_page') }}" class="{{ 'active' if nav == 'receive_page' }}">{{ _("入庫") }}</a>
+    <a href="{{ url_for('reorder') }}" class="{{ 'active' if nav == 'reorder' }}">{{ _("補充リスト") }}</a>
+    <a href="{{ url_for('items_list') }}" class="{{ 'active' if nav in ('items_list', 'item_new', 'item_edit') }}">{{ _("品目") }}</a>
+    <a href="{{ url_for('history') }}" class="{{ 'active' if nav == 'history' }}">{{ _("履歴") }}</a>
+    <a href="{{ url_for('stocktake_index') }}" class="{{ 'active' if nav and nav.startswith('stocktake') }}">{{ _("棚卸し") }}</a>
+    <a href="{{ url_for('report_page') }}" class="{{ 'active' if nav == 'report_page' }}">{{ _("レポート") }}</a>
+    <a href="{{ url_for('labels') }}" class="{{ 'active' if nav in ('labels', 'command_labels') }}">{{ _("ラベル印刷") }}</a>
+    {% if has_sites %}<a href="{{ url_for('sites_page') }}" class="{{ 'active' if nav == 'sites_page' }}">{{ _("全現場") }}</a>{% endif %}
+    <a href="{{ url_for('settings_page') }}" class="{{ 'active' if nav in ('settings_page', 'workers', 'buyers_page') }}">{{ _("設定") }}</a>
+  </nav>
+  {% set other = 'id' if lang == 'ja' else 'ja' %}
+  <div class="top-tools">
+    <a class="help-link{{ ' active' if nav == 'help_page' }}" href="{{ url_for('help_page') }}" title="{{ _('使い方を質問する') }}">？ {{ _("ヘルプ") }}</a>
+    <a class="lang-switch" href="{{ url_for('set_lang', code=other) }}" title="言語 / Bahasa">🌐 {{ LANGS[other] }}</a>
+  </div>
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="flash flash-{{ cat }} no-print">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="app-footer no-print"><span class="nb">{{ _("備品・副資材管理アプリ") }}</span> <span class="nb">{{ _("版") }} {{ app_version }}</span> <span class="nb">{{ app_copyright }}</span> <span class="nb">{{ _("無断転載・複製・転用を禁じます") }}</span></footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

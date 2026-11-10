@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+python/
+stock.db
+stock.db-*
+license.key
+*.pem
+backup/
+ssl/
+node_modules/

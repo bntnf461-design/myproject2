@@ -1,0 +1,14 @@
+{
+  "音声お知らせ: オン": "Notifikasi suara: aktif",
+  "補充のお知らせを、音声でお伝えします。": "Pemberitahuan isi ulang akan disampaikan dengan suara.",
+  "在庫切れ: ": "Stok habis: ",
+  "補充してください: ": "Mohon isi ulang: ",
+  "残り{n}{unit}": "Sisa {n} {unit}",
+  "タッチで確認済みにする": "Sentuh untuk menandai sudah dilihat",
+  "{name}が、在庫切れになりました。": "Stok {name} sudah habis.",
+  "{name}が、発注点を下回りました。残りは{n}{unit}です。": "Stok {name} sudah di bawah batas pesan ulang. Sisa {n} {unit}.",
+  "補充をお願いします。": "Mohon segera diisi ulang.",
+  "補充が必要な品目があります。{names}。補充をお願いします。": "Ada barang yang perlu diisi ulang: {names}. Mohon segera diisi ulang.",
+  "。": ", ",
+  "サーバに接続できません（再試行します）": "Tidak dapat terhubung ke server (mencoba lagi)"
+}

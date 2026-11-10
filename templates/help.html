@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ _("ヘルプ") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("ヘルプ（使い方を質問する）") }}</h1>
+</div>
+
+<section class="card help-ask">
+  <label for="help-q" class="help-ask-label">{{ _("知りたいことを、ふつうの言葉で入れてください") }}</label>
+  <div class="help-ask-row">
+    <input type="search" id="help-q" value="{{ q }}" autocomplete="off" maxlength="100"
+           placeholder="{{ _('例: 事務所で受け取った品物の記録は？') }}">
+  </div>
+  <div class="help-examples">
+    <span class="muted small">{{ _("例:") }}</span>
+    {% for ex in [_("最初にやること"), _("入庫のやり方"), _("間違えた時の取り消し"), _("ラベルの印刷"), _("棚卸し"), _("Teamsで知らせたい"), _("つながらない")] %}
+    <button type="button" class="chip help-ex">{{ ex }}</button>
+    {% endfor %}
+  </div>
+</section>
+
+<div id="help-results" aria-live="polite"></div>
+<p class="muted" id="help-none" hidden>{{ _("ぴったりの答えが見つかりませんでした。言い方を変えるか、下の一覧から探してください。") }}</p>
+
+<h2 class="section-gap">{{ _("よくある質問（すべて）") }}</h2>
+{% for key, name in cats %}
+<section class="help-cat">
+  <h3>{{ name }}</h3>
+  {% for e in entries if e.cat == key %}
+  <details class="help-item" id="help-{{ e.n }}">
+    <summary>{{ e.q }}</summary>
+    <div class="help-answer">
+      {% for line in e.a %}<p>{{ line }}</p>{% endfor %}
+      {% if e.link %}<a class="btn btn-small btn-primary" href="{{ e.link }}">{{ _("この画面を開く") }} →</a>{% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</section>
+{% endfor %}
+<p class="muted small mt">{{ _("もっと詳しくは「説明書（管理者用・作業者用）」を見てください。") }}</p>
+
+<script id="help-data" type="application/json">{{ entries|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ asset('help.js') }}"></script>
+{% endblock %}

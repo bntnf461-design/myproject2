@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ _("担当者カード印刷") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block body_class %}print-page{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h1>{{ _("担当者カード") }} <span class="muted small">{{ _("{n}枚", n=cards|length) }}</span></h1>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('workers') }}">{{ _("担当者の登録") }}</a>
+    <button class="btn btn-primary" onclick="window.print()">{{ _("印刷") }}</button>
+  </div>
+</div>
+<p class="muted no-print">{{ _("切り取って名札の裏などに貼ってください。作業を始める時に、スキャン画面でこのカードを1回読みます。") }}</p>
+<div class="cmd-cards">
+{% for c in cards %}
+  <div class="cmd-card worker-card">
+    <div class="cmd-qr">{{ c.qr }}</div>
+    <div class="cmd-title">{{ c.name }}</div>
+    <div class="cmd-desc">{{ _("担当者カード") }}</div>
+    <div class="cmd-bar">{{ c.bar }}</div>
+    <div class="mono small">{{ c.code }}</div>
+  </div>
+{% else %}
+  <p class="muted">{{ _("担当者が登録されていません。") }}<a href="{{ url_for('workers') }}">{{ _("担当者を登録") }}</a>{{ _("してください。") }}</p>
+{% endfor %}
+</div>
+{% endblock %}

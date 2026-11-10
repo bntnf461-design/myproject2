@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ _("発注担当者・通知") }} - {{ _("備品・副資材管理アプリ") }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _("発注担当者・通知") }}</h1>
+  <div class="actions"><a class="btn" href="{{ url_for('settings_page') }}">{{ _("設定に戻る") }}</a></div>
+</div>
+<p class="muted">{{ _("品目ごとに「発注担当者」を決めておくと、その品目が発注点を下回った時・在庫切れになった時に、Teams のチャンネルや担当者のメールで知らせます。補充リストでは、担当者ごとに絞り込めます。") }}</p>
+
+<div class="grid-2">
+  <section class="card">
+    <h2><span class="step-num">1</span> {{ _("発注担当者を登録する") }}</h2>
+    <form method="post" class="form">
+      <input type="hidden" name="action" value="add">
+      <div class="row">
+        <label>{{ _("名前") }} <input name="name" maxlength="40" required placeholder="{{ _('例: 山田') }}"></label>
+        <label>{{ _("メールアドレス（任意）") }} <input name="email" type="email" maxlength="200" placeholder="yamada@example.co.jp"></label>
+      </div>
+      <button class="btn btn-primary">{{ _("登録する") }}</button>
+    </form>
+    {% if buyers %}
+    <table class="table mt">
+      <thead><tr><th>{{ _("名前") }}</th><th>{{ _("メール") }}</th><th class="r">{{ _("担当の品目") }}</th><th></th></tr></thead>
+      <tbody>
+      {% for b in buyers %}
+        <tr>
+          <td colspan="2">
+            <form method="post" class="buyer-edit">
+              <input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="{{ b.id }}">
+              <input name="name" value="{{ b.name }}" maxlength="40" required aria-label="{{ _('名前') }}">
+              <input name="email" type="email" value="{{ b.email }}" maxlength="200" placeholder="{{ _('（メールなし）') }}" aria-label="{{ _('メール') }}">
+              <button class="btn btn-small">{{ _("保存") }}</button>
+            </form>
+          </td>
+          <td class="r"><a href="{{ url_for('items_list') }}">{{ counts.get(b.id, 0) }}</a></td>
+          <td>
+            <form method="post" onsubmit="return confirm({{ _('「{name}」さんを削除しますか？（担当していた品目は「なし」になります）', name=bare_name(b.name))|tojson|forceescape }})">
+              <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ b.id }}">
+              <button class="btn btn-small btn-danger">{{ _("削除") }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2><span class="step-num">2</span> {{ _("品目ごとに担当者を決める") }}</h2>
+    <ul>
+      <li>{{ _h("<strong>まとめて決める:</strong>「品目」で品目にチェックを入れ、下の「発注担当者」を選んで「選択した品目の発注担当者にする」を押します。") }}</li>
+      <li>{{ _h("<strong>1品目ずつ:</strong> 品目の［編集］→「発注担当者」で選びます。") }}</li>
+    </ul>
+    <p class="muted small">{{ _("担当者が決まっていない品目: {n} 品目", n=unassigned) }}</p>
+    <a class="btn" href="{{ url_for('items_list') }}">{{ _("品目を開く") }}</a>
+  </section>
+</div>
+
+<h2 id="teams" class="section-gap"><span class="step-num">3</span> {{ _("Teams に知らせる") }} <span class="badge badge-ok">{{ _("メールの設定が要らない") }}</span></h2>
+<section class="card">
+  <p>{{ _h("発注点を下回った時・在庫切れになった時に、<strong>Teams のチャンネル</strong>にお知らせのカード（品名・今の在庫・発注の目安・発注担当者）を出します。担当者が決まっていない品目も知らせます。") }}</p>
+  <details class="teams-howto" {{ '' if teams_url else 'open' }}>
+    <summary>{{ _("Teams の URL の作り方（最初に一度だけ）") }}</summary>
+    <ol>
+      <li>{{ _h("Teams で、お知らせを出したい<strong>チャンネル</strong>（例: 発注・備品）を開き、チャンネル名の右の <strong>「…」</strong> を押す。") }}</li>
+      <li>{{ _h("<strong>「ワークフロー」</strong> を押し、<strong>「Webhook 要求を受信するとチャネルに投稿する」</strong>（英語の画面では Post to a channel when a webhook request is received）を選ぶ。") }}</li>
+      <li>{{ _h("名前（例: 備品・副資材管理）を入れて <strong>「次へ」</strong>→ チームとチャンネルを確かめて <strong>「ワークフローを追加する」</strong>。") }}</li>
+      <li>{{ _h("表示された <strong>URL をコピー</strong>して、下の欄に貼り付け、<strong>「保存してテスト送信」</strong> を押す。チャンネルにテストのカードが出たら完了です。") }}</li>
+    </ol>
+    <p class="muted small">{{ _("「ワークフロー」が出ない時は、会社の Teams で使えないよう設定されています。社内のPC担当者に「Teams のワークフロー（Webhook でチャネルに投稿）を使いたい」と相談してください。以前の「受信 Webhook（コネクタ）」の URL も使えます。") }}</p>
+  </details>
+  <form method="post" action="{{ url_for('buyers_teams') }}" class="form">
+    <label>{{ _("Teams の URL") }}
+      <input name="teams_url" value="{{ teams_url }}" placeholder="https://….logic.azure.com/workflows/…" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="actions">
+      <button class="btn btn-primary" name="action" value="test">{{ _("保存してテスト送信") }}</button>
+      <button class="btn" name="action" value="save">{{ _("保存する") }}</button>
+    </div>
+    <small class="muted">{{ _("このPCからインターネットにつながっている必要があります（オフラインの現場からは送れません）。止める時は、欄を空にして「保存する」。URL を知っている人は誰でもそのチャンネルに投稿できるので、ほかの人に教えないでください。") }}</small>
+  </form>
+</section>
+
+<h2 id="mail" class="section-gap"><span class="step-num">4</span> {{ _("メールの送信設定") }}</h2>
+<section class="card">
+  <p class="muted">{{ _("通知メールを送るための設定です（一度だけ）。会社のメールサーバの情報は、社内のPC担当者に聞いてください。Gmail の場合は「アプリ パスワード」を使います。設定しない時は、メールは送らず、補充リストの画面だけで知らせます。") }}</p>
+  <form method="post" action="{{ url_for('buyers_mail') }}" class="form">
+    <div class="row">
+      <label>{{ _("メールサーバ") }} <input name="mail_host" value="{{ mail.mail_host }}" placeholder="smtp.example.co.jp / smtp.gmail.com"></label>
+      <label>{{ _("ポート") }} <input name="mail_port" value="{{ mail.mail_port }}" inputmode="numeric" placeholder="587"></label>
+      <label>{{ _("暗号化") }}
+        <select name="mail_security">{% for v, label in mail_security %}<option value="{{ v }}" {{ 'selected' if (mail.mail_security or 'starttls') == v }}>{{ _(label) }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <div class="row">
+      <label>{{ _("ユーザー名（ログインID）") }} <input name="mail_user" value="{{ mail.mail_user }}" autocomplete="off"></label>
+      <label>{{ _("パスワード") }} <input name="mail_password" type="password" value="" autocomplete="new-password" placeholder="{{ _('（変えない時は空欄）') if mail.mail_password else '' }}"></label>
+      <label>{{ _("差出人のアドレス") }} <input name="mail_from" value="{{ mail.mail_from }}" placeholder="{{ _('空欄ならユーザー名') }}"></label>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" name="action" value="save">{{ _("保存する") }}</button>
+      <input name="test_to" type="email" placeholder="{{ _('テストの送り先') }}" class="test-to">
+      <button class="btn" name="action" value="test">{{ _("保存してテスト送信") }}</button>
+    </div>
+    <small class="muted">{{ _("パスワードはこのPCの中（stock.db）に保存されます。通知専用のアカウントを使うと安心です。") }}</small>
+  </form>
+
+</section>
+
+<h2 class="section-gap">{{ _("最近の通知") }}</h2>
+<section class="card">
+  {% if notices %}
+  <table class="table">
+    <thead><tr><th>{{ _("日時") }}</th><th>{{ _("品目") }}</th><th>{{ _("発注担当") }} / {{ _("送り先") }}</th><th>{{ _("結果") }}</th></tr></thead>
+    <tbody>
+    {% for n in notices %}
+      <tr><td>{{ n.ts[:16] }}</td><td>{{ iname(n) if n.name else '' }}</td><td>{{ n.buyer or '' }} <span class="muted small">{{ n.to_addr }}</span></td>
+        <td>{% if n.ok %}<span class="badge badge-ok">{{ _("送信済") }}</span>{% else %}<span class="badge badge-empty">{{ _("失敗") }}</span> <span class="small muted">{{ n.error }}</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">{{ _("まだありません") }}</p>
+  {% endif %}
+</section>
+{% endblock %}
