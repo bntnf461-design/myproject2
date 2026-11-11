@@ -73,7 +73,7 @@
       jointConfirmed: false,
       j3abs: true,
       cart: ['X', 'Y', 'Z', 'W', 'P', 'R'],
-      coordNames: { joint: 'JOINT', base: 'WORLD', tool: 'TOOL' }
+      coordNames: { joint: '関節', base: 'ワールド', tool: 'ツール' }
     }
   };
 

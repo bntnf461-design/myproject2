@@ -320,7 +320,9 @@ details[open] summary{margin-bottom:6px}
 .ylabels{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr) 1fr 1fr 1.3fr;font-size:7px;letter-spacing:.02em;color:#cfd3d6;text-align:center;margin-top:2px}
 .ylabels span:nth-child(-n+3){font-size:6.5px}
 .ylabels span.cur{color:#fff;font-weight:800;text-decoration:underline}
-.ylabels{grid-template-columns:16% 16% 16% 1fr 1fr 1.3fr}
+.ylabels{grid-template-columns:14% 14% 16% 1fr 1fr 1.3fr}
+.ylabels span{white-space:nowrap;padding:0 2px}
+.ylabels span:nth-child(n+4){font-size:6px}
 .ybezel{background:#3a3d40;border-radius:6px;padding:7px;margin:8px 10px 10px}
 .ybezel .pscreen{margin:0;border:0}
 .ykp{background:#3d4044;border-radius:10px 10px 18px 18px;padding:8px 8px 4px;margin:0 2px}

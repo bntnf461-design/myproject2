@@ -279,7 +279,7 @@ P[2]{
   // CYCLE START は AUTO・TP 無効のときだけ
   await page.click('#pend [data-act="tp"]');
   await page.click('#pend [data-act="cycle"]');
-  check('T1 では CYCLE START 不可', !(await ev(() => RSIM.run)) && (await page.textContent('#lcd')).includes('AUTO'));
+  check('T1 では CYCLE START 不可', !(await ev(() => RSIM.run)) && (await page.textContent('#lcd')).includes('自動'));
   await page.click('#pend [data-act="fmode-AUTO"]');
   await page.click('#pend [data-act="cycle"]');
   check('AUTO・TP OFF で CYCLE START', !!(await ev(() => RSIM.run)));
