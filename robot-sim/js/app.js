@@ -510,6 +510,7 @@
     if (v && !was && kind === 'OT' && lineY()) {
       if (n === 98) CELL.conveyor.running = 1.0;                                  // CV上硝子卸し完了 → 搬送
       if (n === 54 || n === 55) {   // PL 内硝子無し → ラック入替。ライン側は取出パターンを反対側（直進⇄曲進）へ切り替える
+        if (S.io.out.OT56) { logMsg('ハンドセンサー異常（OT#(56)）のため、パレットの入替はしません', 'warn'); return; }   // 空ではなく検出の失敗
         const r = rackOf(n === 54 ? 'S' : 'C'); if (r) r.swapReq = true;
         const pl = S.plc, other = pl.pattern + (n === 54 ? 50 : -50);
         if (pl.alt && (n === 54) === (pl.pattern < 50) && lib.progs[String(other)]) { pl.pattern = other; logMsg(`${n === 54 ? '直進' : '曲進'}側のパレットが空になりました。取出パターンを ${other}（${n === 54 ? '曲進' : '直進'}側）へ切り替えます`); renderPlc(); }
@@ -541,6 +542,12 @@
     if (S.stats.t0) S.stats.last = (now - S.stats.t0) / 1000 / n / (S.timeScale || 1);
     S.stats.t0 = now; S.stats.count += n;
     updateCycle();
+  }
+  /* コンベアの置き位置の周り（ガラスの大きさ＋250mm）か */
+  function nearPlace(p) {
+    const C = CELL.conveyor, g = CELL.glassDef; if (!C || !g) return false;
+    const m = Math.max(g.w, g.h) / 2 + 0.25;
+    return Math.abs(p.x - C.place.x) <= m && Math.abs(p.z - C.place.z) <= m;
   }
   function lineTick(dt) {
     G.tcp.getWorldPosition(_v2);
@@ -617,8 +624,9 @@
       if ((p.x - r < FENCE.x[0] || p.x + r > FENCE.x[1] || p.z - r < FENCE.z[0] || p.z + r > FENCE.z[1]) &&
         !(FENCE.open || []).some(o => p.x >= o.x[0] && p.x <= o.x[1] && p.z >= o.z[0] && p.z <= o.z[1])) return it.what + 'が安全柵に当たります';
       for (const t of TABLES) {
-        // 持っているガラスをコンベアへ置くときは、実機も少し傾けて端から着ける（吸盤のバネが逃がす）ので、30mm までは当たりにしない
-        const tl = t.conveyor && it.what === '保持ワーク' ? 0.03 : tol;
+        // 持っているガラスをコンベアの置き位置へ下ろすときは、実機も少し傾けて端から着ける（吸盤のバネが逃がす）ので、
+        // 置き位置の周りに限って 30mm までは当たりにしない。それ以外の場所は通常どおり
+        const tl = t.conveyor && it.what === '保持ワーク' && nearPlace(p) ? 0.03 : tol;
         if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tl && p.y > (t.y0 != null ? t.y0 : 0) - 0.01)
           return `${it.what}が${t.name}に当たります`;
       }
@@ -1799,7 +1807,8 @@
   $('#saveNativeAll').addEventListener('click', () => exportNative(true));
   $('#loadBtn').addEventListener('click', () => $('#fileIn').click());
   const decodeText = buf => {
-    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    // 半角カナの Shift_JIS は UTF-8 としても読めてしまうことがある。その場合は U+0080〜U+07FF の文字が出るので Shift_JIS で読み直す
+    try { const s = new TextDecoder('utf-8', { fatal: true }).decode(buf); if (!/[\u0080-\u07ff]/.test(s)) return s; throw 0; }
     catch (x) { try { return new TextDecoder('shift_jis').decode(buf); } catch (y) { return new TextDecoder().decode(buf); } }
   };
   /* ZIP を展開する（無圧縮・deflate）。戻り値 [{name, data:Uint8Array}] */

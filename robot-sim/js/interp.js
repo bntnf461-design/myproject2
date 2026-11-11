@@ -76,7 +76,21 @@
      *   null                     待ち中・計算のみ（次のフレームでまた呼ぶ）
      *   {t:'move', ...}          移動を依頼（終わったら done() を呼ぶ）
      *   {t:'end'} {t:'pause'} {t:'alarm', key, msg} */
+    /* ジャンプで入力を見張るループ：次のフレームへ持ち越す（実機と同じく止めない）。長く続いたら 1 回だけ知らせる */
+    spin(dt) {
+      const H = this.host, F = this.frame;
+      this._spun = true; this.spinT = (this.spinT || 0) + (dt || 0);
+      const lim = H.opts.waitTimeout || 30;
+      if (this.spinT >= lim && !this._spinWarned) { this._spinWarned = true; H.log(`${F ? F.prog.name : ''}：ジャンプで待つループが ${lim} 秒続いています。待っている入力（条件）を確認してください`, 'warn'); }
+      return null;
+    }
     tick(dt, single) {
+      const r = this.tick1(dt, single);
+      if (!this._spun) { this.spinT = 0; this._spinWarned = false; }
+      this._spun = false;
+      return r;
+    }
+    tick1(dt, single) {
       const H = this.host;
       if (this.wait) {
         const hadWait = true;
@@ -128,7 +142,7 @@
           case 'JUMP':
             if (this.cond(i.cond)) {
               if (!this.jump(i.label)) return { t: 'alarm', key: 'prog', msg: `ラベル ${i.label} がありません` };
-              if (++jumps > 100) return single ? { t: 'stepped' } : null;
+              if (++jumps > 100) return single ? { t: 'stepped' } : this.spin(dt);
             } else F.pc++;
             break;
           case 'CALL': case 'JUMPJOB': {
@@ -136,7 +150,7 @@
             const jn = i.nameVar ? String(this.num({ ref: i.nameVar })) : i.name;   // JUMP B000：変数の値と同じ名前（番号）のジョブ
             const p = H.lib()[jn];
             if (!p) return { t: 'alarm', key: 'prog', msg: `呼び出し先のジョブ ${jn} がありません` };
-            if (i.op === 'JUMPJOB') { this.stack[this.stack.length - 1] = this.mkFrame(p, 0); if (++jumps > 100) return single ? { t: 'stepped' } : null; break; }
+            if (i.op === 'JUMPJOB') { this.stack[this.stack.length - 1] = this.mkFrame(p, 0); if (++jumps > 100) return single ? { t: 'stepped' } : this.spin(dt); break; }
             if (this.stack.length >= 16) return { t: 'alarm', key: 'prog', msg: 'CALL の入れ子が深すぎます' };
             this.stack.push(this.mkFrame(p, 0));
             break;
@@ -209,7 +223,7 @@
           case 'CLRSTACK': this.stack = [F]; F.pc++; break;             // 呼び出し元の記録を消す（今のジョブは続ける）
           case 'CLEARV': {
             const t = i.dst[0], n0 = +i.dst.slice(1), cnt = i.n || 100;
-            for (let k = 0; k < cnt; k++) H.vars.num[t + String(n0 + k).padStart(3, '0')] = 0;
+            for (let k = 0; k < cnt && n0 + k <= 99; k++) H.vars.num[t + String(n0 + k).padStart(3, '0')] = 0;
             F.pc++; break;
           }
           case 'DIN': {
@@ -239,7 +253,11 @@
             // 単位：直交は X/Y/Z＝0.001mm、姿勢＝0.0001度。パルス形式はパルス
             const key = ['X', 'Y', 'Z', 'rx', 'ry', 'rz'][i.i - 1], sc = p.k === 'c' ? (i.i <= 3 ? 1000 : 10000) : (H.pulse ? H.pulse()[i.i - 1] : 1);
             if (i.op === 'SETE') { const v = this.num(i.arg) / sc; if (p.k === 'c') p.p[key] = v; else { p.q[i.i - 1] = v; delete p.pls; } }
-            else H.vars.num[i.dst] = Math.round((p.k === 'c' ? p.p[key] : p.q[i.i - 1]) * sc);
+            else {
+              const v = Math.round((p.k === 'c' ? p.p[key] : p.q[i.i - 1]) * sc), lim = { B: [0, 255], I: [-32768, 32767], D: [-2147483648, 2147483647] }[i.dst[0]];
+              if (lim && (v < lim[0] || v > lim[1])) return { t: 'alarm', key: 'prog', msg: `${i.dst} に入らない値です（${v}）` };
+              H.vars.num[i.dst] = v;
+            }
             F.pc++; break;
           }
           case 'GETS':   // $PX001：現在値（ベース座標の直交値）

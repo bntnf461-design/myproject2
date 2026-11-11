@@ -3416,10 +3416,10 @@ details[open] summary{margin-bottom:6px}
       vmax: [180, 178, 178, 250, 250, 360],           // 各軸最高速度 deg/s（MH50 の仕様値に近い値。要確認）
       dims: { pivR: 0.145, pivY: 0.54, la: 0.87, a3: 0.21, ua: 1.025, fl: 0.175 },
       zOrigin: 0.54,                                   // ロボット座標の Z=0 は L 軸の高さ（据付面から 540mm）
-      pulse: [254434 / 180, 216576 / 135, 410839 / 206, 280671 / 360, 95651 / 125, 168276 / 360],   // 1度あたりのパルス数 [S,L,U,R,B,T]
+      pulse: [1413.5222, 1604.2667, 1994.3641, 779.6417, 765.2080, 467.4333],   // 1度あたりのパルス数 [S,L,U,R,B,T]
       vlMax: 2000,                                     // 直線最高速度 mm/s
       colors: { main: 0x1d5fbf, sub: 0xe9edf2, dark: 0x2b323b },
-      home: [-87.02, -49.87, -55.16, 0, -84.94, 89.85],   // 作業原点（P000：-123000,-80000,-110000,0,-65000,42000 パルス）
+      home: [-87.02, -49.87, -55.16, 0, -84.94, 89.85],   // 作業原点（コンベア向き）
       sign: [1, 1, 1, -1, -1, -1],                     // 内部の向きに対する実機の向き（実機データで確認済み）
       jointConfirmed: true,
       j3abs: false,
@@ -5269,7 +5269,8 @@ details[open] summary{margin-bottom:6px}
     if ((m = s.match(/^(ADD|SUB)\s+(P\d{3})\s+(P\d{3})$/i))) return { op: 'PCALC', fn: m[1].toUpperCase(), dst: m[2].toUpperCase(), src: m[3].toUpperCase() };
     if ((m = s.match(/^SETE\s+(P\d{3})\s*\((\d+)\)\s+(\S+)$/i))) return { op: 'SETE', p: m[1].toUpperCase(), i: +m[2], arg: parseValue(m[3]) };
     if ((m = s.match(/^GETE\s+([DIB]\d{3})\s+(P\d{3})\s*\((\d+)\)$/i))) return { op: 'GETE', dst: m[1].toUpperCase(), p: m[2].toUpperCase(), i: +m[3] };
-    if ((m = s.match(/^GETS\s+PX(\d{3})\s+\$PX(\d{3})$/i))) return { op: 'GETS', dst: 'P' + m[1], src: +m[2] };
+    if ((m = s.match(/^GETS\s+PX(\d{3})\s+\$PX(\d{3})$/i))) { if (+m[2] !== 1) return { op: 'UNKNOWN', text: s };   // $PX001（現在値・直交）だけ対応
+      return { op: 'GETS', dst: 'P' + m[1], src: 1 }; }
     if ((m = s.match(/^SET\s+([BIDR]\d{3})\s+(\S+)$/i))) return { op: 'CALC', dst: m[1].toUpperCase(), fn: 'SET', arg: parseValue(m[2]) };
     if ((m = s.match(/^(ADD|SUB|MUL|DIV)\s+([BIDR]\d{3})\s+(\S+)$/i))) return { op: 'CALC', dst: m[2].toUpperCase(), fn: m[1].toUpperCase(), arg: parseValue(m[3]) };
     if ((m = s.match(/^(INC|DEC)\s+([BIDR]\d{3})$/i))) return { op: 'CALC', dst: m[2].toUpperCase(), fn: m[1].toUpperCase(), arg: { num: 1 } };
@@ -5557,6 +5558,7 @@ details[open] summary{margin-bottom:6px}
     const linesOf = fn => ins.map((x, i) => (fn(x) ? i + 1 : 0)).filter(Boolean);
     const lst = a => a.slice(0, 12).join(', ') + (a.length > 12 ? ' …' : '');
     const bad = linesOf(x => x.op === 'UNKNOWN' || x.op === 'ERR');
+    if (Y && ins.some(x => /\bP\d{3}\b/.test(JSON.stringify(x)))) w.push('位置変数（P000 など）の中身は JBI に入りません。実機の位置変数は実機側の値がそのまま使われます。ツール番号は 0 で書き出します');
     if (bad.length) w.push(`シミュレーターで実行していない行があります（${lst(bad)} 行目）。実機でどう動くか必ず確認してください`);
     const ign = linesOf(x => x.op === 'IGNORE' || (x.op === 'MOVE' && x.extra && x.extra.length));
     if (ign.length) w.push(`シミュレーターでは無視した命令・オプションがあります（${lst(ign)} 行目）`);
@@ -5605,7 +5607,7 @@ details[open] summary{margin-bottom:6px}
         (rect[uf] = rect[uf] || []).push(`${id}=${f(P.X, 3)},${f(P.Y, 3)},${f(P.Z, 3)},${f(P.rx, 4)},${f(P.ry, 4)},${f(P.rz, 4)}`);
       }
     }
-    const out = ['/JOB', `//NAME ${prog.name}`, '//POS', `///NPOS ${ids.length},0,0,0,0,0`, '///TOOL 0'];
+    const out = ['/JOB', `//NAME ${prog.name}`, ...(prog.folder ? [`///FOLDERNAME ${prog.folder}`] : []), '//POS', `///NPOS ${ids.length},0,0,0,0,0`, '///TOOL 0'];
     if (pulseLines.length) out.push('///POSTYPE PULSE', '///PULSE', ...pulseLines);
     for (const [uf, arr] of Object.entries(rect)) {
       if (+uf) out.push(`///USER ${uf}`, '///POSTYPE USER'); else out.push('///POSTYPE ROBOT');
@@ -5887,7 +5889,21 @@ details[open] summary{margin-bottom:6px}
      *   null                     待ち中・計算のみ（次のフレームでまた呼ぶ）
      *   {t:'move', ...}          移動を依頼（終わったら done() を呼ぶ）
      *   {t:'end'} {t:'pause'} {t:'alarm', key, msg} */
+    /* ジャンプで入力を見張るループ：次のフレームへ持ち越す（実機と同じく止めない）。長く続いたら 1 回だけ知らせる */
+    spin(dt) {
+      const H = this.host, F = this.frame;
+      this._spun = true; this.spinT = (this.spinT || 0) + (dt || 0);
+      const lim = H.opts.waitTimeout || 30;
+      if (this.spinT >= lim && !this._spinWarned) { this._spinWarned = true; H.log(`${F ? F.prog.name : ''}：ジャンプで待つループが ${lim} 秒続いています。待っている入力（条件）を確認してください`, 'warn'); }
+      return null;
+    }
     tick(dt, single) {
+      const r = this.tick1(dt, single);
+      if (!this._spun) { this.spinT = 0; this._spinWarned = false; }
+      this._spun = false;
+      return r;
+    }
+    tick1(dt, single) {
       const H = this.host;
       if (this.wait) {
         const hadWait = true;
@@ -5939,7 +5955,7 @@ details[open] summary{margin-bottom:6px}
           case 'JUMP':
             if (this.cond(i.cond)) {
               if (!this.jump(i.label)) return { t: 'alarm', key: 'prog', msg: `ラベル ${i.label} がありません` };
-              if (++jumps > 100) return single ? { t: 'stepped' } : null;
+              if (++jumps > 100) return single ? { t: 'stepped' } : this.spin(dt);
             } else F.pc++;
             break;
           case 'CALL': case 'JUMPJOB': {
@@ -5947,7 +5963,7 @@ details[open] summary{margin-bottom:6px}
             const jn = i.nameVar ? String(this.num({ ref: i.nameVar })) : i.name;   // JUMP B000：変数の値と同じ名前（番号）のジョブ
             const p = H.lib()[jn];
             if (!p) return { t: 'alarm', key: 'prog', msg: `呼び出し先のジョブ ${jn} がありません` };
-            if (i.op === 'JUMPJOB') { this.stack[this.stack.length - 1] = this.mkFrame(p, 0); if (++jumps > 100) return single ? { t: 'stepped' } : null; break; }
+            if (i.op === 'JUMPJOB') { this.stack[this.stack.length - 1] = this.mkFrame(p, 0); if (++jumps > 100) return single ? { t: 'stepped' } : this.spin(dt); break; }
             if (this.stack.length >= 16) return { t: 'alarm', key: 'prog', msg: 'CALL の入れ子が深すぎます' };
             this.stack.push(this.mkFrame(p, 0));
             break;
@@ -6020,7 +6036,7 @@ details[open] summary{margin-bottom:6px}
           case 'CLRSTACK': this.stack = [F]; F.pc++; break;             // 呼び出し元の記録を消す（今のジョブは続ける）
           case 'CLEARV': {
             const t = i.dst[0], n0 = +i.dst.slice(1), cnt = i.n || 100;
-            for (let k = 0; k < cnt; k++) H.vars.num[t + String(n0 + k).padStart(3, '0')] = 0;
+            for (let k = 0; k < cnt && n0 + k <= 99; k++) H.vars.num[t + String(n0 + k).padStart(3, '0')] = 0;
             F.pc++; break;
           }
           case 'DIN': {
@@ -6050,7 +6066,11 @@ details[open] summary{margin-bottom:6px}
             // 単位：直交は X/Y/Z＝0.001mm、姿勢＝0.0001度。パルス形式はパルス
             const key = ['X', 'Y', 'Z', 'rx', 'ry', 'rz'][i.i - 1], sc = p.k === 'c' ? (i.i <= 3 ? 1000 : 10000) : (H.pulse ? H.pulse()[i.i - 1] : 1);
             if (i.op === 'SETE') { const v = this.num(i.arg) / sc; if (p.k === 'c') p.p[key] = v; else { p.q[i.i - 1] = v; delete p.pls; } }
-            else H.vars.num[i.dst] = Math.round((p.k === 'c' ? p.p[key] : p.q[i.i - 1]) * sc);
+            else {
+              const v = Math.round((p.k === 'c' ? p.p[key] : p.q[i.i - 1]) * sc), lim = { B: [0, 255], I: [-32768, 32767], D: [-2147483648, 2147483647] }[i.dst[0]];
+              if (lim && (v < lim[0] || v > lim[1])) return { t: 'alarm', key: 'prog', msg: `${i.dst} に入らない値です（${v}）` };
+              H.vars.num[i.dst] = v;
+            }
             F.pc++; break;
           }
           case 'GETS':   // $PX001：現在値（ベース座標の直交値）
@@ -6839,6 +6859,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (v && !was && kind === 'OT' && lineY()) {
       if (n === 98) CELL.conveyor.running = 1.0;                                  // CV上硝子卸し完了 → 搬送
       if (n === 54 || n === 55) {   // PL 内硝子無し → ラック入替。ライン側は取出パターンを反対側（直進⇄曲進）へ切り替える
+        if (S.io.out.OT56) { logMsg('ハンドセンサー異常（OT#(56)）のため、パレットの入替はしません', 'warn'); return; }   // 空ではなく検出の失敗
         const r = rackOf(n === 54 ? 'S' : 'C'); if (r) r.swapReq = true;
         const pl = S.plc, other = pl.pattern + (n === 54 ? 50 : -50);
         if (pl.alt && (n === 54) === (pl.pattern < 50) && lib.progs[String(other)]) { pl.pattern = other; logMsg(`${n === 54 ? '直進' : '曲進'}側のパレットが空になりました。取出パターンを ${other}（${n === 54 ? '曲進' : '直進'}側）へ切り替えます`); renderPlc(); }
@@ -6870,6 +6891,12 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (S.stats.t0) S.stats.last = (now - S.stats.t0) / 1000 / n / (S.timeScale || 1);
     S.stats.t0 = now; S.stats.count += n;
     updateCycle();
+  }
+  /* コンベアの置き位置の周り（ガラスの大きさ＋250mm）か */
+  function nearPlace(p) {
+    const C = CELL.conveyor, g = CELL.glassDef; if (!C || !g) return false;
+    const m = Math.max(g.w, g.h) / 2 + 0.25;
+    return Math.abs(p.x - C.place.x) <= m && Math.abs(p.z - C.place.z) <= m;
   }
   function lineTick(dt) {
     G.tcp.getWorldPosition(_v2);
@@ -6946,8 +6973,9 @@ JSON だけを返す（前後に文章を付けない）。形式：
       if ((p.x - r < FENCE.x[0] || p.x + r > FENCE.x[1] || p.z - r < FENCE.z[0] || p.z + r > FENCE.z[1]) &&
         !(FENCE.open || []).some(o => p.x >= o.x[0] && p.x <= o.x[1] && p.z >= o.z[0] && p.z <= o.z[1])) return it.what + 'が安全柵に当たります';
       for (const t of TABLES) {
-        // 持っているガラスをコンベアへ置くときは、実機も少し傾けて端から着ける（吸盤のバネが逃がす）ので、30mm までは当たりにしない
-        const tl = t.conveyor && it.what === '保持ワーク' ? 0.03 : tol;
+        // 持っているガラスをコンベアの置き位置へ下ろすときは、実機も少し傾けて端から着ける（吸盤のバネが逃がす）ので、
+        // 置き位置の周りに限って 30mm までは当たりにしない。それ以外の場所は通常どおり
+        const tl = t.conveyor && it.what === '保持ワーク' && nearPlace(p) ? 0.03 : tol;
         if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tl && p.y > (t.y0 != null ? t.y0 : 0) - 0.01)
           return `${it.what}が${t.name}に当たります`;
       }
@@ -8128,7 +8156,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
   $('#saveNativeAll').addEventListener('click', () => exportNative(true));
   $('#loadBtn').addEventListener('click', () => $('#fileIn').click());
   const decodeText = buf => {
-    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    // 半角カナの Shift_JIS は UTF-8 としても読めてしまうことがある。その場合は U+0080〜U+07FF の文字が出るので Shift_JIS で読み直す
+    try { const s = new TextDecoder('utf-8', { fatal: true }).decode(buf); if (!/[\u0080-\u07ff]/.test(s)) return s; throw 0; }
     catch (x) { try { return new TextDecoder('shift_jis').decode(buf); } catch (y) { return new TextDecoder().decode(buf); } }
   };
   /* ZIP を展開する（無圧縮・deflate）。戻り値 [{name, data:Uint8Array}] */

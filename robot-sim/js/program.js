@@ -140,7 +140,8 @@
     if ((m = s.match(/^(ADD|SUB)\s+(P\d{3})\s+(P\d{3})$/i))) return { op: 'PCALC', fn: m[1].toUpperCase(), dst: m[2].toUpperCase(), src: m[3].toUpperCase() };
     if ((m = s.match(/^SETE\s+(P\d{3})\s*\((\d+)\)\s+(\S+)$/i))) return { op: 'SETE', p: m[1].toUpperCase(), i: +m[2], arg: parseValue(m[3]) };
     if ((m = s.match(/^GETE\s+([DIB]\d{3})\s+(P\d{3})\s*\((\d+)\)$/i))) return { op: 'GETE', dst: m[1].toUpperCase(), p: m[2].toUpperCase(), i: +m[3] };
-    if ((m = s.match(/^GETS\s+PX(\d{3})\s+\$PX(\d{3})$/i))) return { op: 'GETS', dst: 'P' + m[1], src: +m[2] };
+    if ((m = s.match(/^GETS\s+PX(\d{3})\s+\$PX(\d{3})$/i))) { if (+m[2] !== 1) return { op: 'UNKNOWN', text: s };   // $PX001（現在値・直交）だけ対応
+      return { op: 'GETS', dst: 'P' + m[1], src: 1 }; }
     if ((m = s.match(/^SET\s+([BIDR]\d{3})\s+(\S+)$/i))) return { op: 'CALC', dst: m[1].toUpperCase(), fn: 'SET', arg: parseValue(m[2]) };
     if ((m = s.match(/^(ADD|SUB|MUL|DIV)\s+([BIDR]\d{3})\s+(\S+)$/i))) return { op: 'CALC', dst: m[2].toUpperCase(), fn: m[1].toUpperCase(), arg: parseValue(m[3]) };
     if ((m = s.match(/^(INC|DEC)\s+([BIDR]\d{3})$/i))) return { op: 'CALC', dst: m[2].toUpperCase(), fn: m[1].toUpperCase(), arg: { num: 1 } };
@@ -428,6 +429,7 @@
     const linesOf = fn => ins.map((x, i) => (fn(x) ? i + 1 : 0)).filter(Boolean);
     const lst = a => a.slice(0, 12).join(', ') + (a.length > 12 ? ' …' : '');
     const bad = linesOf(x => x.op === 'UNKNOWN' || x.op === 'ERR');
+    if (Y && ins.some(x => /\bP\d{3}\b/.test(JSON.stringify(x)))) w.push('位置変数（P000 など）の中身は JBI に入りません。実機の位置変数は実機側の値がそのまま使われます。ツール番号は 0 で書き出します');
     if (bad.length) w.push(`シミュレーターで実行していない行があります（${lst(bad)} 行目）。実機でどう動くか必ず確認してください`);
     const ign = linesOf(x => x.op === 'IGNORE' || (x.op === 'MOVE' && x.extra && x.extra.length));
     if (ign.length) w.push(`シミュレーターでは無視した命令・オプションがあります（${lst(ign)} 行目）`);
@@ -476,7 +478,7 @@
         (rect[uf] = rect[uf] || []).push(`${id}=${f(P.X, 3)},${f(P.Y, 3)},${f(P.Z, 3)},${f(P.rx, 4)},${f(P.ry, 4)},${f(P.rz, 4)}`);
       }
     }
-    const out = ['/JOB', `//NAME ${prog.name}`, '//POS', `///NPOS ${ids.length},0,0,0,0,0`, '///TOOL 0'];
+    const out = ['/JOB', `//NAME ${prog.name}`, ...(prog.folder ? [`///FOLDERNAME ${prog.folder}`] : []), '//POS', `///NPOS ${ids.length},0,0,0,0,0`, '///TOOL 0'];
     if (pulseLines.length) out.push('///POSTYPE PULSE', '///PULSE', ...pulseLines);
     for (const [uf, arr] of Object.entries(rect)) {
       if (+uf) out.push(`///USER ${uf}`, '///POSTYPE USER'); else out.push('///POSTYPE ROBOT');
