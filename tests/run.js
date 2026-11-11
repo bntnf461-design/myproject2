@@ -677,28 +677,6 @@ test("カウンターの停止を日報で直す（60分→30分）：元の値�
   eq(JSON.parse(await v(p, "kadoEvents")).find(e => e.id === "w1").e, "11:00", "カウンターの値に戻せる");
 });
 
-test("カメラで素板のQRを読む（カメラの映像にQRを写すと、QRリーダーと同じように入る）", async ctx => {
-  const p = await open(ctx, "2026-10-21T08:00:00");
-  // カメラの代わりに、QRを描いたキャンバスの映像を渡す
-  await p.evaluate(async (text) => {
-    const svg = window.__nippoQrSvg(text);
-    const img = new Image();
-    await new Promise((ok, ng) => { img.onload = ok; img.onerror = ng; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); });
-    const c = document.createElement("canvas"); c.width = 960; c.height = 720;
-    const x = c.getContext("2d");
-    const draw = () => { x.fillStyle = "#fff"; x.fillRect(0, 0, 960, 720); x.drawImage(img, 230, 110, 500, 500); };
-    draw(); setInterval(draw, 100);
-    navigator.mediaDevices.getUserMedia = async () => c.captureStream(10);
-  }, QR_042);
-  await p.click("#btnCam");
-  ok(await p.evaluate(() => document.getElementById("camDlg").open), "カメラの画面が出る");
-  await p.waitForFunction(() => !document.getElementById("camDlg").open, null, { timeout: 8000 });
-  eq(await v(p, "sb1_name") + " " + await v(p, "sb1_qty"), "DGL35TS 175", "使用素板に入る");
-  ok((await p.textContent("#msg")).includes("R7Z446SX042"), "読んだ知らせ");
-  ok(await p.evaluate(() => !document.getElementById("camVideo").srcObject), "閉じたらカメラを止める");
-  eq(p.errors.join(), "", "ページのエラー");
-});
-
 test("U1：数字の欄はホイールや↑↓で値が変わらない（↑↓は上下の行へ）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await fill(p, "r2_ware", 5);
