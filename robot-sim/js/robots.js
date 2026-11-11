@@ -35,19 +35,23 @@
       id: 'yaskawa',
       brand: 'YASKAWA',
       label: '安川電機',
-      model: 'MOTOMAN 汎用 50kg級（DX200 想定・寸法はシミュレーション用）',
+      // 実機（MH00050-J0*／DX200）のバックアップのパラメータから：
+      //   腕の寸法 RC1G（145 / 870 / 210 / 1025 / 175 mm）、ソフトリミット S1CxG400〜（パルス）
+      //   1度あたりのパルス数＝ソフトリミット（パルス）÷ 可動範囲（度）。実機が記録した直交姿勢と FK が一致することを確認済み
+      model: 'MOTOMAN-MH50（MH00050-J0*）',
       controller: 'DX200',
       axes: ['S', 'L', 'U', 'R', 'B', 'T'],
       axisJa: ['旋回', '下腕', '上腕', '手首回転', '手首振り', 'フランジ回転'],
-      lim: [[-180, 180], [-90, 150], [-85, 160], [-200, 200], [-130, 130], [-360, 360]],
-      vmax: [180, 160, 170, 400, 400, 600],           // 各軸最高速度 deg/s
-      dims: { pivR: 0.15, pivY: 0.54, la: 0.87, a3: 0.20, ua: 0.92, fl: 0.10 },   // 実機（MH50 系）に近い大きさ。寸法の根拠はなく、シミュレーション用
-      pulse: null,                                     // 1度あたりのパルス数 [S,L,U,R,B,T]（JBI の PULSE 形式に必要。機種の取扱説明書の値）
+      lim: [[-180, 180], [-90, 135], [-80, 206], [-360, 360], [-125, 125], [-360, 360]],
+      vmax: [180, 178, 178, 250, 250, 360],           // 各軸最高速度 deg/s（MH50 の仕様値に近い値。要確認）
+      dims: { pivR: 0.145, pivY: 0.54, la: 0.87, a3: 0.21, ua: 1.025, fl: 0.175 },
+      zOrigin: 0.54,                                   // ロボット座標の Z=0 は L 軸の高さ（据付面から 540mm）
+      pulse: [254434 / 180, 216576 / 135, 410839 / 206, 280671 / 360, 95651 / 125, 168276 / 360],   // 1度あたりのパルス数 [S,L,U,R,B,T]
       vlMax: 2000,                                     // 直線最高速度 mm/s
       colors: { main: 0x1d5fbf, sub: 0xe9edf2, dark: 0x2b323b },
-      home: [0, 0, 0, 0, -90, 0],
-      sign: [1, 1, 1, 1, -1, 1],
-      jointConfirmed: false,
+      home: [-87.02, -49.87, -55.16, 0, -84.94, 89.85],   // 作業原点（P000：-123000,-80000,-110000,0,-65000,42000 パルス）
+      sign: [1, 1, 1, -1, -1, -1],                     // 内部の向きに対する実機の向き（実機データで確認済み）
+      jointConfirmed: true,
       j3abs: false,
       cart: ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'],
       coordNames: { joint: '関節', base: '直交', tool: 'ツール' }
@@ -89,6 +93,7 @@
         if (def) r.home = def.home.map((v, i) => v * def.sign[i] * r.sign[i]);
       }
       if (typeof o.jointConfirmed === 'boolean') r.jointConfirmed = o.jointConfirmed;
+      if (isFinite(o.zOrigin) && o.zOrigin >= 0 && o.zOrigin < 3) r.zOrigin = +o.zOrigin;
     }
   };
   RS.ROBOT_DEFAULTS = JSON.parse(JSON.stringify(RS.ROBOTS));

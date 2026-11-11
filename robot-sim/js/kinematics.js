@@ -65,14 +65,17 @@
       rxv = 0;
       rzv = Math.atan2(-r01, r11);
     }
-    return { X: p.x * 1000, Y: -p.z * 1000, Z: p.y * 1000, rx: rxv * R2D, ry: ryv * R2D, rz: rzv * R2D };
+    return { X: p.x * 1000, Y: -p.z * 1000, Z: (p.y - RS.zOrigin) * 1000, rx: rxv * R2D, ry: ryv * R2D, rz: rzv * R2D };
   };
+
+  /* ロボット座標の Z=0 の高さ（Three の y、m）。安川・ファナックとも実機は第2軸の高さが Z=0。機種を切り替えたら設定する */
+  RS.zOrigin = 0;
 
   /* ロボット座標の姿勢 → Three ワールド行列 */
   RS.matrixFromPose = function (P) {
     const R = rz(P.rz * D2R).multiply(ry(P.ry * D2R)).multiply(rx(P.rx * D2R));
     const M = C.clone().multiply(R);
-    M.setPosition(P.X / 1000, P.Z / 1000, -P.Y / 1000);
+    M.setPosition(P.X / 1000, P.Z / 1000 + RS.zOrigin, -P.Y / 1000);
     return M;
   };
 

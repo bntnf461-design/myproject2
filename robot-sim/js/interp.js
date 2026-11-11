@@ -99,7 +99,8 @@
         } else if (w.kind === 'pulse') { w.t -= dt; if (w.t > 0) return null; H.setOut(w.io.kind, w.io.n, false); this.wait = null; }
         if (hadWait && single) return { t: 'stepped' };
       }
-      let budget = 3000;
+      // 入力待ちのループ（*ｻｲｸﾙ … JUMP *ｻｲｸﾙ）は実機でも回り続ける。1 フレームに 100 回飛んだら次のフレームへ持ち越す
+      let budget = 3000, jumps = 0;
       while (budget-- > 0) {
         const F = this.frame;
         if (!F) return { t: 'end' };
@@ -125,14 +126,17 @@
           case 'PAUSE': F.pc++; return { t: 'pause' };
           case 'MESSAGE': H.log(i.text, 'info'); F.pc++; break;
           case 'JUMP':
-            if (this.cond(i.cond)) { if (!this.jump(i.label)) return { t: 'alarm', key: 'prog', msg: `ラベル ${i.label} がありません` }; }
-            else F.pc++;
+            if (this.cond(i.cond)) {
+              if (!this.jump(i.label)) return { t: 'alarm', key: 'prog', msg: `ラベル ${i.label} がありません` };
+              if (++jumps > 100) return single ? { t: 'stepped' } : null;
+            } else F.pc++;
             break;
           case 'CALL': case 'JUMPJOB': {
             if (!this.cond(i.cond)) { F.pc++; break; }
-            const p = H.lib()[i.name];
-            if (!p) return { t: 'alarm', key: 'prog', msg: `呼び出し先 ${i.name} がありません` };
-            if (i.op === 'JUMPJOB') { this.stack[this.stack.length - 1] = this.mkFrame(p, 0); break; }
+            const jn = i.nameVar ? String(this.num({ ref: i.nameVar })) : i.name;   // JUMP B000：変数の値と同じ名前（番号）のジョブ
+            const p = H.lib()[jn];
+            if (!p) return { t: 'alarm', key: 'prog', msg: `呼び出し先のジョブ ${jn} がありません` };
+            if (i.op === 'JUMPJOB') { this.stack[this.stack.length - 1] = this.mkFrame(p, 0); if (++jumps > 100) return single ? { t: 'stepped' } : null; break; }
             if (this.stack.length >= 16) return { t: 'alarm', key: 'prog', msg: 'CALL の入れ子が深すぎます' };
             this.stack.push(this.mkFrame(p, 0));
             break;
@@ -199,9 +203,48 @@
           case 'SFTON': {
             const p = H.vars.pos[i.ref];
             if (!p || p.k !== 'c') return { t: 'alarm', key: 'prog', msg: `シフト量 ${i.ref} が未設定です（「変数」で直交値を入れてください）` };
-            this.shift = { p: p.p, frame: i.frame }; F.pc++; break;
+            this.shift = { p: Object.assign({}, p.p), frame: i.frameGiven ? i.frame : (p.frame === 'tool' ? 'TF' : i.frame) }; F.pc++; break;
           }
           case 'SFTOF': this.shift = null; F.pc++; break;
+          case 'CLRSTACK': this.stack = [F]; F.pc++; break;             // 呼び出し元の記録を消す（今のジョブは続ける）
+          case 'CLEARV': {
+            const t = i.dst[0], n0 = +i.dst.slice(1), cnt = i.n || 100;
+            for (let k = 0; k < cnt; k++) H.vars.num[t + String(n0 + k).padStart(3, '0')] = 0;
+            F.pc++; break;
+          }
+          case 'DIN': {
+            let v;
+            if (i.kind === 'IG' || i.kind === 'OG') { v = 0; for (let b = 0; b < 8; b++) { const n = (i.n - 1) * 8 + 1 + b; if (i.kind === 'IG' ? H.getIn('IN', n) : H.getOut('OT', n)) v |= 1 << b; } }
+            else v = (i.kind === 'IN' ? H.getIn('IN', i.n) : H.getOut('OT', i.n)) ? 1 : 0;
+            H.vars.num[i.dst] = v; F.pc++; break;
+          }
+          case 'DOUTG': {
+            const v = Math.trunc(this.num(i.arg)) & 255;
+            for (let b = 0; b < 8; b++) H.setOut('OT', (i.n - 1) * 8 + 1 + b, !!(v & (1 << b)));
+            F.pc++; break;
+          }
+          case 'PCALC': {
+            const P = H.vars.pos, a = P[i.dst], b = P[i.src];
+            if (!a || !b) return { t: 'alarm', key: 'prog', msg: `${F.prog.name} ${F.pc + 1}行目：位置変数 ${!a ? i.dst : i.src} が未設定です` };
+            if (a.k !== b.k) return { t: 'alarm', key: 'prog', msg: `${i.dst} と ${i.src} の形式（直交／パルス）が違います` };
+            const sg = i.fn === 'SUB' ? -1 : 1;
+            if (a.k === 'j') { const bq = b.q.slice(); a.q = a.q.map((v, k) => v + sg * bq[k]); delete a.pls; }
+            else { const bp = Object.assign({}, b.p); for (const k of ['X', 'Y', 'Z', 'rx', 'ry', 'rz']) a.p[k] += sg * bp[k]; }
+            F.pc++; break;
+          }
+          case 'SETE': case 'GETE': {
+            const p = H.vars.pos[i.p];
+            if (!p) return { t: 'alarm', key: 'prog', msg: `${F.prog.name} ${F.pc + 1}行目：位置変数 ${i.p} が未設定です` };
+            if (i.i < 1 || i.i > 6) return { t: 'alarm', key: 'prog', msg: '要素番号は 1〜6 です' };
+            // 単位：直交は X/Y/Z＝0.001mm、姿勢＝0.0001度。パルス形式はパルス
+            const key = ['X', 'Y', 'Z', 'rx', 'ry', 'rz'][i.i - 1], sc = p.k === 'c' ? (i.i <= 3 ? 1000 : 10000) : (H.pulse ? H.pulse()[i.i - 1] : 1);
+            if (i.op === 'SETE') { const v = this.num(i.arg) / sc; if (p.k === 'c') p.p[key] = v; else { p.q[i.i - 1] = v; delete p.pls; } }
+            else H.vars.num[i.dst] = Math.round((p.k === 'c' ? p.p[key] : p.q[i.i - 1]) * sc);
+            F.pc++; break;
+          }
+          case 'GETS':   // $PX001：現在値（ベース座標の直交値）
+            H.vars.pos[i.dst] = { k: 'c', p: H.curPose(), cfg: RS.configOf(H.curQ()), uf: 0, ut: 1 };
+            F.pc++; break;
           case 'SKIPCOND': this.skipCond = i.cond; F.pc++; break;
           case 'MOVE': {
             let pos;
@@ -227,7 +270,7 @@
           case 'IMOV': {
             const p = H.vars.pos[i.ref];
             if (!p || p.k !== 'c') return { t: 'alarm', key: 'prog', msg: `移動量 ${i.ref} が未設定です` };
-            return { t: 'move', mode: 'L', rel: { p: p.p, frame: i.frame || 'BF' }, speed: i.speed, line: F.pc, prog: F.prog.name };
+            return { t: 'move', mode: 'L', rel: { p: p.p, frame: i.frame || (p.frame === 'tool' ? 'TF' : 'BF') }, speed: i.speed, line: F.pc, prog: F.prog.name };
           }
           default:
             F.pc++;

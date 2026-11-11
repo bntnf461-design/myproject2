@@ -126,10 +126,25 @@
       if (m[3] && !cond) return { op: 'ERR', msg: '条件の書き方が分かりません：' + m[3] };
       return { op: m[1].toUpperCase() === 'CALL' ? 'CALL' : 'JUMPJOB', name: m[2].toUpperCase(), cond };
     }
+    // 実機のジョブ（DX200）で使われている命令
+    if (/^CLEAR\s+STACK$/i.test(s)) return { op: 'CLRSTACK' };
+    if ((m = s.match(/^CLEAR\s+([BIDR]\d{3})\s+(\d+|ALL)$/i))) return { op: 'CLEARV', dst: m[1].toUpperCase(), n: /ALL/i.test(m[2]) ? 0 : +m[2] };
+    if ((m = s.match(/^DIN\s+(B\d{3})\s+(IN|IG|OT|OG)#\((\d+)\)$/i))) return { op: 'DIN', dst: m[1].toUpperCase(), kind: m[2].toUpperCase(), n: +m[3] };
+    if ((m = s.match(/^DOUT\s+OG#\((\d+)\)\s+(\S+)$/i))) return { op: 'DOUTG', n: +m[1], arg: parseValue(m[2]) };
+    if ((m = s.match(/^(JUMP|CALL)\s+([BID]\d{3})(?:\s+IF\s+(.+))?$/i))) {
+      const cond = m[3] ? yCond(m[3]) : null;
+      if (m[3] && !cond) return { op: 'ERR', msg: '条件の書き方が分かりません：' + m[3] };
+      return { op: m[1].toUpperCase() === 'CALL' ? 'CALL' : 'JUMPJOB', nameVar: m[2].toUpperCase(), cond };   // 変数の値（番号）と同じ名前のジョブへ
+    }
+    if ((m = s.match(/^(SHCKSET|SHCKRST)\b/i))) return { op: 'IGNORE', msg: m[1].toUpperCase() + '（衝突検出レベルの切替）はシミュレーターでは何もしません' };
+    if ((m = s.match(/^(ADD|SUB)\s+(P\d{3})\s+(P\d{3})$/i))) return { op: 'PCALC', fn: m[1].toUpperCase(), dst: m[2].toUpperCase(), src: m[3].toUpperCase() };
+    if ((m = s.match(/^SETE\s+(P\d{3})\s*\((\d+)\)\s+(\S+)$/i))) return { op: 'SETE', p: m[1].toUpperCase(), i: +m[2], arg: parseValue(m[3]) };
+    if ((m = s.match(/^GETE\s+([DIB]\d{3})\s+(P\d{3})\s*\((\d+)\)$/i))) return { op: 'GETE', dst: m[1].toUpperCase(), p: m[2].toUpperCase(), i: +m[3] };
+    if ((m = s.match(/^GETS\s+PX(\d{3})\s+\$PX(\d{3})$/i))) return { op: 'GETS', dst: 'P' + m[1], src: +m[2] };
     if ((m = s.match(/^SET\s+([BIDR]\d{3})\s+(\S+)$/i))) return { op: 'CALC', dst: m[1].toUpperCase(), fn: 'SET', arg: parseValue(m[2]) };
     if ((m = s.match(/^(ADD|SUB|MUL|DIV)\s+([BIDR]\d{3})\s+(\S+)$/i))) return { op: 'CALC', dst: m[2].toUpperCase(), fn: m[1].toUpperCase(), arg: parseValue(m[3]) };
     if ((m = s.match(/^(INC|DEC)\s+([BIDR]\d{3})$/i))) return { op: 'CALC', dst: m[2].toUpperCase(), fn: m[1].toUpperCase(), arg: { num: 1 } };
-    if ((m = s.match(/^SFTON\s+(P\d{3})(?:\s+(BF|RF|TF))?$/i))) return { op: 'SFTON', ref: m[1].toUpperCase(), frame: (m[2] || 'BF').toUpperCase() };
+    if ((m = s.match(/^SFTON\s+(P\d{3})(?:\s+(BF|RF|TF))?$/i))) return { op: 'SFTON', ref: m[1].toUpperCase(), frame: (m[2] || 'BF').toUpperCase(), frameGiven: !!m[2] };
     if (U === 'SFTOF') return { op: 'SFTOF' };
     if ((m = s.match(/^SPEED\s+/i))) return { op: 'IGNORE', msg: 'SPEED 命令は無視します' };
     return { op: 'UNKNOWN', text: s };
@@ -326,7 +341,7 @@
       if (n && !/^[A-Z]/.test(n)) n = 'P' + n;
       return n.slice(0, 36);
     }
-    n = n.toUpperCase().replace(/[^A-Z0-9_\-\u3000-\u30ff\u4e00-\u9fff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]/g, '');
+    n = n.toUpperCase().replace(/[\\\/:*?"<>|,'`]/g, '');   // ファイル名・書式で困る記号だけ除く（かっこ・全角・半角カナは可）
     let out = '', b = 0;
     for (const ch of n) { const w = ch.charCodeAt(0) < 0x80 || (ch >= '\uff61' && ch <= '\uff9f') ? 1 : 2; if (b + w > 32) break; out += ch; b += w; }
     return out;
@@ -342,11 +357,15 @@
     const psys = p.sys === 'fanuc' || p.sys === 'yaskawa' ? p.sys : sys;
     const out = RS.emptyProgram(psys, RS.cleanName(p.name, psys) || 'MAIN', p.tool);
     out.comment = RS.oneLine(p.comment).slice(0, 64);
+    if (typeof p.folder === 'string' && p.folder) out.folder = RS.oneLine(p.folder).slice(0, 32);
     out.lines = p.lines.filter(l => typeof l === 'string').map(l => l.replace(/[\r\n]/g, ' ').slice(0, 200));
     const pos = p.pos && typeof p.pos === 'object' ? p.pos : {};
     for (const [k, v] of Object.entries(pos)) {
       if (!v) continue;
-      if (v.k === 'j' && Array.isArray(v.q) && v.q.length === 6 && v.q.every(isFinite)) out.pos[k] = { k: 'j', q: v.q.map(Number) };
+      if (v.k === 'j' && Array.isArray(v.q) && v.q.length === 6 && v.q.every(isFinite)) {
+        out.pos[k] = { k: 'j', q: v.q.map(Number) };
+        if (Array.isArray(v.pls) && v.pls.length === 6 && v.pls.every(isFinite)) out.pos[k].pls = v.pls.map(Number);   // 読み込んだときのパルス値（変えていなければそのまま書き出す）
+      }
       else if (v.k === 'c' && v.p && ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].every(a => isFinite(v.p[a]))) {
         const r = { k: 'c', p: {}, cfg: String(v.cfg || 'N U T, 0, 0, 0'), uf: +v.uf || 0, ut: v.ut == null ? 1 : +v.ut };
         ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].forEach(a => { r.p[a] = +v.p[a]; });
@@ -385,9 +404,9 @@
       else if (i.op === 'UNKNOWN') errs.push({ line: at, lv: 'warn', msg: (i.msg || '未対応の命令（実行時は飛ばします）') });
       else if (i.op === 'MOVE' && /^(C\d{5}|P\[\d+\])$/.test(i.ref) && !prog.pos[i.ref]) errs.push({ line: at, lv: 'err', msg: `位置 ${i.ref} がありません` });
       else if (i.op === 'WAITIN' && i.timeoutLbl != null && !labels.has(i.timeoutLbl)) errs.push({ line: at, lv: 'err', msg: `TIMEOUT の飛び先 LBL[${i.timeoutLbl}] がありません` });
-      else if (i.op === 'LABEL' && prog.sys === 'yaskawa' && i.label.length > 8) errs.push({ line: at, lv: 'warn', msg: `ラベル *${i.label} は 8 文字以内にしてください` });
+      else if (i.op === 'LABEL' && prog.sys === 'yaskawa' && [...i.label].reduce((n, ch) => n + (ch.charCodeAt(0) < 0x80 || (ch >= '\uff61' && ch <= '\uff9f') ? 1 : 2), 0) > 8) errs.push({ line: at, lv: 'warn', msg: `ラベル *${i.label} は 8 文字以内にしてください` });
       else if (i.op === 'JUMP' && !labels.has(i.label)) errs.push({ line: at, lv: 'err', msg: `ラベル ${prog.sys === 'yaskawa' ? '*' + i.label : 'LBL[' + i.label + ']'} がありません` });
-      else if ((i.op === 'CALL' || i.op === 'JUMPJOB') && lib && !lib[i.name]) errs.push({ line: at, lv: 'warn', msg: `呼び出し先 ${i.name} がありません` });
+      else if ((i.op === 'CALL' || i.op === 'JUMPJOB') && !i.nameVar && lib && !lib[i.name]) errs.push({ line: at, lv: 'warn', msg: `呼び出し先 ${i.name} がありません` });
       if (i.warn) errs.push({ line: at, lv: 'warn', msg: i.warn });
     });
     return errs;
@@ -558,11 +577,36 @@
     return { err: '対応していない形式です（JSON / JBI / LS）' };
   };
 
+  /* 位置変数の 1 行（P00001=...）を位置データにする */
+  function jbiPos(v, postype, user, pulse) {
+    if (postype === 'PULSE') {
+      if (!pulse) return null;
+      return { k: 'j', q: v.slice(0, 6).map((x, i) => +(x / pulse[i]).toFixed(5)), pls: v.slice(0, 6) };
+    }
+    const p = { k: 'c', p: { X: v[0], Y: v[1], Z: v[2], rx: v[3], ry: v[4], rz: v[5] }, cfg: 'N U T, 0, 0, 0', uf: postype === 'USER' ? user : 0, ut: 1 };
+    if (postype === 'TOOL' || postype === 'MTOOL') p.frame = 'tool'; else if (postype === 'ROBOT') p.frame = 'robot';
+    return p;
+  }
+  /* 1 つのテキストに複数の /JOB が入っていてもよい */
   function importJBI(t, ctx) {
-    const warns = [];
+    const parts = t.split(/^(?=\/JOB\s*$)/m).filter(x => /^\/JOB/.test(x.trim()));
+    const out = { progs: [], warns: [], pvars: {} };
+    for (const part of parts) {
+      const r = importJBI1(part, ctx);
+      if (r.err) return r;
+      out.progs.push(r.prog); r.warns.forEach(w => out.warns.push(w));
+      for (const [k, v] of Object.entries(r.pvars)) out.pvars[k] = { pos: v, date: r.date, job: r.prog.name };
+    }
+    if (!out.progs.length) return { err: 'JBI の命令部（NOP〜END）が見つかりません' };
+    return out;
+  }
+  function importJBI1(t, ctx) {
+    const warns = [], pvars = {};
     const lines = t.split(/\r?\n/);
-    const name = RS.cleanName((t.match(/^\/\/NAME\s+(\S+)/m) || [])[1], 'yaskawa') || 'IMPORT';
+    const name = RS.cleanName((t.match(/^\/\/NAME\s+(.+?)\s*$/m) || [])[1], 'yaskawa') || 'IMPORT';
     const prog = RS.emptyProgram('yaskawa', name);
+    const fm = t.match(/^\/\/\/FOLDERNAME\s+(.+?)\s*$/m); if (fm) prog.folder = fm[1];
+    const date = (t.match(/^\/\/\/DATE\s+(.+?)\s*$/m) || [])[1] || '';
     let sec = '', postype = 'PULSE', user = 0, inInst = false, started = false;
     const pulse = ctx.pulse && ctx.pulse.yaskawa;
     for (const raw of lines) {
@@ -574,19 +618,18 @@
         if ((m = s.match(/^\/\/\/POSTYPE\s+(\S+)/))) { postype = m[1].toUpperCase(); continue; }
         if (s === '///PULSE') { postype = 'PULSE'; continue; }
         if ((m = s.match(/^\/\/\/USER\s+(\d+)/))) { user = +m[1]; continue; }
-        if ((m = s.match(/^\/\/\/RCONF\s+(.+)$/)) && m[1].split(',').some(v => +v !== 0)) { warns.push(`RCONF ${m[1].trim()}：形態（フリップ・手首の回り方など）は再現しません。シミュレーターは今の姿勢に近い解で動かします`); continue; }
+        if ((m = s.match(/^\/\/\/RCONF\s+(.+)$/)) && m[1].split(',').some(v => +v !== 0)) { warns.push(`${name}：RCONF ${m[1].trim()}：形態（フリップ・手首の回り方など）は再現しません。シミュレーターは今の姿勢に近い解で動かします`); continue; }
         if (s.startsWith('///')) continue;
-        if ((m = s.match(/^(C\d{5})=(.+)$/))) {
-          const v = m[2].split(',').map(Number);
-          if (v.length < 6 || v.slice(0, 6).some(x => !isFinite(x))) { warns.push(`${m[1]} の値を読めません`); continue; }
-          if (postype === 'PULSE') {
-            if (!pulse) return { err: 'このJBIはパルス形式です。「設定」タブの機種パラメータで「1度あたりのパルス数」を入れてから読み込んでください' };
-            prog.pos[m[1]] = { k: 'j', q: v.slice(0, 6).map((x, i) => +(x / pulse[i]).toFixed(4)) };
-          } else {
-            if (postype === 'TOOL' || postype === 'MTOOL') warns.push(`${m[1]} は POSTYPE ${postype} です。ロボット座標として扱います`);
-            prog.pos[m[1]] = { k: 'c', p: { X: v[0], Y: v[1], Z: v[2], rx: v[3], ry: v[4], rz: v[5] }, cfg: 'N U T, 0, 0, 0', uf: postype === 'USER' ? user : 0, ut: 1 };
-          }
-        } else if (/^(BC|EC)\d{5}=/.test(s)) warns.push('ベース軸・ステーション軸の位置は読み込みません');
+        if ((m = s.match(/^([CP])(\d{5})=(.+)$/))) {
+          const v = m[3].split(',').map(Number), id = m[1] + m[2];
+          if (v.length < 6 || v.slice(0, 6).some(x => !isFinite(x))) { warns.push(`${name}：${id} の値を読めません`); continue; }
+          if (postype === 'PULSE' && !pulse) return { err: 'このJBIはパルス形式です。「設定」タブの機種パラメータで「1度あたりのパルス数」を入れてから読み込んでください' };
+          const pos = jbiPos(v, postype, user, pulse);
+          if (m[1] === 'C') {
+            if (pos.frame === 'tool') { warns.push(`${name}：${id} は POSTYPE ${postype} です。ロボット座標として扱います`); delete pos.frame; }
+            prog.pos[id] = pos;
+          } else pvars['P' + String(+m[2]).padStart(3, '0')] = pos;     // 位置変数（全ジョブ共通）
+        } else if (/^(BC|EC|BP|EX)\d{5}=/.test(s)) warns.push(`${name}：ベース軸・ステーション軸の位置は読み込みません`);
       } else if (sec === 'inst') {
         if (s.startsWith('///')) { const m = s.match(/^\/\/\/COMM\s+(.*)$/); if (m) prog.comment = m[1]; continue; }
         if (!inInst) { if (/^NOP$/i.test(s)) { inInst = true; started = true; } continue; }
@@ -594,8 +637,8 @@
         prog.lines.push(s);
       }
     }
-    if (!started) return { err: 'JBI の命令部（NOP〜END）が見つかりません' };
-    return { progs: [prog], warns };
+    if (!started) return { err: `${name}：JBI の命令部（NOP〜END）が見つかりません` };
+    return { prog, warns, pvars, date };
   }
 
   function importLS(t) {

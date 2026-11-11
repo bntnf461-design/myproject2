@@ -20,62 +20,89 @@
 (function (RS) {
   'use strict';
 
-  /* 実機ラインの配置。ロボット座標（X 前・Y 左、m）。利用者の手書きの配置図による：
-   *   ・ロボットの正面（初期の向き X+）にコンベア。ロボットから約 80cm 離れて始まり、ロボットから遠ざかる向き（X+）へ流れる
-   *   ・ロボットの左（Y+）に曲進ラック、後ろ（X−）に直進ラック。どちらもロボットから約 80cm（「80cm?」は要確認）
-   *   ・ラックの形は写真から：曲進＝A 型（両面）、直進＝パレット型（推定）
-   * 円と円の間隔 80cm を、ロボットの架台（半径約 0.4m）とターンテーブル（半径約 0.95m）の縁の間として中心距離にしている。 */
+  /* 実機ラインの配置。ロボット座標（X 前・Y 左・Z 上、m。Z=0 は L 軸の高さ）。
+   * 実機（MH50／DX200）のジョブの教示点から求めた値を丸めたもの：
+   *   ・コンベアはロボットの右（Y−）。ガラスを置く位置は Y≒−1.25、上面は Z≒+0.03。ロボットから遠ざかる向き（Y−）へ流れる
+   *   ・直進ラックは左（Y+）。ガラス面（中段中央）は Y≒1.44、ガラスは鉛直から約 9.3° 寝ている
+   *   ・曲進ラックは前（X+）。ガラス面は X≒1.27（接触位置の記録がないので、直進と同じ探索距離と仮定）
+   *   ・作業原点（P000）はコンベア向き
+   * 柵・架台の高さ・ラックの形・ガラスの寸法は写真と配置図からの推定。 */
   RS.LINE = {
-    floor: -0.6,               // 架台の高さ 600mm（ロボットのベース面から床まで、推定）
-    glass: { w: 1.0, h: 0.75, t: 0.004, count: 20 },   // 板ガラス 1000×750×4mm、1 面 20 枚（シミュレーション用）
+    floor: -0.35,              // ロボットの据付面から床まで（架台の高さ 350mm、推定）
+    zBase: 0.54,               // 据付面から L 軸（ロボット座標 Z=0）まで
+    // 板ガラス 1000×750×4mm、1 面 50 枚（推定。設定で変えられる）
+    glass: { w: 1.0, h: 0.75, t: 0.004, count: 50 },
     racks: [
-      // fence：'half'＝柵がラックの真ん中を通る（半分が柵の外。外側で補充）、'inside'＝ラック全体が柵の中
-      { id: 'S', name: '直進ラック（パレット型）', type: 'pallet', X: -2.1, Y: 0, lean: 8, ledge: 0.8, fence: 'half' },
-      { id: 'C', name: '曲進ラック（A型）', type: 'aframe', X: 0, Y: 2.15, lean: 15, ledge: 0.35, fence: 'inside' }
+      // depth＝満載のガラス表面から背もたれまで。実機のサーチ終端（直進は接触位置より約 530mm 奥）で背もたれに当たらない奥行きにしてある。
+      // 枚数が少ないときは、背もたれとの間に当て木（スペーサー）が入る
+      // face＝満載のときのガラス表面の中心。dir＝ガラス面が向く向き（ロボット側）。fence：'half'＝柵がラックの真ん中を通る
+      { id: 'S', name: '直進ラック', type: 'pallet', face: { X: -0.141, Y: 1.441, Z: -0.150 }, dir: [0, -1], lean: 9.3, depth: 0.56, fence: 'half' },
+      { id: 'C', name: '曲進ラック', type: 'aframe', face: { X: 1.270, Y: 0.006, Z: -0.159 }, dir: [-1, 0], lean: 9.4, depth: 0.43, fence: 'inside' }
     ],
-    // コンベア：上流端 (X0,Y0) → 下流端 (X1,Y1) へ流れる（X か Y に平行）。place＝上流端からガラスの中心までの距離。top は床から
-    conveyor: { X0: 1.2, Y0: 0, X1: 6.0, Y1: 0, w: 1.6, top: 0.85, place: 0.5 },   // w＝幅（流れと直角）
+    // コンベア：上流端 (X0,Y0) → 下流端 (X1,Y1) へ流れる（X か Y に平行）。place＝上流端からガラスの中心までの距離。topZ＝上面の Z
+    conveyor: { X0: -0.22, Y0: -0.75, X1: -0.22, Y1: -5.5, w: 1.7, topZ: 0.015, place: 0.50 },
     fence: null
   };
+  /* ガラス面の位置から、ラックの中心・受けの高さを求める */
+  function resolveLine(L) {
+    const G = L.glass, out = JSON.parse(JSON.stringify(L));
+    out.racks.forEach(r => {
+      const a = r.lean * Math.PI / 180, b0 = r.type === 'pallet' ? 0.15 : 0.26;
+      const xs = b0 - Math.sin(a) * G.h / 2 + Math.cos(a) * r.depth, ys = Math.cos(a) * G.h / 2 + Math.sin(a) * r.depth;
+      const n = Math.hypot(r.dir[0], r.dir[1]) || 1; r.dir = [r.dir[0] / n, r.dir[1] / n];
+      r.X = r.face.X - r.dir[0] * xs; r.Y = r.face.Y - r.dir[1] * xs;
+      r.ledge = Math.max(0.2, r.face.Z + L.zBase - L.floor - ys);   // 床から
+    });
+    // 最後の 1 枚までサーチで届くように、枚数の上限を決める（背もたれの手前 90mm まで）
+    out.glass.count = Math.max(1, Math.min(G.count, ...out.racks.map(r => Math.floor((r.depth - 0.09) / G.t))));
+    out.conveyor.top = L.conveyor.topZ + L.zBase - L.floor;         // 床から
+    out.fence = fenceOf(out);
+    return out;
+  }
   function fenceOf(L) {
-    // ラックの中心（柵が真ん中を通る）か、ラック全体（柵の中）を囲む
+    // ラックの中心（柵が真ん中を通る）か、ラック全体（柵の中）を囲む。ロボットの旋回に必要な広さは確保する
     const c = L.conveyor, xs = [], ys = [];
     for (const r of L.racks) {
-      const m = r.fence === 'inside' ? 1.25 : 0, horiz = Math.abs(r.X) >= Math.abs(r.Y);
-      xs.push(r.X + (horiz ? Math.sign(r.X) * m : 0)); ys.push(r.Y + (horiz ? 0 : Math.sign(r.Y) * m));
+      const m = r.fence === 'inside' ? 1.25 : 0;
+      xs.push(r.X - r.dir[0] * m); ys.push(r.Y - r.dir[1] * m);
     }
     const len = Math.hypot(c.X1 - c.X0, c.Y1 - c.Y0) || 1, px = c.X0 + (c.X1 - c.X0) / len * c.place, py = c.Y0 + (c.Y1 - c.Y0) / len * c.place;
-    const half = Math.abs(c.Y1 - c.Y0) > Math.abs(c.X1 - c.X0) ? 0.9 : c.w / 2 + 0.4;
-    return { x: [Math.min(-1.3, ...xs), Math.max(1.3, ...xs, px + 0.9)], y: [Math.min(-1.9, ...ys, py - half), Math.max(1.3, ...ys, py + half)] };
+    const alongY = Math.abs(c.Y1 - c.Y0) > Math.abs(c.X1 - c.X0);
+    const hx = alongY ? c.w / 2 + 0.3 : 0.9, hy = alongY ? 0.9 : c.w / 2 + 0.3;
+    return { x: [Math.min(-1.7, ...xs, px - hx), Math.max(1.7, ...xs, px + hx)], y: [Math.min(-1.7, ...ys, py - hy), Math.max(1.7, ...ys, py + hy)] };
   }
-  RS.LINE.fence = fenceOf(RS.LINE);
+  RS.lineResolved = () => resolveLine(RS.LINE);
 
   RS.LINE_DEFAULT = JSON.parse(JSON.stringify(RS.LINE));
-  /* 利用者が入れた実測値（mm）で配置を上書きする。{ 'racks.0.X': 0, ... } */
+  /* 利用者が入れた実測値（mm）で配置を上書きする。{ 'racks.0.face.X': -141, ... } */
   RS.LINE_FIELDS = [
-    ['racks.0.X', '直進ラック 中心 X'], ['racks.0.Y', '直進ラック 中心 Y'],
-    ['racks.1.X', '曲進ラック 中心 X'], ['racks.1.Y', '曲進ラック 中心 Y'],
+    ['racks.0.face.X', '直進ラック ガラス面の中心 X'], ['racks.0.face.Y', '直進ラック ガラス面の中心 Y'], ['racks.0.face.Z', '直進ラック ガラス面の中心 Z'],
+    ['racks.1.face.X', '曲進ラック ガラス面の中心 X'], ['racks.1.face.Y', '曲進ラック ガラス面の中心 Y'], ['racks.1.face.Z', '曲進ラック ガラス面の中心 Z'],
     ['conveyor.X0', 'コンベア 上流端 X'], ['conveyor.Y0', 'コンベア 上流端 Y'], ['conveyor.X1', 'コンベア 下流端 X'], ['conveyor.Y1', 'コンベア 下流端 Y'],
-    ['conveyor.place', 'ガラスを置く位置（上流端から）'], ['conveyor.w', 'コンベアの幅'], ['conveyor.top', 'コンベア上面（床から）'], ['floor', 'ロボットのベース面（床から、マイナス）']
+    ['conveyor.place', 'ガラスを置く位置（上流端から）'], ['conveyor.w', 'コンベアの幅'], ['conveyor.topZ', 'コンベア上面の Z'],
+    ['glass.w', 'ガラスの幅'], ['glass.h', 'ガラスの高さ'], ['glass.t', 'ガラスの厚み'], ['glass.count', 'パレット 1 面の枚数（枚）', 1], ['floor', '床の高さ（据付面から、マイナス）']
   ];
   const getp = (o, k) => k.split('.').reduce((a, p) => a && a[p], o);
   const setp = (o, k, v) => { const ks = k.split('.'); const last = ks.pop(); const t = ks.reduce((a, p) => a[p], o); t[last] = v; };
-  RS.lineValues = () => Object.fromEntries(RS.LINE_FIELDS.map(([k]) => [k, Math.round(getp(RS.LINE, k) * 1000)]));
+  RS.lineValues = () => Object.fromEntries(RS.LINE_FIELDS.map(([k, , u]) => [k, u ? getp(RS.LINE, k) : Math.round(getp(RS.LINE, k) * 1000)]));
   RS.setLine = function (vals) {
     const L = RS.LINE;
-    for (const [k] of RS.LINE_FIELDS) {
+    for (const [k, , u] of RS.LINE_FIELDS) {
       const v = vals && vals[k];
-      if (typeof v !== 'number' || !isFinite(v) || Math.abs(v) > 8000) continue;
-      setp(L, k, v / 1000);
+      if (typeof v !== 'number' || !isFinite(v) || Math.abs(v) > 9000) continue;
+      setp(L, k, u ? Math.round(v) : v / 1000);
     }
+    L.glass.t = Math.min(Math.max(L.glass.t, 0.002), 0.019);
+    L.glass.count = Math.min(Math.max(L.glass.count, 1), 200);
     const c = L.conveyor;
     // X か Y に平行にそろえる（長い方の向き）。長さは 1m 以上
     if (Math.abs(c.X1 - c.X0) >= Math.abs(c.Y1 - c.Y0)) c.Y1 = c.Y0; else c.X1 = c.X0;
     let len = Math.hypot(c.X1 - c.X0, c.Y1 - c.Y0);
     if (len < 1) { if (c.X1 !== c.X0 || c.Y1 === c.Y0) c.X1 = c.X0 + (c.X1 >= c.X0 ? 1 : -1); else c.Y1 = c.Y0 + (c.Y1 >= c.Y0 ? 1 : -1); len = 1; }
-    c.place = Math.min(Math.max(c.place, 0.5), len - 0.5);
+    c.place = Math.min(Math.max(c.place, 0.4), len - 0.4);
+    c.w = Math.min(Math.max(c.w, 0.5), 3);
+    L.glass.w = Math.min(Math.max(L.glass.w, 0.3), 2); L.glass.h = Math.min(Math.max(L.glass.h, 0.3), 1.5);
     if (L.floor > -0.1) L.floor = -0.1;
-    L.fence = fenceOf(L);   // 柵は配置に合わせて広げる
   };
   RS.resetLine = function () { Object.assign(RS.LINE, JSON.parse(JSON.stringify(RS.LINE_DEFAULT))); };
 
@@ -182,7 +209,7 @@
 
   /* ---------------- 実機ライン（ラック → コンベア） ---------------- */
   function buildLine(T, LT) {
-    const L = RS.LINE, F = L.floor;
+    const L = resolveLine(RS.LINE), F = L.floor;
     const group = new T.Group(); group.name = 'cell-line';
     const { box, cyl } = helpers(T, group);
     const OBST = [];
@@ -215,7 +242,7 @@
       const ox = r.X, oz = -r.Y, nx = Math.abs(ox) >= Math.abs(oz) ? Math.sign(ox) : 0, nz = nx ? 0 : Math.sign(oz);
       plane(nx ? 2.4 : 3.2, nx ? 3.2 : 2.4, floorRed, ox + nx * 1.3, oz + nz * 1.3);
     }
-    plane(Fx[1] - Fx[0] + 1.0, 1.6, floorBlue, (Fx[0] + Fx[1]) / 2, Fz[1] + 0.9);
+    plane(1.6, Fz[1] - Fz[0] + 1.0, floorBlue, Fx[0] - 0.9, (Fz[0] + Fz[1]) / 2);   // ロボットの後ろ側（X−、柵の外）の通路
 
     /* ロボットの架台と点検床（グレーチング、縁は黄色の滑り止め） */
     const grate = canvasTex(T, 128, 128, (c, w, h) => {
@@ -223,7 +250,7 @@
       for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) c.fillRect(x * 32 + 8, y * 32 + 6, 16, 20);
     }, 14, 14, true);
     const deckM = new T.MeshStandardMaterial({ map: grate, roughness: 0.6, metalness: 0.6 });
-    const dx0 = -1.0, dx1 = Math.min(1.0, Math.max(L.conveyor.X0, 0.6) - 0.05), dz0 = -1.0, dz1 = 1.0;
+    const dx0 = -1.0, dx1 = 1.0, dz0 = -1.0, dz1 = Math.min(1.0, Math.max(0.6, -Math.max(L.conveyor.Y0, L.conveyor.Y1) - 0.05));
     box(dx1 - dx0, 0.12, dz1 - dz0, deckM, (dx0 + dx1) / 2, F + 0.06, (dz0 + dz1) / 2);
     const edge = canvasTex(T, 128, 32, (c, w, h) => { c.fillStyle = '#d8b21c'; c.fillRect(0, 0, w, h); c.fillStyle = '#5a4a10'; for (let x = 0; x < w; x += 16) c.fillRect(x + 4, 8, 8, 16); }, 20, 1, true);
     const edgeM = new T.MeshStandardMaterial({ map: edge, roughness: 0.6, metalness: 0.4 });
@@ -242,9 +269,9 @@
     const G = L.glass, racks = [];
     for (const def of L.racks) {
       const a = (def.lean != null ? def.lean : 15) * Math.PI / 180, h0 = def.ledge != null ? def.ledge : 0.35;
-      const pallet = def.type === 'pallet', b0 = pallet ? 0.15 : 0.26;
+      const pallet = def.type === 'pallet', b0 = pallet ? 0.15 : 0.26, LW = def.depth + 0.06;   // LW＝受けの奥行き
       const tt = new T.Group();
-      const dx = -def.X, dz = def.Y, len = Math.hypot(dx, dz) || 1;
+      const dx = def.dir[0], dz = -def.dir[1], len = 1;   // ガラス面が向く向き（Three 座標）
       tt.position.set(def.X, F, -def.Y);
       const yaw = Math.atan2(-dz / len, dx / len);
       tt.rotation.y = yaw;
@@ -258,10 +285,10 @@
       const faces = [];
       if (pallet) {
         // パレット型：高い青の架台の上にパレット、ガラスは背もたれにほぼ垂直に立てかける
-        box(1.2, 0.08, 1.5, blue, 0, 0.16, 0, rot);
-        for (const sx of [-0.55, 0.55]) for (const sz of [-0.7, 0.7]) box(0.07, h0 - 0.2, 0.07, blue, sx, 0.2 + (h0 - 0.2) / 2 - 0.06, sz, rot);
-        box(1.2, 0.06, 1.5, blue, 0, h0 - 0.15, 0, rot);
-        for (const s of [1, -1]) { box(0.5, 0.1, 1.3, wood, s * (b0 + 0.25), h0 - 0.06, 0, rot); for (const z of [-0.5, 0, 0.5]) box(0.5, 0.06, 0.1, green, s * (b0 + 0.25), h0 - 0.13, z, rot); }
+        box(1.7, 0.08, 1.5, blue, 0, 0.16, 0, rot);
+        for (const sx of [-0.8, 0.8]) for (const sz of [-0.7, 0.7]) box(0.07, h0 - 0.2, 0.07, blue, sx, 0.2 + (h0 - 0.2) / 2 - 0.06, sz, rot);
+        box(1.7, 0.06, 1.5, blue, 0, h0 - 0.15, 0, rot);
+        for (const s of [1, -1]) { box(LW, 0.1, 1.3, wood, s * (b0 + LW / 2), h0 - 0.06, 0, rot); for (const z of [-0.5, 0, 0.5]) box(LW, 0.06, 0.1, green, s * (b0 + LW / 2), h0 - 0.13, z, rot); }
       } else {
         box(1.2, 0.1, 1.5, blue, 0, 0.16, 0, rot);
       }
@@ -270,8 +297,8 @@
         const d = new T.Vector3(-s * Math.sin(a), Math.cos(a), 0);         // 面に沿って上向き
         const B = new T.Vector3(s * b0, h0, 0);                            // ガラス下辺の奥（受けの付け根）
         if (!pallet) {
-          box(0.26, 0.05, 1.3, green, s * (b0 + 0.13), h0 - 0.025, 0, rot);
-          box(0.06, h0 - 0.21, 0.06, blue, s * (b0 + 0.23), (h0 + 0.21) / 2 - 0.025, 0.6, rot); box(0.06, h0 - 0.21, 0.06, blue, s * (b0 + 0.23), (h0 + 0.21) / 2 - 0.025, -0.6, rot);
+          box(LW, 0.05, 1.3, green, s * (b0 + LW / 2), h0 - 0.025, 0, rot);
+          box(0.06, h0 - 0.21, 0.06, blue, s * (b0 + LW - 0.03), (h0 + 0.21) / 2 - 0.025, 0.6, rot); box(0.06, h0 - 0.21, 0.06, blue, s * (b0 + LW - 0.03), (h0 + 0.21) / 2 - 0.025, -0.6, rot);
         }
         // 背もたれ（青い柱＋緑の当て板）
         const back = pallet ? 0.95 : 1.0;
@@ -280,7 +307,9 @@
           beam(T, z ? blue : green, p0, p1, z ? 0.07 : 0.05, rot);
         }
         for (const t of [0.2, 0.62]) { const p = B.clone().addScaledVector(d, t).addScaledVector(n, -0.01); const m = box(0.02, 0.08, 1.25, green, p.x, p.y, 0, rot); m.rotation.z = s * a; }
-        faces.push({ s, n, d, B, count: 0, front: null, stack: null });
+        const off = Math.max(0, def.depth - G.t * G.count);   // 当て木の厚み
+        if (off > 0.015) for (const z of [-0.35, 0.35]) { const p0 = B.clone().add(new T.Vector3(0, 0, z)).addScaledVector(n, off / 2).addScaledVector(d, 0.03); const m = beam(T, wood, p0, p0.clone().addScaledVector(d, Math.min(G.h, 0.9) - 0.06), 0.09, rot); m.scale.x = (off - 0.004) / 0.09; }
+        faces.push({ s, n, d, B, off, count: 0, front: null, stack: null });
       }
       // 上の梁と表示
       const topY = h0 + (pallet ? 1.0 : 0.95);
@@ -296,7 +325,7 @@
       rack.test = p => {
         const q = rot.worldToLocal(p.clone());
         if (Math.abs(q.z) > 0.72 || q.y < 0 || q.y > topY + 0.05) return false;
-        if (q.y < h0 && Math.abs(q.x) < b0 + 0.3) return true;
+        if (q.y < h0 && Math.abs(q.x) < b0 + LW) return true;
         return faces.every(f => q.clone().sub(f.B).dot(f.n) < -0.006);
       };
       OBST.push({ name: def.name, test: p => rack.test(p) });
@@ -386,7 +415,7 @@
     }
 
     /* 信号灯（赤・黄・緑）と操作箱、ペンダント掛け、看板 */
-    const tower = new T.Group(); tower.position.set(Fx[0] - 0.3, F, Fz[1] + 0.3); group.add(tower);
+    const tower = new T.Group(); tower.position.set(Fx[0] - 0.3, F, Fz[0] - 0.3); group.add(tower);
     cyl(0.025, 2.3, steel, 0, 1.15, 0, tower, 12);
     const towerLamps = {};
     [['red', 0xc0302a], ['yellow', 0xe0a020], ['green', 0x2e9a4a]].forEach(([k, c], i) => { towerLamps[k] = cyl(0.05, 0.11, lensOff(c), 0, 2.62 - i * 0.12, 0, tower, 20); });
@@ -404,12 +433,12 @@
       else { const out = sd === 'z0' ? -1 : 1; opBox(x + 1.15, (sd === 'z0' ? Fz[0] : Fz[1]) + out * 0.06, out < 0 ? Math.PI : 0); }
     }
     // 右側（Y−、青い通路側）の柵に掛けてあるペンダントと看板
-    { const g = new T.Group(); g.position.set(-0.35, F + 1.15, Fz[1] + 0.05); group.add(g);
+    { const g = new T.Group(); g.position.set(Fx[0] - 0.05, F + 1.15, 0.35); g.rotation.y = -Math.PI / 2; group.add(g);
       box(0.2, 0.3, 0.06, new T.MeshStandardMaterial({ color: 0x9c9fa3, roughness: 0.55 }), 0, 0, 0, g);
       box(0.13, 0.09, 0.005, new T.MeshStandardMaterial({ color: 0x6f8fb0, roughness: 0.2, emissive: 0x203040 }), 0, 0.07, 0.032, g);
       const es = cyl(0.018, 0.02, new T.MeshStandardMaterial({ color: 0xc0201a }), 0.07, 0.13, 0.03, g, 16); es.rotation.x = Math.PI / 2; }
-    { const sg = sign(T, '選任者以外\n立入禁止', 0.3, 0.24, '#f2d21a', '#c0201a', 72); sg.position.set(0.3, F + 1.6, Fz[1] + 0.03); group.add(sg); }
-    { const sg = sign(T, '段差有り\n足元注意', 0.36, 0.2, '#f2d21a', '#c0201a', 60); sg.rotation.x = -Math.PI / 2; sg.position.set(0, F + 0.004, Fz[1] + 0.45); group.add(sg); }
+    { const sg = sign(T, '選任者以外\n立入禁止', 0.3, 0.24, '#f2d21a', '#c0201a', 72); sg.position.set(Fx[0] - 0.03, F + 1.6, -0.3); sg.rotation.y = -Math.PI / 2; group.add(sg); }
+    { const sg = sign(T, '段差有り\n足元注意', 0.36, 0.2, '#f2d21a', '#c0201a', 60); sg.rotation.x = -Math.PI / 2; sg.rotation.z = Math.PI / 2; sg.position.set(Fx[0] - 0.45, F + 0.004, 0); group.add(sg); }
 
     group.traverse(o => { if (o.isMesh && o.material === poly) o.castShadow = false; });
     const update = (dt, st) => {
@@ -430,7 +459,7 @@
     return {
       id: 'line', name: '実機ライン（縦置きラック → コンベア）', group, FLOOR_Y: F, FENCE, TABLES, OBST, racks, conveyor, update, setFenceSee,
       glassDef: { w: G.w, h: G.h, t: G.t, count: G.count },
-      view: { target: [0.3, -0.1, -0.3], r: 6.8, theta: 0.25 }   // 右側（Y−、青い通路）からセル全体を見る
+      view: { target: [0.2, 0.1, 0.2], r: 7.2, theta: -1.15 }   // 後ろ側（X−、通路）の斜めからセル全体を見る
     };
   }
 

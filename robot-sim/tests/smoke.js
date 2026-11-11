@@ -172,7 +172,7 @@ P[2]{
   check('直線移動で目標到達', Math.abs(p2.X - 1000) < 0.5 && Math.abs(p2.Y - 200) < 0.5 && Math.abs(p2.Z - 700) < 0.5, p2);
   await page.fill('#pi0', '3000'); await page.click('#poseJ');
   check('届かない位置のメッセージ', (await page.textContent('#jogMsg')).includes('届きません'));
-  await page.fill('#pi0', '1300'); await page.fill('#pi1', '0'); await page.fill('#pi2', '-30');
+  await page.fill('#pi0', '1300'); await page.fill('#pi1', '0'); await page.fill('#pi2', '-560');
   await page.click('#poseL');
   await waitIdle(20000);
   const al = await ev(() => RSIM.state.alarm);
@@ -325,15 +325,15 @@ P[2]{
   // 実機ライン：ラック → コンベア（押し当てで止まる移動を含むサンプルが 1 枚運べる）
   await page.setViewportSize({ width: 1360, height: 820 });
   await ev(() => { RSIM.switchSystem('yaskawa'); RSIM.switchCell('line'); RSIM.state.timeScale = 6; });
-  check('実機ラインに切替', await ev(() => RSIM.CELL.id === 'line' && RSIM.tool.id === 'glassV' && RSIM.collisionCheck() === ''));
+  check('実機ラインに切替', await ev(() => RSIM.CELL.id === 'line' && RSIM.tool.id === 'glassM' && RSIM.collisionCheck() === ''));
   await tab('prog');
   await page.click('#sampleBtn');
   const lText = await page.textContent('#code');
-  check('ラインのサンプルに UNTIL', lText.includes('UNTIL IN#(4)=ON') && lText.includes('PULSE OT#(2)'), lText.slice(0, 200));
+  check('ラインのサンプルに UNTIL', lText.includes('UNTIL IN#(54)=ON') && lText.includes('PULSE OT#(98)'), lText.slice(0, 200));
   await page.click('#runBtn');
   await page.waitForFunction(() => RSIM.state.stats.count >= 1 || RSIM.state.alarm, null, { timeout: 240000 });
-  const lr = await ev(() => ({ alarm: RSIM.state.alarm, cnt: RSIM.state.stats.count, left: RSIM.CELL.racks[0].faces[RSIM.CELL.racks[0].inside].count }));
-  check('ラックから取ってコンベアで流れた', !lr.alarm && lr.cnt >= 1 && lr.left < 20, lr);
+  const lr = await ev(() => ({ alarm: RSIM.state.alarm, cnt: RSIM.state.stats.count, full: RSIM.CELL.glassDef.count, left: RSIM.CELL.racks[0].faces[RSIM.CELL.racks[0].inside].count }));
+  check('ラックから取ってコンベアで流れた', !lr.alarm && lr.cnt >= 1 && lr.left < lr.full, lr);
   await ev(() => { if (RSIM.run) document.querySelector('#stopBtn').click(); });
   if (shots) await page.screenshot({ path: shots + '/09-line.png' });
 

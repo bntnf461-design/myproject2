@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '3.8';
+  const VERSION = '4.0';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -17,7 +17,7 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* 無視 */ } }
   };
   $('#ver').textContent = 'v' + VERSION;
-  RS.applyRobotOverrides(store.get('rs3-robot-ov', null));
+  RS.applyRobotOverrides(store.get('rs3-robot-ov2', null));
 
   /* =================== 入出力の割り当て =================== */
   const IOMAP = {
@@ -41,6 +41,27 @@
     fanuc: { auto: { RI1: 'ハンド保持確認', DI1: '直進ラック ワーク有', DI2: 'コンベア置き場 ワーク有', DI3: '吸盤接触（押し当て検出）', DI4: '曲進ラック ワーク有' }, outName: { RO1: 'ハンド（吸着）', DO1: '置き完了（コンベア搬送開始）' } }
   };
 
+  /* 実機ライン・安川：実機（DX200）の入出力番号。名前は実機の入出力名（バックアップを読み込むとその名前に置き換わる） */
+  const LINE_Y = {
+    handOut: { kind: 'OT', n: 52 }, handIn: { kind: 'IN', n: 52 },
+    inList: [1, 2, 3, 4, 5, 6, 7, 8, 33, 34, 35, 36, 49, 50, 51, 52, 53, 54, 55, 57, 65, 66, 69, 81, 82, 85, 97, 98, 99],
+    outList: [1, 2, 3, 4, 5, 6, 7, 8, 34, 35, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 81, 82, 83, 84, 85, 97, 98, 99],
+    auto: {
+      IN1: '取出001', IN2: '取出002', IN3: '取出004', IN4: '取出008', IN5: '取出016', IN6: '取出032', IN7: '取出064', IN8: '取出128',
+      IN33: '自動起動ストローブ', IN34: 'サイクルスタート', IN35: 'サイクル停止', IN36: '取出パターン照合OK',
+      IN49: '硝子取出減速センサー', IN50: '強制停止センサー', IN51: '硝子在席近接センサー', IN52: '硝子吸着確認', IN53: '硝子吸着破壊確認', IN54: '減速サーチ判定', IN55: 'サーチ判定', IN57: 'PADエアブロー入力',
+      IN65: '直進取出サイクル開始', IN66: '直進取出サイクル可', IN69: '直進側サイクル停止', IN81: '曲進取出サイクル開始', IN82: '曲進取出サイクル可', IN85: '曲進側サイクル停止',
+      IN97: '卸しサイクル開始', IN98: 'CV上硝子卸し可', IN99: '硝子旋回90度'
+    },
+    outName: {
+      OT1: '取出パターンアンサー1', OT2: '取出パターンアンサー2', OT3: '取出パターンアンサー4', OT4: '取出パターンアンサー8', OT5: '取出パターンアンサー16', OT6: '取出パターンアンサー32', OT7: '取出パターンアンサー64', OT8: '取出パターンアンサー128',
+      OT34: '1サイクル完了', OT35: 'サイクル停止完了', OT52: '硝子吸着指令', OT53: '硝子吸着破壊指令', OT54: '直進PL内硝子無し', OT55: '曲進PL内硝子無し', OT56: 'ハンドセンサ異常', OT57: 'PADエアブロー',
+      OT65: '直進取出サイクル中', OT66: '直進取出サイクル完了', OT67: '直進硝子取出中', OT68: '直進硝子取出終了', OT69: '直進サイクル停止完了',
+      OT81: '曲進取出サイクル中', OT82: '曲進取出サイクル完了', OT83: '曲進硝子取出中', OT84: '曲進硝子取出終了', OT85: '曲進サイクル停止完了',
+      OT97: '硝子卸し準備完了', OT98: 'CV上硝子卸し完了', OT99: '（卸し中）'
+    }
+  };
+
   /* =================== 状態 =================== */
   const S = {
     sys: store.get('rs3-sys', store.get('rs2-sys', 'yaskawa')) === 'fanuc' ? 'fanuc' : 'yaskawa',
@@ -51,6 +72,7 @@
     holding: null, gripK: 0, gripWidth: null,
     alarm: null, estop: false,
     io: { out: {}, force: {} },
+    plc: { auto: true, pattern: 2, rot90: false, blow: false, alt: true },   // ライン操作盤（PLC の模擬）
     ovrRun: 100,
     opts: loadOpts(),
     stats: { count: 0, last: 0, t0: 0 },
@@ -58,7 +80,7 @@
   };
   /* 保存された設定を、型と範囲を確かめてから使う */
   function loadOpts() {
-    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 10, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, fenceSee: true, hud: true, pickDir: 'S', ver: 4 };
+    const def = { coll: true, trail: true, reach: false, loop: false, autoSup: true, autoOut: true, ovr: 100, jogSpd: 30, skipUnknown: false, waitTimeout: 30, fanucTmout: 30, jbiSjis: true, quality: 'auto', grid: false, fenceSee: true, hud: true, pickDir: 'S', ver: 4 };
     const rng = { ovr: [5, 100], jogSpd: [1, 100], waitTimeout: [0, 3600], fanucTmout: [0.1, 3600] };
     const raw = store.get('rs3-opts', store.get('rs2-opts', {})) || {};
     const o = Object.assign({}, def);
@@ -83,7 +105,7 @@
     const out = { num: {}, pos: {}, conv: 2 };
     if (raw.num && typeof raw.num === 'object') for (const [k, v] of Object.entries(raw.num)) if (typeof v === 'number' && isFinite(v)) out.num[k] = v;
     if (raw.pos && typeof raw.pos === 'object') for (const [k, v] of Object.entries(raw.pos)) { const p = validPos(v); if (p) out.pos[k] = p; }
-    if (raw.conv !== 2) for (const p of Object.values(out.pos)) if (p.k === 'j') p.q[4] = -p.q[4];   // v3.3 で B/J5 の向きを変更
+    if (raw.conv !== 2 && !/^rs4-/.test(key)) for (const p of Object.values(out.pos)) if (p.k === 'j') p.q[4] = -p.q[4];   // v3.3 で B/J5 の向きを変更
     return out;
   }
   function loadUF(key) {
@@ -91,8 +113,21 @@
     for (const [n, u] of Object.entries(raw)) if (u && ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].every(a => typeof u[a] === 'number' && isFinite(u[a]))) out[n] = u;
     return out;
   }
-  const cellTool = id => (id === 'line' ? 'glassV' : RS.DEFAULT_TOOL);
-  S.toolId = RS.toolById(store.get('rs3-tool', store.get('rs2-tool', cellTool(S.cellId)))).id;
+  const cellTool = id => (id === 'line' ? (S.sys === 'yaskawa' ? 'glassM' : 'glassV') : RS.DEFAULT_TOOL);
+  /* 実機のバックアップから読んだデータ（ツール・入出力名・変数名・システム情報） */
+  let master = store.get('rs4-master', null);
+  if (!master || typeof master !== 'object') master = null;
+  function applyMasterTool() {
+    const gm = RS.TOOLS.find(t => t.id === 'glassM'), t = master && master.tool;
+    if (!gm || !t || !Array.isArray(t.tcp) || t.tcp.length < 3 || !t.tcp.slice(0, 3).every(isFinite)) return;
+    const [x, y, z] = t.tcp.map(v => v / 1000);
+    gm.tcp = [x, y, z];
+    gm.cups = [[x + 0.16, y + 0.11], [x + 0.16, y - 0.11], [x - 0.16, y + 0.11], [x - 0.16, y - 0.11]];
+    gm.probes = gm.cups.map(c => [c[0], c[1], z]).concat([[x + 0.19, y + 0.14, z - 0.07], [x + 0.19, y - 0.14, z - 0.07], [x - 0.19, y + 0.14, z - 0.07], [x - 0.19, y - 0.14, z - 0.07]]);
+    if (t.name) gm.name = `硝子ハンド（実機 ツール0：${t.name}）`;
+  }
+  applyMasterTool();
+  S.toolId = RS.toolById(store.get('rs4-tool', cellTool(S.cellId))).id;
   let robot = RS.ROBOTS[S.sys];
   let tool = RS.toolById(S.toolId);
   {
@@ -104,9 +139,23 @@
   let ioCache = null;
   const io = () => {
     const key = S.sys + (CELL ? CELL.id : '');
-    if (!ioCache || ioCache.key !== key) ioCache = { key, v: CELL && CELL.id === 'line' ? Object.assign({}, IOMAP[S.sys], CELL_IO[S.sys]) : IOMAP[S.sys] };
+    if (!ioCache || ioCache.key !== key) {
+      let v = IOMAP[S.sys];
+      if (CELL && CELL.id === 'line') {
+        if (S.sys === 'yaskawa') {
+          v = Object.assign({}, IOMAP.yaskawa, LINE_Y, { real: true });
+          if (master && master.ioNames) { v.auto = Object.assign({}, LINE_Y.auto, master.ioNames.IN); v.outName = Object.assign({}, LINE_Y.outName, master.ioNames.OT); }
+        } else v = Object.assign({}, IOMAP[S.sys], CELL_IO[S.sys]);
+      }
+      // 画面に出す番号の一覧
+      v = Object.assign({}, v);
+      v.insL = v.inList ? v.inList.map(n => ['IN', n]) : v.ins.flatMap(([k, c]) => Array.from({ length: c }, (_, i) => [k, i + 1]));
+      v.outsL = v.outList ? v.outList.map(n => ['OT', n]) : v.outs.flatMap(([k, c]) => Array.from({ length: c }, (_, i) => [k, i + 1]));
+      ioCache = { key, v };
+    }
     return ioCache.v;
   };
+  const lineY = () => !!(CELL && CELL.id === 'line' && S.sys === 'yaskawa');   // 実機と同じ入出力で動かす
   const handOn = () => !!S.io.out[io().handOut.kind + io().handOut.n];
 
   /* =================== Three.js シーン =================== */
@@ -204,14 +253,20 @@
   const curQ = () => S.q.map(r3);
 
   /* ロボット座標の行列（Three 変換なし） */
-  const C4 = new T.Matrix4().makeBasis(new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), new T.Vector3(0, 1, 0));
-  const C4i = C4.clone().transpose();
+  // ロボット座標（m）→ Three ワールド。Z=0 の高さ（robot.zOrigin）を含む
+  const C4 = new T.Matrix4(), C4i = new T.Matrix4();
+  function setFrame() {
+    RS.zOrigin = robot.zOrigin || 0;
+    C4.makeBasis(new T.Vector3(1, 0, 0), new T.Vector3(0, 0, -1), new T.Vector3(0, 1, 0)).setPosition(0, RS.zOrigin, 0);
+    C4i.copy(C4).invert();
+  }
+  setFrame();
   function rawMat(P) {
     const M = new T.Matrix4().makeRotationZ(P.rz * D2R).multiply(new T.Matrix4().makeRotationY(P.ry * D2R)).multiply(new T.Matrix4().makeRotationX(P.rx * D2R));
     M.setPosition(P.X / 1000, P.Y / 1000, P.Z / 1000);
     return M;
   }
-  const ufKey = () => 'rs3-uf-' + S.sys;
+  const ufKey = () => (S.sys === 'yaskawa' ? 'rs4-uf-yaskawa' : 'rs3-uf-' + S.sys);
   let uframes = loadUF(ufKey());
   function ufMat(n) {
     if (!n) return new T.Matrix4();
@@ -267,7 +322,7 @@
     clearWorks();
     if (CELL.id === 'line') {
       CELL.conveyor.running = 0;
-      for (const r of CELL.racks) { r.rotating = 0; r.fillT = 0; for (const f of r.faces) { f.front = null; f.stack = disposeStack(r, f); setFace(r, f, CELL.glassDef.count); } }
+      for (const r of CELL.racks) { r.rotating = 0; r.fillT = 0; r.swapReq = false; for (const f of r.faces) { f.front = null; f.stack = disposeStack(r, f); setFace(r, f, CELL.glassDef.count); } }
     } else spawnAt(TABLES[0]);
     updateToolVis();
   }
@@ -277,7 +332,7 @@
   /* 面 f の i 枚目（0＝背もたれ側）の位置・向き（ラックの回転部分の座標） */
   function sheetMatrix(f, i, th) {
     const g = CELL.glassDef, x = new T.Vector3(0, 0, 1), y = f.n.clone(), z = new T.Vector3().crossVectors(x, y);
-    const c = f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, th != null ? th / 2 : g.t * (i + 0.5));
+    const c = f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, (f.off || 0) + (th != null ? th / 2 : g.t * (i + 0.5)));
     return new T.Matrix4().makeBasis(x, y, z).setPosition(c);
   }
   function setFace(r, f, count) {
@@ -317,6 +372,53 @@
         const gap = _v.y - sz / 2;
         if (Math.abs(_v.x) <= sx / 2 && Math.abs(_v.z) <= sy / 2 && gap <= 0.001 && gap > -stroke - 0.01) return true;
       }
+    }
+    return false;
+  }
+  /* 吸盤とガラスのすき間（m）。向かい合うガラスがなければ Infinity、保持中は 0 */
+  function padGap() {
+    if (tool.kind !== 'vacuum') return Infinity;
+    if (S.holding) return 0;
+    const up = new T.Vector3(0, 0, 1).applyQuaternion(G.mount.getWorldQuaternion(_q));
+    let best = Infinity;
+    for (const w of works) {
+      if (w.falling) continue;
+      const wup = new T.Vector3(0, 1, 0).applyQuaternion(w.g.getWorldQuaternion(new T.Quaternion()));
+      if (up.dot(wup) > -0.9) continue;
+      const [sx, sy, sz] = w.def.size;
+      for (const [cx, cy] of tool.cups) {
+        _v.set(cx, cy, tool.tcp[2]); G.mount.localToWorld(_v); w.g.worldToLocal(_v);
+        if (Math.abs(_v.x) <= sx / 2 && Math.abs(_v.z) <= sy / 2 && _v.y > -sz / 2 - 0.05) best = Math.min(best, _v.y - sz / 2);
+      }
+    }
+    return best;
+  }
+  const STRAIGHT = n => n >= 1 && n < 50;   // 取出パターン：1〜49＝直進側、50〜＝曲進側
+  /* 実機ライン（安川）の入力：ハンドのセンサーと、PLC（ライン側）の応答を模擬する */
+  function lineIn(n) {
+    const pl = S.plc, g = () => padGap();
+    if (n >= 1 && n <= 8) return !!((pl.pattern >> (n - 1)) & 1);
+    switch (n) {
+      case 33: case 34: return pl.auto;
+      case 35: return !pl.auto;
+      case 36: { let v = 0; for (let b = 0; b < 8; b++) if (getOut('OT', b + 1)) v |= 1 << b; return pl.pattern > 0 && v === pl.pattern; }
+      case 49: return g() <= 0.015;                       // 超音波センサー：すき間 約 15mm で ON
+      case 50: return g() < -0.014;                       // 押し込みすぎ
+      case 51: return !(g() <= 0.002);                    // 在席近接（b 接点）：ガラスに触れると OFF
+      case 52: return !!S.holding && getOut('OT', 52);
+      case 53: return !S.holding && getOut('OT', 53);
+      case 54: { const x = g(); return x <= 0.002; }
+      case 55: { const x = g(); return x <= 0.015; }
+      case 57: return pl.blow;
+      case 65: return pl.auto && STRAIGHT(pl.pattern);
+      case 66: { const r = rackOf('S'); return !!r && !r.rotating && !r.swapReq; }
+      case 69: return !pl.auto;
+      case 81: return pl.auto && !STRAIGHT(pl.pattern);
+      case 82: { const r = rackOf('C'); return !!r && !r.rotating && !r.swapReq; }
+      case 85: return !pl.auto;
+      case 97: return getOut('OT', 97);
+      case 98: return !placeBusy() && !(CELL.conveyor.running > 0);
+      case 99: return pl.rot90 && canRot90(pl.pattern);
     }
     return false;
   }
@@ -405,11 +507,20 @@
     const h = io().handOut;
     if (kind === h.kind && n === h.n) setHand(!!v);
     if (v && !was && CELL && CELL.conveyor && /置き完了/.test(io().outName[kind + n] || '')) CELL.conveyor.running = 1.0;   // 搬送開始
+    if (v && !was && kind === 'OT' && lineY()) {
+      if (n === 98) CELL.conveyor.running = 1.0;                                  // CV上硝子卸し完了 → 搬送
+      if (n === 54 || n === 55) {   // PL 内硝子無し → ラック入替。ライン側は取出パターンを反対側（直進⇄曲進）へ切り替える
+        const r = rackOf(n === 54 ? 'S' : 'C'); if (r) r.swapReq = true;
+        const pl = S.plc, other = pl.pattern + (n === 54 ? 50 : -50);
+        if (pl.alt && (n === 54) === (pl.pattern < 50) && lib.progs[String(other)]) { pl.pattern = other; logMsg(`${n === 54 ? '直進' : '曲進'}側のパレットが空になりました。取出パターンを ${other}（${n === 54 ? '曲進' : '直進'}側）へ切り替えます`); renderPlc(); }
+      }
+    }
   }
   function getOut(kind, n) { return !!S.io.out[kind + n]; }
   function getIn(kind, n) {
     const key = kind + n;
     if (S.io.force[key] != null) return S.io.force[key];
+    if (kind === 'IN' && lineY()) return lineIn(n);
     const a = io().auto[key];
     if (a === 'ハンド保持確認') return !!S.holding;
     if (a === '供給台 ワーク有') return worksOn(TABLES[0]).length > 0;
@@ -445,7 +556,9 @@
       if (!S.opts.autoSup) continue;
       if (!outF.count) { r.fillT = (r.fillT || 0) + dt; if (r.fillT > 3) { r.fillT = 0; setFace(r, outF, CELL.glassDef.count); } }   // 作業者が外側の面に補充
       const away = Math.hypot(_v2.x - r.def.X, _v2.z + r.def.Y) > 1.25;
-      if (!inF.count && outF.count && away && !(S.holding && S.holding.face)) { r.rotating = ROT_T; r.rotFrom = r.rot.rotation.y; }
+      // 実機ライン（安川）は「PL 内硝子無し」の出力を受けてから入れ替える。それ以外は空になったら入れ替える
+      const want = lineY() ? r.swapReq : !inF.count;
+      if (want && outF.count && away && !(S.holding && S.holding.face)) { r.rotating = ROT_T; r.rotFrom = r.rot.rotation.y; r.swapReq = false; }
     }
     const C = CELL.conveyor, on = convWorks();
     if (C.running > 0) {
@@ -504,7 +617,9 @@
       if ((p.x - r < FENCE.x[0] || p.x + r > FENCE.x[1] || p.z - r < FENCE.z[0] || p.z + r > FENCE.z[1]) &&
         !(FENCE.open || []).some(o => p.x >= o.x[0] && p.x <= o.x[1] && p.z >= o.z[0] && p.z <= o.z[1])) return it.what + 'が安全柵に当たります';
       for (const t of TABLES) {
-        if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tol && p.y > (t.y0 != null ? t.y0 : 0) - 0.01)
+        // 持っているガラスをコンベアへ置くときは、実機も少し傾けて端から着ける（吸盤のバネが逃がす）ので、30mm までは当たりにしない
+        const tl = t.conveyor && it.what === '保持ワーク' ? 0.03 : tol;
+        if (Math.abs(p.x - t.X) <= t.w / 2 + r && Math.abs(-p.z - t.Y) <= t.d / 2 + r && p.y - r < t.h - tl && p.y > (t.y0 != null ? t.y0 : 0) - 0.01)
           return `${it.what}が${t.name}に当たります`;
       }
     }
@@ -714,7 +829,8 @@
   }
 
   /* =================== プログラム・ライブラリ =================== */
-  const libKey = () => 'rs3-lib-' + S.sys;
+  // 安川は v4 で実機（MH50）の寸法・座標原点・関節の向きに変えたので、保存先を分ける（古い位置データは使えない）
+  const libKey = () => (S.sys === 'yaskawa' ? 'rs4-lib-yaskawa' : 'rs3-lib-' + S.sys);
   let lib = loadLib();
   function loadLib() {
     const L = store.get(libKey(), null);
@@ -723,10 +839,10 @@
       for (const p of Object.values(L.progs)) { const v = RS.validateProgram(p, S.sys); if (v) { v.sys = S.sys; out.progs[v.name] = v; } }
       if (L.cur && out.progs[L.cur]) out.cur = L.cur;
     } else {
-      const old = RS.validateProgram(store.get('rs2-prog-' + S.sys, null), S.sys);   // v2 からの移行
+      const old = S.sys === 'yaskawa' ? null : RS.validateProgram(store.get('rs2-prog-' + S.sys, null), S.sys);   // v2 からの移行
       if (old && old.lines.length) { old.name = 'SAMPLE'; out.progs.SAMPLE = old; out.cur = 'SAMPLE'; }
     }
-    if (!L || L.conv !== 2) {   // v3.3 で B/J5 の向き（ツール下向き＝-90°）を変更したので、保存済みの関節値を変換
+    if (S.sys !== 'yaskawa' && (!L || L.conv !== 2)) {   // v3.3 で B/J5 の向き（ツール下向き＝-90°）を変更したので、保存済みの関節値を変換
       for (const p of Object.values(out.progs)) for (const pos of Object.values(p.pos)) {
         if (pos.k === 'j') pos.q[4] = -pos.q[4];
         if (pos.q) { if (pos.k === 'c') pos.q[4] = -pos.q[4]; if (pos.k === 'c') pos.cfg = RS.configOf(pos.q); }
@@ -778,12 +894,12 @@
   function insertMove(mode) { insertLine(RS.lineMove(S.sys, mode, '@', lastSpeed(mode)), teachPos()); }
 
   /* =================== プログラム実行 =================== */
-  const varKey = () => 'rs3-vars-' + S.sys;
+  const varKey = () => (S.sys === 'yaskawa' ? 'rs4-vars-yaskawa' : 'rs3-vars-' + S.sys);
   let vars = loadVars(varKey());
   const saveVars = () => store.set(varKey(), vars);
   function makeHost() {
     return {
-      lib: () => lib.progs, getIn, getOut, setOut, vars, curPose, curQ,
+      lib: () => lib.progs, getIn, getOut, setOut, vars, curPose, curQ, pulse: () => robot.pulse,
       setOverride: v => { S.ovrRun = clamp(v, 1, 100); },
       log: (m, lv) => logMsg(m, lv), opts: S.opts
     };
@@ -876,7 +992,7 @@
     const def = workDef(), A = TABLES[0], B = TABLES[1];
     const grasp = tool.kind === 'gripper' ? Math.min(def.size[2] * 0.5, tool.grip.depth * 0.6) : 0;
     const zA = A.h + def.size[2] - grasp, zB = B.h + def.size[2] - grasp, ap = tool.approach;
-    const P = (t, z) => ({ X: t.X * 1000, Y: t.Y * 1000, Z: r3(z * 1000), rx: 180, ry: 0, rz: 0 });
+    const P = (t, z) => ({ X: t.X * 1000, Y: t.Y * 1000, Z: r3((z - RS.zOrigin) * 1000), rx: 180, ry: 0, rz: 0 });
     const targets = [P(A, zA + ap), P(A, zA), P(B, zB + ap), P(B, zB)];
     const qs = []; let ref = robot.home;
     for (const p of targets) {
@@ -932,10 +1048,10 @@
     const dirId = S.opts.pickDir === 'C' ? 'C' : 'S', r = rackOf(dirId), f = r.faces[r.inside], g = CELL.glassDef;
     const wq = r.rot.getWorldQuaternion(new T.Quaternion());
     const nW = f.n.clone().applyQuaternion(wq), dW = f.d.clone().applyQuaternion(wq);
-    const surf = off => r.rot.localToWorld(f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, off));
+    const surf = off => r.rot.localToWorld(f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, (f.off || 0) + off));
     const zt = nW.clone().negate(), xt = dW.clone(), yt = new T.Vector3().crossVectors(zt, xt);
     const rackPose = p => { const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
-    const C = CELL.conveyor, zPl = (C.h + g.t) * 1000;
+    const C = CELL.conveyor, zPl = (C.h + g.t - RS.zOrigin) * 1000;
     const placeP = dz => ({ X: r3(C.place.x * 1000), Y: r3(-C.place.z * 1000), Z: r3(zPl + dz), rx: 180, ry: 0, rz: C.axis === 'x' ? 90 : 0 });   // ガラスの長辺をコンベアの流れの向きに
     const targets = [
       rackPose(surf(g.t * g.count).addScaledVector(nW, 0.2)),   // 1: ラックの手前 200mm（満杯のときの 1 枚目から）
@@ -956,9 +1072,10 @@
       qs.push({ q: res.q.map(v => +v.toFixed(4)), p }); ref = res.q;
     }
     const sys = S.sys, Y = sys === 'yaskawa', ho = io().handOut, hi = io().handIn;
-    const inRack = Y ? { kind: 'IN', n: dirId === 'S' ? 2 : 5 } : { kind: 'DI', n: dirId === 'S' ? 1 : 4 };
-    const inPlace = Y ? { kind: 'IN', n: 3 } : { kind: 'DI', n: 2 };
-    const doneOut = Y ? 'PULSE OT#(2) T=0.50' : 'DO[1]=PULSE,0.5sec';
+    // 安川は実機と同じ番号：IN#(66)/(82)＝取出サイクル可、IN#(98)＝CV上硝子卸し可、IN#(54)＝減速サーチ判定（接触）、OT#(98)＝卸し完了
+    const inRack = Y ? { kind: 'IN', n: dirId === 'S' ? 66 : 82 } : { kind: 'DI', n: dirId === 'S' ? 1 : 4 };
+    const inPlace = Y ? { kind: 'IN', n: 98 } : { kind: 'DI', n: 2 }, placeFree = Y;   // 安川は「卸し可」が ON で置ける
+    const doneOut = Y ? 'PULSE OT#(98) T=0.50' : 'DO[1]=PULSE,0.5sec';
     const name = dirId === 'S' ? 'GLASS_S' : 'GLASS_C';
     const P2 = RS.emptyProgram(sys, name, tool.id);
     P2.comment = dirId === 'S' ? 'RACK S TO CONV' : 'RACK C TO CONV';
@@ -978,16 +1095,16 @@
     Lm('ap', qs[0], 300);
     // 押し当て：吸盤接触が来たら止まる
     pt('end', qs[1], true);
-    if (Y) L.push(`MOVL ${id.end} V=50.0 UNTIL IN#(4)=ON`);
+    if (Y) L.push(`MOVL ${id.end} V=50.0 UNTIL IN#(54)=ON`);
     else { L.push('SKIP CONDITION DI[3]=ON'); L.push(`L ${id.end} 50mm/sec FINE Skip,LBL[9]`); }
-    if (Y) L.push('JUMP *NOGLASS IF IN#(4)=OFF');
+    if (Y) L.push('JUMP *NOGLASS IF IN#(54)=OFF');
     L.push(RS.lineOut(sys, ho, true));
     L.push(RS.lineWait(sys, hi, true));
     L.push(RS.lineTimer(sys, 0.3));
     Lm('ap', qs[0], 200);
     Lm('lift', qs[2], 300);
     Lm('carry', qs[6], 300);
-    L.push(RS.lineWait(sys, inPlace, false));
+    L.push(RS.lineWait(sys, inPlace, placeFree));
     J('cf', qs[7], 30, true);
     Lm('up', qs[3], 300);
     Lm('pa', qs[4], 300);
@@ -1151,9 +1268,10 @@
     stopAll(); saveLib(); saveVars();
     if (S.holding) dropWork(true);
     if (S.alarm && !S.estop) resetAlarm();
-    S.sys = id; robot = RS.ROBOTS[id]; store.set('rs3-sys', id);
+    S.sys = id; robot = RS.ROBOTS[id]; store.set('rs3-sys', id); setFrame();
     S.q = robot.home.slice();
     S.io = { out: {}, force: {} };
+    tool = RS.toolById(cellTool(S.cellId)); S.toolId = tool.id; store.set('rs4-tool', tool.id); S.workId = tool.work;
     lib = loadLib(); sel = prog().lines.length ? 0 : -1; undoStack = [];
     vars = loadVars(varKey());
     uframes = loadUF(ufKey());
@@ -1173,7 +1291,7 @@
     S.io.out = {}; S.gripK = 0;
     S.cellId = id; store.set('rs3-cell', id);
     buildCellScene(id);
-    tool = RS.toolById(cellTool(id)); S.toolId = tool.id; store.set('rs3-tool', tool.id);
+    tool = RS.toolById(cellTool(id)); S.toolId = tool.id; store.set('rs4-tool', tool.id);
     S.workId = tool.work; store.set('rs3-work', S.workId);
     buildTool(); buildReach(); applyPose();
     resetWorks();
@@ -1186,7 +1304,7 @@
     stopAll();
     if (S.holding) dropWork(true);
     S.io.out = {}; S.gripK = 0;
-    tool = RS.toolById(id); S.toolId = tool.id; store.set('rs3-tool', tool.id);
+    tool = RS.toolById(id); S.toolId = tool.id; store.set('rs4-tool', tool.id);
     S.workId = tool.work; store.set('rs3-work', S.workId);
     buildTool(); buildReach(); applyPose();
     resetWorks();
@@ -1371,7 +1489,7 @@
     renderLineEdit(); renderCheck(); renderVars();
     refreshState();
   }
-  function renderProgAll() { renderProgSelect(); renderCode(); renderPend(); }
+  function renderProgAll() { renderProgSelect(); renderCode(); renderPend(); renderPlc(); }
   function markPc() {
     const P = prog();
     codeEl.querySelectorAll('li[data-i]').forEach(li => {
@@ -1565,9 +1683,9 @@
       return `<button class="iob${v ? ' on' : ''}" data-io="${isIn ? 'i' : 'o'}" data-k="${k}" data-n="${n}" title="${esc(name || '')}">${m.fmt(k, n)}${name ? `<small>${esc(name)}</small>` : ''}${isIn && f != null ? '<small>強制</small>' : ''}</button>`;
     };
     let h = '<div class="iogrp"><b>出力</b><div>';
-    for (const [k, c] of m.outs) for (let n = 1; n <= c; n++) h += cell(k, n, false);
+    for (const [k, n] of m.outsL) h += cell(k, n, false);
     h += '</div></div><div class="iogrp"><b>入力</b><div>';
-    for (const [k, c] of m.ins) for (let n = 1; n <= c; n++) h += cell(k, n, true);
+    for (const [k, n] of m.insL) h += cell(k, n, true);
     h += '</div></div><p class="note">押すと切り替わります（入力は 強制ON → 強制OFF → 自動 の順）。</p>';
     const el = $('#ioBox');
     if (el.innerHTML !== h) el.innerHTML = h;
@@ -1680,26 +1798,128 @@
   $('#saveNative').addEventListener('click', () => exportNative(false));
   $('#saveNativeAll').addEventListener('click', () => exportNative(true));
   $('#loadBtn').addEventListener('click', () => $('#fileIn').click());
+  const decodeText = buf => {
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (x) { try { return new TextDecoder('shift_jis').decode(buf); } catch (y) { return new TextDecoder().decode(buf); } }
+  };
+  /* ZIP を展開する（無圧縮・deflate）。戻り値 [{name, data:Uint8Array}] */
+  async function unzip(buf) {
+    const u8 = new Uint8Array(buf), dv = new DataView(buf), out = [];
+    let e = u8.length - 22;
+    while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error('ZIP の形式ではありません');
+    const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true);
+    for (let i = 0; i < n; i++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      const flag = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+      const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+      const nameB = u8.subarray(p + 46, p + 46 + nl);
+      let name; try { name = new TextDecoder(flag & 0x800 ? 'utf-8' : 'shift_jis').decode(nameB); } catch (x) { name = new TextDecoder().decode(nameB); }
+      p += 46 + nl + xl + cl;
+      if (name.endsWith('/')) continue;
+      const lnl = dv.getUint16(lo + 26, true), lxl = dv.getUint16(lo + 28, true), st = lo + 30 + lnl + lxl;
+      const comp = u8.subarray(st, st + csize);
+      let data;
+      if (method === 0) data = comp.slice();
+      else if (method === 8) {
+        if (typeof DecompressionStream === 'undefined') throw new Error('このブラウザは ZIP の展開に対応していません。ZIP を展開してから、中のファイルを選んでください');
+        data = new Uint8Array(await new Response(new Blob([comp]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      } else continue;
+      out.push({ name: name.split(/[\\/]/).pop(), data });
+    }
+    return out;
+  }
+  /* 実機のデータファイル（TOOL.CND・VAR.DAT・IONAME.DAT・VARNAME.DAT・SYSTEM.SYS）を読む。対象でなければ false */
+  function importMasterFile(text, got) {
+    const t = text.replace(/\r/g, '');
+    if (/^\/\/TOOL 0/m.test(t) && /^\/\/\/NAME/m.test(t)) {
+      const m = t.match(/^\/\/TOOL 0\n\/\/\/NAME ?(.*)\n([^\n]+)\n([^\n]+)\n([^\n]+)/m);
+      if (m) { const v = m[2].split(',').map(Number); if (v.length >= 6 && v.every(isFinite)) got.master.tool = { name: m[1].trim(), tcp: v, cog: m[3].split(',').map(Number), mass: +m[4] }; }
+      return true;
+    }
+    if (/^\/\/VAR\b/m.test(t) && /^\/\/\/B$/m.test(t)) {
+      const sec = k => { const x = t.split(new RegExp('^///' + k + '$', 'm'))[1]; return x ? x.split(/^\/\/\//m)[0] : ''; };
+      for (const k of ['B', 'I', 'D', 'R']) sec(k).split('\n').filter(Boolean).join(',').split(',').forEach((v, i) => { if (v.trim() !== '' && isFinite(+v)) got.nums[k + String(i).padStart(3, '0')] = +v; });
+      sec('P').split('\n').filter(Boolean).forEach((l, i) => {
+        const m = l.match(/^"(PULSE|RECTAN)"(.+)$/); if (!m) return;
+        const f = m[2].split(','), v = f.slice(6, 12).map(Number), key = 'P' + String(i).padStart(3, '0');
+        if (v.length < 6 || !v.every(isFinite)) return;
+        if (m[1] === 'PULSE') { if (robot.pulse) got.pvars[key] = { pos: { k: 'j', q: v.map((x, k2) => +(x / RS.ROBOTS.yaskawa.pulse[k2]).toFixed(5)), pls: v }, date: '9999', job: 'VAR.DAT' }; }
+        else { const pos = { k: 'c', p: { X: v[0], Y: v[1], Z: v[2], rx: v[3], ry: v[4], rz: v[5] }, cfg: 'N U T, 0, 0, 0', uf: 0, ut: 1 }; if (+f[5] === 18) pos.frame = 'tool'; got.pvars[key] = { pos, date: '9999', job: 'VAR.DAT' }; }
+      });
+      got.varFile = true;
+      return true;
+    }
+    if (/^\/IONAME/m.test(t)) {
+      const names = { IN: {}, OT: {} };
+      const grab = (tag, kind) => { const x = t.split(new RegExp('^//' + tag + '$', 'm'))[1]; if (!x) return; x.split(/^\/\//m)[0].split('\n').filter((l, i) => i > 0 || l !== '').forEach((l, row) => l.split(',').forEach((nm, c) => { if (nm.trim()) names[kind][kind + (row * 4 + c + 1)] = nm.trim(); })); };
+      grab('IN', 'IN'); grab('OUT', 'OT');
+      got.master.ioNames = names;
+      return true;
+    }
+    if (/^\/\/VARNAME/m.test(t)) {
+      const vn = {};
+      for (const k of ['B', 'I', 'D', 'R', 'P']) { const x = t.split(new RegExp('^///' + k + '$', 'm'))[1]; if (!x) continue; x.split(/^\/\/\//m)[0].split('\n').forEach(l => { const m = l.match(/^(\d{4})\s+\d+,\d+,(.+)$/); if (m && m[2].trim()) vn[k + String(+m[1]).padStart(3, '0')] = m[2].trim(); }); }
+      got.master.varNames = vn;
+      return true;
+    }
+    if (/^\/SYSTEM/m.test(t) && /SYSTEM NO/.test(t)) {
+      got.master.system = { no: (t.match(/SYSTEM NO\s*:\s*(\S+)/) || [])[1] || '', robot: (t.match(/^R1\s*:\s*(\S+)/m) || [])[1] || '', date: (t.match(/\/\/DATE\s*:\s*(.+)$/m) || [])[1] || '' };
+      return true;
+    }
+    return false;
+  }
+  /* files：[{name, data:Uint8Array|ArrayBuffer}]。プログラムと実機データをまとめて取り込む */
+  async function importFiles(files, quiet) {
+    const got = { progs: [], warns: [], pvars: {}, nums: {}, master: {}, skipped: 0, varFile: false };
+    const one = async (name, data) => {
+      if (/\.zip$/i.test(name)) { for (const f of await unzip(data.buffer ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) : data)) await one(f.name, f.data); return; }
+      if (/\.(BIN|LOG)$/i.test(name) || /^(ALL|AMC|AP|CIO|FD|FMS|MF|RC|RE|RO|RS|SC|SD|SE|SV|SVC|SVM|SVP|SVS)\.PRM$/i.test(name)) { got.skipped++; return; }
+      const text = decodeText(data);
+      const body = text.replace(/^﻿/, '').trim();
+      if (/^\/JOB/m.test(body) || /^\/PROG/m.test(body) || body.startsWith('{')) {
+        const r = RS.importText(text, { pulse: { yaskawa: RS.ROBOTS.yaskawa.pulse } });
+        if (r.err) { got.warns.push(`${name}：${r.err}`); return; }
+        r.progs.forEach(p => got.progs.push(p)); r.warns.forEach(w => got.warns.push(w));
+        for (const [k, v] of Object.entries(r.pvars || {})) if (!got.pvars[k] || String(v.date) > String(got.pvars[k].date)) got.pvars[k] = v;   // 位置変数は日付の新しいジョブの値
+        return;
+      }
+      if (!importMasterFile(text, got)) got.skipped++;
+    };
+    try { for (const f of files) await one(f.name, f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data)); }
+    catch (x) { flash('#progMsg', '読み込めません：' + x.message); return false; }
+    const hasMaster = Object.keys(got.master).length > 0 || got.varFile;
+    if (!got.progs.length && !hasMaster) { flash('#progMsg', got.warns[0] || '読み込めるファイルがありません（JBI / LS / JSON / ZIP / 実機バックアップ）'); return false; }
+    if (got.progs.length) { if (importProgs(got.progs, got.warns, quiet, got) === false) return false; }
+    else got.warns.forEach(w => logMsg(w, 'warn'));
+    if (hasMaster || Object.keys(got.pvars).length) {
+      // 位置変数・変数・ツール・入出力名を反映
+      for (const [k, v] of Object.entries(got.pvars)) vars.pos[k] = v.pos;
+      if (got.varFile) for (const [k, v] of Object.entries(got.nums)) if (v !== 0 || vars.num[k] != null) vars.num[k] = v;
+      saveVars();
+      if (Object.keys(got.master).length) {
+        master = Object.assign({}, master || {}, got.master, { jobs: got.progs.length || (master && master.jobs) || 0, at: new Date().toISOString().slice(0, 10) });
+        store.set('rs4-master', master);
+        applyMasterTool(); ioCache = null;
+        if (tool.id === 'glassM') { buildTool(); buildReach(); applyPose(); }
+      }
+      renderAll();
+      if (hasMaster) logMsg(`実機データを読み込みました：ジョブ ${got.progs.length} 本、位置変数 ${Object.keys(got.pvars).length} 個` + (got.master.tool ? `、ツール0（${got.master.tool.tcp.slice(0, 3).join(' / ')} mm）` : '') + (got.master.ioNames ? '、入出力名' : '') + (got.varFile ? '、変数' : '') + (got.skipped ? `（対象外のファイル ${got.skipped} 個は読み飛ばしました）` : ''), 'info');
+    }
+    return true;
+  }
   $('#fileIn').addEventListener('change', async e => {
     const files = [...e.target.files]; e.target.value = '';
     if (!files.length) return;
-    const got = [], warns = [];
-    for (const f of files) {
-      const buf = await f.arrayBuffer();
-      let text;
-      try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
-      catch (x) { try { text = new TextDecoder('shift_jis').decode(buf); } catch (y) { text = new TextDecoder().decode(buf); } }
-      const r = RS.importText(text, { pulse: { yaskawa: RS.ROBOTS.yaskawa.pulse } });
-      if (r.err) { flash('#progMsg', `${f.name}：${r.err}`); return; }
-      r.progs.forEach(p => got.push(p)); r.warns.forEach(w => warns.push(`${f.name}：${w}`));
-    }
-    importProgs(got, warns);
+    const list = [];
+    for (const f of files) list.push({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) });
+    await importFiles(list);
   });
-  function importProgs(got, warns) {
+  function importProgs(got, warns, quiet, extra) {
     const sys = got[0].sys;
     if (got.some(p => p.sys !== sys)) { flash('#progMsg', '安川とファナックのファイルが混ざっています。分けて読み込んでください'); return; }
     if (sys !== S.sys) {
-      if (!window.confirm(`このファイルは${RS.ROBOTS[sys].label}用です。システムを切り替えて読み込みますか？`)) return;
+      if (!quiet && !window.confirm(`このファイルは${RS.ROBOTS[sys].label}用です。システムを切り替えて読み込みますか？`)) return false;
       switchSystem(sys);
     }
     { // 読み込むファイルどうしで名前が重なったら、後のほうに番号を付ける
@@ -1707,14 +1927,59 @@
       for (const p of got) { if (seen[p.name]) { const n = uniqueName(p.name, Object.assign({}, seen)); (warns = warns || []).push(`${p.name} が重複したため ${n} にしました`); p.name = n; } seen[p.name] = true; }
     }
     const dup = got.filter(p => lib.progs[p.name]).map(p => p.name);
-    if (dup.length && !window.confirm(`${dup.join(', ')} は同じ名前のプログラムがあります。上書きしますか？`)) return;
+    if (dup.length && !quiet && !window.confirm(`${dup.length > 6 ? dup.slice(0, 6).join(', ') + ` ほか ${dup.length - 6} 本` : dup.join(', ')} は同じ名前のプログラムがあります。上書きしますか？`)) return false;
     stopAll();
-    edit(() => { got.forEach(p => { p.tool = p.tool || tool.id; lib.progs[p.name] = p; }); lib.cur = got[0].name; sel = prog().lines.length ? 0 : -1; });
+    const first = got.find(p => /^ﾏｽﾀ-$|^MASTER$/.test(p.name)) || got[0];
+    edit(() => {
+      got.forEach(p => { p.tool = p.tool || tool.id; lib.progs[p.name] = p; });
+      if (got.length > 3 && lib.progs.MAIN && !lib.progs.MAIN.lines.length) delete lib.progs.MAIN;   // 空の MAIN は片付ける
+      lib.cur = first.name; sel = prog().lines.length ? 0 : -1;
+    });
     renderProgAll();
     (warns || []).forEach(w => logMsg(w, 'warn'));
     const errs = got.flatMap(p => RS.checkProgram(p, lib.progs));
-    flash('#progMsg', `${got.map(p => p.name).join(', ')} を読み込みました` + (errs.length ? `（確認事項 ${errs.length} 件）` : '') + (warns && warns.length ? `（注意 ${warns.length} 件はログ参照）` : ''), true);
+    flash('#progMsg', `${got.length > 5 ? got.length + ' 本のプログラム' : got.map(p => p.name).join(', ')} を読み込みました` + (errs.length ? `（確認事項 ${errs.length} 件）` : '') + (warns && warns.length ? `（注意 ${warns.length} 件はログ参照）` : ''), true);
   }
+
+  /* =================== ライン操作盤（PLC の代わり） =================== */
+  const MASTER_JOB = 'ﾏｽﾀ-';
+  /* 90 度旋回して置けるのは、ジョブの中で「硝子置き90」を呼んでいるパターンだけ（実機では 8 と 58） */
+  function canRot90(n) { const p = lib.progs[String(n)]; return !!p && p.lines.some(l => l.includes('硝子置き90')); }
+  function renderPlc() {
+    const box = $('#plcBox'); box.hidden = !lineY();
+    if (box.hidden) return;
+    const nums = Object.keys(lib.progs).filter(n => /^\d+$/.test(n)).map(Number).sort((a, b) => a - b);
+    const list = nums.length ? nums : [2, 4, 5, 6, 7, 8, 9, 52, 54, 55, 56, 57, 58, 59];
+    if (!list.includes(S.plc.pattern)) S.plc.pattern = list[0];
+    const label = n => { const p = lib.progs[String(n)]; const c = p ? p.lines.filter(l => l.startsWith("'")).slice(0, 2).map(l => l.slice(1)).join(' ') : ''; return `${n}${c ? '：' + c : (STRAIGHT(n) ? '：直進側' : '：曲進側')}`; };
+    const h = list.map(n => `<option value="${n}"${n === S.plc.pattern ? ' selected' : ''}>${esc(label(n))}</option>`).join('');
+    if ($('#plcPat').innerHTML !== h) $('#plcPat').innerHTML = h;
+    $('#plcAuto').setAttribute('aria-pressed', String(S.plc.auto));
+    $('#plcAuto').textContent = S.plc.auto ? 'サイクル停止にする' : 'サイクルスタート';
+    const cr = canRot90(S.plc.pattern);
+    $('#plcRot').disabled = !cr; $('#plcRot').checked = S.plc.rot90 && cr; $('#plcBlow').checked = S.plc.blow; $('#plcAlt').checked = S.plc.alt;
+    $('#plcRot').parentElement.title = cr ? 'ライン側からの「硝子旋回90度」信号（IN#(99)）' : 'このパターンのジョブには 90 度置きがありません';
+    $('#plcNote').textContent = lib.progs[MASTER_JOB]
+      ? (S.plc.auto ? 'ライン側（PLC）の起動信号が入っています。ジョブ「ﾏｽﾀ-」を再生（スタート）すると、選んだパターンで取り出しを繰り返します。パレットが空になるとターンテーブルが回り、空いた面は補充されます。' : 'サイクル停止中：「サイクルスタート」を押すと、ライン側の起動信号が入ります。')
+      : '実機のバックアップ（ZIP か、JBI などのファイル一式）を下の「読み込み」から入れると、実機のジョブで動かせます。';
+  }
+  $('#plcPat').addEventListener('change', e => { S.plc.pattern = +e.target.value; renderPlc(); });
+  $('#plcAuto').addEventListener('click', () => { S.plc.auto = !S.plc.auto; renderPlc(); });
+  $('#plcRot').addEventListener('change', e => { S.plc.rot90 = e.target.checked; });
+  $('#plcBlow').addEventListener('change', e => { S.plc.blow = e.target.checked; });
+  $('#plcAlt').addEventListener('change', e => { S.plc.alt = e.target.checked; });
+  $('#plcMaster').addEventListener('click', () => {
+    if (!lib.progs[MASTER_JOB]) { flash('#progMsg', '実機のジョブ（ﾏｽﾀ-）がありません。バックアップを読み込んでください'); return; }
+    stopAll();
+    if (S.alarm) { flash('#progMsg', 'アラームをリセットしてから始めてください'); return; }
+    // シミュレーターの便宜：持っているガラスを戻し、出力を切り、作業原点から始める（実機では手動で原点へ戻す）
+    if (S.holding) { dropWork(true); resetWorks(); }
+    for (const k of Object.keys(S.io.out)) { const m = /^([A-Z]+)(\d+)$/.exec(k); if (m && S.io.out[k]) setOut(m[1], +m[2], false); }
+    S.q = robot.home.slice(); applyPose();
+    lib.cur = MASTER_JOB; sel = 0; renderProgAll();
+    S.plc.auto = true; renderPlc();
+    startRun(0, false);
+  });
 
   /* =================== 画面：設定 =================== */
   function renderCell() {
@@ -1748,7 +2013,7 @@
   $('#cellSel').addEventListener('change', e => switchCell(e.target.value));
   function renderLineForm() {
     const v = RS.lineValues();
-    $('#lineForm').innerHTML = RS.LINE_FIELDS.map(([k, n]) => `<label>${n}<input type="number" step="10" data-ln="${k}" value="${v[k]}"></label>`).join('');
+    $('#lineForm').innerHTML = RS.LINE_FIELDS.map(([k, n, u]) => `<label>${n}<input type="number" step="${u || k === 'glass.t' ? 1 : 10}" data-ln="${k}" value="${v[k]}"></label>`).join('');
   }
   function rebuildLine() { const was = CELL.id; CELL.id = ''; switchCell(was); renderLineForm(); }
   $('#lineApply').addEventListener('click', () => {
@@ -1812,7 +2077,7 @@
     $('#robotForm').innerHTML = h;
   }
   $('#robotSave').addEventListener('click', () => {
-    const ov = store.get('rs3-robot-ov', {}) || {};
+    const ov = store.get('rs3-robot-ov2', {}) || {};
     const o = { dims: {}, lim: [], model: $('#rbModel').value };
     const num = el => (el.value.trim() === '' || !isFinite(+el.value)) ? null : +el.value;
     for (const i of $$('[data-dim]')) { const v = num(i); if (v == null || v < 0) { flash('#rbMsg', '寸法に空欄か正しくない値があります'); return; } o.dims[i.dataset.dim] = v / 1000; }
@@ -1826,16 +2091,16 @@
     o.jointConfirmed = $('#rbConfirmed').checked;
     if (robot.id === 'yaskawa') { const p = $$('[data-pulse]').map(i => +i.value); o.pulse = p.every(v => isFinite(v) && v !== 0) ? p : null; }
     if (!(o.dims.la > 0) || !(o.dims.ua > 0)) { flash('#rbMsg', '下腕・上腕の長さは 0 より大きくしてください'); return; }
-    ov[robot.id] = o; store.set('rs3-robot-ov', ov);
+    ov[robot.id] = o; store.set('rs3-robot-ov2', ov);
     if (robot.id === 'yaskawa' && !o.pulse) robot.pulse = null;
-    RS.applyRobotOverrides(ov);
+    RS.applyRobotOverrides(ov); setFrame();
     stopAll(); S.q = S.q.map((v, i) => clamp(v, robot.lim[i][0], robot.lim[i][1]));
     buildRobot(); applyPose(); updateToolVis(); renderAll();
     flash('#rbMsg', '保存して反映しました', true);
   });
   $('#robotReset').addEventListener('click', () => {
     if (!window.confirm(`${robot.label} の機種パラメータを初期値に戻します。よろしいですか？`)) return;
-    const ov = store.get('rs3-robot-ov', {}) || {}; delete ov[robot.id]; store.set('rs3-robot-ov', ov);
+    const ov = store.get('rs3-robot-ov2', {}) || {}; delete ov[robot.id]; store.set('rs3-robot-ov2', ov);
     const def = RS.ROBOT_DEFAULTS[robot.id];
     robot.dims = JSON.parse(JSON.stringify(def.dims)); robot.lim = JSON.parse(JSON.stringify(def.lim)); robot.pulse = def.pulse; robot.model = def.model;
     robot.sign = def.sign.slice(); robot.home = def.home.slice(); robot.jointConfirmed = def.jointConfirmed;
@@ -1980,7 +2245,7 @@
   let cam = { theta: 0.95, phi: 0.42, r: 4.3 };
   const VIEWS = { iso: { theta: 0.95, phi: 0.42, r: 4.3 }, front: { theta: Math.PI / 2, phi: 0.12, r: 4.4 }, side: { theta: 0, phi: 0.12, r: 4.4 }, top: { theta: Math.PI / 2, phi: 1.5, r: 4.8 } };
   function updateCam() {
-    cam.phi = clamp(cam.phi, 0.02, 1.55); cam.r = clamp(cam.r, 0.8, 12);
+    cam.phi = clamp(cam.phi, 0.02, 1.55); cam.r = clamp(cam.r, 0.5, 14);
     camera.position.set(
       target.x + cam.r * Math.cos(cam.phi) * Math.sin(cam.theta),
       target.y + cam.r * Math.sin(cam.phi),
@@ -2016,14 +2281,34 @@
     else if (ptrs.size === 2) {
       p.x = e.clientX; p.y = e.clientY;
       const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
-      if (pinch > 0) cam.r *= pinch / d; pinch = d;
+      if (pinch > 0) zoomAt((a[0].x + a[1].x) / 2, (a[0].y + a[1].y) / 2, pinch / d); pinch = d;
       pan(dx / 2, dy / 2);
     }
     p.x = e.clientX; p.y = e.clientY; updateCam();
   });
   const endPtr = e => { ptrs.delete(e.pointerId); pinch = 0; };
   canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointercancel', endPtr);
-  canvas.addEventListener('wheel', e => { e.preventDefault(); cam.r *= Math.exp(e.deltaY * 0.001); updateCam(); }, { passive: false });
+  /* 画面上の点（マウスの位置）が指している 3D の点。物がなければ注視点の高さの水平面との交点 */
+  const ray = new T.Raycaster();
+  function pickPoint(cx, cy) {
+    const rc = canvas.getBoundingClientRect();
+    ray.setFromCamera({ x: (cx - rc.left) / rc.width * 2 - 1, y: -((cy - rc.top) / rc.height * 2 - 1) }, camera);
+    const hits = ray.intersectObjects(scene.children, true).filter(h => h.object.isMesh && h.object.visible && !(h.object.material && h.object.material.transparent && h.object.material.opacity < 0.3) && h.distance < 40);
+    if (hits.length) return hits[0].point.clone();
+    const pl = new T.Plane(new T.Vector3(0, 1, 0), -target.y), out = new T.Vector3();
+    return ray.ray.intersectPlane(pl, out) && out.distanceTo(camera.position) < 40 ? out : null;
+  }
+  /* 拡大・縮小は、マウスのある場所（指した物）に向かって行う */
+  function zoomAt(cx, cy, factor) {
+    const r0 = cam.r, r1 = clamp(r0 * factor, 0.5, 14), f = r1 / r0;
+    if (f === 1) return;
+    const P = f < 1 || cam.r < 13 ? pickPoint(cx, cy) : null;
+    if (P) target.set(P.x + (target.x - P.x) * f, P.y + (target.y - P.y) * f, P.z + (target.z - P.z) * f);
+    cam.r = r1; updateCam();
+  }
+  canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.001)); }, { passive: false });
+  // ダブルクリック（ダブルタップ）した場所を中心にして、少し近づく
+  canvas.addEventListener('dblclick', e => { const P = pickPoint(e.clientX, e.clientY); if (!P) return; target.copy(P); cam.r = clamp(cam.r * 0.6, 0.5, 14); updateCam(); });
   function resize() {
     const w = stage.clientWidth, h = stage.clientHeight;
     if (!w || !h) return;
@@ -2127,8 +2412,11 @@
     } else if (v === 'io') {
       const m = io();
       title = Y ? '入出力　汎用入出力' : 'I/O　Robot / Digital';
-      for (const [k, c] of m.outs) for (let n = 1; n <= Math.min(c, 4); n++) rows.push({ t: `${m.fmt(k, n).padEnd(7)} ${getOut(k, n) ? '●' : '○'} ${getOut(k, n) ? 'ON ' : 'OFF'}  ${m.outName[k + n] || ''}` });
-      for (const [k, c] of m.ins) for (let n = 1; n <= Math.min(c, 4); n++) rows.push({ t: `${m.fmt(k, n).padEnd(7)} ${getIn(k, n) ? '●' : '○'} ${getIn(k, n) ? 'ON ' : 'OFF'}  ${m.auto[k + n] || ''}` });
+      const lim = m.real ? 99 : 4, byK = {};
+      const row = (k, n, v, nm) => rows.push({ t: `${m.fmt(k, n).padEnd(8)} ${v ? '●' : '○'} ${v ? 'ON ' : 'OFF'} ${nm || ''}`, ioRow: rows.length });
+      for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n]); }
+      for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
+      selRow = clamp(pend.ioSel || 0, 0, rows.length - 1);
     } else if (v === 'inst') {
       title = '命令一覧（選んで［挿入］→［エンター］）';
       instList().forEach((it, k) => { rows.push({ t: `${it.g.padEnd(4, '　')} ${it.t}`, inst: k }); if (k === pend.instSel) selRow = rows.length - 1; });
@@ -2352,13 +2640,29 @@
       </div>
       <div class="oppanel"><span>操作盤</span><span class="seg mini">${['T1', 'T2', 'AUTO'].map(m => `<button data-act="fmode-${m}" aria-pressed="${pend.fmode === m}">${m}</button>`).join('')}</span><button class="pk go" data-act="cycle">CYCLE START</button><span class="note">AUTO・TP 無効で自動運転</span></div>`;
     }
-    const tools = `<div class="row pendtools"><button id="pendPop">${pend.float ? 'パネルに戻す' : '3D画面の上に出す'}</button><button id="pendBig">${pendEl.classList.contains('big') ? '標準の大きさ' : '大きく表示'}</button></div>`;
+    const tools = `<div class="row pendtools"><button id="pendPop">${pend.float ? 'パネルに戻す' : '3D画面の上に出す'}</button><button id="pendBig">${pendEl.classList.contains('big') ? '全体が見える大きさ' : '大きく表示（スクロール）'}</button></div>`;
     const how = Y
       ? '操作（DX200）：キーを TEACH に回す → ［SERVO ON READY］ → 側面のイネーブルスイッチを握る → 軸キーでジョグ（MANUAL SPEED は FAST／SLOW、「微動」は押すたびに少しずつ、［HIGH SPEED］で速く）。数字を入れて ENTER で、選んだ移動命令の速度を変更。［INTER LOCK］＋［2 TOOL ON］／［. TOOL OF］でハンド出力、＋［3］／［−］でハンドの命令を挿入。キーの日本語名との対応：INSERT＝挿入、DELETE＝削除、MODIFY＝修正、ENTER＝エンター、CANCEL＝取消、FWD／BWD＝前進／後退、TEST START＝試運転、INFORM LIST＝命令一覧、MOTION TYPE＝補間。［挿入］［削除］［修正］は［エンター］で確定、［取消］で中止。［前進］［後退］は押している間だけ動き、離すと止まります（もう一度押すと続きから）。［前進］は移動命令だけを実行し、ほかの命令は［インターロック］＋［前進］で実行。［試運転］は［インターロック］を押しながら、押している間だけ連続で動きます。教示モードの運転は手動速度に従い、TCP 250mm/s までに制限されます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
       : '操作（iPendant）：左上のキースイッチで TP を ON → 裏面のデッドマンを握る → SHIFT を押しながら軸キーでジョグ。数字を入れて ENTER で、選んだ移動命令の速度を変更（BACK SPACE で 1 文字消す）。POSN＝現在位置、I/O＝入出力、DATA／STATUS＝レジスタ、EDIT／SELECT＝プログラム。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD／BWD は押している間だけ動き、SHIFT・キー・デッドマンのどれかを離すと止まります（STEP 点灯中は1行ずつ）。T1 は 250mm/s まで、速度は ±% のオーバーライドに従います。自動運転は操作盤で AUTO にし、TP を OFF にして CYCLE START。';
     pendEl.innerHTML = tools + html + `<p class="note">${how}</p><p class="note">キーの配置は実機の写真に合わせています。画面の中身（メニュー階層など）は簡略化した再現で、シミュレーターにない機能のキーは押すと「使えません」と表示します。マウスで操作しやすいよう、SHIFT・インターロック・高速・イネーブル／デッドマンは押すたびに ON/OFF が切り替わります。</p>`;
     lcdCache = ''; updateLcd();
+    fitPend();
   }
+  /* ペンダント全体がスクロールなしで見えるように縮める（「大きく表示」のときは実寸でスクロール） */
+  function fitPend() {
+    const pd = pendEl.querySelector('.pendant'); if (!pd) return;
+    pd.style.zoom = '';
+    if (pendEl.classList.contains('big') || !pendVisible()) return;
+    const box = pend.float ? $('#pendFloat') : pendEl;
+    const natW = pd.offsetWidth, natH = pd.offsetHeight; if (!natW || !natH) return;
+    const top = pd.getBoundingClientRect().top;
+    const bottom = pend.float ? stage.getBoundingClientRect().bottom - 14 : window.innerHeight - 8;
+    const availH = bottom - top, availW = box.clientWidth - 4;
+    if (availH < 200) return;   // 画面が小さすぎるとき（スマホの縦持ちなど）は幅だけ合わせる
+    const k = clamp(Math.min(availH / natH, availW / natW), 0.45, 1.5);
+    if (Math.abs(k - 1) > 0.01) pd.style.zoom = k.toFixed(3);
+  }
+  window.addEventListener('resize', () => { if (pendVisible()) fitPend(); });
   bindHold(pendEl);
   /* 押している間だけ動くキー（試運転・FWD） */
   /* 押している間だけ動くキー（前進・後退・試運転・FWD・BWD）。離すと止まり、次に押すと続きから */
@@ -2529,8 +2833,8 @@
       case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; break;
       case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); P.menu = a === 'view-prog' ? P.menu : P.menu; break;
       case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
-      case 'up': if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
-      case 'down': if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
+      case 'up': if (P.view === 'io') P.ioSel = Math.max(0, (P.ioSel || 0) - 1); else if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
+      case 'down': if (P.view === 'io') P.ioSel = (P.ioSel || 0) + 1; else if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
       case 'enter':
         if (doPending()) break;
         if (P.num) {   // 数字を入れて ENTER：選んだ移動命令の速度を変える
@@ -2662,7 +2966,7 @@
     $('#saveNativeAll').textContent = 'すべて ' + (S.sys === 'yaskawa' ? 'JBI' : 'LS');
     $('#aiLang').textContent = S.sys === 'yaskawa' ? '安川 INFORM（JBI）' : 'ファナック TP（LS）';
     renderSliders(); renderCartJog(); renderHudLabels(); renderProgSelect(); renderCode(); renderCell(); renderPend(); updateOutBtn(); updateCycle();
-    renderIO(); renderVars(); renderLog();
+    renderIO(); renderVars(); renderLog(); renderPlc();
     syncSliders(); updateHud(); refreshState();
   }
 
@@ -2677,11 +2981,19 @@
   resize(); updateCam();
   requestAnimationFrame(frame);
 
+  /* 1 ファイル版に実機データが同梱されていれば、最初の 1 回だけ取り込む */
+  if (window.RS_MASTER_FILES && store.get('rs4-master-id', '') !== window.RS_MASTER_ID) {
+    const list = Object.entries(window.RS_MASTER_FILES).map(([name, b64]) => ({ name, data: Uint8Array.from(atob(b64), c => c.charCodeAt(0)) }));
+    if (S.sys !== 'yaskawa') switchSystem('yaskawa');
+    if (CELL.id !== 'line') switchCell('line');
+    importFiles(list, true).then(ok => { if (ok) { store.set('rs4-master-id', window.RS_MASTER_ID); flash('#progMsg', '同梱の実機データを取り込みました。プログラムタブの「マスターから自動運転」で動かせます', true); } });
+  }
+
   /* テスト・デバッグ用（ブラウザのコンソールから参照できます） */
   window.RSIM = {
     get state() { return S; }, get prog() { return prog(); }, get lib() { return lib; }, get run() { return run; }, get mv() { return mv; },
     get works() { return works; }, get robot() { return robot; }, get tool() { return tool; }, get vars() { return vars; },
-    get TABLES() { return TABLES; }, get CELL() { return CELL; }, switchCell, cupContact,
+    get TABLES() { return TABLES; }, get CELL() { return CELL; }, switchCell, cupContact, importFiles, padGap, setFaceCount: (r, n) => setFace(r, r.faces[r.inside], n), get master() { return master; },
     scene, look, renderer, camera, curPose, collisionCheck, G, switchSystem, switchTool, makeSample, setOut, getIn, tcpMatrix, showAiResult, importProgs
   };
 })();

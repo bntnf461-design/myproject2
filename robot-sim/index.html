@@ -111,6 +111,13 @@
           <button id="sampleBtn">サンプル作成</button>
           <button id="clearBtn" class="danger">命令を全削除</button>
         </div>
+        <details id="plcBox" open hidden><summary>ライン操作盤（PLC の代わり）</summary>
+          <div class="row"><label class="pname">取出パターン <select id="plcPat"></select></label></div>
+          <div class="row grow"><button id="plcMaster" class="primary">マスターから自動運転</button><button id="plcAuto" aria-pressed="false">サイクルスタート</button></div>
+          <div class="row"><label class="chk"><input type="checkbox" id="plcRot"> 硝子旋回90度</label><label class="chk"><input type="checkbox" id="plcBlow"> PADエアブロー</label></div>
+          <div class="row"><label class="chk"><input type="checkbox" id="plcAlt"> パレットが空になったら直進⇄曲進を切り替える</label></div>
+          <p class="note" id="plcNote"></p>
+        </details>
         <details id="ioDet"><summary>入出力（I/O）</summary><div id="ioBox"></div></details>
         <details><summary>変数・レジスタ</summary><div id="varBox"></div><div class="row"><button id="varReset">数値変数を 0 に戻す</button></div></details>
         <details><summary>実行ログ</summary><ul class="log" id="logBox"></ul></details>
@@ -120,7 +127,7 @@
           <button id="saveNativeAll">すべて JBI</button>
           <button id="loadBtn">読み込み</button>
           <button id="saveJson">JSON 保存</button>
-          <input type="file" id="fileIn" accept=".json,.jbi,.JBI,.ls,.LS,.txt" multiple hidden>
+          <input type="file" id="fileIn" accept=".json,.jbi,.JBI,.ls,.LS,.txt,.zip,.ZIP,.dat,.DAT,.cnd,.CND,.sys,.SYS,.prm,.PRM,.lst,.LST" multiple hidden>
         </div>
         <p class="note">実機のプログラム（安川 .JBI ／ ファナック .LS）を読み込んで動かせます。複数ファイル（CALL 先のサブプログラム）もまとめて選べます。</p>
       </section>

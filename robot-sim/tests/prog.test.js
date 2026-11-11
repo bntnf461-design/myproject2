@@ -169,7 +169,31 @@ function host(lib, ins) {
   const m = RS.emptyProgram('fanuc', 'L'); m.lines = ['LBL[1]', 'JMP LBL[1]'];
   const it = new RS.Interp(host({ L: m })); it.start('L', 0);
   const a = it.tick(0.1);
-  ok('infinite loop guard', a && a.t === 'alarm', a);
+  ok('入力待ちのループは次のフレームへ持ち越す（止まらない・固まらない）', a === null && it.frame, a);
+}
+{ // 実機（DX200）のジョブで使われている命令
+  const Yp = (name, lines) => { const m = RS.emptyProgram('yaskawa', name); m.lines = lines; return m; };
+  ok('CLEAR STACK', Y('CLEAR STACK').op === 'CLRSTACK');
+  ok('DIN / DOUT OG', Y('DIN B000 IG#(1)').op === 'DIN' && Y('DOUT OG#(1) B000').op === 'DOUTG' && Y('DOUT OG#(3) 0').op === 'DOUTG');
+  ok('JUMP B000', Y('JUMP B000').op === 'JUMPJOB' && Y('JUMP B000').nameVar === 'B000');
+  ok('SETE / GETE / GETS / SUB P', Y('SETE P010 (1) D010').op === 'SETE' && Y('GETE D002 P001 (2)').op === 'GETE' && Y('GETS PX001 $PX001').op === 'GETS' && Y('SUB P010 P010').op === 'PCALC');
+  ok('SHCKSET は無視', Y('SHCKSET SSL#(7)').op === 'IGNORE' && Y('SHCKRST').op === 'IGNORE');
+  ok('全角・半角カナのラベルとジョブ名', Y('*ｻｲｸﾙｽﾀ-ﾄ').op === 'LABEL' && Y('CALL JOB:硝子置き(上取)').name === '硝子置き(上取)' && RS.cleanName('硝子置き90(直進)', 'yaskawa') === '硝子置き90(直進)');
+  const lib = {
+    M: Yp('M', ['CLEAR B000 2', 'DIN B000 IG#(1)', 'DOUT OG#(1) B000', 'SET D010 30000', 'SUB P010 P010', 'SETE P010 (1) D010', 'GETS PX001 $PX001', 'GETE D002 P001 (2)', 'JUMP B000']),
+    5: Yp('5', ['SET I000 77', 'CALL JOB:S', 'INC I000']),
+    S: Yp('S', ['CLEAR STACK', 'RET'])
+  };
+  const H = host(lib, { IN1: true, IN3: true });   // IG#(1) = 1 + 4 = 5
+  H.vars.pos.P010 = { k: 'c', p: { X: 9, Y: 9, Z: 9, rx: 1, ry: 1, rz: 1 } };
+  const it = new RS.Interp(H); it.start('M', 0);
+  let a = null; for (let k = 0; k < 20 && !a; k++) a = it.tick(0.05);
+  ok('グループ入出力・位置変数・番号ジョブへのジャンプ', H.vars.num.B000 === 5 && H.io.out.OT1 === true && H.io.out.OT2 === false && H.io.out.OT3 === true && H.vars.pos.P010.p.X === 30 && H.vars.pos.P010.p.Y === 0 && H.vars.num.D002 === 2000 && H.vars.num.I000 === 77 && a && a.t === 'end',
+    { n: H.vars.num, o: H.io.out, p: H.vars.pos.P010, a });
+  // JBI：パルスと位置変数
+  const jb = '/JOB\n//NAME T(1)\n///FOLDERNAME F\n//POS\n///NPOS 1,0,0,2,0,0\n///TOOL 0\n///POSTYPE PULSE\n///PULSE\nC00000=1000,2000,3000,0,0,0\nP00004=0,0,0,0,0,0\n///POSTYPE BASE\n///RECTAN\n///RCONF 0,0,0,0,0,0,0,0\nP00010=30.000,0.000,0.000,0.0000,0.0000,0.0000\n//INST\n///DATE 2025/01/01 00:00\n///ATTR SC,RW\n///GROUP1 RB1\nNOP\nMOVJ C00000 VJ=10.00\nEND\n';
+  const r2 = RS.importText(jb, { pulse: { yaskawa: [1000, 1000, 1000, 1000, 1000, 1000] } });
+  ok('JBI：パルス・位置変数・フォルダ', !r2.err && r2.progs[0].name === 'T(1)' && r2.progs[0].folder === 'F' && r2.progs[0].pos.C00000.q[1] === 2 && r2.progs[0].pos.C00000.pls[2] === 3000 && r2.pvars.P010.pos.p.X === 30 && r2.pvars.P004.pos.k === 'j', r2);
 }
 // --- Shift_JIS（DX200 の日本語コメント） ---
 {
