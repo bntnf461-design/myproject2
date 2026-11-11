@@ -440,6 +440,29 @@ test("良品の合計から明細を作る：見本10/21（パレット満タン
   eq(await v(p, "sb1_to"), "0", "当残");
 });
 
+test("読んだ素板を使い切ったら、素板ロットNo. を空けた行に分け、次の素板のQRを読むと入る", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await p.click("body"); await scanQR(p, QR_042);
+  await fill(p, "gt1_good", 400); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  const row = async r => [await v(p, `r${r}_lotSoban`), await v(p, `r${r}_good`)].join(" ");
+  // 前日から続く素板 102 枚＋R7Z446SX042 の 175 枚 ＝ 277 枚まで。そのあとは素板ロットNo. が空
+  eq(await row(1), "R7Z446SX061 102", "1行目");
+  eq(await row(2), "R7Z446SX042 20", "2行目");
+  eq(await row(3), "R7Z446SX042 135", "3行目");
+  eq(await row(4), "R7Z446SX042 20", "4行目（042 を使い切る）");
+  eq(await row(5), " 115", "5行目（次の素板。QRがまだ）");
+  eq(await row(6), " 8", "6行目（次のパレット）");
+  ok((await p.textContent("#gtInfo")).includes("次の素板のQRを読んでください"), "知らせる：" + await p.textContent("#gtInfo"));
+  await p.click("body"); await scanQR(p, QR_042.replace("R7Z446SX042", "R7Z446SX043")); await p.waitForTimeout(300);
+  eq(await row(5), "R7Z446SX043 115", "QRを読むと入る");
+  eq(await row(6), "R7Z446SX043 8", "6行目にも入る");
+  eq(await v(p, "r7_model"), "", "行は増えない");
+  ok(!(await p.textContent("#gtInfo")).includes("次の素板のQR"), "知らせが消える");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
 test("良品の合計：手で直した行は作り直さない／型式が変わると新しい連番", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await importMaster(p);

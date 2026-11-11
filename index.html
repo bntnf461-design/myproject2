@@ -1655,9 +1655,12 @@
       if (ei > 0 && e.m !== prevM) fill = 0;              // 型式が変わったら新しいパレット
       while (g > 0) {
         if (fill >= cap) fill = 0;
-        while (left <= 0 && si < segs.length - 1) { si++; left = segs[si].sheets; }
-        var lastSeg = si === segs.length - 1;
-        var chunk = Math.min(g, cap - fill, lastSeg ? Infinity : left);
+        // 素板を使い切ったら次の素板へ。読んだ素板がもうないときは、素板ロットNo. を空けた行にする（次の素板のQRを読むと入る）
+        while (left <= 0) {
+          if (si < segs.length - 1) { si++; left = segs[si].sheets; }
+          else { segs.push({ lot: "", sheets: Infinity, missing: true }); si++; left = Infinity; }
+        }
+        var chunk = Math.min(g, cap - fill, left);
         rows.push({ m: e.m, lot: segs[si].lot, good: chunk, seg: si });
         g -= chunk; fill += chunk; left -= chunk;
       }
@@ -1718,8 +1721,10 @@
     f("genSig").value = genRowsNow();
     lastGtKey = gtKey();
     save();
-    info.className = unreg.length ? "gt-info warn" : "gt-info";
+    var miss = segs.some(function (sg) { return sg.missing; });
+    info.className = unreg.length || miss ? "gt-info warn" : "gt-info";
     info.textContent = (unreg.length ? "⚠ 登録されていない型式があります：" + unreg.join("、") + "（1PL がわからないため、パレットで分けていません）。" : "") +
+      (miss ? "⚠ 読んだ素板の枚数より良品が多いため、素板を使い切ったあとの行は素板ロットNo. が空です。次の素板のQRを読んでください（読むと明細を作り直します）。" : "") +
       "明細を " + rows.length + " 行作りました（" + ent.map(function (e) { return e.m + " " + e.g + "枚"; }).join("、") + "）。" +
       (moved ? "最後の素板の使用数（当残から計算）を超えた不良 " + moved + " 個を、前の素板の行へ移しました。" : "") + "手で直した行は、自動では作り直しません";
     return true;
@@ -2190,9 +2195,11 @@
       if (list.some(function (x) { return x.lot === q.lot; })) notes.push("このパレットは読み取り済みです");
       else { list.push({ lot: q.lot, qty: q.qty, t: Date.now(), local: q.local, raw: q.raw }); f(p + "lots").value = JSON.stringify(list); }
     }
-    // 明細：素板ロットが変わったら次の行へ
+    // 明細：素板ロットが変わったら次の行へ。良品の合計から明細を作っているときは、行は触らずに作り直す
+    var regen = gtEntries().length > 0 && !genEdited();
     var last = lastActiveRow(), target = 0, prevLotSoban = last ? val("r" + last + "_lotSoban") : "";
-    if (!last) target = 1;
+    if (regen) target = 0;
+    else if (!last) target = 1;
     else if (val("r" + last + "_lotSoban") === "") target = last;
     else if (val("r" + last + "_lotSoban") !== q.lot) target = last + 1;
     if (target > ROWS) notes.push("明細の行がいっぱいです");
@@ -2211,7 +2218,8 @@
     recalc(); save();
     // 前の素板の枚数を超えてから読んだときは、どの行から新しい素板だったかを聞く
     // 良品の合計から明細を作っているときは、素板が増えたら明細を作り直す。そうでなければ、遅れて読んだかを確かめる
-    if (gtEntries().length) setTimeout(function () { buildRows(false); }, 0);
+    if (regen) setTimeout(function () { buildRows(true); }, 0);
+    else if (gtEntries().length) setTimeout(function () { buildRows(false); }, 0);
     else if (target && target === last + 1 && prevLotSoban && prevLotSoban !== q.lot) setTimeout(function () { askLateQR(target, prevLotSoban, q.lot); }, 0);
     var head = "素板QR：" + q.name + " " + q.inW + "×" + q.inH + "（" + q.mmW + "×" + q.mmH + "mm）" + q.qty + "枚　ロット " + q.lot;
     msgUndo(head + (notes.length ? "　⚠ " + notes.join("／") : ""), notes.length ? "warn" : "ok");
