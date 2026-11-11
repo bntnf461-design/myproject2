@@ -677,6 +677,37 @@ test("カウンターの停止を日報で直す（60分→30分）：元の値�
   eq(JSON.parse(await v(p, "kadoEvents")).find(e => e.id === "w1").e, "11:00", "カウンターの値に戻せる");
 });
 
+test("素板のQRのローカルコード（BR）を、明細のローカルコードに入れる（型式の登録にないとき）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.click("body"); await scanQR(p, QR_042); await p.waitForTimeout(200);
+  eq(await v(p, "r1_lotSoban") + " " + await v(p, "r1_localCode"), "R7Z446SX042 2N9A", "QRを読んだ行");
+  await fill(p, "r1_good", 50); await p.waitForTimeout(200);
+  eq(await v(p, "r1_localCode"), "2N9A", "ほかの欄を入れても消えない");
+  await p.reload(); await p.waitForTimeout(300);
+  eq(await v(p, "r1_localCode"), "2N9A", "開き直しても入っている");
+});
+
+test("印鑑を登録して、GL・リーダーの欄を押して選ぶ（完成したあとでも押せる）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.click("#btnSettings");
+  await p.click("#sAdd"); await p.fill('#sBody [data-si="0"]', "山田");
+  await p.click("#sAdd"); await p.fill('#sBody [data-si="1"]', "佐々木");
+  ok((await p.innerHTML("#sBody")).includes("<svg"), "名前から印影を作る");
+  await p.click("#dlgSave"); await p.waitForTimeout(200);
+  await fill(p, "r1_lotSoban", "A"); await fill(p, "r1_good", 102); await p.waitForTimeout(200);
+  await p.click("#btnDone"); await p.click("#doneOnly"); await p.waitForTimeout(200);
+  await p.click('.seal-td[data-stamp="gl"]');
+  ok(await p.evaluate(() => document.getElementById("sealDlg").open), "印鑑を選ぶ画面が出る");
+  await p.click("#sealList button >> text=佐々木"); await p.waitForTimeout(200);
+  eq(await v(p, "stamp_gl"), "佐々木", "GLの欄に押す");
+  ok((await p.innerHTML('.seal-td[data-stamp="gl"]')).includes("<svg"), "印影が出る");
+  await p.reload(); await p.waitForTimeout(300);
+  ok((await p.innerHTML('.seal-td[data-stamp="gl"]')).includes("<svg"), "開き直しても押してある");
+  await p.click('.seal-td[data-stamp="gl"]'); await p.click("#sealClear"); await p.waitForTimeout(200);
+  eq(await v(p, "stamp_gl"), "", "消せる");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
 test("U1：数字の欄はホイールや↑↓で値が変わらない（↑↓は上下の行へ）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await fill(p, "r2_ware", 5);

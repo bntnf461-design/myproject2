@@ -174,6 +174,14 @@
                  font-size: 20px; font-weight: bold; padding-bottom: 6px; }
   .head table td { height: 34px; }
   .stamp td { width: 90px; height: 50px; text-align: center; }
+  .stamp td.seal-td { cursor: pointer; vertical-align: middle; }
+  .stamp td.seal-td:hover { background: #fff6d1; }
+  .stamp td.seal-td svg, .stamp td.seal-td img { height: 40px; width: 40px; display: block; margin: 0 auto; object-fit: contain; }
+  .sealpick { display: flex; flex-wrap: wrap; gap: 10px; }
+  .sealpick button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 12px; font: inherit; font-size: 14px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; min-width: 90px; }
+  .sealpick button:hover { background: #fff6d1; }
+  .sealpick svg, .sealpick img { width: 56px; height: 56px; object-fit: contain; }
+  #sBody svg, #sBody img { width: 40px; height: 40px; object-fit: contain; vertical-align: middle; }
   .carry { display: flex; gap: 10px; align-items: center; margin: 6px 0 4px; font-size: 11px; }
   .carry label { display: flex; align-items: center; gap: 3px; }
   .carry input { border: 1px solid #bbb; width: 110px; }
@@ -449,6 +457,14 @@
     </div>
   </div>
 </dialog>
+<dialog id="sealDlg">
+  <div class="dh"><span id="sealTitle">印鑑を選ぶ</span></div>
+  <div class="db">
+    <div id="sealList" class="sealpick"></div>
+    <div class="acts" style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button type="button" id="sealClear">印鑑を消す</button><button type="button" id="sealCancel">やめる</button></div>
+  </div>
+</dialog>
 <dialog id="pickDlg">
   <div class="dh"><span id="pickTitle"></span></div>
   <div class="db">
@@ -505,7 +521,7 @@
     <div class="title">自動車用　Nライン切面孔明け作業日報</div>
     <table class="stamp">
       <tr><th>GL</th><th>リーダー</th></tr>
-      <tr><td></td><td></td></tr>
+      <tr><td class="seal-td" data-stamp="gl" title="押すと、登録した印鑑から選べます"></td><td class="seal-td" data-stamp="leader" title="押すと、登録した印鑑から選べます"></td></tr>
     </table>
   </div>
 
@@ -682,6 +698,14 @@
     <textarea id="wList" rows="5" style="width:300px"></textarea>
     <div class="note">日報の作業者欄で選べる名前です。日報で新しく手打ちした名前も、ここに自動で増えます。</div>
 
+    <h3>印鑑（帳票の GL・リーダーの欄を押すと、ここに登録した印鑑から選べます）</h3>
+    <table style="width:auto">
+      <thead><tr><th style="width:160px">名前（印鑑の文字）</th><th style="width:70px">印影</th><th>画像（なくてもよい）</th><th style="width:44px"></th></tr></thead>
+      <tbody id="sBody"></tbody>
+    </table>
+    <div class="row"><button type="button" id="sAdd">印鑑を追加</button>
+      <span class="note">名前だけで、赤い丸の印鑑を作ります。本物の印影を使うときは、印影を写した画像（PNG・JPEG）を選んでください。</span></div>
+
     <h3>その他</h3>
     <div class="row">
       <label>切面ロットNo. の末尾 <input id="sSuffix" style="width:60px;border:1px solid #bbb"></label>
@@ -786,6 +810,7 @@
   var master = parseJSON(localStorageGet(MASTER_KEY), null) || {};
   master.models = master.models || [];
   master.workers = master.workers || [];
+  master.seals = master.seals || [];
   master.lotSuffix = master.lotSuffix == null ? "NK" : master.lotSuffix;
   master.kadoFrom = master.kadoFrom == null ? 8 : master.kadoFrom;
   master.kadoTo = master.kadoTo == null ? 21 : master.kadoTo;
@@ -895,7 +920,7 @@
         '<span class="mm">(<input name="' + p + 'mmW">×<input name="' + p + 'mmH">mm)</span></div></td></tr>' +
       '<tr><td><div class="x"><input name="' + p + 'qty" style="text-align:right"><span>×</span><input name="' + p + 'pl" style="width:40px;text-align:right"><span>PL</span></div></td>' +
         '<td class="zan">当<br>残</td><td class="zv"><input name="' + p + 'to" type="number"></td></tr>' +
-      '<input type="hidden" name="' + p + 'lots"><input type="hidden" name="' + p + 'carryLot">'));
+      '<input type="hidden" name="' + p + 'lots"><input type="hidden" name="' + p + 'carryLot"><input type="hidden" name="' + p + 'carryLocal">'));
   });
 
   // ---------- コアドリル径 ----------
@@ -957,6 +982,16 @@
   }
 
   var overKey = "", quietOver = false;
+  // 読んだ素板のQRに入っていたローカルコード
+  function lotLocal(lot) {
+    if (!lot) return "";
+    for (var n = 1; n <= 2; n++) {
+      var list = parseJSON(val("sb" + n + "_lots"), []);
+      for (var i = 0; i < list.length; i++) if (list[i].lot === lot && list[i].local) return list[i].local;
+      if (val("sb" + n + "_carryLot") === lot && val("sb" + n + "_carryLocal")) return val("sb" + n + "_carryLocal");
+    }
+    return "";
+  }
   function computeAuto() {
     var date = curDate;
     var lots = computeLots(val, date, val("prevLot"), num("prevGood"), autoVals, function (r, L) {
@@ -967,11 +1002,12 @@
     for (var r = 1; r <= ROWS; r++) {
       var p = "r" + r + "_", m = modelOf(val(p + "model"));
       if (!val(p + "model")) { setAuto(p + "lotCut", ""); setAuto(p + "good", ""); }
+      // ローカルコードは型式の登録から。登録にないときは、その行の素板のQR（BR）から
+      setAuto(p + "localCode", (m && m.local) || lotLocal(val(p + "lotSoban")));
       if (m) {
         setAuto(p + "palletType", m.pallet || "");
-        setAuto(p + "localCode", m.local || "");
         if (m.wheel && wheels.indexOf(m.wheel) < 0) wheels.push(m.wheel);
-      } else { setAuto(p + "palletType", ""); setAuto(p + "localCode", ""); }
+      } else setAuto(p + "palletType", "");
       // 作業枚数 ＝ 良品枚数 ＋ 工程不良 ＋ 素板不良
       var ng = PROC.concat(SOBAN).reduce(function (s, k) { return s + num(p + k); }, 0);
       setAuto(p + "qty", val(p + "model") && val(p + "good") !== "" ? fmt(num(p + "good") + ng) : "");
@@ -1158,6 +1194,7 @@
     drawLotList();
     markNeed();
     checkPack();
+    drawStamps();
     if (chkFwd) drawCntBar();   // 起動の途中（カウンター連携の準備前）は描かない
     if (chkFwd) renderWork();
   }
@@ -1338,9 +1375,57 @@
     if (!iss.miss.length && !iss.odd.length && !iss.cons.length) ul.appendChild(el("li", { "class": "okline" }, "✅ 入れ忘れ・計算の食い違いは見つかりませんでした"));
   }
 
+  // ---------- 印鑑（GL・リーダーの欄） ----------
+  // 画像がない印鑑は、名前から赤い丸の印鑑を作る（縦書き）
+  function sealSvg(name) {
+    var t = String(name || "").replace(/\s/g, "").slice(0, 4), n = t.length || 1;
+    var fs = n === 1 ? 46 : n === 2 ? 34 : n === 3 ? 25 : 19, h = fs * n, y0 = 50 - h / 2 + fs * 0.86, txt = "";
+    var ff = '" text-anchor="middle" fill="#d22" font-weight="bold" font-family="Yu Mincho, Hiragino Mincho ProN, MS Mincho, serif">';
+    // 4文字は、右の列から2文字ずつ（縦書きの印鑑と同じ並び）
+    if (n === 4) for (var j = 0; j < 4; j++) txt += '<text x="' + (j < 2 ? 67 : 33) + '" y="' + (j % 2 ? 76 : 46) + '" font-size="30' + ff + esc(t.charAt(j)) + "</text>";
+    else for (var i = 0; i < t.length; i++) txt += '<text x="50" y="' + (y0 + i * fs).toFixed(1) + '" font-size="' + fs + ff + esc(t.charAt(i)) + "</text>";
+    return '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="46" fill="none" stroke="#d22" stroke-width="5"/>' + txt + "</svg>";
+  }
+  function sealOf(name) { for (var i = 0; i < master.seals.length; i++) if (master.seals[i].name === name) return master.seals[i]; return null; }
+  function sealHtml(name, img) {
+    if (!name && !img) return "";
+    return img ? '<img src="' + esc(img) + '" alt="' + esc(name || "") + '">' : sealSvg(name);
+  }
+  function drawStamps() {
+    Array.prototype.forEach.call(document.querySelectorAll(".seal-td"), function (td) {
+      var name = val("stamp_" + td.getAttribute("data-stamp")), sl = sealOf(name);
+      setTdHtml(td, name ? sealHtml(name, sl ? sl.img : "") : "");
+    });
+  }
+  function setTdHtml(td, h) { if (td.getAttribute("data-html") !== h) { td.innerHTML = h; td.setAttribute("data-html", h); } }
+  var sealDlg = document.getElementById("sealDlg"), sealFor = "";
+  var STAMP_NAME = { gl: "GL", leader: "リーダー" };
+  document.querySelector(".stamp").addEventListener("click", function (e) {
+    var td = e.target.closest(".seal-td"); if (!td || readOnly) return;
+    sealFor = td.getAttribute("data-stamp");
+    document.getElementById("sealTitle").textContent = STAMP_NAME[sealFor] + "の印鑑を選ぶ";
+    var box = document.getElementById("sealList"); box.innerHTML = "";
+    if (!master.seals.length) box.innerHTML = '<div class="note" style="font-size:14px">印鑑が登録されていません。上の「設定・データ」の「印鑑」で登録してください。</div>';
+    master.seals.forEach(function (x) {
+      var b = el("button", { type: "button" }, sealHtml(x.name, x.img) + "<span>" + esc(x.name) + "</span>");
+      b.onclick = function () { setStamp(sealFor, x.name); sealDlg.close(); };
+      box.appendChild(b);
+    });
+    document.getElementById("sealClear").style.display = val("stamp_" + sealFor) ? "" : "none";
+    sealDlg.showModal();
+  });
+  // 押印は、日報を完成したあと（提出したあと）でもできる
+  function setStamp(k, name) {
+    f("stamp_" + k).value = name || "";
+    drawStamps(); save(true);
+    msg(name ? STAMP_NAME[k] + "の欄に「" + name + "」の印鑑を押しました" : STAMP_NAME[k] + "の印鑑を消しました", "ok");
+  }
+  document.getElementById("sealClear").onclick = function () { setStamp(sealFor, ""); sealDlg.close(); };
+  document.getElementById("sealCancel").onclick = function () { sealDlg.close(); };
+
   // ---------- 完成（提出）と訂正 ----------
   var locked = false, fixing = false;
-  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel", "packWarn", "packCounted"];
+  var META = ["autoVals", "cntImported", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel", "packWarn", "packCounted", "stamp_gl", "stamp_leader"];
   function snapData() { var d = collect(); META.forEach(function (k) { delete d[k]; }); return d; }
   var COL_NAME = { model: "型式", lotCut: "切面ロットNo.", lotSoban: "素板ロットNo", qty: "作業枚数", good: "良品枚数", pallet: "パレット№", palletType: "パレット形態", localCode: "ローカルコード" };
   var OTHER_NAME = { shift: "出", team: "組", prevLot: "前日の切面ロットNo.", prevGood: "前日の良品端数", wheel: "使用面取りホイール",
@@ -2081,6 +2166,7 @@
     if (q) for (var cn = 1; cn <= 2; cn++) {
       if (val("sb" + cn + "_carryLot") !== q.lot) continue;
       var mae = val("sb" + cn + "_mae"), same = String(toNum(q.qty)) === String(toNum(mae));
+      if (q.local && val("sb" + cn + "_carryLocal") !== q.local) { f("sb" + cn + "_carryLocal").value = q.local; recalc(); save(); }
       msg("前日から続く素板 " + q.lot + "（残り " + q.qty + " 枚）を確認しました" + (same ? "" : "　⚠ 前残（" + (mae || "空") + " 枚）と違います。前残を確かめてください"), same ? "ok" : "warn");
       beep(same);
       return;
@@ -2114,7 +2200,6 @@
       var tp = "r" + target + "_";
       f(tp + "lotSoban").value = q.lot;
       if (target > 1 && val(tp + "model") === "") setAuto(tp + "model", val("r" + (target - 1) + "_model"));
-      if (!modelOf(val(tp + "model")) && q.local) setAuto(tp + "localCode", q.local);
     }
     if (target > 1 && target <= ROWS && target === last + 1) {
       var pg = "r" + last + "_good";
@@ -2827,7 +2912,7 @@
   window.addEventListener("beforeprint", prepareLabels);
 
   // ---------- 保存 / 読込み ----------
-  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel", "packWarn", "packCounted"];
+  var hiddenExtra = ["cntImported", "autoVals", "cntLog", "rebalSkip", "doneAt", "doneSnap", "fixLog", "genSig", "prevModel", "packWarn", "packCounted", "stamp_gl", "stamp_leader"];
   hiddenExtra.forEach(function (n) { form.appendChild(el("input", { type: "hidden", name: n })); });
   function collect() {
     f("autoVals").value = JSON.stringify(autoVals);
@@ -3045,11 +3130,54 @@
     var i = e.target.getAttribute("data-mdel"); if (i == null) return;
     draft.splice(+i, 1); drawModels(); setDirty(true);
   });
+  // ---------- 印鑑の登録 ----------
+  var sealDraft = [], sBody = document.getElementById("sBody");
+  function drawSeals() {
+    sBody.innerHTML = "";
+    sealDraft.forEach(function (x, i) {
+      var tr = el("tr");
+      tr.appendChild(el("td", null, '<input data-si="' + i + '" value="' + esc(x.name || "") + '" placeholder="例：山田">'));
+      tr.appendChild(el("td", { style: "text-align:center" }, sealHtml(x.name, x.img)));
+      tr.appendChild(el("td", null, '<label class="btn" style="border:1px solid #888;border-radius:3px">画像を選ぶ<input type="file" accept="image/*" data-simg="' + i + '" hidden></label>' +
+        (x.img ? ' <button type="button" data-snoimg="' + i + '">画像をやめる</button>' : "")));
+      tr.appendChild(el("td", null, '<button type="button" data-sdel="' + i + '">削除</button>'));
+      sBody.appendChild(tr);
+    });
+  }
+  sBody.addEventListener("input", function (e) {
+    var i = e.target.getAttribute("data-si"); if (i == null) return;
+    sealDraft[+i].name = e.target.value; setDirty(true);
+    e.target.closest("tr").children[1].innerHTML = sealHtml(sealDraft[+i].name, sealDraft[+i].img);
+  });
+  sBody.addEventListener("click", function (e) {
+    var i = e.target.getAttribute("data-sdel");
+    if (i != null) { sealDraft.splice(+i, 1); drawSeals(); setDirty(true); return; }
+    i = e.target.getAttribute("data-snoimg");
+    if (i != null) { sealDraft[+i].img = ""; drawSeals(); setDirty(true); }
+  });
+  sBody.addEventListener("change", function (e) {
+    var i = e.target.getAttribute("data-simg"); if (i == null || !e.target.files[0]) return;
+    // 画像は小さくして保存する（保存の容量を使いすぎないように）
+    var rd = new FileReader();
+    rd.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        var sc = Math.min(1, 200 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+        sealDraft[+i].img = c.toDataURL("image/png"); drawSeals(); setDirty(true);
+      };
+      im.src = rd.result;
+    };
+    rd.readAsDataURL(e.target.files[0]);
+  });
+  document.getElementById("sAdd").onclick = function () { sealDraft.push({ name: "", img: "" }); drawSeals(); setDirty(true); };
   document.getElementById("mAdd").onclick = function () { draft.push({ name: "", pallet: "", wheel: "", cap: "", local: "" }); drawModels(); setDirty(true); };
   document.getElementById("btnSettings").onclick = function () {
     draft = master.models.map(function (m) { return Object.assign({}, m); });
     drawModels();
     document.getElementById("wList").value = master.workers.join("\n");
+    sealDraft = master.seals.map(function (x) { return Object.assign({}, x); }); drawSeals();
     document.getElementById("sSuffix").value = master.lotSuffix;
     document.getElementById("sLabel").checked = master.labelOn;
     drawShareInfo();
@@ -3064,11 +3192,13 @@
       .map(function (m) { return { name: String(m.name).trim(), pallet: m.pallet || "", wheel: m.wheel || "", cap: parseInt(m.cap, 10) || "", local: m.local || "" }; });
     master.workers = document.getElementById("wList").value.split(/\r?\n/).map(function (s) { return s.trim(); })
       .filter(function (s, i, a) { return s && a.indexOf(s) === i; });
+    master.seals = sealDraft.filter(function (x) { return String(x.name || "").trim(); })
+      .map(function (x) { return { name: String(x.name).trim(), img: x.img || "" }; });
     master.lotSuffix = document.getElementById("sSuffix").value.trim();
     master.labelOn = document.getElementById("sLabel").checked;
     var fr = parseInt(document.getElementById("sFrom").value, 10), to = parseInt(document.getElementById("sTo").value, 10);
     if (fr >= 0 && to > fr && to <= 24) { master.kadoFrom = fr; master.kadoTo = to; }
-    saveMaster(); setDirty(false); dlg.close(); recalc(); save(); syncShifts();
+    saveMaster(); setDirty(false); dlg.close(); recalc(); save(); syncShifts(); drawStamps();
     document.getElementById("btnSettings").classList.toggle("pulse", !master.models.length);
     msg("設定を保存しました（型式 " + master.models.length + " 件・作業者 " + master.workers.length + " 人）", "ok");
   };
