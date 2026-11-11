@@ -44,11 +44,14 @@
     fence: null
   };
   /* ガラス面の位置から、ラックの中心・受けの高さを求める */
+  const H_REF = 0.75;
+  RS.lineMaxCount = t => Math.max(1, Math.min(...RS.LINE.racks.map(r => Math.floor((r.depth - 0.09) / t))));
   function resolveLine(L) {
     const G = L.glass, out = JSON.parse(JSON.stringify(L));
     out.racks.forEach(r => {
       const a = r.lean * Math.PI / 180, b0 = r.type === 'pallet' ? 0.15 : 0.26;
-      const xs = b0 - Math.sin(a) * G.h / 2 + Math.cos(a) * r.depth, ys = Math.cos(a) * G.h / 2 + Math.sin(a) * r.depth;
+      // face は標準の高さ（750mm）のガラスの中心。ガラスの寸法を変えても、受け（下辺）の位置は動かさない
+      const xs = b0 - Math.sin(a) * H_REF / 2 + Math.cos(a) * r.depth, ys = Math.cos(a) * H_REF / 2 + Math.sin(a) * r.depth;
       const n = Math.hypot(r.dir[0], r.dir[1]) || 1; r.dir = [r.dir[0] / n, r.dir[1] / n];
       r.X = r.face.X - r.dir[0] * xs; r.Y = r.face.Y - r.dir[1] * xs;
       r.ledge = Math.max(0.2, r.face.Z + L.zBase - L.floor - ys);   // 床から
@@ -76,11 +79,11 @@
   RS.LINE_DEFAULT = JSON.parse(JSON.stringify(RS.LINE));
   /* 利用者が入れた実測値（mm）で配置を上書きする。{ 'racks.0.face.X': -141, ... } */
   RS.LINE_FIELDS = [
-    ['racks.0.face.X', '直進ラック ガラス面の中心 X'], ['racks.0.face.Y', '直進ラック ガラス面の中心 Y'], ['racks.0.face.Z', '直進ラック ガラス面の中心 Z'],
-    ['racks.1.face.X', '曲進ラック ガラス面の中心 X'], ['racks.1.face.Y', '曲進ラック ガラス面の中心 Y'], ['racks.1.face.Z', '曲進ラック ガラス面の中心 Z'],
+    ['racks.0.face.X', '直進ラック ガラス面の中心 X'], ['racks.0.face.Y', '直進ラック ガラス面の中心 Y'], ['racks.0.face.Z', '直進ラック ガラス面の中心 Z（高さ 750 のとき）'],
+    ['racks.1.face.X', '曲進ラック ガラス面の中心 X'], ['racks.1.face.Y', '曲進ラック ガラス面の中心 Y'], ['racks.1.face.Z', '曲進ラック ガラス面の中心 Z（高さ 750 のとき）'],
     ['conveyor.X0', 'コンベア 上流端 X'], ['conveyor.Y0', 'コンベア 上流端 Y'], ['conveyor.X1', 'コンベア 下流端 X'], ['conveyor.Y1', 'コンベア 下流端 Y'],
     ['conveyor.place', 'ガラスを置く位置（上流端から）'], ['conveyor.w', 'コンベアの幅'], ['conveyor.topZ', 'コンベア上面の Z'],
-    ['glass.w', 'ガラスの幅'], ['glass.h', 'ガラスの高さ'], ['glass.t', 'ガラスの厚み'], ['glass.count', 'パレット 1 面の枚数（枚）', 1], ['floor', '床の高さ（据付面から、マイナス）']
+    ['glass.w', 'ガラスの幅'], ['glass.h', 'ガラスの高さ'], ['glass.t', 'ガラスの厚み'], ['glass.count', 'パレット 1 面の枚数（枚）', 1], ['floor', '床の位置（ロボットの据付面より下、例 -350）']
   ];
   const getp = (o, k) => k.split('.').reduce((a, p) => a && a[p], o);
   const setp = (o, k, v) => { const ks = k.split('.'); const last = ks.pop(); const t = ks.reduce((a, p) => a[p], o); t[last] = v; };
@@ -89,12 +92,15 @@
     const L = RS.LINE;
     for (const [k, , u] of RS.LINE_FIELDS) {
       const v = vals && vals[k];
-      if (typeof v !== 'number' || !isFinite(v) || Math.abs(v) > 9000) continue;
+      if (typeof v !== 'number' || !isFinite(v)) continue;
       setp(L, k, u ? Math.round(v) : v / 1000);
     }
     L.glass.t = Math.min(Math.max(L.glass.t, 0.002), 0.019);
-    L.glass.count = Math.min(Math.max(L.glass.count, 1), 200);
+    L.glass.count = Math.min(Math.max(L.glass.count, 1), RS.lineMaxCount(L.glass.t));
     const c = L.conveyor;
+    for (const r of L.racks) for (const k of ['X', 'Y', 'Z']) r.face[k] = Math.min(Math.max(r.face[k], -4), 4);
+    for (const k of ['X0', 'Y0', 'X1', 'Y1']) c[k] = Math.min(Math.max(c[k], -9), 9);
+    c.topZ = Math.min(Math.max(c.topZ, -0.5), 1); L.floor = Math.max(L.floor, -1.5);
     // X か Y に平行にそろえる（長い方の向き）。長さは 1m 以上
     if (Math.abs(c.X1 - c.X0) >= Math.abs(c.Y1 - c.Y0)) c.Y1 = c.Y0; else c.X1 = c.X0;
     let len = Math.hypot(c.X1 - c.X0, c.Y1 - c.Y0);
@@ -437,7 +443,8 @@
       box(0.2, 0.3, 0.06, new T.MeshStandardMaterial({ color: 0x9c9fa3, roughness: 0.55 }), 0, 0, 0, g);
       box(0.13, 0.09, 0.005, new T.MeshStandardMaterial({ color: 0x6f8fb0, roughness: 0.2, emissive: 0x203040 }), 0, 0.07, 0.032, g);
       const es = cyl(0.018, 0.02, new T.MeshStandardMaterial({ color: 0xc0201a }), 0.07, 0.13, 0.03, g, 16); es.rotation.x = Math.PI / 2; }
-    { const sg = sign(T, '選任者以外\n立入禁止', 0.3, 0.24, '#f2d21a', '#c0201a', 72); sg.position.set(Fx[0] - 0.03, F + 1.6, -0.3); sg.rotation.y = -Math.PI / 2; group.add(sg); }
+    let fenceSign = null;
+    { const sg = sign(T, '選任者以外\n立入禁止', 0.3, 0.24, '#f2d21a', '#c0201a', 72); fenceSign = sg.material; sg.position.set(Fx[0] - 0.03, F + 1.6, -0.3); sg.rotation.y = -Math.PI / 2; group.add(sg); }
     { const sg = sign(T, '段差有り\n足元注意', 0.36, 0.2, '#f2d21a', '#c0201a', 60); sg.rotation.x = -Math.PI / 2; sg.rotation.z = Math.PI / 2; sg.position.set(Fx[0] - 0.45, F + 0.004, 0); group.add(sg); }
 
     group.traverse(o => { if (o.isMesh && o.material === poly) o.castShadow = false; });
@@ -454,6 +461,7 @@
     const setFenceSee = on => {
       yellowAlu.transparent = on; yellowAlu.opacity = on ? 0.22 : 1; yellowAlu.depthWrite = !on; yellowAlu.needsUpdate = true;
       poly.opacity = on ? 0.025 : 0.1;
+      if (fenceSign) { fenceSign.transparent = on; fenceSign.opacity = on ? 0.18 : 1; fenceSign.depthWrite = !on; fenceSign.needsUpdate = true; }   // 柵に付けた看板も透かす
     };
     group.traverse(o => { if (o.isMesh && o.material === yellowAlu) o.userData.noAO = true; });
     return {

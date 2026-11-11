@@ -340,7 +340,7 @@
     if (f.front && f.front.rack) { disposeWork(f.front); works.splice(works.indexOf(f.front), 1); }
     f.front = null; f.stack = disposeStack(r, f);
     if (!f.count) return;
-    const w = makeWork(RS.WORKS.glassDark);
+    const gd = CELL.glassDef, w = makeWork(Object.assign({}, RS.WORKS.glassDark, { size: [gd.w, gd.h, gd.t] }));   // 設定したガラスの寸法で作る
     r.rot.add(w.g);
     sheetMatrix(f, f.count - 1).decompose(w.g.position, w.g.quaternion, w.g.scale);
     w.rack = r; w.face = f; f.front = w; works.push(w);
@@ -668,6 +668,9 @@
   };
   function raiseAlarm(key, detail) {
     const [code, msg] = ALM[key] || ALM.prog;
+    // 吸着確認が来ないとき：吸盤がガラスに掛かっていないことが多いので、原因を添える
+    if (key === 'wait' && detail && tool.kind === 'vacuum' && handOn() && !S.holding && (detail.includes(`(${io().handIn.n})`) || detail.includes(`[${io().handIn.n}]`)))
+      detail += '。吸盤がガラスに掛かっていません（4 つの吸盤すべてがガラスの上にある必要があります）。取出パターンとガラスの寸法・位置が合っているか確認してください';
     S.alarm = { code, msg: msg + (detail ? '：' + detail : '') };
     const errLine = run && run.interp.frame && run.interp.progName === prog().name ? run.interp.pc : -1;
     stopAll();
@@ -680,7 +683,8 @@
     refreshState();
   }
   function resetAlarm() {
-    if (S.estop) { flash('#jogMsg', '非常停止を解除してからリセットしてください'); return; }
+    if (S.estop) { const m = '先に右上の「非常停止 解除」を押してから、リセットしてください'; flash('#jogMsg', m); flash('#progMsg', m); const am = $('#alarm .hint') || $('#alarm').appendChild(Object.assign(document.createElement('div'), { className: 'hint' })); am.textContent = m; return; }
+    { const am = $('#alarm .hint'); if (am) am.remove(); }
     S.alarm = null; $('#alarm').hidden = true; pend.msg = '';
     $$('.code li.err').forEach(li => li.classList.remove('err'));
     refreshState();
@@ -2029,9 +2033,10 @@
     const vals = {};
     $$('#lineForm input').forEach(i => { if (i.value.trim() === '' || !isFinite(+i.value)) return; vals[i.dataset.ln] = +i.value; });
     RS.setLine(vals);
-    store.set(lineKey, vals);
+    const now = RS.lineValues(), fixed = RS.LINE_FIELDS.filter(([k]) => k in vals && Math.abs(vals[k] - now[k]) > 0.5).map(([k, n]) => `${n.replace(/（.*/, '')} ${vals[k]} → ${now[k]}`);
+    store.set(lineKey, now);
     rebuildLine();
-    $('#lineMsg').textContent = '適用しました。サンプルは「サンプル」を押し直すと、新しい位置で作り直されます（今のプログラムの位置は変わりません）。';
+    $('#lineMsg').textContent = (fixed.length ? '入れられない値を直しました：' + fixed.join('、') + '。' : '') + '適用しました。実機のジョブの教示位置は変わりません。自作のサンプルは「サンプル作成」を押し直すと新しい位置で作り直されます。';
   });
   $('#lineReset').addEventListener('click', () => { RS.resetLine(); RS.setLine({}); store.set(lineKey, null); rebuildLine(); $('#lineMsg').textContent = '初期値に戻しました'; });
   renderLineForm();
@@ -2267,7 +2272,7 @@
   applyHud();
   $('#views').addEventListener('click', e => {
     const b = e.target.closest('button[data-v]');
-    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') { cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta; } else cam.r = Math.max(cam.r, CELL.view.r * 0.95); updateCam(); }
+    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') { cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta; } else cam.r = Math.max(cam.r, CELL.view.r * (b.dataset.v === 'top' ? 1.4 : 0.95)); updateCam(); }
   });
   const ptrs = new Map(); let pinch = 0, panMode = false;
   canvas.addEventListener('pointerdown', e => {
@@ -2303,9 +2308,11 @@
     const rc = canvas.getBoundingClientRect();
     ray.setFromCamera({ x: (cx - rc.left) / rc.width * 2 - 1, y: -((cy - rc.top) / rc.height * 2 - 1) }, camera);
     const hits = ray.intersectObjects(scene.children, true).filter(h => h.object.isMesh && h.object.visible && !(h.object.material && h.object.material.transparent && h.object.material.opacity < 0.3) && h.distance < 40);
-    if (hits.length) return hits[0].point.clone();
+    // セルの外（建屋の壁や遠くの床）を指しているときは、そこへは寄らない（画面の中心へ拡大する）
+    const inCell = p => Math.hypot(p.x - (CELL.view ? CELL.view.target[0] : 0), p.z - (CELL.view ? CELL.view.target[2] : 0)) < 6.5 && p.y < 4;
+    if (hits.length) return inCell(hits[0].point) ? hits[0].point.clone() : null;
     const pl = new T.Plane(new T.Vector3(0, 1, 0), -target.y), out = new T.Vector3();
-    return ray.ray.intersectPlane(pl, out) && out.distanceTo(camera.position) < 40 ? out : null;
+    return ray.ray.intersectPlane(pl, out) && inCell(out) ? out : null;
   }
   /* 拡大・縮小は、マウスのある場所（指した物）に向かって行う */
   function zoomAt(cx, cy, factor) {
@@ -2313,6 +2320,7 @@
     if (f === 1) return;
     const P = f < 1 || cam.r < 13 ? pickPoint(cx, cy) : null;
     if (P) target.set(P.x + (target.x - P.x) * f, P.y + (target.y - P.y) * f, P.z + (target.z - P.z) * f);
+    target.y = clamp(target.y, CELL.FLOOR_Y != null ? CELL.FLOOR_Y : 0, 4);
     cam.r = r1; updateCam();
   }
   canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.001)); }, { passive: false });
@@ -2427,7 +2435,7 @@
       for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
       selRow = clamp(pend.ioSel || 0, 0, rows.length - 1);
     } else if (v === 'inst') {
-      title = '命令一覧（選んで［挿入］→［エンター］）';
+      title = '命令一覧（選んで［追加］→［エンター］）';
       instList().forEach((it, k) => { rows.push({ t: `${it.g.padEnd(4, '　')} ${it.t}`, inst: k }); if (k === pend.instSel) selRow = rows.length - 1; });
     } else if (v === 'sys') {
       title = 'システム情報';
@@ -2651,7 +2659,7 @@
     }
     const tools = `<div class="row pendtools"><button id="pendPop">${pend.float ? 'パネルに戻す' : '3D画面の上に出す'}</button><button id="pendBig">${pendEl.classList.contains('big') ? '全体が見える大きさ' : '大きく表示（スクロール）'}</button></div>`;
     const how = Y
-      ? '操作（DX200）：キーを TEACH に回す → ［SERVO ON READY］ → 側面のイネーブルスイッチを握る → 軸キーでジョグ（MANUAL SPEED は FAST／SLOW、「微動」は押すたびに少しずつ、［HIGH SPEED］で速く）。数字を入れて ENTER で、選んだ移動命令の速度を変更。［INTER LOCK］＋［2 TOOL ON］／［. TOOL OF］でハンド出力、＋［3］／［−］でハンドの命令を挿入。キーの日本語名との対応：INSERT＝挿入、DELETE＝削除、MODIFY＝修正、ENTER＝エンター、CANCEL＝取消、FWD／BWD＝前進／後退、TEST START＝試運転、INFORM LIST＝命令一覧、MOTION TYPE＝補間。［挿入］［削除］［修正］は［エンター］で確定、［取消］で中止。［前進］［後退］は押している間だけ動き、離すと止まります（もう一度押すと続きから）。［前進］は移動命令だけを実行し、ほかの命令は［インターロック］＋［前進］で実行。［試運転］は［インターロック］を押しながら、押している間だけ連続で動きます。教示モードの運転は手動速度に従い、TCP 250mm/s までに制限されます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
+      ? '操作（DX200）：キーを TEACH に回す → ［SERVO ON READY］ → 側面のイネーブルスイッチを握る → 軸キーでジョグ（MANUAL SPEED は FAST／SLOW、「微動」は押すたびに少しずつ、［HIGH SPEED］で速く）。数字を入れて ENTER で、選んだ移動命令の速度を変更。［INTER LOCK］＋［2 TOOL ON］／［. TOOL OF］でハンド出力、＋［3］／［−］でハンドの命令を挿入。キーの日本語名との対応：INSERT＝挿入、DELETE＝削除、MODIFY＝修正、ENTER＝エンター、CANCEL＝取消、FWD／BWD＝前進／後退、TEST START＝試運転、INFORM LIST＝命令一覧、MOTION TYPE＝補間。［追加］［消去］［変更］は［エンター］で確定、［キャンセル］で中止。［ネクスト］［バック］は押している間だけ動き、離すと止まります（もう一度押すと続きから）。［ネクスト］は移動命令だけを実行し、ほかの命令は［インターロック］＋［ネクスト］で実行。［テスト運転］は［インターロック］を押しながら、押している間だけ連続で動きます。教示モードの運転は手動速度に従い、TCP 250mm/s までに制限されます。［命令一覧］で命令を選んで挿入。自動運転はキーを PLAY に回して［サーボオン レディ］→ START。'
       : '操作（iPendant）：左上のキースイッチで TP を ON → 裏面のデッドマンを握る → SHIFT を押しながら軸キーでジョグ。数字を入れて ENTER で、選んだ移動命令の速度を変更（BACK SPACE で 1 文字消す）。POSN＝現在位置、I/O＝入出力、DATA／STATUS＝レジスタ、EDIT／SELECT＝プログラム。F1 POINT で位置を追加、SHIFT＋F5 TOUCHUP で修正。SHIFT＋FWD／BWD は押している間だけ動き、SHIFT・キー・デッドマンのどれかを離すと止まります（STEP 点灯中は1行ずつ）。T1 は 250mm/s まで、速度は ±% のオーバーライドに従います。自動運転は操作盤で AUTO にし、TP を OFF にして CYCLE START。';
     pendEl.innerHTML = tools + html + `<p class="note">${how}</p><p class="note">キーの配置は実機の写真に合わせています。画面の中身（メニュー階層など）は簡略化した再現で、シミュレーターにない機能のキーは押すと「使えません」と表示します。マウスで操作しやすいよう、SHIFT・インターロック・高速・イネーブル／デッドマンは押すたびに ON/OFF が切り替わります。</p>`;
     lcdCache = ''; updateLcd();
@@ -2667,8 +2675,8 @@
     const top = pd.getBoundingClientRect().top;
     const bottom = pend.float ? stage.getBoundingClientRect().bottom - 14 : window.innerHeight - 8;
     const availH = bottom - top, availW = box.clientWidth - 4;
-    if (availH < 200) return;   // 画面が小さすぎるとき（スマホの縦持ちなど）は幅だけ合わせる
-    const k = clamp(Math.min(availH / natH, availW / natW), 0.45, 1.5);
+    // 画面が小さいとき（スマホの縦持ちなど）は、読める大きさを保って幅に合わせる（縦はスクロール）
+    const k = availH < 420 ? clamp(availW / natW, 0.6, 1.2) : clamp(Math.min(availH / natH, availW / natW), 0.45, 1.5);
     if (Math.abs(k - 1) > 0.01) pd.style.zoom = k.toFixed(3);
   }
   window.addEventListener('resize', () => { if (pendVisible()) fitPend(); });
@@ -2714,7 +2722,7 @@
       // DX200：前進では移動命令だけを実行する（ほかの命令は飛ばす）
       let i = sel;
       while (i < prog().lines.length && RS.parseLine('yaskawa', prog().lines[i]).op !== 'MOVE') i++;
-      if (i >= prog().lines.length) { pend.msg = '移動命令がありません（移動以外は［インターロック］＋［前進］）'; updateLcd(); return; }
+      if (i >= prog().lines.length) { pend.msg = '移動命令がありません（移動以外は［インターロック］＋［ネクスト］）'; updateLcd(); return; }
       if (i !== sel) { sel = i; stepKeep = null; markPc(); }
     }
     const single = k === 'fwdY' || (k === 'fwdF' && pend.step);
@@ -2764,7 +2772,7 @@
     if (isY() && (a === 'ins' || a === 'del' || a === 'upd')) {
       const why = editBlock(); if (why) { P.msg = why; renderPend(); return; }
       P.pending = { op: a, inst: a === 'ins' && P.view === 'inst' ? instList()[P.instSel] : null };
-      P.msg = `［${{ ins: '挿入', del: '削除', upd: '修正' }[a]}］${P.pending.inst ? '：' + P.pending.inst.t : ''}　［エンター］で確定／［取消］で中止`;
+      P.msg = `［${{ ins: '追加', del: '消去', upd: '変更' }[a]}］${P.pending.inst ? '：' + P.pending.inst.t : ''}　［エンター］で確定／［キャンセル］で中止`;
       renderPend(); return;
     }
     switch (a) {
@@ -2856,7 +2864,7 @@
           ins.speed.v = v; edit(() => { prog().lines[sel] = RS.formatMove(S.sys, ins); });
           P.msg = '速度を変更しました：' + prog().lines[sel]; break;
         }
-        if (P.view === 'inst') { P.msg = `「${instList()[P.instSel].t}」を［挿入］→［エンター］で追加します`; break; }
+        if (P.view === 'inst') { P.msg = `「${instList()[P.instSel].t}」を［追加］→［エンター］で追加します`; break; }
         P.view = 'prog'; P.msg = ''; break;
       case 'grip': case 'f4': {
         if (a === 'f4' && P.view !== 'prog') break;

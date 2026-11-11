@@ -73,6 +73,13 @@
 
       <!-- プログラム -->
       <section id="t-prog" hidden>
+        <details id="plcBox" open hidden><summary>ライン操作盤（PLC の代わり）</summary>
+          <div class="row"><label class="pname">取出パターン <select id="plcPat"></select></label></div>
+          <div class="row grow"><button id="plcMaster" class="primary">マスターから自動運転</button><button id="plcAuto" aria-pressed="false">サイクルスタート</button></div>
+          <div class="row"><label class="chk"><input type="checkbox" id="plcRot"> 硝子旋回90度</label><label class="chk"><input type="checkbox" id="plcBlow"> PADエアブロー</label></div>
+          <div class="row"><label class="chk"><input type="checkbox" id="plcAlt"> パレットが空になったら直進⇄曲進を切り替える</label></div>
+          <p class="note" id="plcNote"></p>
+        </details>
         <div class="row">
           <label class="pname">プログラム <select id="progSel"></select></label>
         </div>
@@ -111,13 +118,6 @@
           <button id="sampleBtn">サンプル作成</button>
           <button id="clearBtn" class="danger">命令を全削除</button>
         </div>
-        <details id="plcBox" open hidden><summary>ライン操作盤（PLC の代わり）</summary>
-          <div class="row"><label class="pname">取出パターン <select id="plcPat"></select></label></div>
-          <div class="row grow"><button id="plcMaster" class="primary">マスターから自動運転</button><button id="plcAuto" aria-pressed="false">サイクルスタート</button></div>
-          <div class="row"><label class="chk"><input type="checkbox" id="plcRot"> 硝子旋回90度</label><label class="chk"><input type="checkbox" id="plcBlow"> PADエアブロー</label></div>
-          <div class="row"><label class="chk"><input type="checkbox" id="plcAlt"> パレットが空になったら直進⇄曲進を切り替える</label></div>
-          <p class="note" id="plcNote"></p>
-        </details>
         <details id="ioDet"><summary>入出力（I/O）</summary><div id="ioBox"></div></details>
         <details><summary>変数・レジスタ</summary><div id="varBox"></div><div class="row"><button id="varReset">数値変数を 0 に戻す</button></div></details>
         <details><summary>実行ログ</summary><ul class="log" id="logBox"></ul></details>
@@ -174,7 +174,7 @@
       <section id="t-cell" hidden>
         <h3>ハンド（用途別に切替）</h3>
         <div class="tools" id="toolCards"></div>
-        <p class="note">ハンドの種類は <code>js/tools.js</code> で定義しています。新しい用途のハンドが必要なときは、AI に「○○用のハンドを追加して」と依頼してください。</p>
+        <p class="note">新しい用途のハンドが必要なときは、作成担当に依頼してください。</p>
         <h3>ワーク・セル</h3>
         <div class="row">
           <label class="pname">セル <select id="cellSel"></select></label>
@@ -184,12 +184,12 @@
         </div>
         <details id="lineLayout">
           <summary>ラック・コンベアの位置を実測値に合わせる（mm）</summary>
-          <p class="note">ロボットの据付中心を原点（0, 0）として、X＝ロボットの前（初期の向き＝コンベア側）、Y＝ロボットの左です。コンベアは上流端から下流端へ流れます（X か Y に平行）。</p>
+          <p class="note">ロボットの据付中心を原点（0, 0）として、X＝ロボットの前（曲進ラック側）、Y＝ロボットの左（直進ラック側）です。コンベアは右（Y がマイナス）にあります。位置は実機の教示点から求めた値です。ガラスの寸法を変えても、ラックの受け（ガラスの下辺）の高さは変わりません。実機の教示位置は元の寸法のガラスに合わせてあるので、寸法を大きく変えると、パターンによっては吸盤がガラスから外れます。コンベアは上流端から下流端へ流れます（X か Y に平行）。</p>
           <div class="vgrid w2" id="lineForm"></div>
           <div class="row grow"><button id="lineApply">適用</button><button id="lineReset">初期値に戻す</button></div>
           <p class="note" id="lineMsg"></p>
         </details>
-        <p class="note" id="lineNote">実機ラインは、いただいた写真から寸法を推定して作っています（架台・ラック・コンベアの位置と高さ、ガラスの大きさ）。実測値があれば合わせます。</p>
+        <p class="note" id="lineNote">ラックとコンベアの位置は実機の教示点から求めています。柵・架台の高さ・ラックの形・ガラスの大きさは写真からの推定です。</p>
         <div class="row" id="workRow">
           <label class="pname">ワーク <select id="workSel"></select></label>
         </div>
