@@ -1369,3 +1369,60 @@ def test_stocktake_period_bad_dates(client):
         st_id = db.execute("SELECT id FROM stocktakes").fetchone()[0]
     res = client.post(f"/api/stocktake/{st_id}/count", json={"code": item_by_name("手袋")["code"], "counted": 5})
     assert res.get_json()["out_of_period"] is False
+
+
+def folder_book(folder_rows, item_rows=(), item_head=("品名", "分類")):
+    import io
+    import xlsxwriter
+    buf = io.BytesIO()
+    wb = xlsxwriter.Workbook(buf)
+    ws = wb.add_worksheet("品目")
+    ws.write_row(0, 0, list(item_head))
+    for r, row in enumerate(item_rows, start=1):
+        ws.write_row(r, 0, list(row))
+    fs = wb.add_worksheet("フォルダ")
+    fs.write_row(0, 0, ["大分類", "中分類", "小分類", "アプリでのフォルダ（自動）"])
+    for r, row in enumerate(folder_rows, start=1):
+        for c, v in enumerate(row):
+            if v:
+                fs.write_string(r, c, v)
+    wb.close()
+    return buf.getvalue()
+
+
+def test_read_folders_sheet():
+    import item_sheet
+    raw = folder_book([["清掃", "", ""], ["清掃", "ゴミ袋", ""], ["", "モップ", ""], ["手袋", "使い捨て", "ニトリル"],
+                       ["", "", "ビニール"], ["", "", ""], ["梱包", "", "テープ/布"], ["", "", "x"]])
+    paths = [p for _, p in item_sheet.read_folders(raw)]
+    assert paths == ["清掃", "清掃/ゴミ袋", "清掃/モップ", "手袋/使い捨て/ニトリル", "手袋/使い捨て/ビニール",
+                     "梱包/テープ/布", "梱包/x"]
+    # フォルダのシートが無い Excel (前の版のひな形) は、何も読まない
+    assert item_sheet.read_folders(folder_book([])) == []
+
+
+def test_import_folders_from_template(client):
+    import io
+    import item_sheet
+    # フォルダのシートだけ書いて取り込むと、空のフォルダもできる
+    raw = folder_book([["清掃", "ゴミ袋", ""], ["", "モップ", ""], ["", "", "x"], ["", "あ" * 41, ""]])
+    page = client.post("/items/import", data={"file": (io.BytesIO(raw), "f.xlsx")},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "フォルダ: 新しく 3 件作りました" in page and "「フォルダ」シートの5行目: フォルダの名前は40文字までです" in page
+    page = client.get("/items?cat=清掃/モップ/x").get_data(as_text=True)
+    assert "このフォルダは空です" in page  # 上の行の続き (清掃/モップ の中の x) として読む
+    # 品目と一緒に取り込むと、品目はそのフォルダに入る。2回目は「すでにあった」になる
+    raw = folder_book([["清掃", "ゴミ袋", ""]], [["ゴミ袋 45L", "清掃/ゴミ袋"]])
+    page = client.post("/items/import", data={"file": (io.BytesIO(raw), "f.xlsx")},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "新規 1 件" in page and "新しく 0 件作りました（すでにあったフォルダ 1 件）" in page
+    assert item_by_name("ゴミ袋 45L")["category"] == "清掃/ゴミ袋"
+    # 大分類の無い行は理由を出す
+    raw = folder_book([["", "", ""], ["", "中だけ", ""]])
+    page = client.post("/items/import", data={"file": (io.BytesIO(raw), "f.xlsx")},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "「フォルダ」シートの3行目: 大分類を入れてください" in page
+    # ひな形・Excel出力には、今あるフォルダが「フォルダ」シートに入っていて、そのまま読み戻せる
+    for url in ("/items/template.xlsx", "/items.xlsx"):
+        paths = [p for _, p in item_sheet.read_folders(client.get(url).data)]
+        assert "清掃/ゴミ袋" in paths and "清掃/モップ/x" in paths and "清掃" not in paths  # 中にフォルダのある「清掃」は書かない

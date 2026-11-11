@@ -169,5 +169,9 @@
   "（中の品目 {n} 件は「{to}」へ移しました）": "({n} barang di dalamnya dipindahkan ke \"{to}\")",
   "移す品目を選んでください": "Pilih barang yang akan dipindahkan",
   "{n} 件の品目を「{to}」へ移しました": "{n} barang dipindahkan ke \"{to}\"",
-  "すべての品目（フォルダなし）": "Semua barang (tanpa folder)"
+  "すべての品目（フォルダなし）": "Semua barang (tanpa folder)",
+  "「フォルダ」シートの{n}行目: ": "Sheet \"Folder\" baris {n}: ",
+  "大分類を入れてください": "Isi kategori utama",
+  "フォルダ: 新しく {n} 件作りました（すでにあったフォルダ {m} 件）": "Folder: {n} folder baru dibuat ({m} folder sudah ada)",
+  "フォルダ（カテゴリ）は、Excel の「フォルダ」シートに書いて取り込むこともできます。": "Folder (kategori) juga bisa ditulis di sheet \"Folder\" pada Excel lalu diimpor."
 }

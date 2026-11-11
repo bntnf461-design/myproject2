@@ -2,8 +2,9 @@
 
 Copyright © 2026. All rights reserved.
 
-- build(): 「品目」「記入例」「説明」の3枚のシートを持つ Excel を作る（空のひな形・今の品目の出力）
+- build(): 「品目」「フォルダ」「記入例」「説明」の4枚のシートを持つ Excel を作る（空のひな形・今の品目の出力）
 - read_rows(): 取り込んだ Excel の「品目」シート（無ければ最初のシート）を、見出し→値の辞書の列にする
+- read_folders(): 「フォルダ」シートに書いたフォルダ（大分類・中分類・小分類）を「清掃/ゴミ袋」の形で取り出す
   読み込みは Python の標準の部品だけで行う（追加の部品なし）
 """
 import io
@@ -12,6 +13,9 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 SHEET = "品目"
+FOLDER_SHEET = "フォルダ"
+FOLDER_ROWS = 300         # フォルダのシートで、入力の決まり・計算の式を入れておく行数
+FOLDER_HEAD = ["大分類", "中分類", "小分類", "アプリでのフォルダ（自動）"]
 ROWS_BLANK = 300          # ひな形で入力の決まりを付けておく行数
 MAX_ROWS = 5000           # 読み込む最大の行数
 MAX_XML = 30 * 1024 * 1024  # 展開後の大きさの上限 (壊れたファイル・極端に大きいファイルを読まない)
@@ -48,8 +52,9 @@ EXAMPLES = [
 ]
 
 
-def build(labels, rows=(), use_location=True, title="品目登録シート"):
-    """品目登録シート (xlsx) を作って bytes で返す。labels: 列の見出し, rows: 今の品目 (空ならひな形)。"""
+def build(labels, rows=(), use_location=True, title="品目登録シート", folders=()):
+    """品目登録シート (xlsx) を作って bytes で返す。labels: 列の見出し, rows: 今の品目 (空ならひな形)。
+    folders: 「フォルダ」シートに最初から書いておくフォルダ (「清掃/ゴミ袋」の形)。"""
     import xlsxwriter
 
     buf = io.BytesIO()
@@ -107,6 +112,12 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
                 ws.data_validation(1, c, last, c, {"validate": "list", "source": UNITS, "ignore_blank": True,
                                                    "error_type": "information", "error_title": "単位",
                                                    "error_message": "一覧にない単位でも使えます（OKで続けます）"})
+            elif label == "分類" and not protect_examples:
+                # 「フォルダ」シートに書いたフォルダから選べる (書いた行の数だけ。一覧にない名前も入れられる)
+                ws.data_validation(1, c, last, c, {
+                    "validate": "list", "ignore_blank": True, "error_type": "information", "error_title": "分類",
+                    "source": f"=OFFSET('{FOLDER_SHEET}'!$D$2,0,0,MAX(1,COUNTIF('{FOLDER_SHEET}'!$D$2:$D${FOLDER_ROWS + 1},\"?*\")),1)",
+                    "error_message": "「フォルダ」シートにないフォルダです。このまま入れると、新しいフォルダになります（OKで続けます）"})
         ws.autofilter(0, 0, max(len(data), 1), len(labels) - 1)
         ws.set_landscape(); ws.set_paper(9); ws.fit_to_pages(1, 0); ws.repeat_rows(0)  # 印刷: A4横・横1枚に収める
         if protect_examples:
@@ -114,8 +125,9 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
         return ws
 
     sheet(SHEET, list(rows))
+    folder_sheet(wb, folders, head, text, note)
     ex = sheet("記入例", EXAMPLES, protect_examples=True)
-    ex.write_string(len(EXAMPLES) + 2, 1, "← このシートは記入例です。取り込まれるのは「品目」シートだけです。")
+    ex.write_string(len(EXAMPLES) + 2, 1, "← このシートは記入例です。取り込まれるのは「品目」と「フォルダ」のシートだけです。")
 
     ws = wb.add_worksheet("説明")
     ws.set_column(0, 0, 24)
@@ -129,6 +141,9 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
         "   Excel のまま取り込めます（CSV に保存し直す必要はありません）。",
         "4. 同じコードの品目は上書きされます。今の品目を直す時は、「品目」画面の「Excel出力」で出したファイルを直して取り込みます。",
         "5. 取り込めなかった行は、画面に「○行目: …」と理由が出ます。直してもう一度取り込んでください（取り込めた行は二重になりません）。",
+        "6. 品目を分けるフォルダ（カテゴリ）は「フォルダ」シートに、大分類・中分類・小分類で書きます。取り込むと、アプリの",
+        "   「品目」画面の左にそのフォルダができます（品目がまだ入っていない空のフォルダもできます）。「品目」シートの「分類」は、",
+        "   書いたフォルダから選べます（「清掃/ゴミ袋」のように / で区切った形）。フォルダのシートだけを書いて取り込むこともできます。",
     ]
     for i, s in enumerate(steps, start=2):
         ws.write_string(i, 0, s)
@@ -141,6 +156,60 @@ def build(labels, rows=(), use_location=True, title="品目登録シート"):
         ws.write_string(i, 1, HELP.get(label, ""), note)
     wb.close()
     return buf.getvalue()
+
+
+FOLDER_EXAMPLE = [["清掃", "", ""], ["清掃", "ゴミ袋", ""], ["", "モップ", ""], ["手袋", "使い捨て", "ニトリル"],
+                  ["梱包", "", ""]]
+
+
+def split_folder(path):
+    """「清掃/ゴミ袋/45L」を [大分類, 中分類, 小分類] にする (4段目より下は小分類に / のまま入れる)。"""
+    parts = path.split("/")
+    return [parts[0], parts[1] if len(parts) > 1 else "", "/".join(parts[2:])]
+
+
+def folder_sheet(wb, folders, head, text, note):
+    """「フォルダ」シート: 大分類・中分類・小分類を書くと、D 列にアプリでのフォルダ (清掃/ゴミ袋) が出る。"""
+    ws = wb.add_worksheet(FOLDER_SHEET)
+    ws.set_tab_color("#1D4ED8")
+    ws.freeze_panes(1, 0)
+    ws.set_row(0, 34)
+    auto = wb.add_format({"font_color": "#6B665E", "bg_color": "#F3F4F6", "border": 1, "border_color": "#E7DED3"})
+    gray = wb.add_format({"font_color": "#6B665E", "valign": "top"})
+    plain = wb.add_format({"font_color": "#6B665E"})  # 折り返さずに右の列へはみ出して見せる
+    for c, (h, w) in enumerate(zip(FOLDER_HEAD, (16, 16, 16, 30))):
+        ws.write_string(0, c, h, head)
+        ws.set_column(c, c, w, text if c < 3 else auto)
+    ws.write_comment(0, 0, "いちばん上のフォルダ。例: 清掃", {"x_scale": 1.6})
+    ws.write_comment(0, 1, "大分類の中のフォルダ。上の行と同じ大分類なら、大分類は空欄でもかまいません。", {"x_scale": 2})
+    ws.write_comment(0, 2, "中分類の中のフォルダ。さらに下は「45L/半透明」のように / で区切ります。", {"x_scale": 2})
+    ws.write_comment(0, 3, "自動で出ます（入力しないでください）。「品目」シートの「分類」で選べる名前です。", {"x_scale": 2})
+    leaves = [p for p in folders if not any(q.startswith(p + "/") for q in folders)]
+    cells = [split_folder(p) for p in leaves]
+    for r, row in enumerate(cells, start=1):
+        for c, v in enumerate(row):
+            if v:
+                ws.write_string(r, c, v, text)
+    # 上の行と同じ大分類・中分類を空欄にしても、続きとして読む (取り込む時と同じ決まり)。
+    # 式の答えも書いておく (開いた時に計算し直さないソフトでも、正しく見えるように)
+    for r in range(1, FOLDER_ROWS + 1):
+        n = r + 1
+        a, b, c = cells[r - 1] if r <= len(cells) else ("", "", "")
+        ws.write_formula(r, 4, f'=IF(A{n}<>"",A{n},IF(AND(OR(B{n}<>"",C{n}<>""),ROW()>2),E{r},""))', None, a)
+        ws.write_formula(r, 5, f'=IF(B{n}<>"",B{n},IF(AND(C{n}<>"",A{n}=""),F{r},""))', None, b)
+        ws.write_formula(r, 3, f'=IF(E{n}="","",E{n}&IF(F{n}="","","/"&F{n})&IF(C{n}="","","/"&C{n}))', auto,
+                         "/".join(x for x in (a, b, c) if x))
+    ws.set_column(4, 5, None, None, {"hidden": True})
+    ws.merge_range(0, 7, 0, 9, "書き方の例（この列は取り込みません）", head)
+    ws.set_column(7, 9, 14)
+    for r, row in enumerate(FOLDER_EXAMPLE, start=1):
+        for c, v in enumerate(row):
+            ws.write_string(r, 7 + c, v, gray)
+    ws.write_string(len(FOLDER_EXAMPLE) + 2, 7, "→ 清掃、清掃/ゴミ袋、清掃/モップ、", plain)
+    ws.write_string(len(FOLDER_EXAMPLE) + 3, 7, "　 手袋/使い捨て/ニトリル、梱包 の5つのフォルダができます。", plain)
+    ws.set_landscape(); ws.set_paper(9); ws.fit_to_pages(1, 0); ws.repeat_rows(0)
+    ws.print_area(0, 0, max(len(cells) + 20, len(FOLDER_EXAMPLE) + 3), 9)  # 式だけの行まで印刷しない
+    return ws
 
 
 # ---------------------------------------------------------------- 読み込み
@@ -219,6 +288,42 @@ def is_old_excel(raw):
 
 def read_rows(raw):
     """xlsx の「品目」シート (無ければ最初のシート) を [{見出し: 値}] にする。"""
+    table = _read_table(raw, SHEET, first_if_missing=True)
+    if not table:
+        return []
+    header = [h.strip() for h in table[0][0]]
+    out = []
+    for values, rownum in table[1:]:
+        d = {h: (values[i] if i < len(values) else "") for i, h in enumerate(header) if h}
+        d["__row__"] = rownum
+        out.append(d)
+    return out
+
+
+def read_folders(raw):
+    """xlsx の「フォルダ」シートを [(行番号, 「清掃/ゴミ袋」)] にする。シートが無ければ []。
+    大分類・中分類が空欄の行は、上の行の続きとして読む (D 列の自動の式と同じ決まり)。"""
+    table = _read_table(raw, FOLDER_SHEET, first_if_missing=False)
+    out = []
+    big = mid = ""
+    for values, rownum in table[1:]:
+        a, b, c = (str(values[i]).strip() if i < len(values) else "" for i in range(3))
+        if a:
+            big, mid = a, b
+        elif b:
+            mid = b
+        elif not c:
+            continue
+        parts = [big, mid if (a or b or c) else "", c]
+        if not big:
+            out.append((rownum, ""))  # 大分類がわからない行 (理由は呼び出し側で出す)
+            continue
+        out.append((rownum, "/".join(p for p in parts if p)))
+    return out
+
+
+def _read_table(raw, name, first_if_missing):
+    """シートを [(セルの値の列, 行番号)] にする。first_if_missing なら、その名前のシートが無い時は最初のシート。"""
     try:
         z = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile:
@@ -231,7 +336,9 @@ def read_rows(raw):
         sheets = [(s.get("name"), s.get(f"{{{NS['r']}}}id")) for s in book.iter(f"{{{NS['m']}}}sheet")]
         if not sheets:
             raise SheetError("シートがありません")
-        rid = next((i for n, i in sheets if n == SHEET), sheets[0][1])
+        rid = next((i for n, i in sheets if n == name), sheets[0][1] if first_if_missing else None)
+        if rid is None:
+            return []
         target = next((r.get("Target") for r in rels.iter(f"{{{NS['rel']}}}Relationship") if r.get("Id") == rid), None)
         if not target:
             raise SheetError("シートが見つかりません")
@@ -275,12 +382,4 @@ def read_rows(raw):
         if cells:
             width = max(cells) + 1
             table.append(([cells.get(i, "") for i in range(width)], int(row.get("r") or len(table) + 1)))
-    if not table:
-        return []
-    header = [h.strip() for h in table[0][0]]
-    out = []
-    for values, rownum in table[1:]:
-        d = {h: (values[i] if i < len(values) else "") for i, h in enumerate(header) if h}
-        d["__row__"] = rownum
-        out.append(d)
-    return out
+    return table

@@ -23,6 +23,7 @@
     <input type="file" name="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
     <button class="btn">{{ _("取り込む（Excel・CSV）") }}</button>
     <a class="small" href="{{ url_for('items_template') }}">⬇ {{ _("Excelのひな形（品目登録シート）") }}</a>
+    <span class="muted small">{{ _("フォルダ（カテゴリ）は、Excel の「フォルダ」シートに書いて取り込むこともできます。") }}</span>
   </form>
 </div>
 

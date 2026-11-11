@@ -42,7 +42,7 @@ from i18n import tr
 import report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "2026.11.10-2"  # 画面の右下に表示 (どの版が動いているかの確認用)
+APP_VERSION = "2026.11.11-1"  # 画面の右下に表示 (どの版が動いているかの確認用)
 APP_COPYRIGHT = "© 2026 All rights reserved."  # 著作権表示 (画面の右下に表示)
 USAGE_DAYS = 30  # 平均使用量を計算する期間(日)
 CODE_RE = re.compile(r"^[A-Z0-9\-]{1,32}$")
@@ -1861,6 +1861,32 @@ def history_csv():
     )
 
 
+def import_folders(db, folder_rows):
+    """Excel の「フォルダ」シートのフォルダを作る。画面に出す知らせ [(種類, 文)] を返す。"""
+    if not folder_rows:
+        return []
+    existing = set(folder_paths(db))
+    added, errors, seen = 0, [], set()
+    for rownum, path in folder_rows:
+        where = tr("「フォルダ」シートの{n}行目: ", n=rownum)
+        path = norm_category(path)
+        if not path:
+            errors.append(where + tr("大分類を入れてください"))
+            continue
+        why = category_error(path)
+        if why:
+            errors.append(where + why)
+            continue
+        if path not in existing and path not in seen:
+            added += 1
+        seen.add(path)
+        touch_folder(db, path)
+    db.commit()
+    msgs = [("ok", tr("フォルダ: 新しく {n} 件作りました（すでにあったフォルダ {m} 件）",
+                      n=added, m=len(seen) - added))]
+    return msgs + [("error", e) for e in errors[:20]]
+
+
 def item_row(item):
     """品目を、CSV・Excel の1行にする (列は ITEM_FIELDS の順)。"""
     return [plain_price(item[k]) if k == "price" else item[k] for k, _ in ITEM_FIELDS]
@@ -1882,15 +1908,16 @@ def items_xlsx():
     items = active_items(get_db(), "code")
     labels = [label for _, label in ITEM_FIELDS]
     rows = [item_row(i) for i in items]
-    data = item_sheet.build(labels, rows, use_location=use_location())
+    data = item_sheet.build(labels, rows, use_location=use_location(), folders=folder_paths(get_db()))
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
         "Content-Disposition": f"attachment; filename=items_{datetime.now():%Y%m%d}.xlsx"})
 
 
 @app.route("/items/template.xlsx")
 def items_template():
-    """空の品目登録シート (Excel のひな形)。"""
-    data = item_sheet.build([label for _, label in ITEM_FIELDS], use_location=use_location())
+    """空の品目登録シート (Excel のひな形)。今あるフォルダは「フォルダ」シートに書いておく (分類で選べる)。"""
+    data = item_sheet.build([label for _, label in ITEM_FIELDS], use_location=use_location(),
+                            folders=folder_paths(get_db()))
     fname = quote("品目登録シート.xlsx")
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
         "Content-Disposition": f"attachment; filename=item_sheet.xlsx; filename*=UTF-8''{fname}"})
@@ -1904,6 +1931,7 @@ def items_import():
         flash(tr("CSVファイルを選択してください"), "error")
         return redirect(url_for("items_list"))
     raw = f.read(20 * 1024 * 1024 + 1)
+    folder_rows = []
     if len(raw) > 20 * 1024 * 1024:
         flash(tr("ファイルが大きすぎます（20MBまで）"), "error")
         return redirect(url_for("items_list"))
@@ -1914,6 +1942,7 @@ def items_import():
         # Excel (品目登録シート) はそのまま読む。行の番号は Excel の行番号
         try:
             rows = [(r.pop("__row__"), r) for r in item_sheet.read_rows(raw)]
+            folder_rows = item_sheet.read_folders(raw)
         except item_sheet.SheetError as e:
             flash(tr("Excel を読み込めませんでした: {why}", why=tr(str(e))), "error")
             return redirect(url_for("items_list"))
@@ -1932,7 +1961,13 @@ def items_import():
     label_to_key.update({key: key for key, _ in ITEM_FIELDS})
     label_to_key.update({alias: "price" for alias in PRICE_ALIASES})
     label_to_key.update({"フォルダ": "category", "カテゴリ": "category", "カテゴリー": "category"})
+    # 「フォルダ」シートのフォルダを先に作る (品目の分類で使うので)
+    folder_msgs = import_folders(db, folder_rows)
     if not rows or not any(k and str(k).strip() in label_to_key for k in rows[0][1]):
+        if folder_rows:  # フォルダのシートだけを書いて取り込んだ時
+            for cat, msg in folder_msgs:
+                flash(msg, cat)
+            return redirect(url_for("items_list"))
         flash(tr("見出しの行が見つかりません。1行目に「品名」などの見出しを入れてください（Excelのひな形を使うと確実です）"), "error")
         return redirect(url_for("items_list"))
     added = updated = 0
@@ -1986,6 +2021,8 @@ def items_import():
                 record(db, item, "ADJ", stock, note="CSV取込(初期在庫)")
             added += 1
     flash(tr("取り込み: 新規 {added} 件 / 更新 {updated} 件", added=added, updated=updated), "ok")
+    for cat, msg in folder_msgs:
+        flash(msg, cat)
     for e in errors[:20]:
         flash(e, "error")
     return redirect(url_for("items_list"))
