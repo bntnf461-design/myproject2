@@ -731,6 +731,25 @@ test("印鑑を登録して、GL・リーダーの欄を押して選ぶ（完成
   eq(p.errors.join(), "", "ページのエラー");
 });
 
+test("確認者の欄も、押して印鑑を選べる（名前が入り、印影が出る）", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.evaluate(() => { localStorage.setItem("nline-nippo-master", JSON.stringify({ models: [], workers: [], seals: [{ name: "佐々木" }, { name: "山田" }] })); });
+  await p.reload(); await p.waitForTimeout(300);
+  await p.click('[name="m1_checker"]');
+  ok(await p.evaluate(() => document.getElementById("sealDlg").open), "印鑑を選ぶ画面が出る");
+  eq(await p.textContent("#sealTitle"), "確認者の印鑑を選ぶ", "見出し");
+  await p.click("#sealList button >> text=佐々木"); await p.waitForTimeout(200);
+  eq(await v(p, "m1_checker"), "佐々木", "名前が入る");
+  ok(await p.evaluate(() => { const e = document.forms.nippo.elements.m1_checker; return e.classList.contains("has-seal") && e.style.backgroundImage.includes("svg"); }), "印影が出る");
+  await p.click('[name="m2_checker2"]'); await p.click("#sealList button >> text=山田"); await p.waitForTimeout(200);
+  eq(await v(p, "m2_checker2"), "山田", "2段目のダブルチェックも");
+  await p.reload(); await p.waitForTimeout(300);
+  ok(await p.evaluate(() => document.forms.nippo.elements.m1_checker.classList.contains("has-seal")), "開き直しても出る");
+  await p.click('[name="m1_checker"]'); await p.click("#sealClear"); await p.waitForTimeout(200);
+  eq(await v(p, "m1_checker"), "", "消せる");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
 test("U1：数字の欄はホイールや↑↓で値が変わらない（↑↓は上下の行へ）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await fill(p, "r2_ware", 5);

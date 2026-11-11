@@ -177,6 +177,10 @@
   .stamp td.seal-td { cursor: pointer; vertical-align: middle; }
   .stamp td.seal-td:hover { background: #fff6d1; }
   .stamp td.seal-td svg, .stamp td.seal-td img { height: 40px; width: 40px; display: block; margin: 0 auto; object-fit: contain; }
+  /* 確認者の欄：名前の印鑑を欄の背景に出す（文字は隠す） */
+  input.seal-in { cursor: pointer; background-repeat: no-repeat !important; background-position: center !important; background-size: auto 88% !important; }
+  input.seal-in.has-seal { color: transparent !important; caret-color: transparent; }
+  @media print { input.seal-in { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   .sealpick { display: flex; flex-wrap: wrap; gap: 10px; }
   .sealpick button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 12px; font: inherit; font-size: 14px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; min-width: 90px; }
   .sealpick button:hover { background: #fff6d1; }
@@ -896,10 +900,10 @@
       '<div class="side">' +
         '<div class="grp"><div class="l h">マーク仕様確認</div>' +
           '<div class="l">年月度マーク</div><input name="m' + n + '_mark">' +
-          '<div class="l">確認者</div><input name="m' + n + '_checker"></div>' +
+          '<div class="l">確認者</div><input name="m' + n + '_checker" class="seal-in" autocomplete="off" title="押すと、登録した印鑑から選べます"></div>' +
         '<div class="grp"><div class="l h">ダブルチェック</div>' +
           '<div class="l">年月度マーク</div><input name="m' + n + '_mark2">' +
-          '<div class="l">確認者</div><input name="m' + n + '_checker2"></div>' +
+          '<div class="l">確認者</div><input name="m' + n + '_checker2" class="seal-in" autocomplete="off" title="押すと、登録した印鑑から選べます"></div>' +
       '</div>' +
       '<div class="body"><div class="seals">' +
         '<div class="seal">製品仕様書と照合確認<br><br>1文字づつ確認チェック<span class="sz">シール 55×55mm</span></div>' +
@@ -1396,23 +1400,51 @@
       var name = val("stamp_" + td.getAttribute("data-stamp")), sl = sealOf(name);
       setTdHtml(td, name ? sealHtml(name, sl ? sl.img : "") : "");
     });
+    // 確認者の欄は、名前の印鑑を背景に出す（登録にない名前でも、名前から印鑑を作る）
+    ["m1_checker", "m1_checker2", "m2_checker", "m2_checker2"].forEach(function (n) {
+      var e = f(n); if (!e) return;
+      var name = e.value.trim(), sl = sealOf(name);
+      var bg = name ? 'url("' + (sl && sl.img ? sl.img : "data:image/svg+xml;charset=utf-8," + encodeURIComponent(sealSvg(name))) + '")' : "";
+      if (e.getAttribute("data-bg") !== bg) { e.style.backgroundImage = bg; e.setAttribute("data-bg", bg); }
+      e.classList.toggle("has-seal", !!name);
+    });
   }
   function setTdHtml(td, h) { if (td.getAttribute("data-html") !== h) { td.innerHTML = h; td.setAttribute("data-html", h); } }
-  var sealDlg = document.getElementById("sealDlg"), sealFor = "";
+  var sealDlg = document.getElementById("sealDlg"), sealPick = null;
   var STAMP_NAME = { gl: "GL", leader: "リーダー" };
-  document.querySelector(".stamp").addEventListener("click", function (e) {
-    var td = e.target.closest(".seal-td"); if (!td || readOnly) return;
-    sealFor = td.getAttribute("data-stamp");
-    document.getElementById("sealTitle").textContent = STAMP_NAME[sealFor] + "の印鑑を選ぶ";
+  // 印鑑を選ぶ画面（title：何の欄か、cur：いまの名前、pick(name)：選んだとき。"" は消す）
+  function openSealPick(title, cur, pick) {
+    sealPick = pick;
+    document.getElementById("sealTitle").textContent = title + "の印鑑を選ぶ";
     var box = document.getElementById("sealList"); box.innerHTML = "";
     if (!master.seals.length) box.innerHTML = '<div class="note" style="font-size:14px">印鑑が登録されていません。上の「設定・データ」の「印鑑」で登録してください。</div>';
     master.seals.forEach(function (x) {
       var b = el("button", { type: "button" }, sealHtml(x.name, x.img) + "<span>" + esc(x.name) + "</span>");
-      b.onclick = function () { setStamp(sealFor, x.name); sealDlg.close(); };
+      b.onclick = function () { sealDlg.close(); pick(x.name); };
       box.appendChild(b);
     });
-    document.getElementById("sealClear").style.display = val("stamp_" + sealFor) ? "" : "none";
+    document.getElementById("sealClear").style.display = cur ? "" : "none";
     sealDlg.showModal();
+  }
+  document.querySelector(".stamp").addEventListener("click", function (e) {
+    var td = e.target.closest(".seal-td"); if (!td || readOnly) return;
+    var k = td.getAttribute("data-stamp");
+    openSealPick(STAMP_NAME[k], val("stamp_" + k), function (name) { setStamp(k, name); });
+  });
+  // 確認者の欄：押すと印鑑を選ぶ（入力できないとき＝完成済み・表示専用は選べない）。名前を打つこともできる
+  var CHECKERS = ["m1_checker", "m1_checker2", "m2_checker", "m2_checker2"];
+  function pickChecker(e) {
+    if (e.disabled || readOnly) return;
+    openSealPick(OTHER_NAME[e.name] || "確認者", e.value, function (name) {
+      e.value = name;
+      e.dispatchEvent(new Event("input", { bubbles: true }));
+      e.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+  CHECKERS.forEach(function (n) {
+    var e = f(n);
+    e.addEventListener("click", function () { pickChecker(e); });
+    e.addEventListener("keydown", function (ev) { if (ev.key === " " || (ev.key === "Enter" && ev.altKey)) { ev.preventDefault(); pickChecker(e); } });
   });
   // 押印は、日報を完成したあと（提出したあと）でもできる
   function setStamp(k, name) {
@@ -1420,7 +1452,7 @@
     drawStamps(); save(true);
     msg(name ? STAMP_NAME[k] + "の欄に「" + name + "」の印鑑を押しました" : STAMP_NAME[k] + "の印鑑を消しました", "ok");
   }
-  document.getElementById("sealClear").onclick = function () { setStamp(sealFor, ""); sealDlg.close(); };
+  document.getElementById("sealClear").onclick = function () { sealDlg.close(); if (sealPick) sealPick(""); };
   document.getElementById("sealCancel").onclick = function () { sealDlg.close(); };
 
   // ---------- 完成（提出）と訂正 ----------
