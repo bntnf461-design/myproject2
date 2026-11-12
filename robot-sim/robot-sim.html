@@ -3531,7 +3531,7 @@ details[open] summary{margin-bottom:6px}
       stack: 3                             // 供給台に積む枚数の初期値
     },
     glassDark: {
-      name: '色付き板ガラス 1000×750×4mm（実機ライン・推定）',
+      name: '色付き板ガラス 1200×750×4mm（実機ライン・推定）',
       size: [1.0, 0.75, 0.004],
       color: 0x15191b, opacity: 0.9, edge: 0x2e6b55, dark: true,
       stack: 1
@@ -3635,39 +3635,39 @@ details[open] summary{margin-bottom:6px}
     {
       id: 'glassM',
       name: '硝子ハンド（実機 ツール0）',
-      desc: '実機のツールデータ（TOOL.CND ツール0：X−190 / Y−90 / Z120 mm）の位置を TCP にした 4 吸盤ハンドです。フランジ中心から横にずれて付いています。吸盤の並びは写真からの推定です。',
+      desc: 'フランジの真下に取付板があり、左右に伸びた腕の先に 4 つのベローズ吸盤（バネ付き）が付いています。TCP は実機のツールデータ（ツール0：X−190 / Y−90 / Z120 mm）で、吸盤の枠の中心からずれた位置にあります。吸盤の間隔は写真からの推定です。',
       kind: 'vacuum',
       tcp: [-0.19, -0.09, 0.12],
-      cups: [[-0.03, 0.02], [-0.03, -0.20], [-0.35, 0.02], [-0.35, -0.20]],   // TCP を中心に ±160 × ±110 mm（推定）
+      cups: [[0.25, 0.12], [0.25, -0.12], [-0.25, 0.12], [-0.25, -0.12]],   // フランジ中心を真ん中に ±250 × ±120 mm（写真からの推定）
       cupR: 0.045,
       stroke: 0.02,
       work: 'glassDark',
       approach: 0.2,
-      probes: [[-0.03, 0.02, 0.12], [-0.03, -0.20, 0.12], [-0.35, 0.02, 0.12], [-0.35, -0.20, 0.12],
-               [0.0, 0.05, 0.05], [0.0, -0.23, 0.05], [-0.38, 0.05, 0.05], [-0.38, -0.23, 0.05]],
+      probes: [[0.25, 0.12, 0.12], [0.25, -0.12, 0.12], [-0.25, 0.12, 0.12], [-0.25, -0.12, 0.12],
+               [0.28, 0.15, 0.06], [0.28, -0.15, 0.06], [-0.28, 0.15, 0.06], [-0.28, -0.15, 0.06]],
       build(K) {
-        const g = K.group(), M = K.mats, cx = this.tcp[0], cy = this.tcp[1];
+        const g = K.group(), M = K.mats;
         const led = M.led.clone();
-        g.add(K.cylZ(0.063, 0.063, 0.02, M.dark, 0, 0, 0));                    // フランジアダプタ
-        g.add(K.box(0.10, 0.10, 0.03, M.alu, 0, 0, 0.035));                    // 取付ブロック
-        g.add(K.box(Math.abs(cx) + 0.08, 0.06, 0.025, M.alu, cx / 2, 0, 0.045)); // フランジ → ハンド中心への腕
-        g.add(K.box(0.06, Math.abs(cy) + 0.08, 0.025, M.alu, cx, cy / 2, 0.045));
-        g.add(K.box(0.40, 0.035, 0.03, M.alu, cx, cy + 0.11, 0.06));           // 吸盤の梁
-        g.add(K.box(0.40, 0.035, 0.03, M.alu, cx, cy - 0.11, 0.06));
-        // 吸盤の枠：4 つの吸盤を結ぶ長方形で、中心（ハブ）が TCP にそろう
-        const hx = Math.max(...this.cups.map(c => c[0])) - cx, hy = Math.max(...this.cups.map(c => c[1])) - cy;
-        for (const sx of [-1, 1]) g.add(K.box(0.035, hy * 2 + 0.04, 0.03, M.alu, cx + sx * hx, cy, 0.06));
-        g.add(K.box(0.035, hy * 2 + 0.04, 0.03, M.alu, cx, cy, 0.06));
-        g.add(K.cylZ(0.04, 0.04, 0.03, M.dark, cx, cy, 0.075));                 // 中心のハブ（ここが TCP の真上）
-        g.add(K.box(0.05, 0.04, 0.035, M.dark, cx + 0.08, cy + 0.03, 0.035));   // 真空エジェクタ
-        g.add(K.cylZ(0.015, 0.015, 0.05, M.dark, cx, cy, 0.1));                 // 超音波センサ（硝子との距離）
-        g.add(K.box(0.03, 0.03, 0.015, led, cx - 0.08, cy + 0.03, 0.03));
+        const hx = Math.max(...this.cups.map(c => Math.abs(c[0]))), hy = Math.max(...this.cups.map(c => Math.abs(c[1])));
+        g.add(K.cylZ(0.063, 0.063, 0.02, M.dark, 0, 0, 0));                     // フランジアダプタ
+        g.add(K.box(0.20, 0.15, 0.04, M.alu, 0, 0, 0.04));                      // 取付板（フランジの真下）
+        g.add(K.box(0.16, 0.10, 0.035, M.dark, 0, 0, 0.0775));                  // 真空ブロック
+        g.add(K.box(hx * 2 + 0.06, 0.04, 0.03, M.alu, 0, 0, 0.045));           // 左右に伸びる腕
+        for (const sx of [-1, 1]) g.add(K.box(0.04, hy * 2 + 0.05, 0.03, M.alu, sx * hx, 0, 0.045));   // 腕の先の横梁
         for (const [x, y] of this.cups) {
-          g.add(K.cylZ(0.012, 0.012, 0.025, M.alu, x, y, 0.062));               // バネ付き支柱
-          g.add(K.cylZ(0.02, 0.02, 0.012, M.dark, x, y, 0.078));
-          g.add(K.cylZ(0.022, this.cupR, 0.034, M.rubber, x, y, 0.086));         // ベローズ吸盤（黒）
-          g.add(K.hose([[cx + 0.08, cy + 0.03, 0.05], [(x + cx) / 2, (y + cy) / 2 + 0.02, 0.085], [x, y, 0.075]], 0.005, M.hose));
+          g.add(K.cylZ(0.008, 0.008, 0.07, M.alu, x, y, 0.0));                  // バネのガイド棒
+          g.add(K.cylZ(0.014, 0.014, 0.035, M.dark, x, y, 0.06));               // バネ
+          g.add(K.cylZ(0.018, 0.022, 0.008, M.rubber, x, y, 0.095));            // ベローズ吸盤（3 段）
+          g.add(K.cylZ(0.022, 0.032, 0.008, M.rubber, x, y, 0.103));
+          g.add(K.cylZ(0.026, 0.038, 0.008, M.rubber, x, y, 0.111));
+          g.add(K.cylZ(0.03, this.cupR, 0.004, M.rubber, x, y, 0.116));
+          g.add(K.hose([[0.06, 0, 0.08], [x / 2, y / 2 + 0.02, 0.09], [x, y, 0.07]], 0.005, M.hose));
         }
+        // TCP の位置の距離センサー（硝子との距離を測る）
+        const [tx, ty] = this.tcp;
+        g.add(K.box(0.03, Math.abs(ty) + 0.02, 0.02, M.alu, tx, ty / 2, 0.06));
+        g.add(K.cylZ(0.012, 0.012, 0.05, M.dark, tx, ty, 0.06));
+        g.add(K.box(0.03, 0.03, 0.015, led, 0.09, 0.06, 0.03));
         return { group: g, update(st) { setLed(led, st); } };
       }
     },
@@ -3796,14 +3796,15 @@ details[open] summary{margin-bottom:6px}
   RS.LINE = {
     floor: -0.35,              // ロボットの据付面から床まで（架台の高さ 350mm、推定）
     zBase: 0.54,               // 据付面から L 軸（ロボット座標 Z=0）まで
-    // 板ガラス 1000×750×4mm、1 面 50 枚（推定。設定で変えられる）
-    glass: { w: 1.0, h: 0.75, t: 0.004, count: 50 },
+    // 板ガラス 1200×750×4mm、1 面 50 枚（推定。下段の左右取りで 4 つの吸盤がすべて掛かる幅。設定で変えられる）
+    glass: { w: 1.2, h: 0.75, t: 0.004, count: 50 },
     racks: [
       // depth＝満載のガラス表面から背もたれまで。実機のサーチ終端（直進は接触位置より約 530mm 奥）で背もたれに当たらない奥行きにしてある。
       // 枚数が少ないときは、背もたれとの間に当て木（スペーサー）が入る
+      // ガラスの中心は、中段中央取り（中取）のときにハンドの中心（フランジの真下）に来る位置にしてある（実機の写真でハンドはフランジの真下）
       // face＝満載のときのガラス表面の中心。dir＝ガラス面が向く向き（ロボット側）。fence：'half'＝柵がラックの真ん中を通る
-      { id: 'S', name: '直進ラック', type: 'pallet', face: { X: -0.141, Y: 1.441, Z: -0.150 }, dir: [0, -1], lean: 9.3, depth: 0.56, fence: 'half' },
-      { id: 'C', name: '曲進ラック', type: 'aframe', face: { X: 1.270, Y: 0.006, Z: -0.159 }, dir: [-1, 0], lean: 9.4, depth: 0.43, fence: 'inside' }
+      { id: 'S', name: '直進ラック', type: 'pallet', face: { X: -0.379, Y: 1.457, Z: -0.055 }, dir: [0, -1], lean: 9.3, depth: 0.56, fence: 'half' },
+      { id: 'C', name: '曲進ラック', type: 'aframe', face: { X: 1.286, Y: 0.244, Z: -0.064 }, dir: [-1, 0], lean: 9.4, depth: 0.43, fence: 'inside' }
     ],
     // コンベア：上流端 (X0,Y0) → 下流端 (X1,Y1) へ流れる（X か Y に平行）。place＝上流端からガラスの中心までの距離。topZ＝上面の Z
     conveyor: { X0: -0.22, Y0: -0.75, X1: -0.22, Y1: -5.5, w: 1.7, topZ: 0.015, place: 0.50 },
@@ -6485,8 +6486,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (!gm || !t || !Array.isArray(t.tcp) || t.tcp.length < 3 || !t.tcp.slice(0, 3).every(isFinite)) return;
     const [x, y, z] = t.tcp.map(v => v / 1000);
     gm.tcp = [x, y, z];
-    gm.cups = [[x + 0.16, y + 0.11], [x + 0.16, y - 0.11], [x - 0.16, y + 0.11], [x - 0.16, y - 0.11]];
-    gm.probes = gm.cups.map(c => [c[0], c[1], z]).concat([[x + 0.19, y + 0.14, z - 0.07], [x + 0.19, y - 0.14, z - 0.07], [x - 0.19, y + 0.14, z - 0.07], [x - 0.19, y - 0.14, z - 0.07]]);
+    // 吸盤はフランジ中心を真ん中に並ぶ（実機の写真）。吸盤面の高さだけツールデータの Z に合わせる
+    gm.probes = gm.cups.map(c => [c[0], c[1], z]).concat(gm.cups.map(c => [c[0] + Math.sign(c[0]) * 0.03, c[1] + Math.sign(c[1]) * 0.03, z - 0.06]));
     if (t.name) gm.name = `硝子ハンド（実機 ツール0：${t.name}）`;
   }
   applyMasterTool();
@@ -7425,7 +7426,9 @@ JSON だけを返す（前後に文章を付けない）。形式：
     const nW = f.n.clone().applyQuaternion(wq), dW = f.d.clone().applyQuaternion(wq);
     const surf = off => r.rot.localToWorld(f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, (f.off || 0) + off));
     const zt = nW.clone().negate(), xt = dW.clone(), yt = new T.Vector3().crossVectors(zt, xt);
-    const rackPose = p => { const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
+    // 吸盤の枠の中心がガラスの中心に来るように、TCP をずらす（実機ハンドは TCP が枠の中心からずれている）
+    const cc = tool.cups && tool.cups.length ? [tool.cups.reduce((a, c) => a + c[0], 0) / tool.cups.length - tool.tcp[0], tool.cups.reduce((a, c) => a + c[1], 0) / tool.cups.length - tool.tcp[1]] : [0, 0];
+    const rackPose = p0 => { const p = p0.clone().addScaledVector(xt, -cc[0]).addScaledVector(yt, -cc[1]); const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
     const C = CELL.conveyor, zPl = (C.h + g.t - RS.zOrigin) * 1000;
     const placeP = dz => ({ X: r3(C.place.x * 1000), Y: r3(-C.place.z * 1000), Z: r3(zPl + dz), rx: 180, ry: 0, rz: C.axis === 'x' ? 90 : 0 });   // ガラスの長辺をコンベアの流れの向きに
     const targets = [

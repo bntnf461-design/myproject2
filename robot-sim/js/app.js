@@ -122,8 +122,8 @@
     if (!gm || !t || !Array.isArray(t.tcp) || t.tcp.length < 3 || !t.tcp.slice(0, 3).every(isFinite)) return;
     const [x, y, z] = t.tcp.map(v => v / 1000);
     gm.tcp = [x, y, z];
-    gm.cups = [[x + 0.16, y + 0.11], [x + 0.16, y - 0.11], [x - 0.16, y + 0.11], [x - 0.16, y - 0.11]];
-    gm.probes = gm.cups.map(c => [c[0], c[1], z]).concat([[x + 0.19, y + 0.14, z - 0.07], [x + 0.19, y - 0.14, z - 0.07], [x - 0.19, y + 0.14, z - 0.07], [x - 0.19, y - 0.14, z - 0.07]]);
+    // 吸盤はフランジ中心を真ん中に並ぶ（実機の写真）。吸盤面の高さだけツールデータの Z に合わせる
+    gm.probes = gm.cups.map(c => [c[0], c[1], z]).concat(gm.cups.map(c => [c[0] + Math.sign(c[0]) * 0.03, c[1] + Math.sign(c[1]) * 0.03, z - 0.06]));
     if (t.name) gm.name = `硝子ハンド（実機 ツール0：${t.name}）`;
   }
   applyMasterTool();
@@ -1062,7 +1062,9 @@
     const nW = f.n.clone().applyQuaternion(wq), dW = f.d.clone().applyQuaternion(wq);
     const surf = off => r.rot.localToWorld(f.B.clone().addScaledVector(f.d, g.h / 2).addScaledVector(f.n, (f.off || 0) + off));
     const zt = nW.clone().negate(), xt = dW.clone(), yt = new T.Vector3().crossVectors(zt, xt);
-    const rackPose = p => { const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
+    // 吸盤の枠の中心がガラスの中心に来るように、TCP をずらす（実機ハンドは TCP が枠の中心からずれている）
+    const cc = tool.cups && tool.cups.length ? [tool.cups.reduce((a, c) => a + c[0], 0) / tool.cups.length - tool.tcp[0], tool.cups.reduce((a, c) => a + c[1], 0) / tool.cups.length - tool.tcp[1]] : [0, 0];
+    const rackPose = p0 => { const p = p0.clone().addScaledVector(xt, -cc[0]).addScaledVector(yt, -cc[1]); const M = new T.Matrix4().makeBasis(xt, yt, zt).setPosition(p); const P = RS.poseFromMatrix(M); for (const k in P) P[k] = r3(P[k]); return P; };
     const C = CELL.conveyor, zPl = (C.h + g.t - RS.zOrigin) * 1000;
     const placeP = dz => ({ X: r3(C.place.x * 1000), Y: r3(-C.place.z * 1000), Z: r3(zPl + dz), rx: 180, ry: 0, rz: C.axis === 'x' ? 90 : 0 });   // ガラスの長辺をコンベアの流れの向きに
     const targets = [
