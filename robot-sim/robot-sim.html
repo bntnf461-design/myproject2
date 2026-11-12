@@ -3654,15 +3654,19 @@ details[open] summary{margin-bottom:6px}
         g.add(K.box(0.06, Math.abs(cy) + 0.08, 0.025, M.alu, cx, cy / 2, 0.045));
         g.add(K.box(0.40, 0.035, 0.03, M.alu, cx, cy + 0.11, 0.06));           // 吸盤の梁
         g.add(K.box(0.40, 0.035, 0.03, M.alu, cx, cy - 0.11, 0.06));
-        g.add(K.box(0.035, 0.26, 0.03, M.alu, cx, cy, 0.06));
-        g.add(K.box(0.07, 0.05, 0.04, M.dark, cx + 0.06, cy, 0.035));           // 真空エジェクタ
-        g.add(K.cylZ(0.015, 0.015, 0.05, M.dark, cx, cy, 0.062));               // 超音波センサ（硝子との距離）
-        g.add(K.box(0.03, 0.03, 0.015, led, cx - 0.06, cy, 0.03));
+        // 吸盤の枠：4 つの吸盤を結ぶ長方形で、中心（ハブ）が TCP にそろう
+        const hx = Math.max(...this.cups.map(c => c[0])) - cx, hy = Math.max(...this.cups.map(c => c[1])) - cy;
+        for (const sx of [-1, 1]) g.add(K.box(0.035, hy * 2 + 0.04, 0.03, M.alu, cx + sx * hx, cy, 0.06));
+        g.add(K.box(0.035, hy * 2 + 0.04, 0.03, M.alu, cx, cy, 0.06));
+        g.add(K.cylZ(0.04, 0.04, 0.03, M.dark, cx, cy, 0.075));                 // 中心のハブ（ここが TCP の真上）
+        g.add(K.box(0.05, 0.04, 0.035, M.dark, cx + 0.08, cy + 0.03, 0.035));   // 真空エジェクタ
+        g.add(K.cylZ(0.015, 0.015, 0.05, M.dark, cx, cy, 0.1));                 // 超音波センサ（硝子との距離）
+        g.add(K.box(0.03, 0.03, 0.015, led, cx - 0.08, cy + 0.03, 0.03));
         for (const [x, y] of this.cups) {
           g.add(K.cylZ(0.012, 0.012, 0.025, M.alu, x, y, 0.062));               // バネ付き支柱
           g.add(K.cylZ(0.02, 0.02, 0.012, M.dark, x, y, 0.078));
           g.add(K.cylZ(0.022, this.cupR, 0.034, M.rubber, x, y, 0.086));         // ベローズ吸盤（黒）
-          g.add(K.hose([[cx + 0.06, cy, 0.05], [(x + cx) / 2, (y + cy) / 2 + 0.02, 0.085], [x, y, 0.075]], 0.005, M.hose));
+          g.add(K.hose([[cx + 0.08, cy + 0.03, 0.05], [(x + cx) / 2, (y + cy) / 2 + 0.02, 0.085], [x, y, 0.075]], 0.005, M.hose));
         }
         return { group: g, update(st) { setLed(led, st); } };
       }
