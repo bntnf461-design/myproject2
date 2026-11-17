@@ -560,6 +560,7 @@ details[open] summary{margin-bottom:6px}
           <div class="row grow"><button id="plcMaster" class="primary">マスターから自動運転</button><button id="plcAuto" aria-pressed="false">サイクルスタート</button></div>
           <div class="row"><label class="chk"><input type="checkbox" id="plcRot"> 硝子旋回90度</label><label class="chk"><input type="checkbox" id="plcBlow"> PADエアブロー</label></div>
           <div class="row"><label class="chk"><input type="checkbox" id="plcAlt"> パレットが空になったら直進⇄曲進を切り替える</label></div>
+          <div id="plcGlass"></div>
           <p class="note" id="plcNote"></p>
         </details>
         <div class="row">
@@ -6714,6 +6715,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   }
   function setFace(r, f, count) {
     f.count = Math.max(0, count);
+    if (typeof renderGlassCount === 'function') setTimeout(renderGlassCount, 0);
     if (f.front && f.front.rack) { disposeWork(f.front); works.splice(works.indexOf(f.front), 1); }
     f.front = null; f.stack = disposeStack(r, f);
     if (!f.count) return;
@@ -8372,7 +8374,42 @@ JSON だけを返す（前後に文章を付けない）。形式：
   function masterJob() { const m = store.get(masterKey(), ''); if (m && lib.progs[m]) return m; return isY() && lib.progs[MASTER_JOB] ? MASTER_JOB : ''; }
   /* 90 度旋回して置けるのは、ジョブの中で「硝子置き90」を呼んでいるパターンだけ（実機では 8 と 58） */
   function canRot90(n) { const p = lib.progs[String(n)]; return !!p && p.lines.some(l => l.includes('硝子置き90')); }
+  /* ガラスの枚数：1 面の満載枚数（設定）と、各ラックのロボット側の面の残り枚数 */
+  function renderGlassCount() {
+    const box = $('#plcGlass'); if (!box) return;
+    if (!lineY() || !CELL.racks || !CELL.racks.length) { box.innerHTML = ''; return; }
+    const g = CELL.glassDef, mx = RS.lineMaxCount(g.t);
+    // 入力中の欄があるときは、作り直さずに他の欄の数字だけ更新する
+    if (box.contains(document.activeElement) && box.querySelector('#gcFull')) {
+      box.querySelectorAll('[data-gc]').forEach(i => { const r = CELL.racks[+i.dataset.gc]; if (r && i !== document.activeElement) i.value = r.faces[r.inside].count; });
+      return;
+    }
+    box.innerHTML = `<div class="row"><label class="pname">1 面の満載枚数 <input type="number" id="gcFull" min="1" max="${mx}" step="1" value="${g.count}"></label><button id="gcFullSet">変更</button></div>` +
+      `<p class="note">厚み ${(g.t * 1000).toFixed(0)}mm のガラスは、ラックの奥行きから 1 面 最大 ${mx} 枚まで積めます（実機のサーチが最後の 1 枚まで届く範囲）。</p>` +
+      CELL.racks.map((r, k) => { const f = r.faces[r.inside]; return `<div class="row"><label class="pname">${esc(r.name)} 残り <input type="number" data-gc="${k}" min="0" max="${g.count}" step="1" value="${f.count}"> 枚</label><button data-gcfull="${k}">満載</button><button data-gcempty="${k}">空</button></div>`; }).join('');
+  }
+  function setRackCount(k, n) {
+    const r = CELL.racks[k]; if (!r) return;
+    if (S.holding && S.holding.rack === r) { flash('#progMsg', 'ガラスを持っている間は変えられません'); return; }
+    const f = r.faces[r.inside]; n = clamp(Math.round(n), 0, CELL.glassDef.count);
+    setFace(r, f, n); r.swapReq = false; logMsg(`${r.name}：ロボット側の面を ${n} 枚にしました`);
+    renderGlassCount();
+  }
+  $('#plcGlass').addEventListener('change', e => { const i = e.target.closest('[data-gc]'); if (i && isFinite(+i.value)) setRackCount(+i.dataset.gc, +i.value); });
+  $('#plcGlass').addEventListener('click', e => {
+    const a = e.target.closest('[data-gcfull]'); if (a) { setRackCount(+a.dataset.gcfull, CELL.glassDef.count); return; }
+    const z = e.target.closest('[data-gcempty]'); if (z) { setRackCount(+z.dataset.gcempty, 0); return; }
+    if (e.target.id === 'gcFullSet') {
+      if (run || S.holding) { flash('#progMsg', '止めて、ガラスを置いてから変えてください'); return; }
+      const v = +$('#gcFull').value; if (!isFinite(v) || v < 1) return;
+      const vals = Object.assign(store.get(lineKey, null) || RS.lineValues(), { 'glass.count': v });
+      RS.setLine(vals); store.set(lineKey, RS.lineValues()); rebuildLine();
+      flash('#progMsg', `1 面の満載枚数を ${CELL.glassDef.count} 枚にしました` + (CELL.glassDef.count !== v ? `（最大 ${RS.lineMaxCount(CELL.glassDef.t)} 枚）` : ''), true);
+      renderGlassCount();
+    }
+  });
   function renderPlc() {
+    renderGlassCount();
     const box = $('#plcBox'); box.hidden = !lineY();
     if (box.hidden) return;
     const nums = Object.keys(lib.progs).filter(n => /^\d+$/.test(n)).map(Number).sort((a, b) => a - b);
