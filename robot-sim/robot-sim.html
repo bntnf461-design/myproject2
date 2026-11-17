@@ -498,6 +498,9 @@ details[open] summary{margin-bottom:6px}
 .rbtn.hold{background:radial-gradient(circle at 40% 35%,#ffffff,#c9ccd0);border-color:#44484c}
 .rbtn.hold.on{background:radial-gradient(circle at 40% 35%,#ffe0b0,#ff8a3a);box-shadow:0 0 14px 4px #ffb060}
 
+.yscr .ysi.al{background:#ff8a8a;color:#600}
+.ycyc{background:#fff;color:#0d1620;font-size:9.5px;padding:1px 6px;border:2px solid #1e5fd0;border-bottom:0}
+
 </style>
 </head>
 <body>
@@ -3452,7 +3455,7 @@ details[open] summary{margin-bottom:6px}
       jointConfirmed: true,
       j3abs: false,
       cart: ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'],
-      coordNames: { joint: '関節', base: '直交', tool: 'ツール' }
+      coordNames: { joint: '関節', base: '直交', cyl: '円筒', tool: 'ツール', user: 'ユーザ' }
     },
     fanuc: {
       id: 'fanuc',
@@ -3471,7 +3474,7 @@ details[open] summary{margin-bottom:6px}
       jointConfirmed: false,
       j3abs: true,
       cart: ['X', 'Y', 'Z', 'W', 'P', 'R'],
-      coordNames: { joint: '関節', base: 'ワールド', tool: 'ツール' }
+      coordNames: { joint: '関節', base: 'ワールド', tool: 'ツール', user: 'ユーザ' }
     }
   };
 
@@ -6394,7 +6397,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.1';
+  const VERSION = '4.2';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -7601,8 +7604,20 @@ JSON だけを返す（前後に文章を付けない）。形式：
       return N.multiply(D);
     }
     const p = new T.Vector3().setFromMatrixPosition(M);
-    if (axis < 3) { p.addScaledVector(BASE_AX[axis], dir * amt / 1000); N.setPosition(p); return N; }
-    const R = new T.Matrix4().makeRotationAxis(BASE_AX[axis - 3], dir * amt * D2R);
+    let AX = BASE_AX;
+    if (frame === 'user') {   // ユーザ座標（最小番号のもの）の向き
+      const n = Object.keys(uframes).map(Number).sort((a, b) => a - b)[0];
+      if (n) { const R = new T.Matrix4().extractRotation(C4.clone().multiply(ufMat(n))); AX = [0, 1, 2].map(i => new T.Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyMatrix4(R).normalize()); }
+    }
+    if (frame === 'cyl' && axis < 3) {   // 円筒座標：X＝半径方向、Y＝S 軸まわりの回転（θ）方向、Z＝上下
+      const o = new T.Vector3().setFromMatrixPosition(C4), h = p.clone().sub(o); h.y = 0;
+      const r = h.length();
+      if (axis === 1 && r > 0.05) { const R = new T.Matrix4().makeRotationAxis(BASE_AX[2], dir * amt / 1000 / r); const O = R.multiply(M.clone().setPosition(h.clone())); const q = new T.Vector3().setFromMatrixPosition(O); O.setPosition(q.add(o).setY(p.y)); return O; }
+      const rd = r > 1e-6 ? h.clone().normalize() : BASE_AX[0].clone();
+      AX = [rd, new T.Vector3().crossVectors(BASE_AX[2], rd), BASE_AX[2]];
+    }
+    if (axis < 3) { p.addScaledVector(AX[axis], dir * amt / 1000); N.setPosition(p); return N; }
+    const R = new T.Matrix4().makeRotationAxis((frame === 'user' ? AX : BASE_AX)[axis - 3], dir * amt * D2R);
     const O = R.multiply(new T.Matrix4().extractRotation(M)); O.setPosition(p);
     return O;
   }
@@ -8301,6 +8316,12 @@ JSON だけを返す（前後に文章を付けない）。形式：
       got.master.varNames = vn;
       return true;
     }
+    if (/^\/\/(OPEORG|HOME2)\b/m.test(t)) {
+      // R1 のパルス：4 個の行と 4 個の行が続く（S,L,U,R / B,T,…）
+      const ls = t.split('\n').filter(l => /^-?\d+(,-?\d+){3}$/.test(l.trim()));
+      if (ls.length >= 2) { const v = ls[0].split(',').map(Number).concat(ls[1].split(',').map(Number).slice(0, 2)); got.master[/^\/\/OPEORG/m.test(t) ? 'home' : 'home2'] = v; }
+      return true;
+    }
     if (/^\/SYSTEM/m.test(t) && /SYSTEM NO/.test(t)) {
       got.master.system = { no: (t.match(/SYSTEM NO\s*:\s*(\S+)/) || [])[1] || '', robot: (t.match(/^R1\s*:\s*(\S+)/m) || [])[1] || '', date: (t.match(/\/\/DATE\s*:\s*(.+)$/m) || [])[1] || '' };
       return true;
@@ -8821,22 +8842,25 @@ JSON だけを返す（前後に文章を付けない）。形式：
   const FOV = [1, 5, 10, 25, 50, 75, 100];
   const pendEl = $('#pend');
   let lcdCache = '', lcdT = 0;
-  const COORDS = ['joint', 'base', 'tool'];
+  const COORDS_Y = ['joint', 'base', 'cyl', 'tool', 'user'], COORDS_F = ['joint', 'base', 'tool', 'user'];
   const pendVisible = () => pend.float || !$('#t-pend').hidden;
   const FMN = { T1: 'テスト1', T2: 'テスト2', AUTO: '自動' };   // 操作盤のモードの表示名
   /* 実機（DX200）のメニュー・画面のための状態 */
   Object.assign(pend, { sub: null, pull: null, vsel: 0, jsel: 0, pick: null, posDisp: 'pulse', cyc: 'cont', varType: null, ioType: null, shockMax: [0, 0, 0, 0, 0, 0] });
-  { const c = store.get('rs4-pcoord', 'joint'); if (['joint', 'base', 'tool'].includes(c)) pend.coord = c; }
+  { const c = store.get('rs4-pcoord', 'joint'); if (robot.coordNames[c]) pend.coord = c; }
   const homeKey = n => `rs4-home${n}-${S.sys}`;
   function getHome(n) {
     const h = store.get(homeKey(n), null);
     if (Array.isArray(h) && h.length === 6 && h.every(v => typeof v === 'number' && isFinite(v))) return h;
     // 未登録なら、実機のジョブの作業原点（位置変数 P000）、それもなければ機種の初期姿勢
-    const p0 = isY() && vars.pos.P000;
+    const mh = isY() && master && master[n ? 'home2' : 'home'];
+    if (Array.isArray(mh) && mh.length === 6 && robot.pulse) return mh.map((v, i) => v / robot.pulse[i]);
+    const p0 = isY() && !n && vars.pos.P000;
     if (p0 && p0.k === 'j' && Array.isArray(p0.q) && p0.q.length === 6) return p0.q.slice();
     return robot.home.slice();
   }
-  const atHome = n => getHome(n).every((v, i) => Math.abs(v - S.q[i]) < 0.5);   // 作業原点位置（実機の「立方体」の代わりに各軸 0.5° 以内）
+  const HOME_CUBE = 0.1;   // 作業原点の立方体の一辺（m）。実機のパラメータ S3C1097 = 100000μm
+  const atHome = n => { const a = new T.Vector3().setFromMatrixPosition(tcpMatrix(getHome(n))), b = new T.Vector3().setFromMatrixPosition(tcpMatrix(S.q)); return Math.abs(a.x - b.x) <= HOME_CUBE / 2 && Math.abs(a.y - b.y) <= HOME_CUBE / 2 && Math.abs(a.z - b.z) <= HOME_CUBE / 2; };
   const YMENU = {
     job: ['ジョブ', '<span class="mi doc">DOUT<br>MOVE<br>END</span>', [['prog', 'ジョブ内容'], ['jobsel', 'ジョブ選択'], ['master', 'マスタジョブ'], ['jobcap', 'ジョブ容量'], ['cycle', 'サイクル'], ['na', 'プレイジョブ編集'], ['na', 'プレイ中編集ジョブ一覧']]],
     gen: ['汎用', '<span class="mi">⊤</span>', [['na', 'ハンドリング']]],
@@ -8886,7 +8910,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
         const n = v === 'home' ? '' : '2', h = getHome(n);
         title = v === 'home' ? '作業原点' : '第2原点';
         pls(h).forEach((x, i) => rows.push({ t: `${ax[i]}　${String(x).padStart(10)}` }));
-        rows.push({ t: `${v === 'home' ? '作業原点' : '第2原点'}位置　 ${atHome(n) ? '● ON（ここにいます）' : '○ OFF'}` });
+        rows.push({ t: `${v === 'home' ? '作業原点' : '第2原点'}位置　 ${atHome(n) ? '● ON（立方体 100mm の中）' : '○ OFF'}` });
         rows.push({ t: '［ネクスト］押している間：ここへ移動' }, { t: '［変更］→［エンター］：今の位置を登録' });
         break;
       }
@@ -8934,6 +8958,13 @@ JSON だけを返す（前後に文章を付けない）。形式：
         rows.push({ t: `制御電源時間　 ${hms((Date.now() - M.t0) / 1000)}` }, { t: `サーボ電源時間 ${hms(M.servo)}` }, { t: `再生時間　　　 ${hms(M.play)}` }, { t: `移動時間　　　 ${hms(M.move)}` });
         break;
       }
+      case 'stack': {
+        title = 'ジョブスタック';
+        const st = run && run.interp ? run.interp.stack : [];
+        if (!st.length) rows.push({ t: '（再生中のジョブはありません）' });
+        st.slice().reverse().forEach((f, i) => rows.push({ t: `${String(st.length - i).padStart(2)}　${f.prog.name}　${String(f.pc + 1).padStart(4, '0')} 行` }));
+        break;
+      }
       case 'almhist':
         title = 'アラーム履歴';
         if (!(S.almHist || []).length) rows.push({ t: '（履歴なし）' });
@@ -8962,7 +8993,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
   function pendJogSpec() {
     const Y = isY();
-    return { spd: (Y ? (pend.fast ? YSP[3][1] : YSP[pend.sp][1]) : FOV[pend.ovrI]) / 100, frame: pend.coord === 'tool' ? 'tool' : 'base', check: jogBlock, inch: Y && pend.sp === 0 && !pend.fast };
+    return { spd: (Y ? (pend.fast ? YSP[3][1] : YSP[pend.sp][1]) : FOV[pend.ovrI]) / 100, frame: ['tool', 'cyl', 'user'].includes(pend.coord) && (isY() || pend.coord !== 'cyl') ? pend.coord : 'base', check: jogBlock, inch: Y && pend.sp === 0 && !pend.fast };
   }
   /* DX200 の命令一覧（よく使う命令） */
   function instList() {
@@ -9085,17 +9116,25 @@ JSON だけを返す（前後に文章を付けない）。形式：
       const v = pend.view, P = prog();
       // 上のメニュー（ジョブ画面は ジョブ／編集／表示／ユーティリティ、他は データ／編集／表示／ユーティリティ）
       const jobTop = v === 'prog' || v === 'inst' || groupOf(v) === 'job';
-      const top = (jobTop ? ['ジョブ', '編集', '表示', 'ユーティリティ'] : ['データ', '編集', '表示', 'ユーティリティ']).map((t, i) => i === 0 && jobTop ? `<button class="ytm${pend.pull ? ' on' : ''}" data-act="pull-job">${t}</button>` : `<span class="ytm">${t}</span>`).join('');
-      const pull = pend.pull ? `<div class="ypull"><button class="ysub-b" data-act="master-call">マスタ呼出</button><button class="ysub-b" data-sub="jobsel">ジョブ選択</button></div>` : '';
+      const tops = jobTop ? [['job', 'ジョブ'], ['edit', '編集'], ['disp', '表示'], ['util', 'ユーティリティ']] : [['data', 'データ'], ['edit', '編集'], ['disp', '表示'], ['util', 'ユーティリティ']];
+      const top = tops.map(([k, t]) => `<button class="ytm${pend.pull === k ? ' on' : ''}" data-pull="${k}">${t}</button>`).join('');
+      const PULL = {
+        job: [['act:master-call', 'マスタ呼出'], ['sub:jobsel', 'ジョブ選択'], ['act:job-new', 'ジョブ新規作成'], ['act:job-dup', 'ジョブ複写'], ['act:job-ren', 'ジョブ名変更'], ['act:job-del', 'ジョブ削除']],
+        edit: [['act:undo', '元に戻す'], ['act:na', '検索'], ['act:na', '行複写'], ['act:na', '行貼付']],
+        disp: [['act:ctime', 'サイクル時間' + (pend.ctime ? '（表示中）' : '')], ['sub:stack', 'ジョブスタック']],
+        util: [['act:na', '速度オーバーライド'], ['act:na', '特殊運転設定']],
+        data: [['act:na', 'データクリア']]
+      };
+      const pull = pend.pull && PULL[pend.pull] ? `<div class="ypull" style="left:${66 + tops.findIndex(t => t[0] === pend.pull) * 58}px">${PULL[pend.pull].map(([k, n]) => k.startsWith('sub:') ? `<button class="ysub-b" data-sub="${k.slice(4)}">${n}</button>` : `<button class="ysub-b" data-act="${k.slice(4)}">${n}</button>`).join('')}</div>` : '';
       // 状態表示（実機の並び：制御グループ・座標・手動速度・セキュリティ・動作サイクル・状態・モード）
       const icon = (txt, title, cls) => `<span class="ysi${cls ? ' ' + cls : ''}" title="${esc(title)}">${txt}</span>`;
-      const coordI = { joint: '関', base: '直', tool: 'ツ' }[pend.coord] || '直';
+      const coordI = { joint: '関', base: '直', cyl: '円', tool: 'ツ', user: 'ユ' }[pend.coord] || '直';
       const spdI = pend.fast ? '<i class="bars b3"></i>' : `<i class="bars b${pend.sp}"></i>`;
-      const stI = run ? (run.paused ? '‖' : '▶') : '■';
+      const stI = S.estop ? '非' : S.alarm ? '!' : run ? (run.paused ? '‖' : '▶') : '■';
       const modeI = { teach: '教', play: '再', remote: 'R' }[pend.mode];
       const status = icon('1<small>⇅</small>', '制御グループ R1') + icon(coordI, '座標：' + cn) + icon(spdI, '手動速度：' + (pend.fast ? '高速' : YSP[pend.sp][0])) +
-        icon('🔑', 'セキュリティ：運転モード') + icon(pend.step ? '1' : '∞', '動作サイクル：' + (pend.step ? 'ステップ' : '連続')) +
-        icon(stI, '状態：' + (run ? (run.paused ? 'ホールド中' : '再生中') : '停止中'), run && !run.paused ? 'rn' : '') +
+        icon('🔑', 'セキュリティ：運転モード') + icon({ step: '⇥', once: '1', cont: '∞' }[pend.cyc] || '∞', '動作サイクル：' + ({ step: 'ステップ', once: '1サイクル', cont: '連続' }[pend.cyc] || '連続')) +
+        icon(stI, '状態：' + (S.estop ? '非常停止中' : S.alarm ? 'アラーム中' : run ? (run.paused ? 'ホールド中' : '再生中') : '停止中'), S.estop || S.alarm ? 'al' : run && !run.paused ? 'rn' : '') +
         icon(modeI, 'モード：' + { teach: 'ティーチ', play: 'プレイ', remote: 'リモート' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl') +
         icon(servoOn() ? '<b>S</b>' : 's', servoOn() ? 'サーボオン' : (pend.ready ? 'サーボオンレディ' : 'サーボオフ'), servoOn() ? 'sv' : '');
       // 左のメインメニュー（実機：ジョブ・汎用・変数・入出力・ロボット・システム情報）
@@ -9109,7 +9148,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
       let head = `<div class="yth"><b>${esc(title)}</b></div>`;
       if (v === 'prog') {
         const steps = moveStepOf(P), cur = sel >= 0 ? steps[sel] || 0 : 0;
-        head = `<div class="yth"><div><b>${run || pend.mode !== 'teach' ? 'プレイバック' : 'ジョブ内容'}</b><br>J:${esc(P.name)}<br>制御グループ: R1</div><div class="ythr">S:${String(cur).padStart(4, '0')}<br>ツール: ${sel >= 0 && /^\s*(MOV|IMOV)/i.test(P.lines[sel] || '') ? '00' : '**'}</div></div>`;
+        const ct = pend.ctime && pend.mode !== 'teach' ? `<div class="ycyc">開始No. ${String((pend.ct && pend.ct.start) || 0).padStart(4, '0')}　動作時間 ${((pend.ct && pend.ct.move) || 0).toFixed(1)} s　再生時間 ${((pend.ct && pend.ct.play) || 0).toFixed(1)} s</div>` : '';
+        head = ct + `<div class="yth"><div><b>${run || pend.mode !== 'teach' ? 'プレイバック' : 'ジョブ内容'}</b><br>J:${esc(P.name)}<br>制御グループ: R1</div><div class="ythr">S:${String(cur).padStart(4, '0')}<br>ツール: ${sel >= 0 && /^\s*(MOV|IMOV)/i.test(P.lines[sel] || '') ? '00' : '**'}</div></div>`;
       }
       return `<div class="ysb"><div class="ytopm">${top}</div><div class="ysicons">${status}</div></div>` +
         `<div class="ymain">${pend.menu ? `<div class="ymenu">${mm}</div>` : ''}${sub}${pull}<div class="ycont">${head}<div class="ylist">${list}</div><div class="yfk">${yfk}</div></div></div>` +
@@ -9168,7 +9208,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
             <div class="ycur"><button class="cu" data-act="up" title="カーソル↑">▲</button><button class="cl" data-act="na" title="カーソル←">◀</button><button class="cr" data-act="na" title="カーソル→">▶</button><button class="cd" data-act="down" title="カーソル↓">▼</button></div>
             <div class="yfn">
               ${kb('na', '<em>マルチ画面</em>窓選択<i class="ic">⊞</i>', 'pf tp', '窓選択（シミュレーターでは未対応）')}
-              ${kb('coord', `<em>ツール選択</em>座標<small>${robot.coordNames[pend.coord]}</small>`, 'tb', '座標の切替（関節／直交／ツール）')}
+              ${kb('coord', `<em>ツール選択</em>座標<small>${robot.coordNames[pend.coord]}</small>`, 'tb', '座標の切替（関節→直交→円筒→ツール→ユーザ）')}
               ${kb('dopen', 'ダイレクト<br>オープン', 'led', 'ダイレクトオープン（CALL 先のジョブを開く）')}
               ${kb(pend.shift ? 'pageup' : 'page', '<em>戻る</em>ページ<i class="ic">▶</i>', 'tb led', 'ページ送り（シフト＋ページで戻る）')}
               ${kb('na', '<em>言語切替</em>エリア', 'tb', 'エリア（シミュレーターでは未対応）')}
@@ -9338,7 +9378,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
       const n = pend.view === 'home' ? '' : '2';
       if (atHome(n)) { pend.msg = 'すでに' + (n ? '第2原点' : '作業原点') + 'にいます'; updateLcd(); return; }
       motLim = pendLim(); pend.msg = (n ? '第2原点' : '作業原点') + 'へ移動中';
-      if (startJ(getHome(n), 100, () => { motLim = null; pend.msg = (n ? '第2原点' : '作業原点') + 'に着きました'; updateLcd(); })) { b.classList.add('hold'); heldMv = true; }
+      if (startJ(getHome(n), 50, () => { motLim = null; pend.msg = (n ? '第2原点' : '作業原点') + 'に着きました'; updateLcd(); })) { b.classList.add('hold'); heldMv = true; }
       updateLcd(); return;
     }
     sel = Math.max(0, sel);
@@ -9465,7 +9505,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
         }
         P.num = ((P.num || '') + ch).slice(0, 8); P.msg = '入力：' + P.num; break;
       }
-      case 'mainmenu': P.menu = !P.menu; break;
+      case 'mainmenu': P.menu = !P.menu; P.sub = null; P.pull = null; break;
       case 'instlist': P.view = P.view === 'inst' ? 'prog' : 'inst'; break;
       case 'dopen': {
         const ins = RS.parseLine(S.sys, prog().lines[sel] || '');
@@ -9497,8 +9537,14 @@ JSON だけを返す（前後に文章を付けない）。形式：
       case 'step': P.step = !P.step; break;
       case 'ovr+': P.ovrI = Math.min(FOV.length - 1, P.ovrI + 1); break;
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
-      case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; store.set('rs4-pcoord', P.coord); break;   // 切り替えた座標は保持（勝手に戻らない）
-      case 'pull-job': P.pull = !P.pull; P.sub = null; break;
+      case 'coord': { const cs = isY() ? COORDS_Y : COORDS_F; P.coord = cs[(cs.indexOf(P.coord) + 1) % cs.length]; store.set('rs4-pcoord', P.coord);
+        if (P.coord === 'user' && !Object.keys(uframes).length) P.msg = 'ユーザ座標が登録されていないため、ベース座標と同じ向きで動きます'; break; }   // 切り替えた座標は保持（勝手に戻らない）
+      case 'job-new': P.pull = null; $('#progNew').click(); break;
+      case 'job-dup': P.pull = null; $('#progDup').click(); break;
+      case 'job-ren': P.pull = null; $('#progRen').click(); break;
+      case 'job-del': P.pull = null; $('#progDel').click(); break;
+      case 'undo': P.pull = null; $('#undoBtn').click(); break;
+      case 'ctime': P.pull = null; P.ctime = !P.ctime; break;
       case 'master-call': {
         P.pull = null;
         const m = masterJob();
@@ -9566,6 +9612,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
         const why = runBlock(); if (why) { P.msg = why; break; }
         if (run && run.paused) { run.paused = false; refreshState(); P.msg = ''; break; }
         if (run) break;
+        P.ct = { start: moveStepOf(prog())[Math.max(0, sel)] || 0, play: 0, move: 0 };
         startRun(Math.max(0, sel), isY() && P.cyc === 'step', isY() ? null : { spdFac: FOV[P.ovrI] / 100, tcpCap: 0 }); P.msg = ''; break;
       }
       case 'hold': if (run) { run.paused = true; refreshState(); } else { mv = null; } P.msg = 'ホールド中'; break;
@@ -9578,11 +9625,13 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (e.target.id === 'pendPop') { setPendFloat(!pend.float); return; }
     if (e.target.id === 'pendBig') { pendEl.classList.toggle('big'); renderPend(); return; }
     const v = e.target.closest('[data-view]'); if (v) { pend.view = v.dataset.view; renderPend(); return; }
+    const pb = e.target.closest('[data-pull]'); if (pb) { pend.pull = pend.pull === pb.dataset.pull ? null : pb.dataset.pull; pend.sub = null; renderPend(); return; }
     const mmb = e.target.closest('[data-mm]'); if (mmb) { pend.sub = pend.sub === mmb.dataset.mm ? null : mmb.dataset.mm; pend.pull = null; renderPend(); return; }
     const sb = e.target.closest('[data-sub]');
     if (sb) {
       const [id, arg] = sb.dataset.sub.split(':');
       pend.sub = null; pend.pull = null;
+      if (id === 'stack') { pend.view = 'stack'; pend.vsel = 0; renderPend(); return; }
       if (id === 'na') { pend.msg = 'この画面はシミュレーターにはありません'; renderPend(); return; }
       pend.view = id; pend.vsel = 0; pend.pick = null;
       if (id === 'var') pend.varType = arg; if (id === 'io') { pend.ioType = arg; pend.ioSel = 0; }
@@ -9629,6 +9678,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   let last = performance.now(), hudT = 0, ioT = 0;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000) * (S.timeScale || 1); last = now;
+    if (run && !run.paused && pend.ct) { pend.ct.play += dt; if (mv) pend.ct.move += dt; }
     { const M = S.mon || (S.mon = { t0: Date.now(), servo: 0, play: 0, move: 0 }), rd = dt / (S.timeScale || 1);
       if (servoOn()) M.servo += rd; if (run && !run.paused) M.play += rd; if (mv) M.move += rd; }
     updateBlow(dt);

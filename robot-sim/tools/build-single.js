@@ -26,7 +26,7 @@ console.log(`${out}  ${(fs.statSync(out).size / 1024).toFixed(0)} KB`);
 // 開くと自動で取り込まれる。社外に出さないこと。
 const mdir = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'master-data');
 if (fs.existsSync(mdir)) {
-  const KEEP = /\.JBI$|^(TOOL\.CND|VAR\.DAT|IONAME\.DAT|VARNAME\.DAT|SYSTEM\.SYS)$/i;
+  const KEEP = /\.JBI$|^(TOOL\.CND|VAR\.DAT|IONAME\.DAT|VARNAME\.DAT|SYSTEM\.SYS|OPEORG\.DAT|HOME2\.DAT)$/i;
   const files = {};
   const walk = d => { for (const f of fs.readdirSync(d)) { const q = path.join(d, f); if (fs.statSync(q).isDirectory()) walk(q); else if (KEEP.test(f)) files[f] = fs.readFileSync(q).toString('base64'); } };
   walk(mdir);

@@ -54,7 +54,7 @@
       jointConfirmed: true,
       j3abs: false,
       cart: ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'],
-      coordNames: { joint: '関節', base: '直交', tool: 'ツール' }
+      coordNames: { joint: '関節', base: '直交', cyl: '円筒', tool: 'ツール', user: 'ユーザ' }
     },
     fanuc: {
       id: 'fanuc',
@@ -73,7 +73,7 @@
       jointConfirmed: false,
       j3abs: true,
       cart: ['X', 'Y', 'Z', 'W', 'P', 'R'],
-      coordNames: { joint: '関節', base: 'ワールド', tool: 'ツール' }
+      coordNames: { joint: '関節', base: 'ワールド', tool: 'ツール', user: 'ユーザ' }
     }
   };
 

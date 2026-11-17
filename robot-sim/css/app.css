@@ -489,3 +489,6 @@ details[open] summary{margin-bottom:6px}
 .rbtn.start.on{background:radial-gradient(circle at 40% 35%,#b8ffd0,#2fd06a);box-shadow:0 0 14px 4px #39e070}
 .rbtn.hold{background:radial-gradient(circle at 40% 35%,#ffffff,#c9ccd0);border-color:#44484c}
 .rbtn.hold.on{background:radial-gradient(circle at 40% 35%,#ffe0b0,#ff8a3a);box-shadow:0 0 14px 4px #ffb060}
+
+.yscr .ysi.al{background:#ff8a8a;color:#600}
+.ycyc{background:#fff;color:#0d1620;font-size:9.5px;padding:1px 6px;border:2px solid #1e5fd0;border-bottom:0}
