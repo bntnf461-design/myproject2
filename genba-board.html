@@ -217,7 +217,7 @@ body.report-mode .jobscreen { display:none !important; }
   width:clamp(40px,5vw,62px); height:clamp(40px,5vw,62px); border-radius:10px;
   display:flex; align-items:center; justify-content:center; font-size:clamp(22px,3vw,36px); font-weight:500; color:#fff;
 }
-.tile .name { font-size:clamp(18px,2.4vw,30px); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tile .name { font-size:clamp(22px,3vw,38px); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tile .bar { height:clamp(16px,2.2vw,28px); background:var(--card-2); border-radius:999px; overflow:hidden; min-width:60px; }
 .tile .bar-fill { height:100%; border-radius:999px; transition:width 0.25s ease; }
 .tile .count { font-size:clamp(44px,7vw,96px); font-weight:500; line-height:1; min-width:2.2ch; text-align:right; font-variant-numeric:tabular-nums; }
@@ -712,12 +712,12 @@ body.is-fs .rp-progress { visibility:hidden; }
   /* タイルは画面の高さを種類数で等分し、文字はタイルの高さに合わせて拡大縮小 */
   .tile {
     flex:1 1 0; min-height:0; container-type:size;
-    grid-template-columns:auto minmax(110px,26%) minmax(60px,1fr) auto auto;
+    grid-template-columns:auto minmax(130px,32%) minmax(60px,1fr) auto auto;
     padding:0 clamp(12px,1.4vw,24px); gap:clamp(10px,1.4vw,24px);
   }
   /* 文字の大きさはタイルの大きさに合わせる（大きいテレビでも上限で止めず、遠くから読める大きさに） */
   .tile .keybadge { width:min(64cqh,5.5cqw); height:min(64cqh,5.5cqw); font-size:min(40cqh,3.4cqw); }
-  .tile .name { font-size:min(46cqh,4.2cqw); font-weight:700; }
+  .tile .name { font-size:min(60cqh,5.4cqw); font-weight:700; } /* 不良名は遠くから読めるように大きめ */
   .tile .bar { height:min(26cqh,2.2cqw); }
   .tile .count { font-size:min(80cqh,9cqw); }
   .tile .pct { display:block; font-size:min(34cqh,2.6cqw); color:var(--text-secondary); min-width:4.2ch; text-align:right; font-variant-numeric:tabular-nums; }
@@ -729,7 +729,7 @@ body.is-fs .rp-progress { visibility:hidden; }
     padding:clamp(6px,1.2vh,14px) clamp(10px,1vw,18px); min-height:0;
   }
   .grid.pad .tile .keybadge { grid-area:k; width:min(26cqh,13cqw); height:min(26cqh,13cqw); font-size:min(18cqh,9cqw); }
-  .grid.pad .tile .name { grid-area:n; font-size:min(31cqh,15cqw); font-weight:700; line-height:1.15; }
+  .grid.pad .tile .name { grid-area:n; font-size:min(40cqh,19cqw); font-weight:700; line-height:1.15; }
   .grid.pad .tile .pct { grid-area:p; font-size:min(13cqh,6cqw); min-width:0; }
   .grid.pad .tile .count { grid-area:c; justify-self:stretch; text-align:center; min-width:0; font-size:min(46cqh,28cqw); line-height:1; }
   .grid.pad .tile .bar { grid-area:b; height:min(7cqh,1.6cqw); }
