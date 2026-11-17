@@ -2631,9 +2631,13 @@
         title = 'ジョブ内容';
         const steps = moveStepOf(P);
         rows.push({ t: '0000      NOP' });
+        const m = io();
         P.lines.forEach((l, k) => {
           const st = steps[k] && /^\s*(MOV|IMOV)/i.test(l) ? String(steps[k]).padStart(4, '0') : '    ';
-          rows.push({ t: `${String(k + 1).padStart(4, '0')} ${st} ${l}`, i: k, pc: run && run.interp.progName === P.name && run.interp.pc === k });
+          // 実機は入出力の行に、その信号の名前を「//名前」で付けて表示する
+          const sig = /\b(IN|OT)#\((\d+)\)/.exec(l), nm = sig && (sig[1] === 'IN' ? m.auto : m.outName)[sig[1] + sig[2]];
+          const body = (/^\*/.test(l) ? '' : ' ') + l + (nm && !l.includes('//') ? ' //' + nm : '');
+          rows.push({ t: `${String(k + 1).padStart(4, '0')} ${st}${body}`, i: k, ln: 4, pc: run && run.interp.progName === P.name && run.interp.pc === k });
           if (k === sel) selRow = rows.length - 1;
         });
         rows.push({ t: `${String(P.lines.length + 1).padStart(4, '0')}      END` });
@@ -2676,12 +2680,14 @@
   function lcdHTML() {
     const Y = isY();
     const { rows, selRow, title } = screenRows();
-    const N = Y ? 9 : 10;
+    const N = Y ? (pend.view === 'prog' ? 13 : 11) : 10;
     const st = clamp((selRow >= 0 ? selRow : 0) - 4, 0, Math.max(0, rows.length - N));
     let list = '';
     for (let i = 0; i < N; i++) {
       const r = rows[st + i];
-      list += r === undefined ? '<div class="lr"></div>' : `<div class="lr${st + i === selRow ? ' sel' : ''}${r.pc ? ' pcl' : ''}"${r.i != null ? ` data-row="${r.i}"` : ''}${r.inst != null ? ` data-inst="${r.inst}"` : ''}${r.vrow != null ? ` data-vrow="${r.vrow}"` : ''}>${esc(r.t)}</div>`;
+      // 安川のジョブ内容：カーソルは行番号だけを反転（実機と同じ）
+      const txt = Y && r && r.ln && st + i === selRow ? `<b class="cur">${esc(r.t.slice(0, r.ln))}</b>${esc(r.t.slice(r.ln))}` : r ? esc(r.t) : '';
+      list += r === undefined ? '<div class="lr"></div>' : `<div class="lr${st + i === selRow ? (Y && r.ln ? ' csel' : ' sel') : ''}${r.pc ? ' pcl' : ''}"${r.i != null ? ` data-row="${r.i}"` : ''}${r.inst != null ? ` data-inst="${r.inst}"` : ''}${r.vrow != null ? ` data-vrow="${r.vrow}"` : ''}>${txt}</div>`;
     }
     const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (run.interp.status() || (Y ? '再生中' : '')) : ''));
     const cn = robot.coordNames[pend.coord];
@@ -2713,7 +2719,7 @@
       let head = `<div class="yth"><b>${esc(title)}</b></div>`;
       if (v === 'prog') {
         const steps = moveStepOf(P), cur = sel >= 0 ? steps[sel] || 0 : 0;
-        head = `<div class="yth"><div><b>${run || pend.mode !== 'teach' ? 'プレイバック' : 'ジョブ内容'}</b><br>J:${esc(P.name)}<br>制御グループ: R1</div><div class="ythr">S:${String(cur).padStart(4, '0')}<br>ツール: ${tool ? '00' : '**'}</div></div>`;
+        head = `<div class="yth"><div><b>${run || pend.mode !== 'teach' ? 'プレイバック' : 'ジョブ内容'}</b><br>J:${esc(P.name)}<br>制御グループ: R1</div><div class="ythr">S:${String(cur).padStart(4, '0')}<br>ツール: ${sel >= 0 && /^\s*(MOV|IMOV)/i.test(P.lines[sel] || '') ? '00' : '**'}</div></div>`;
       }
       return `<div class="ysb"><div class="ytopm">${top}</div><div class="ysicons">${status}</div></div>` +
         `<div class="ymain">${pend.menu ? `<div class="ymenu">${mm}</div>` : ''}${sub}${pull}<div class="ycont">${head}<div class="ylist">${list}</div><div class="yfk">${yfk}</div></div></div>` +

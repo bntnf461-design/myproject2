@@ -477,3 +477,15 @@ details[open] summary{margin-bottom:6px}
 .yfkb{height:14px;padding:0;font-size:8px;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:2px;color:#1b2a40}
 .yfk .yfkb{height:16px}
 .yscr .lr[data-vrow]{cursor:pointer}
+
+/* 実機（DX200）のジョブ内容：13 行表示、カーソルは行番号だけ反転、実行中の行は青い文字 */
+.yscr .lr{height:13.5px;line-height:13.5px;font-size:10.5px}
+.yscr .lr.csel{background:transparent}
+.yscr .lr .cur{background:#111;color:#fff;font-weight:400}
+.yscr .lr.pcl{color:#1e5fd0}
+.yscr .lr.pcl::before{content:none}
+/* START は緑（再生中に点灯）、HOLD は白（ホールド中に点灯）＝実機の写真 */
+.rbtn.start{background:radial-gradient(circle at 40% 35%,#4f9a68,#1d5a33)}
+.rbtn.start.on{background:radial-gradient(circle at 40% 35%,#b8ffd0,#2fd06a);box-shadow:0 0 14px 4px #39e070}
+.rbtn.hold{background:radial-gradient(circle at 40% 35%,#ffffff,#c9ccd0);border-color:#44484c}
+.rbtn.hold.on{background:radial-gradient(circle at 40% 35%,#ffe0b0,#ff8a3a);box-shadow:0 0 14px 4px #ffb060}
