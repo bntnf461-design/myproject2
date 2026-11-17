@@ -2373,7 +2373,8 @@
       .sort(function (a, b) { return a[0] - b[0]; })
       .forEach(function (x) {
         var nm = typeName(x[1]), col = DEF_MAP[nm];
-        if (!col) { if (unknown.indexOf(nm) < 0) unknown.push(nm); return; }
+        // 日報の列にない種類は、すべて「工程不良：その他」にまとめる
+        if (!col) { col = "proc_other"; if (unknown.indexOf(nm) < 0) unknown.push(nm); }
         var u = units[col] = units[col] || [];
         for (var i = 0; i < x[2]; i++) u.push(x[0]);
         for (var j = 0; j < -x[2]; j++) u.pop();
@@ -2436,8 +2437,8 @@
     recalc(); save();
     var note = "現場ボード取込（" + fname + "）：" + (added.length ? "不良を " + row + " 行目に反映" : "新しい不良なし") +
       (starts.length ? "／稼働状況を反映" : "／この日の作業記録なし");
-    if (quiet && !added.length && !unknown.length) return;
-    msg(note + (unknown.length ? "　⚠ 日報に対応のない不良の種類：" + unknown.join("、") : ""), unknown.length ? "warn" : "ok");
+    if (quiet && !added.length) return;
+    msg(note + (unknown.length ? "（日報の列にない種類「" + unknown.join("」「") + "」は、工程不良の「その他」にまとめています）" : ""), "ok");
   }
   document.getElementById("btnCounter").onclick = function () {
     if (!dlgDirty) dlg.close();

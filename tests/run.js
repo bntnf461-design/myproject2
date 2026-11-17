@@ -223,6 +223,22 @@ test("M3：カウンターの段取りを手で直しても、取り込み直し
   eq(evs[0].e, "09:25", "手で直した時刻が残る");
 });
 
+test("日報の列にない不良の種類は、すべて工程不良の「その他」にまとめる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+  const data = { state: { types: [], job: {}, downtime: {} },
+    hist: { shifts: ["X"], types: { a: { n: "キズ" }, b: { n: "ゴミ" }, c: { n: "寸法不良" }, d: { n: "その他" } },
+      d: [[sec(9, 0), "a", 1, 0, 0], [sec(9, 1), "b", 1, 0, 0], [sec(9, 2), "b", 1, 0, 0], [sec(9, 3), "c", 1, 0, 0], [sec(9, 4), "d", 1, 0, 0]], w: [], j: [], b: [] } };
+  const fp = path.join(os.tmpdir(), "counter-other.json");
+  fs.writeFileSync(fp, JSON.stringify(data));
+  await p.setInputFiles("#counterFallback", fp); await p.waitForTimeout(300);
+  eq(await v(p, "r1_kizu") + "|" + await v(p, "r1_proc_other"), "1|4", "キズはキズ、ゴミ2・寸法不良1・その他1 は「その他」へ");
+  ok((await p.textContent("#msg")).includes("「その他」にまとめています"), "知らせ：" + await p.textContent("#msg"));
+  await p.setInputFiles("#counterFallback", fp); await p.waitForTimeout(300);
+  eq(await v(p, "r1_proc_other"), "4", "取り込み直しても増えない");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
 test("〃：上の行と同じ型式・ロットNo.・パレット形態・ローカルコードは〃で表示（値はそのまま・選ぶと見える）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await importMaster(p);
