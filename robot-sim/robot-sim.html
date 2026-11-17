@@ -7169,6 +7169,23 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (mv.stopIf && mv.stopIf()) { const cb = mv.done; mv = null; if (cb) cb(true); return; }
     if (k >= 1) { const cb = mv.done; mv = null; if (cb) cb(false); }
   }
+  /* PAD エアブロー：吸盤の先に白い噴き出しを出す（見た目だけ） */
+  let blowFx = null;
+  function updateBlow(dt) {
+    const on = lineY() && !!S.io.out.OT57 && tool.kind === 'vacuum';
+    if (!on) { if (blowFx) blowFx.visible = false; return; }
+    if (!blowFx || blowFx.parent !== G.mount || blowFx.userData.cups !== tool.cups) {
+      if (blowFx && blowFx.parent) blowFx.parent.remove(blowFx);
+      blowFx = new T.Group();
+      const m = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false });
+      for (const [x, y] of tool.cups) { const c = new T.Mesh(new T.ConeGeometry(0.05, 0.12, 16, 1, true), m); c.rotation.x = -Math.PI / 2; c.position.set(x, y, tool.tcp[2] + 0.06); blowFx.add(c); }
+      blowFx.userData.cups = tool.cups; G.mount.add(blowFx);
+    }
+    blowFx.visible = true;
+    blowFx.userData.t = (blowFx.userData.t || 0) + dt;
+    const k = 0.75 + 0.25 * Math.sin(blowFx.userData.t * 40);
+    blowFx.children.forEach(c => { c.scale.set(k, k, 1); c.material.opacity = 0.2 + 0.2 * k; });
+  }
   function stopAll() {
     mv = null;
     jogHold = null;
@@ -7384,7 +7401,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (key === lastPcKey) return;
     lastPcKey = key;
     if (it.progName !== prog().name && lib.progs[it.progName]) { lib.cur = it.progName; renderProgSelect(); renderCode(); }
-    if (it.progName === prog().name) { sel = it.pc; markPc(); }
+    if (it.progName === prog().name) { const ch = sel !== it.pc; sel = it.pc; markPc(); if (ch && !$('#lineEdit').contains(document.activeElement)) renderLineEdit(); }
     if (pendVisible()) updateLcd();
   }
 
@@ -7658,11 +7675,13 @@ JSON だけを返す（前後に文章を付けない）。形式：
     pill.className = 'pill';
     if (S.alarm) { pill.textContent = 'アラーム'; pill.classList.add('alm'); setStatus('アラーム停止中'); }
     else if (run) {
-      pill.textContent = run.paused ? '一時停止' : (run.single ? '1行実行' : '再生中'); pill.classList.add('run');
       const it = run.interp, st = it.status();
-      setStatus(run.paused ? '一時停止中' : `${it.progName} ${String(it.pc + 1).padStart(3, '0')} 行目${st ? '　' + st : ''}`);
+      const waiting = !run.paused && !mv && (it.wait && it.wait.kind === 'in' || (it.spinT || 0) > 0.5);
+      pill.textContent = run.paused ? '一時停止' : waiting ? '入力待ち' : (run.single ? '1行実行' : '再生中'); pill.classList.add('run');
+      setStatus(run.paused ? '一時停止中' : `${it.progName} ${String(it.pc + 1).padStart(3, '0')} 行目${st ? '　' + st : waiting ? '　入力待ち（ライン側の信号を待っています）' : ''}`);
     } else { pill.textContent = '手動'; setStatus('手動操作'); }
     $('#runBtn').textContent = run && run.paused ? '▶ 再開' : '▶ 再生';
+    $('#pauseBtn').textContent = run && run.paused ? '再開' : '一時停止';
   }
   function flash(sel2, m, ok) { const el = $(sel2); if (!el) return; el.textContent = m; el.classList.toggle('ok', !!ok); }
 
@@ -8060,7 +8079,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (run) return;
     startRun(sel > 0 && window.confirm(`${sel + 1} 行目から再生しますか？\n（キャンセルで先頭から）`) ? sel : 0, false);
   });
-  $('#pauseBtn').addEventListener('click', () => { if (run) { run.paused = true; refreshState(); } });
+  $('#pauseBtn').addEventListener('click', () => { if (!run) return; if (run.paused) { const why = canMove(); if (why) { flash('#progMsg', why); return; } } run.paused = !run.paused; refreshState(); });
   $('#stopBtn').addEventListener('click', () => { stopAll(); setStatus('停止しました'); });
   $('#stepBtn').addEventListener('click', () => { if (!run) startRun(Math.max(0, sel), true); });
   const loopEl = $('#loop'), ovrEl = $('#ovr');
@@ -8668,7 +8687,18 @@ JSON だけを返す（前後に文章を付けない）。形式：
   applyHud();
   $('#views').addEventListener('click', e => {
     const b = e.target.closest('button[data-v]');
-    if (b) { cam = { ...VIEWS[b.dataset.v] }; target.set(...CELL.view.target); if (b.dataset.v === 'iso') { cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta; } else cam.r = Math.max(cam.r, CELL.view.r * (b.dataset.v === 'top' ? 1.4 : 0.95)); updateCam(); }
+    if (!b) return;
+    const v = b.dataset.v, F = CELL.FENCE;
+    cam = { ...VIEWS[v] }; target.set(...CELL.view.target);
+    if (v === 'iso') { cam.r = CELL.view.r; if (CELL.view.theta != null) cam.theta = CELL.view.theta; }
+    else if (F && CELL.id === 'line') {
+      // 柵の範囲の中心を見て、全体が画面に入る距離にする（実機ラインは広いので）
+      const cx = (F.x[0] + F.x[1]) / 2, cz = (F.z[0] + F.z[1]) / 2, wx = F.x[1] - F.x[0], wz = F.z[1] - F.z[0];
+      const fit = w => w / 2 / Math.tan(camera.fov * Math.PI / 360) * 1.15;
+      if (v === 'top') { target.set(cx, 0, cz); cam.r = Math.min(7.2, Math.max(fit(wz / Math.min(1, camera.aspect)), fit(wx))); }   // 建屋の梁より下から見る
+      else { target.set(cx, 0.6, cz); cam.phi = 0.38; cam.r = fit(Math.max(v === 'front' ? wz : wx, 2) / Math.min(1, camera.aspect)) * 1.05; }
+    } else cam.r = Math.max(cam.r, CELL.view.r * (v === 'top' ? 1.4 : 0.95));
+    updateCam();
   });
   const ptrs = new Map(); let pinch = 0, panMode = false;
   canvas.addEventListener('pointerdown', e => {
@@ -9546,6 +9576,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
     const dt = Math.min(0.05, (now - last) / 1000) * (S.timeScale || 1); last = now;
     { const M = S.mon || (S.mon = { t0: Date.now(), servo: 0, play: 0, move: 0 }), rd = dt / (S.timeScale || 1);
       if (servoOn()) M.servo += rd; if (run && !run.paused) M.play += rd; if (mv) M.move += rd; }
+    updateBlow(dt);
     if (jogHold && !mv) stepJog(dt);
     stepMotion(dt);
     stepRun(dt);
