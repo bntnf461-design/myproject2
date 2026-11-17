@@ -492,3 +492,14 @@ details[open] summary{margin-bottom:6px}
 
 .yscr .ysi.al{background:#ff8a8a;color:#600}
 .ycyc{background:#fff;color:#0d1620;font-size:9.5px;padding:1px 6px;border:2px solid #1e5fd0;border-bottom:0}
+
+.yscr .ymarrow button{flex:1;min-height:16px;padding:0;font-size:9px;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:3px;color:#1b2a40}
+.yscr .ymarrow button:disabled{opacity:.4}
+.ysub.two{grid-template-rows:repeat(8,auto)}
+
+/* 状態表示のアイコン（SVG） */
+.yscr .ysi.svg{padding:0 1px;background:transparent!important;display:inline-flex;align-items:center}
+.yscr .ysi.svg svg{display:block}
+/* ペンダントを 3D 画面の上に出したとき：3D 画面を全体に */
+body.pendfull .app{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:100%!important}
+body.pendfull .app > .panel{display:none}

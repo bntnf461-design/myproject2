@@ -58,7 +58,7 @@
       r.ledge = Math.max(0.2, r.face.Z + L.zBase - L.floor - ys);   // 床から
     });
     // 最後の 1 枚までサーチで届くように、枚数の上限を決める（背もたれの手前 90mm まで）
-    out.glass.count = Math.max(1, Math.min(G.count, ...out.racks.map(r => Math.floor((r.depth - 0.09) / G.t))));
+    out.glass.count = Math.max(0, Math.min(G.count, ...out.racks.map(r => Math.floor((r.depth - 0.09) / G.t))));
     out.conveyor.top = L.conveyor.topZ + L.zBase - L.floor;         // 床から
     out.fence = fenceOf(out);
     return out;
@@ -97,7 +97,7 @@
       setp(L, k, u ? Math.round(v) : v / 1000);
     }
     L.glass.t = Math.min(Math.max(L.glass.t, 0.002), 0.019);
-    L.glass.count = Math.min(Math.max(L.glass.count, 1), RS.lineMaxCount(L.glass.t));
+    L.glass.count = Math.min(Math.max(L.glass.count, 0), RS.lineMaxCount(L.glass.t));
     const c = L.conveyor;
     for (const r of L.racks) for (const k of ['X', 'Y', 'Z']) r.face[k] = Math.min(Math.max(r.face[k], -4), 4);
     for (const k of ['X0', 'Y0', 'X1', 'Y1']) c[k] = Math.min(Math.max(c[k], -9), 9);
@@ -428,7 +428,7 @@
     [['red', 0xc0302a], ['yellow', 0xe0a020], ['green', 0x2e9a4a]].forEach(([k, c], i) => { towerLamps[k] = cyl(0.05, 0.11, lensOff(c), 0, 2.62 - i * 0.12, 0, tower, 20); });
     cyl(0.05, 0.08, new T.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4 }), 0, 2.33, 0, tower, 20);
     const opBox = (x, z, ry) => {
-      const g = new T.Group(); g.position.set(x, F + 1.15, z); g.rotation.y = ry; group.add(g);
+      const g = new T.Group(); g.position.set(x, F + 1.15, z); g.rotation.y = ry; g.userData.see = true; group.add(g);
       box(0.11, 0.42, 0.08, new T.MeshStandardMaterial({ color: 0xe2ded2, roughness: 0.5 }), 0, 0, 0, g);
       [[0xf2f2f2, 0.13], [0x2ea05a, 0.04], [0xe0a020, -0.05]].forEach(([c, y]) => { const m = cyl(0.022, 0.02, new T.MeshStandardMaterial({ color: c, roughness: 0.3, emissive: c, emissiveIntensity: 0.25 }), 0, y, 0.05, g, 16); m.rotation.x = Math.PI / 2; });
       const es = cyl(0.03, 0.03, new T.MeshStandardMaterial({ color: 0xc0201a, roughness: 0.4 }), 0, -0.14, 0.055, g, 20); es.rotation.x = Math.PI / 2;
@@ -440,7 +440,7 @@
       else { const out = sd === 'z0' ? -1 : 1; opBox(x + 1.15, (sd === 'z0' ? Fz[0] : Fz[1]) + out * 0.06, out < 0 ? Math.PI : 0); }
     }
     // 右側（Y−、青い通路側）の柵に掛けてあるペンダントと看板
-    { const g = new T.Group(); g.position.set(Fx[0] - 0.05, F + 1.15, 0.35); g.rotation.y = -Math.PI / 2; group.add(g);
+    { const g = new T.Group(); g.position.set(Fx[0] - 0.05, F + 1.15, 0.35); g.rotation.y = -Math.PI / 2; g.userData.see = true; group.add(g);
       box(0.2, 0.3, 0.06, new T.MeshStandardMaterial({ color: 0x9c9fa3, roughness: 0.55 }), 0, 0, 0, g);
       box(0.13, 0.09, 0.005, new T.MeshStandardMaterial({ color: 0x6f8fb0, roughness: 0.2, emissive: 0x203040 }), 0, 0.07, 0.032, g);
       const es = cyl(0.018, 0.02, new T.MeshStandardMaterial({ color: 0xc0201a }), 0.07, 0.13, 0.03, g, 16); es.rotation.x = Math.PI / 2; }
@@ -462,6 +462,7 @@
     const setFenceSee = on => {
       yellowAlu.transparent = on; yellowAlu.opacity = on ? 0.22 : 1; yellowAlu.depthWrite = !on; yellowAlu.needsUpdate = true;
       poly.opacity = on ? 0.025 : 0.1;
+      group.children.forEach(g => { if (g.userData.see) g.traverse(o => { if (o.isMesh) { o.material.transparent = on; o.material.opacity = on ? 0.15 : 1; o.material.depthWrite = !on; o.material.needsUpdate = true; } }); });   // 柵のペンダント・操作箱
       if (fenceSign) { fenceSign.transparent = on; fenceSign.opacity = on ? 0.18 : 1; fenceSign.depthWrite = !on; fenceSign.needsUpdate = true; }   // 柵に付けた看板も透かす
     };
     group.traverse(o => { if (o.isMesh && o.material === yellowAlu) o.userData.noAO = true; });

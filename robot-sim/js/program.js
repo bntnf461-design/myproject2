@@ -359,6 +359,7 @@
     const out = RS.emptyProgram(psys, RS.cleanName(p.name, psys) || 'MAIN', p.tool);
     out.comment = RS.oneLine(p.comment).slice(0, 64);
     if (typeof p.folder === 'string' && p.folder) out.folder = RS.oneLine(p.folder).slice(0, 32);
+    if (typeof p.date === 'string' && p.date) out.date = RS.oneLine(p.date).slice(0, 20);
     out.lines = p.lines.filter(l => typeof l === 'string').map(l => l.replace(/[\r\n]/g, ' ').slice(0, 200));
     const pos = p.pos && typeof p.pos === 'object' ? p.pos : {};
     for (const [k, v] of Object.entries(pos)) {
@@ -609,6 +610,7 @@
     const prog = RS.emptyProgram('yaskawa', name);
     const fm = t.match(/^\/\/\/FOLDERNAME\s+(.+?)\s*$/m); if (fm) prog.folder = fm[1];
     const date = (t.match(/^\/\/\/DATE\s+(.+?)\s*$/m) || [])[1] || '';
+    if (date) prog.date = date;
     let sec = '', postype = 'PULSE', user = 0, inInst = false, started = false;
     const pulse = ctx.pulse && ctx.pulse.yaskawa;
     for (const raw of lines) {

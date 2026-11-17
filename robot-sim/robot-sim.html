@@ -501,6 +501,17 @@ details[open] summary{margin-bottom:6px}
 .yscr .ysi.al{background:#ff8a8a;color:#600}
 .ycyc{background:#fff;color:#0d1620;font-size:9.5px;padding:1px 6px;border:2px solid #1e5fd0;border-bottom:0}
 
+.yscr .ymarrow button{flex:1;min-height:16px;padding:0;font-size:9px;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:3px;color:#1b2a40}
+.yscr .ymarrow button:disabled{opacity:.4}
+.ysub.two{grid-template-rows:repeat(8,auto)}
+
+/* 状態表示のアイコン（SVG） */
+.yscr .ysi.svg{padding:0 1px;background:transparent!important;display:inline-flex;align-items:center}
+.yscr .ysi.svg svg{display:block}
+/* ペンダントを 3D 画面の上に出したとき：3D 画面を全体に */
+body.pendfull .app{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:100%!important}
+body.pendfull .app > .panel{display:none}
+
 </style>
 </head>
 <body>
@@ -3853,7 +3864,7 @@ details[open] summary{margin-bottom:6px}
       r.ledge = Math.max(0.2, r.face.Z + L.zBase - L.floor - ys);   // 床から
     });
     // 最後の 1 枚までサーチで届くように、枚数の上限を決める（背もたれの手前 90mm まで）
-    out.glass.count = Math.max(1, Math.min(G.count, ...out.racks.map(r => Math.floor((r.depth - 0.09) / G.t))));
+    out.glass.count = Math.max(0, Math.min(G.count, ...out.racks.map(r => Math.floor((r.depth - 0.09) / G.t))));
     out.conveyor.top = L.conveyor.topZ + L.zBase - L.floor;         // 床から
     out.fence = fenceOf(out);
     return out;
@@ -3892,7 +3903,7 @@ details[open] summary{margin-bottom:6px}
       setp(L, k, u ? Math.round(v) : v / 1000);
     }
     L.glass.t = Math.min(Math.max(L.glass.t, 0.002), 0.019);
-    L.glass.count = Math.min(Math.max(L.glass.count, 1), RS.lineMaxCount(L.glass.t));
+    L.glass.count = Math.min(Math.max(L.glass.count, 0), RS.lineMaxCount(L.glass.t));
     const c = L.conveyor;
     for (const r of L.racks) for (const k of ['X', 'Y', 'Z']) r.face[k] = Math.min(Math.max(r.face[k], -4), 4);
     for (const k of ['X0', 'Y0', 'X1', 'Y1']) c[k] = Math.min(Math.max(c[k], -9), 9);
@@ -4223,7 +4234,7 @@ details[open] summary{margin-bottom:6px}
     [['red', 0xc0302a], ['yellow', 0xe0a020], ['green', 0x2e9a4a]].forEach(([k, c], i) => { towerLamps[k] = cyl(0.05, 0.11, lensOff(c), 0, 2.62 - i * 0.12, 0, tower, 20); });
     cyl(0.05, 0.08, new T.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4 }), 0, 2.33, 0, tower, 20);
     const opBox = (x, z, ry) => {
-      const g = new T.Group(); g.position.set(x, F + 1.15, z); g.rotation.y = ry; group.add(g);
+      const g = new T.Group(); g.position.set(x, F + 1.15, z); g.rotation.y = ry; g.userData.see = true; group.add(g);
       box(0.11, 0.42, 0.08, new T.MeshStandardMaterial({ color: 0xe2ded2, roughness: 0.5 }), 0, 0, 0, g);
       [[0xf2f2f2, 0.13], [0x2ea05a, 0.04], [0xe0a020, -0.05]].forEach(([c, y]) => { const m = cyl(0.022, 0.02, new T.MeshStandardMaterial({ color: c, roughness: 0.3, emissive: c, emissiveIntensity: 0.25 }), 0, y, 0.05, g, 16); m.rotation.x = Math.PI / 2; });
       const es = cyl(0.03, 0.03, new T.MeshStandardMaterial({ color: 0xc0201a, roughness: 0.4 }), 0, -0.14, 0.055, g, 20); es.rotation.x = Math.PI / 2;
@@ -4235,7 +4246,7 @@ details[open] summary{margin-bottom:6px}
       else { const out = sd === 'z0' ? -1 : 1; opBox(x + 1.15, (sd === 'z0' ? Fz[0] : Fz[1]) + out * 0.06, out < 0 ? Math.PI : 0); }
     }
     // 右側（Y−、青い通路側）の柵に掛けてあるペンダントと看板
-    { const g = new T.Group(); g.position.set(Fx[0] - 0.05, F + 1.15, 0.35); g.rotation.y = -Math.PI / 2; group.add(g);
+    { const g = new T.Group(); g.position.set(Fx[0] - 0.05, F + 1.15, 0.35); g.rotation.y = -Math.PI / 2; g.userData.see = true; group.add(g);
       box(0.2, 0.3, 0.06, new T.MeshStandardMaterial({ color: 0x9c9fa3, roughness: 0.55 }), 0, 0, 0, g);
       box(0.13, 0.09, 0.005, new T.MeshStandardMaterial({ color: 0x6f8fb0, roughness: 0.2, emissive: 0x203040 }), 0, 0.07, 0.032, g);
       const es = cyl(0.018, 0.02, new T.MeshStandardMaterial({ color: 0xc0201a }), 0.07, 0.13, 0.03, g, 16); es.rotation.x = Math.PI / 2; }
@@ -4257,6 +4268,7 @@ details[open] summary{margin-bottom:6px}
     const setFenceSee = on => {
       yellowAlu.transparent = on; yellowAlu.opacity = on ? 0.22 : 1; yellowAlu.depthWrite = !on; yellowAlu.needsUpdate = true;
       poly.opacity = on ? 0.025 : 0.1;
+      group.children.forEach(g => { if (g.userData.see) g.traverse(o => { if (o.isMesh) { o.material.transparent = on; o.material.opacity = on ? 0.15 : 1; o.material.depthWrite = !on; o.material.needsUpdate = true; } }); });   // 柵のペンダント・操作箱
       if (fenceSign) { fenceSign.transparent = on; fenceSign.opacity = on ? 0.18 : 1; fenceSign.depthWrite = !on; fenceSign.needsUpdate = true; }   // 柵に付けた看板も透かす
     };
     group.traverse(o => { if (o.isMesh && o.material === yellowAlu) o.userData.noAO = true; });
@@ -5532,6 +5544,7 @@ details[open] summary{margin-bottom:6px}
     const out = RS.emptyProgram(psys, RS.cleanName(p.name, psys) || 'MAIN', p.tool);
     out.comment = RS.oneLine(p.comment).slice(0, 64);
     if (typeof p.folder === 'string' && p.folder) out.folder = RS.oneLine(p.folder).slice(0, 32);
+    if (typeof p.date === 'string' && p.date) out.date = RS.oneLine(p.date).slice(0, 20);
     out.lines = p.lines.filter(l => typeof l === 'string').map(l => l.replace(/[\r\n]/g, ' ').slice(0, 200));
     const pos = p.pos && typeof p.pos === 'object' ? p.pos : {};
     for (const [k, v] of Object.entries(pos)) {
@@ -5782,6 +5795,7 @@ details[open] summary{margin-bottom:6px}
     const prog = RS.emptyProgram('yaskawa', name);
     const fm = t.match(/^\/\/\/FOLDERNAME\s+(.+?)\s*$/m); if (fm) prog.folder = fm[1];
     const date = (t.match(/^\/\/\/DATE\s+(.+?)\s*$/m) || [])[1] || '';
+    if (date) prog.date = date;
     let sec = '', postype = 'PULSE', user = 0, inInst = false, started = false;
     const pulse = ctx.pulse && ctx.pulse.yaskawa;
     for (const raw of lines) {
@@ -6397,7 +6411,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.2';
+  const VERSION = '4.3';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -8417,7 +8431,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
       box.querySelectorAll('[data-gc]').forEach(i => { const r = CELL.racks[+i.dataset.gc]; if (r && i !== document.activeElement) i.value = r.faces[r.inside].count; });
       return;
     }
-    box.innerHTML = `<div class="row"><label class="pname">1 面の満載枚数 <input type="number" id="gcFull" min="1" max="${mx}" step="1" value="${g.count}"></label><button id="gcFullSet">変更</button></div>` +
+    box.innerHTML = `<div class="row"><label class="pname">1 面の満載枚数 <input type="number" id="gcFull" min="0" max="${mx}" step="1" value="${g.count}"></label><button id="gcFullSet">変更</button></div>` +
       `<p class="note">厚み ${(g.t * 1000).toFixed(0)}mm のガラスは、ラックの奥行きから 1 面 最大 ${mx} 枚まで積めます（実機のサーチが最後の 1 枚まで届く範囲）。</p>` +
       CELL.racks.map((r, k) => { const f = r.faces[r.inside]; return `<div class="row"><label class="pname">${esc(r.name)} 残り <input type="number" data-gc="${k}" min="0" max="${g.count}" step="1" value="${f.count}"> 枚</label><button data-gcfull="${k}">満載</button><button data-gcempty="${k}">空</button></div>`; }).join('');
   }
@@ -8434,7 +8448,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
     const z = e.target.closest('[data-gcempty]'); if (z) { setRackCount(+z.dataset.gcempty, 0); return; }
     if (e.target.id === 'gcFullSet') {
       if (run || S.holding) { flash('#progMsg', '止めて、ガラスを置いてから変えてください'); return; }
-      const v = +$('#gcFull').value; if (!isFinite(v) || v < 1) return;
+      const v = +$('#gcFull').value; if (!isFinite(v) || v < 0) return;
       const vals = Object.assign(store.get(lineKey, null) || RS.lineValues(), { 'glass.count': v });
       RS.setLine(vals); store.set(lineKey, RS.lineValues()); rebuildLine();
       flash('#progMsg', `1 面の満載枚数を ${CELL.glassDef.count} 枚にしました` + (CELL.glassDef.count !== v ? `（最大 ${RS.lineMaxCount(CELL.glassDef.t)} 枚）` : ''), true);
@@ -8473,7 +8487,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
     // シミュレーターの便宜：持っているガラスを戻し、出力を切り、作業原点から始める（実機では手動で原点へ戻す）
     if (S.holding) { dropWork(true); resetWorks(); }
     for (const k of Object.keys(S.io.out)) { const m = /^([A-Z]+)(\d+)$/.exec(k); if (m && S.io.out[k]) setOut(m[1], +m[2], false); }
-    S.q = robot.home.slice(); applyPose();
+    S.q = getHome(''); applyPose();
     lib.cur = mj; sel = 0; renderProgAll();
     S.plc.auto = true; renderPlc();
     startRun(0, false);
@@ -8861,16 +8875,24 @@ JSON だけを返す（前後に文章を付けない）。形式：
   }
   const HOME_CUBE = 0.1;   // 作業原点の立方体の一辺（m）。実機のパラメータ S3C1097 = 100000μm
   const atHome = n => { const a = new T.Vector3().setFromMatrixPosition(tcpMatrix(getHome(n))), b = new T.Vector3().setFromMatrixPosition(tcpMatrix(S.q)); return Math.abs(a.x - b.x) <= HOME_CUBE / 2 && Math.abs(a.y - b.y) <= HOME_CUBE / 2 && Math.abs(a.z - b.z) <= HOME_CUBE / 2; };
-  const YMENU = {
-    job: ['ジョブ', '<span class="mi doc">DOUT<br>MOVE<br>END</span>', [['prog', 'ジョブ内容'], ['jobsel', 'ジョブ選択'], ['master', 'マスタジョブ'], ['jobcap', 'ジョブ容量'], ['cycle', 'サイクル'], ['na', 'プレイジョブ編集'], ['na', 'プレイ中編集ジョブ一覧']]],
-    gen: ['汎用', '<span class="mi">⊤</span>', [['na', 'ハンドリング']]],
-    var: ['変数', '<span class="mi box">B001</span>', [['var:B', 'バイト型'], ['var:I', '整数型'], ['var:D', '倍精度型'], ['var:R', '実数型'], ['var:P', 'ロボット位置型']]],
-    io: ['入出力', '<span class="mi">In⊖Out</span>', [['io:xin', '外部入力'], ['io:xout', '外部出力'], ['io:in', '汎用入力'], ['io:out', '汎用出力']]],
-    robot: ['ロボット', '<span class="mi">⌐</span>', [['pos', '現在値'], ['cmd', '指令値'], ['home', '作業原点'], ['home2', '第2原点'], ['power', '電源オン・オフ'], ['tool', 'ツール'], ['shock', '衝突検出レベル'], ['uf', 'ユーザ座標'], ['shift', 'シフト量'], ['shocknow', '各軸衝突検出レベル現在値']]],
-    sys: ['システム情報', '<span class="mi">∿◷</span>', [['sys', 'バージョン'], ['montime', 'モニタ時間'], ['almhist', 'アラーム履歴']]]
+  /* メインメニュー（取扱説明書 表1-1「メニューとセキュリティモード」の、編集モードで表示される項目。
+     ジョブ・ロボットの並びは実機（DX200）の写真に合わせた。teach／play はそのモードだけに出る項目 */
+  const YMENU_ALL = {
+    job: ['ジョブ', '<span class="mi doc">DOUT<br>MOVE<br>END</span>', [['prog', 'ジョブ内容'], ['jobsel', 'ジョブ選択'], ['act:job-new', 'ジョブ新規作成', 'teach'], ['master', 'マスタジョブ'], ['jobcap', 'ジョブ容量'], ['cycle', 'サイクル'], ['na', 'プレイジョブ編集'], ['na', 'プレイ中編集ジョブ一覧']]],
+    gen: ['汎用', '<span class="mi">⊤</span>', [['na', 'ウィービング'], ['na', '汎用診断']]],
+    var: ['変数', '<span class="mi box">B001</span>', [['var:B', 'バイト型'], ['var:I', '整数型'], ['var:D', '倍精度型'], ['var:R', '実数型'], ['var:S', '文字型'], ['var:P', 'ロボット位置型'], ['var:BP', 'ベース位置型'], ['var:EX', 'ステーション位置型'], ['var:L', 'ローカル変数']]],
+    io: ['入出力', '<span class="mi">In⊖Out</span>', [['io:xin', '外部入力'], ['io:xout', '外部出力'], ['io:in', '汎用入力'], ['io:out', '汎用出力'], ['io:sin', '専用入力'], ['io:sout', '専用出力'], ['io:rin', 'RIN'], ['io:cprin', 'CPRIN'], ['io:reg', 'レジスタ'], ['io:aux', '補助リレー'], ['io:ctl', '制御入力'], ['io:pseudo', '疑似入力信号'], ['io:nin', 'ネットワーク入力'], ['io:nout', 'ネットワーク出力'], ['io:ana', 'アナログ出力'], ['io:svp', 'サーボ電源状態']]],
+    robot: ['ロボット', '<span class="mi">⌐</span>', [['pos', '現在値'], ['cmd', '指令値'], ['home', '作業原点'], ['home2', '第2原点'], ['power', '電源オン・オフ'], ['tool', 'ツール'], ['shock', '衝突検出レベル'], ['uf', 'ユーザ座標'], ['shift', 'シフト量'], ['shocknow', '各軸衝突検出レベル現在値'], ['na', 'オーバーラン＆ショックセンサ', 'teach'], ['na', 'リミット解除', 'teach']]],
+    sys: ['システム情報', '<span class="mi">∿◷</span>', [['sys', 'バージョン'], ['montime', 'モニタ時間'], ['almhist', 'アラーム履歴'], ['iomsg', 'I/Oメッセージ履歴'], ['security', 'セキュリティ']]],
+    // 2 ページ目（◀ ▶）
+    mem: ['外部メモリ', '<span class="mi">▭</span>', [['na', 'ロード'], ['na', 'セーブ'], ['na', 'ベリファイ'], ['na', '削除'], ['na', '装置'], ['na', 'フォルダ'], ['na', 'フォーマット']]],
+    setup: ['設定', '<span class="mi">⚙</span>', [['na', '教示条件'], ['na', '予約ジョブ名'], ['na', 'ユーザID'], ['na', '誤データログ']]],
+    dispset: ['表示設定', '<span class="mi">Aa</span>', [['na', '文字の大きさ変更'], ['na', '操作ボタンの大きさ変更'], ['na', '画面の初期化']]]
   };
-  const groupOf = v => Object.keys(YMENU).find(k => YMENU[k][2].some(([id]) => id.split(':')[0] === v)) || '';
-  const VAR_T = { B: 'バイト型', I: '整数型', D: '倍精度型', R: '実数型', P: 'ロボット位置型' };
+  const MM_PAGES = [['job', 'gen', 'var', 'io', 'robot', 'sys'], ['mem', 'setup', 'dispset']];
+  const YMENU = new Proxy(YMENU_ALL, { get: (o, k) => o[k] && [o[k][0], o[k][1], o[k][2].filter(it => !it[2] || it[2] === pend.mode)] });
+  const groupOf = v => Object.keys(YMENU_ALL).find(k => YMENU_ALL[k][2].some(([id]) => id.split(':')[0] === v)) || '';
+  const VAR_T = { B: 'バイト型', I: '整数型', D: '倍精度型', R: '実数型', S: '文字型', P: 'ロボット位置型', BP: 'ベース位置型', EX: 'ステーション位置型', L: 'ローカル変数' };
   const hms = sec => { sec = Math.floor(sec); return `${String(Math.floor(sec / 3600)).padStart(4, ' ')}:${String(Math.floor(sec / 60) % 60).padStart(2, '0')}'${String(sec % 60).padStart(2, '0')}`; };
   const pls = q => q.map((v, i) => robot.pulse ? Math.round(v * robot.pulse[i]) : +v.toFixed(3));
   /* 実機の画面（ジョブ内容・入出力・変数の一部を除く）の行 */
@@ -8892,15 +8914,26 @@ JSON だけを返す（前後に文章を付けない）。形式：
       case 'jobcap': {
         title = 'ジョブ容量';
         const ps = Object.values(lib.progs);
-        rows.push({ t: `ジョブ数　　 ${ps.length}` }, { t: `命令の行数　 ${ps.reduce((a, p) => a + p.lines.length, 0)}` }, { t: `位置データ　 ${ps.reduce((a, p) => a + Object.keys(p.pos || {}).length, 0)}` });
+        const steps = ps.reduce((a, p) => a + p.lines.filter(l => /^\s*(MOV[JLCS]|IMOV|SMOV)\b/i.test(l)).length, 0), mem = ps.reduce((a, p) => a + p.lines.join('\n').length + Object.keys(p.pos || {}).length * 40, 0);
+        rows.push({ t: `ジョブ数　　 ${ps.length}` }, { t: `使用メモリ　 ${mem} BYTE` }, { t: `ステップ数　 ${steps}` }, { t: '編集バッファ 0 %' });
         break;
       }
       case 'cycle':
         title = 'サイクル';
         [['step', 'ステップ'], ['once', '1サイクル'], ['cont', '連続']].forEach(([k, n], i) => rows.push({ t: `${pend.cyc === k ? '●' : '○'} ${n}`, cyc: k, vrow: i }));
         listSel(); break;
-      case 'pos': case 'cmd': {
-        title = v === 'pos' ? '現在値' : '指令値';
+      case 'cmd': {
+        title = '指令値';
+        const p = prog(), ins = sel >= 0 ? RS.parseLine(S.sys, p.lines[sel] || '') : null, mvIns = ins && ins.op === 'MOVE';
+        const pos = mvIns && p.pos[ins.ref], cq = pos ? (pos.k === 'j' ? pos.q : (RS.ik(robot, posMatrix(pos), tool.tcp, pos.q || S.q).q || null)) : null;
+        const sp = mvIns && ins.speed ? `${ins.speed.v.toFixed(2)} ${ins.speed.unit === '%' ? '%' : ins.speed.unit}` : '';
+        rows.push({ t: `補間:${mvIns ? { J: '関節', L: '直線', C: '円弧' }[ins.mode] || ins.mode : ''}　　　速度: ${sp}` }, { t: `［指令値］ツール: 00　　［現在値］ツール: 00` });
+        const cur = pls(S.q), cmd = cq ? pls(cq) : null;
+        ax.forEach((a, i) => rows.push({ t: `${i ? '   ' : 'R1 :'}${a} ${(cmd ? String(cmd[i]) : '*').padStart(10)}　　${i ? '   ' : 'R1 :'}${a} ${String(cur[i]).padStart(10)}` }));
+        break;
+      }
+      case 'pos': {
+        title = '現在値';
         rows.push({ t: `座標　 ${{ pulse: 'パルス', robot: 'ロボット', base: 'ベース' }[pend.posDisp]}　（［選択］で切替）`, vrow: 0 });
         if (pend.posDisp === 'pulse') pls(S.q).forEach((x, i) => rows.push({ t: `${ax[i]}　${String(x).padStart(10)}` }));
         else { const Pz = curPose(); [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].forEach((x, i) => rows.push({ t: `${robot.cart[i].padEnd(3)} ${x.toFixed(i < 3 ? 3 : 4).padStart(11)} ${i < 3 ? 'mm' : '°'}` })); rows.push({ t: `形態　 ${RS.configOf(S.q)}` }); }
@@ -8958,6 +8991,15 @@ JSON だけを返す（前後に文章を付けない）。形式：
         rows.push({ t: `制御電源時間　 ${hms((Date.now() - M.t0) / 1000)}` }, { t: `サーボ電源時間 ${hms(M.servo)}` }, { t: `再生時間　　　 ${hms(M.play)}` }, { t: `移動時間　　　 ${hms(M.move)}` });
         break;
       }
+      case 'header': {
+        title = 'ジョブヘッダ';
+        const p = prog(), steps = p.lines.filter(l => /^\s*(MOV[JLCS]|IMOV|SMOV)\b/i.test(l)).length;
+        const d = p.date || (p.meta && p.meta.date) || '';
+        rows.push({ t: `ジョブ名　　　 ${p.name}` }, { t: `コメント　　　 ${p.comment || ''}` }, { t: `日付　　　　　 ${d}` },
+          { t: `容量　　　　　 ${p.lines.join('\n').length + Object.keys(p.pos || {}).length * 40} BYTE` }, { t: `行数／ステップ ${p.lines.length + 2} 行／${steps} ステップ` },
+          { t: '編集禁止　　　 OFF' }, { t: '外部メモリ保存 未' }, { t: 'グループ設定　 R1' }, { t: 'ジョブ種類　　 ロボットジョブ' });
+        break;
+      }
       case 'stack': {
         title = 'ジョブスタック';
         const st = run && run.interp ? run.interp.stack : [];
@@ -8965,6 +9007,11 @@ JSON だけを返す（前後に文章を付けない）。形式：
         st.slice().reverse().forEach((f, i) => rows.push({ t: `${String(st.length - i).padStart(2)}　${f.prog.name}　${String(f.pc + 1).padStart(4, '0')} 行` }));
         break;
       }
+      case 'iomsg': title = 'I/Oメッセージ履歴'; rows.push({ t: '（履歴なし）' }); break;
+      case 'security':
+        title = 'セキュリティ';
+        rows.push({ t: 'モード　 編集モード' }, { t: '（シミュレーターは編集モード固定。運転モード・管理モードはありません）' });
+        break;
       case 'almhist':
         title = 'アラーム履歴';
         if (!(S.almHist || []).length) rows.push({ t: '（履歴なし）' });
@@ -8974,6 +9021,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
         const t = pend.varType;
         if (!t) return null;
         title = '変数　' + VAR_T[t];
+        if (['S', 'BP', 'EX', 'L'].includes(t)) { rows.push({ t: '（このジョブでは使っていません）' }); break; }
         const names = (master && master.varNames) || {};
         if (t === 'P') {
           const ks = Object.keys(vars.pos).filter(k => /^P\d{3}$/.test(k)).sort();
@@ -8990,6 +9038,35 @@ JSON だけを返す（前後に文章を付けない）。形式：
     }
     return { rows, selRow, title };
   }
+  /* 状態表示のアイコン（取扱説明書 1.2.4.4 の絵柄を簡単に描いたもの。16×16） */
+  const svg16 = (body, bg) => `<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x=".5" y=".5" width="15" height="15" rx="1.5" fill="${bg || '#fff'}" stroke="#55606e"/>${body}</svg>`;
+  const AXES = '<path d="M2.5 2v11.5H14" fill="none" stroke="#222" stroke-width="1"/><path d="M2.5 2l-1 1.5M2.5 2l1 1.5M14 13.5l-1.5-1M14 13.5l-1.5 1" stroke="#222" stroke-width=".8"/>';
+  const YICON = {
+    group: svg16('<text x="2" y="12" font-size="10" font-weight="700" fill="#1d4fa0" font-family="sans-serif">1</text><path d="M10 4v8M8 6l2-2 2 2M8 10l2 2 2-2" stroke="#1d4fa0" fill="none" stroke-width="1.2"/>'),
+    coord: {
+      joint: svg16(AXES + '<path d="M5 12V9l5-1-3-3 5-1" fill="none" stroke="#000" stroke-width="2.2" stroke-linejoin="round"/>'),
+      base: svg16(AXES + '<rect x="3.2" y="9" width="4" height="4" fill="#f5d000" stroke="#222" stroke-width=".6"/>'),
+      cyl: svg16(AXES + '<path d="M6 4v4a3 3 0 0 0 6 0V4" fill="none" stroke="#1aa6d8" stroke-width="2"/><path d="M12 4l-1.5 2h3z" fill="#1aa6d8"/>'),
+      tool: svg16(AXES + '<path d="M5 5l4 4 4-5M9 9l-2 3" fill="none" stroke="#000" stroke-width="1.6"/>'),
+      user: svg16(AXES + '<text x="6" y="10" font-size="8.5" font-weight="700" fill="#000" font-family="sans-serif">U</text>')
+    },
+    speed: ['I', 'L', 'M', 'H'].map((c, i) => svg16(`<path d="M2 14L14 2v12z" fill="none" stroke="#2f7d3a"/><path d="M${14 - 3 * (i + 1)} 14L14 ${14 - 3 * (i + 1)}V14z" fill="#28a03c"/><rect x="1.8" y="1.8" width="5.4" height="6.4" fill="#e8f0ff" stroke="#1d4fa0" stroke-width=".6"/><text x="2.6" y="7.5" font-size="6.5" font-weight="700" fill="#1d4fa0" font-family="sans-serif">${c}</text>`, '#f4f6f9')),
+    key: svg16('<circle cx="11" cy="7" r="3" fill="#f5d000" stroke="#7a5a00"/><circle cx="11" cy="7" r="1" fill="#fff"/><path d="M2 7h6v2.5H6.5V8.5H5v1.5H3.5V8.5H2z" fill="#f5d000" stroke="#7a5a00" stroke-width=".6"/><circle cx="12" cy="12.5" r="2" fill="#f5d000" stroke="#7a5a00" stroke-width=".6"/>', '#e9ecef'),
+    cycle: Object.fromEntries([['step', 'S'], ['once', 'C'], ['cont', 'A']].map(([k, c]) => [k, svg16(`<rect x="2" y="2" width="12" height="12" fill="#cfe6fb" stroke="#1d6fb8"/><path d="M3.5 7V3.5h3" fill="none" stroke="#1d6fb8" stroke-width="1.2"/><text x="6.2" y="13" font-size="8.5" font-weight="700" fill="#1d4fa0" font-family="sans-serif">${c}</text>`)])),
+    state: {
+      stop: svg16('<rect x="2" y="2" width="10" height="10" fill="#9aa3ad" stroke="#4a5560"/><path d="M10 9l4 3-3 2" fill="none" stroke="#1d6fb8" stroke-width="1.4"/>'),
+      hold: svg16('<rect x="2" y="2" width="4" height="11" fill="#5aa0e8" stroke="#1d4fa0"/><rect x="7.5" y="2" width="4" height="11" fill="#5aa0e8" stroke="#1d4fa0"/><path d="M11 10l3 2-3 2" fill="none" stroke="#1d6fb8" stroke-width="1.2"/>'),
+      estop: svg16('<circle cx="8" cy="8" r="6.5" fill="#f5d000" stroke="#7a5a00"/><circle cx="8" cy="8" r="4.3" fill="#e0201a"/><path d="M5.5 6.5h5L8 10.5z" fill="#900"/>'),
+      alarm: svg16('<circle cx="8" cy="8" r="6.5" fill="#2a8ad8"/><circle cx="8" cy="8" r="5" fill="#e83a2a"/><circle cx="6.5" cy="6.5" r="1.6" fill="#ffb0a0"/>'),
+      run: svg16('<path d="M2 8l12-6v12z" fill="#7ad8a0" stroke="#1d6fb8"/><path d="M10 10l4 2-3 2" fill="none" stroke="#1d6fb8" stroke-width="1.2"/>')
+    },
+    mode: {
+      teach: svg16('<path d="M5 15V7.5a1 1 0 0 1 2 0V4a1 1 0 0 1 2 0v4l2-.5a1 1 0 0 1 1.5 1V13l-1.5 2z" fill="#f5c800" stroke="#7a5a00" stroke-width=".7"/><text x="6.3" y="13.5" font-size="6" font-weight="700" fill="#7a3a00" font-family="sans-serif">T</text>', '#fffbe0'),
+      play: svg16('<path d="M3 5h8l-2-2M13 11H5l2 2" fill="none" stroke="#2a8ad8" stroke-width="1.4"/><text x="5.5" y="11" font-size="7" font-weight="700" fill="#2a8ad8" font-family="sans-serif">P</text>', '#eaf4ff'),
+      remote: svg16('<text x="3.5" y="12" font-size="9" font-weight="700" fill="#555" font-family="sans-serif">R</text>')
+    },
+    servo: on => svg16(`<text x="4" y="12" font-size="10" font-weight="700" fill="${on ? '#0a7a2a' : '#999'}" font-family="sans-serif">S</text>`, on ? '#c8f0d0' : '#fff')
+  };
   function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
   function pendJogSpec() {
     const Y = isY();
@@ -9075,13 +9152,16 @@ JSON だけを返す（前後に文章を付けない）。形式：
       if (!Y) rows.push({ t: `姿勢（CONFIG）: ${RS.configOf(S.q)}` });
     } else if (v === 'io') {
       const m = io();
-      title = Y ? '入出力　' + ({ in: '汎用入力', out: '汎用出力', xin: '外部入力', xout: '外部出力' }[pend.ioType] || '汎用入出力') : '入出力　ロボット／デジタル';
+      const IO_T = { in: '汎用入力', out: '汎用出力', xin: '外部入力', xout: '外部出力', sin: '専用入力', sout: '専用出力', rin: 'RIN', cprin: 'CPRIN', reg: 'レジスタ', aux: '補助リレー', ctl: '制御入力', pseudo: '疑似入力信号', nin: 'ネットワーク入力', nout: 'ネットワーク出力', ana: 'アナログ出力', svp: 'サーボ電源状態' };
+      title = Y ? '入出力　' + (IO_T[pend.ioType] || '汎用入出力') : '入出力　ロボット／デジタル';
       const lim = m.real ? 99 : 4, byK = {};
       const row = (k, n, v, nm) => rows.push({ t: `${m.fmt(k, n).padEnd(8)} ${v ? '●' : '○'} ${v ? '入 ' : '切'} ${nm || ''}`, ioRow: rows.length });
       const it = Y ? pend.ioType : null;
-      if (it === 'xin' || it === 'xout') rows.push({ t: '（外部入出力の割り当てはありません）' });
-      if (it !== 'in' && it !== 'xin' && it !== 'xout') for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n]); }
-      if (it !== 'out' && it !== 'xin' && it !== 'xout') for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
+      const other = it && it !== 'in' && it !== 'out';
+      if (it === 'svp') rows.push({ t: `R1　サーボ電源　 ${servoOn() ? '● オン' : '○ オフ'}` });
+      else if (other) rows.push({ t: '（シミュレーターでは割り当てていません。ライン側の信号は汎用入力・汎用出力です）' });
+      if (!other && it !== 'in') for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n]); }
+      if (!other && it !== 'out') for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
       selRow = clamp(pend.ioSel || 0, 0, rows.length - 1);
     } else if (v === 'inst') {
       title = '命令一覧（選んで［追加］→［エンター］）';
@@ -9121,27 +9201,28 @@ JSON だけを返す（前後に文章を付けない）。形式：
       const PULL = {
         job: [['act:master-call', 'マスタ呼出'], ['sub:jobsel', 'ジョブ選択'], ['act:job-new', 'ジョブ新規作成'], ['act:job-dup', 'ジョブ複写'], ['act:job-ren', 'ジョブ名変更'], ['act:job-del', 'ジョブ削除']],
         edit: [['act:undo', '元に戻す'], ['act:na', '検索'], ['act:na', '行複写'], ['act:na', '行貼付']],
-        disp: [['act:ctime', 'サイクル時間' + (pend.ctime ? '（表示中）' : '')], ['sub:stack', 'ジョブスタック']],
+        disp: [['sub:header', 'ジョブヘッダ'], ['sub:prog', 'ジョブ内容'], ['act:ctime', 'サイクル時間' + (pend.ctime ? '（表示中）' : '')], ['sub:stack', 'ジョブスタック']],
         util: [['act:na', '速度オーバーライド'], ['act:na', '特殊運転設定']],
         data: [['act:na', 'データクリア']]
       };
       const pull = pend.pull && PULL[pend.pull] ? `<div class="ypull" style="left:${66 + tops.findIndex(t => t[0] === pend.pull) * 58}px">${PULL[pend.pull].map(([k, n]) => k.startsWith('sub:') ? `<button class="ysub-b" data-sub="${k.slice(4)}">${n}</button>` : `<button class="ysub-b" data-act="${k.slice(4)}">${n}</button>`).join('')}</div>` : '';
       // 状態表示（実機の並び：制御グループ・座標・手動速度・セキュリティ・動作サイクル・状態・モード）
-      const icon = (txt, title, cls) => `<span class="ysi${cls ? ' ' + cls : ''}" title="${esc(title)}">${txt}</span>`;
-      const coordI = { joint: '関', base: '直', cyl: '円', tool: 'ツ', user: 'ユ' }[pend.coord] || '直';
-      const spdI = pend.fast ? '<i class="bars b3"></i>' : `<i class="bars b${pend.sp}"></i>`;
-      const stI = S.estop ? '非' : S.alarm ? '!' : run ? (run.paused ? '‖' : '▶') : '■';
-      const modeI = { teach: '教', play: '再', remote: 'R' }[pend.mode];
-      const status = icon('1<small>⇅</small>', '制御グループ R1') + icon(coordI, '座標：' + cn) + icon(spdI, '手動速度：' + (pend.fast ? '高速' : YSP[pend.sp][0])) +
-        icon('🔑', 'セキュリティ：運転モード') + icon({ step: '⇥', once: '1', cont: '∞' }[pend.cyc] || '∞', '動作サイクル：' + ({ step: 'ステップ', once: '1サイクル', cont: '連続' }[pend.cyc] || '連続')) +
+      const icon = (txt, title, cls) => `<span class="ysi svg${cls ? ' ' + cls : ''}" title="${esc(title)}">${txt}</span>`;
+      const coordI = YICON.coord[pend.coord] || YICON.coord.base;
+      const spdI = YICON.speed[pend.fast ? 3 : pend.sp];
+      const stI = YICON.state[S.estop ? 'estop' : S.alarm ? 'alarm' : run ? (run.paused ? 'hold' : 'run') : 'stop'];
+      const modeI = YICON.mode[pend.mode] || YICON.mode.play;
+      const status = icon(YICON.group, '制御グループ R1') + icon(coordI, '座標：' + cn) + icon(spdI, '手動速度：' + (pend.fast ? '高速' : YSP[pend.sp][0])) +
+        icon(YICON.key, 'セキュリティ：編集モード') + icon(YICON.cycle[pend.cyc] || YICON.cycle.cont, '動作サイクル：' + ({ step: 'ステップ', once: '1サイクル', cont: '連続' }[pend.cyc] || '連続')) +
         icon(stI, '状態：' + (S.estop ? '非常停止中' : S.alarm ? 'アラーム中' : run ? (run.paused ? 'ホールド中' : '再生中') : '停止中'), S.estop || S.alarm ? 'al' : run && !run.paused ? 'rn' : '') +
         icon(modeI, 'モード：' + { teach: 'ティーチ', play: 'プレイ', remote: 'リモート' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl') +
-        icon(servoOn() ? '<b>S</b>' : 's', servoOn() ? 'サーボオン' : (pend.ready ? 'サーボオンレディ' : 'サーボオフ'), servoOn() ? 'sv' : '');
+        icon(YICON.servo(servoOn()), servoOn() ? 'サーボオン' : (pend.ready ? 'サーボオンレディ' : 'サーボオフ'), servoOn() ? 'sv' : '');
       // 左のメインメニュー（実機：ジョブ・汎用・変数・入出力・ロボット・システム情報）
       const grp = groupOf(v) || (v === 'prog' || v === 'inst' ? 'job' : v === 'io' ? 'io' : v === 'var' ? 'var' : '');
-      const mm = Object.entries(YMENU).map(([k, [n, ic]]) => `<button class="ymenu-b${pend.sub === k || (!pend.sub && grp === k) ? ' on' : ''}" data-mm="${k}">${n}${ic}</button>`).join('') +
-        '<div class="ymarrow"><span>◀</span><span>▶</span></div>';
-      const sub = pend.sub && pend.menu ? `<div class="ysub${pend.sub === 'robot' ? ' two' : ''}">${YMENU[pend.sub][2].map(([id, n]) => `<button class="ysub-b" data-sub="${id}">${n}</button>`).join('')}</div>` : '';
+      const mm = MM_PAGES[pend.mmPage || 0].map(k => { const [n, ic] = YMENU_ALL[k]; return `<button class="ymenu-b${pend.sub === k || (!pend.sub && grp === k) ? ' on' : ''}" data-mm="${k}">${n}${ic}</button>`; }).join('') +
+        `<div class="ymarrow"><button data-act="mm-prev"${pend.mmPage ? '' : ' disabled'}>◀</button><button data-act="mm-next"${pend.mmPage ? ' disabled' : ''}>▶</button></div>`;
+      const subItems = pend.sub ? YMENU[pend.sub][2] : [];
+      const sub = pend.sub && pend.menu ? `<div class="ysub${subItems.length > 7 ? ' two' : ''}">${subItems.map(([id, n]) => `<button class="ysub-b" data-sub="${id}">${n}</button>`).join('')}</div>` : '';
       const fkb = { master: [['master-call', 'マスタ呼出']], jobsel: [['select', pend.pick === 'master' ? '登録' : '開く'], ['view-prog', 'キャンセル']], shocknow: [['shock-clear', 'クリア']], home: [['na', ''], ['na', '']], cycle: [['select', '決定']] }[v] || [];
       const yfk = [0, 1, 2, 3].map(i => fkb[i] && fkb[i][1] ? `<button class="yfkb" data-act="${fkb[i][0]}">${fkb[i][1]}</button>` : '<span></span>').join('');
       // 画面の見出し（実機の「ジョブ内容」画面：プレイバック中は「プレイバック」）
@@ -9483,7 +9564,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
           P.pick = 'master'; P.view = 'jobsel'; P.jsel = Math.max(0, Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja')).indexOf(masterJob())); break;
         }
         if (isY() && P.view === 'cycle') {
-          const k = ['step', 'once', 'cont'][clamp(P.vsel, 0, 2)]; P.cyc = k; P.step = k === 'step';
+          const k = ['step', 'once', 'cont'][clamp(P.vsel, 0, 2)]; P.cyc = k;
           loopEl.checked = k === 'cont'; loopEl.dispatchEvent(new Event('change'));
           P.msg = `サイクル：${{ step: 'ステップ', once: '1サイクル', cont: '連続' }[k]}`; break;
         }
@@ -9514,7 +9595,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
         break;
       }
       case 'mode':
-        stopAll(); P.mode = { teach: 'play', play: 'remote', remote: 'teach' }[P.mode];
+        stopAll(); P.mode = { teach: 'play', play: 'remote', remote: 'teach' }[P.mode]; P.sub = null; P.pull = null;
+        if (P.mode !== 'remote') P.cyc = 'once';   // モード切替時のサイクル＝1サイクル（取扱説明書 4.1.2.2 の初期設定）
         P.enable = false; P.msg = P.mode === 'remote' ? 'リモート：外部からの起動待ち（シミュレーターでは使いません）' : ''; break;
       case 'ready':
         if (S.estop) { P.msg = '非常停止を解除してください'; break; }
@@ -9539,6 +9621,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
       case 'coord': { const cs = isY() ? COORDS_Y : COORDS_F; P.coord = cs[(cs.indexOf(P.coord) + 1) % cs.length]; store.set('rs4-pcoord', P.coord);
         if (P.coord === 'user' && !Object.keys(uframes).length) P.msg = 'ユーザ座標が登録されていないため、ベース座標と同じ向きで動きます'; break; }   // 切り替えた座標は保持（勝手に戻らない）
+      case 'mm-prev': P.mmPage = 0; P.sub = null; break;
+      case 'mm-next': P.mmPage = 1; P.sub = null; break;
       case 'job-new': P.pull = null; $('#progNew').click(); break;
       case 'job-dup': P.pull = null; $('#progDup').click(); break;
       case 'job-ren': P.pull = null; $('#progRen').click(); break;
@@ -9613,6 +9697,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
         if (run && run.paused) { run.paused = false; refreshState(); P.msg = ''; break; }
         if (run) break;
         P.ct = { start: moveStepOf(prog())[Math.max(0, sel)] || 0, play: 0, move: 0 };
+        if (isY()) { loopEl.checked = P.cyc === 'cont'; loopEl.dispatchEvent(new Event('change')); }   // 連続＝繰り返す、1サイクル＝1 回
         startRun(Math.max(0, sel), isY() && P.cyc === 'step', isY() ? null : { spdFac: FOV[P.ovrI] / 100, tcpCap: 0 }); P.msg = ''; break;
       }
       case 'hold': if (run) { run.paused = true; refreshState(); } else { mv = null; } P.msg = 'ホールド中'; break;
@@ -9631,7 +9716,9 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (sb) {
       const [id, arg] = sb.dataset.sub.split(':');
       pend.sub = null; pend.pull = null;
-      if (id === 'stack') { pend.view = 'stack'; pend.vsel = 0; renderPend(); return; }
+      if (id === 'stack' || id === 'header') { pend.view = id; pend.vsel = 0; renderPend(); return; }
+      if (id === 'act') { pendAct(arg); return; }
+      if (id === 'master' && ['prog', 'jobsel'].includes(pend.view)) { pendAct('master-call'); return; }
       if (id === 'na') { pend.msg = 'この画面はシミュレーターにはありません'; renderPend(); return; }
       pend.view = id; pend.vsel = 0; pend.pick = null;
       if (id === 'var') pend.varType = arg; if (id === 'io') { pend.ioType = arg; pend.ioSel = 0; }
@@ -9653,6 +9740,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (f) { fl.appendChild(pendEl); fl.hidden = false; }
     else { $('#t-pend').appendChild(pendEl); fl.hidden = true; }
     $('#pendAway').hidden = !f;
+    document.body.classList.toggle('pendfull', f);   // 3D 画面を全体に（右のパネルは隠す。戻すときは「パネルに戻す」）
+    setTimeout(() => { resize(); fitPend(); }, 30);
     renderPend();
   }
   {
@@ -9704,7 +9793,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (cableDirty) { cableDirty = false; model.update(); }
     if (CELL.update) CELL.update(dt, { alarm: !!S.alarm, running: !!run });
     look.render(now);
-    requestAnimationFrame(frame);
+    if (isY() && master && Array.isArray(master.home) && robot.pulse) { S.q = getHome(''); applyPose(); }
+  requestAnimationFrame(frame);
   }
 
   function renderAll() {
