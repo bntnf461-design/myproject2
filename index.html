@@ -2166,9 +2166,9 @@
     if (last) { c.model = get("r" + last + "_model"); c.lotSoban = get("r" + last + "_lotSoban"); c.pallet = get("r" + last + "_pallet"); }
     // 毎日同じことが多い欄は、前日の値を初期値にする（年月度マークは月が同じときだけ）
     c.copy = {};
-    var sameMonth = pd.slice(0, 7) === date.slice(0, 7);
+    // 年月度マークは日付（11月17日など）で毎日入れるので、引き継がない
     ["worker_itanose", "worker_kensa", "worker_stock", "m1_checker", "m1_checker2", "kenshidai",
-     "core1", "core2", "core3", "core4", "core5", "core6", "core7"].concat(sameMonth ? ["m1_mark", "m1_mark2"] : [])
+     "core1", "core2", "core3", "core4", "core5", "core6", "core7"]
       .forEach(function (n) { if (get(n)) c.copy[n] = get(n); });
     c.blocks = [1, 2].map(function (n) {
       var p = "sb" + n + "_", list = parseJSON(get(p + "lots"), []);

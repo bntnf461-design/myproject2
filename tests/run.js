@@ -623,15 +623,15 @@ test("作業枚数を手で入れたときも、超えた不良は前の素板�
   eq(await v(p, "r1_kizu") + "," + await v(p, "r2_kizu") + "," + await v(p, "r3_kizu"), "1,,1", "前の素板（1行目・A）へ移す");
 });
 
-test("新しい日は、作業者・確認者・検視台などを前日の値から入れる（年月度マークは同じ月だけ）", async ctx => {
+test("新しい日は、作業者・確認者・検視台などを前日の値から入れる（年月度マークは引き継がない）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await makePrevDay(p);
   for (const [n, x] of [["worker_kensa", "鈴木"], ["worker_stock", "アルクナ"], ["m1_mark", "2026.10"], ["m1_checker", "佐々木"], ["kenshidai", "78.9"]]) await fill(p, n, x);
   await p.waitForTimeout(700);
   await setDate(p, "2026-10-21");
-  eq([await v(p, "worker_kensa"), await v(p, "worker_stock"), await v(p, "m1_mark"), await v(p, "m1_checker"), await v(p, "kenshidai")].join(","), "鈴木,アルクナ,2026.10,佐々木,78.9", "前日の値");
+  eq([await v(p, "worker_kensa"), await v(p, "worker_stock"), await v(p, "m1_mark"), await v(p, "m1_checker"), await v(p, "kenshidai")].join(","), "鈴木,アルクナ,,佐々木,78.9", "前日の値（年月度マークは入れない）");
   await setDate(p, "2026-11-02");
-  eq(await v(p, "m1_mark") + "|" + await v(p, "m1_checker"), "|佐々木", "月が変わったら年月度マークは入れない");
+  eq(await v(p, "m1_mark") + "|" + await v(p, "m1_checker"), "|佐々木", "月が変わっても同じ");
 });
 
 test("投入時間を、稼働の時間から休憩を引いて自動で入れる／板乗せが空なら斜線", async ctx => {
