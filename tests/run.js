@@ -341,7 +341,7 @@ test("完成の前に、計算の食い違い（当残・前日の端数・カ�
   const t = await p.textContent("#doneList");
   ok(t.includes("当残：入力は 5 枚、計算では"), "当残：" + t);
   ok(t.includes("前日の良品端数：入力は 10 枚、前日の日報では 13 枚"), "端数");
-  ok(t.includes("不良数（キズ）：不良数カウンターでは 3 個、日報では 2 個"), "カウンター");
+  ok(t.includes("不良数（キズ）：現場ボードでは 3 個、日報では 2 個"), "カウンター");
 });
 
 test("素板の数が合わないときは、手で合わせて完成する前に、梱包の実数を数えたか確かめる", async ctx => {
@@ -378,9 +378,9 @@ test("不良数をカウンターの数から変えたら、梱包した良品�
   eq(await v(p, "packWarn"), "", "カウンターと同じなら知らせない");
   await p.evaluate(() => { const e = document.forms.nippo.elements.r4_kizu; e.value = 5; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); });
   await p.waitForTimeout(300);
-  ok((await p.textContent("#msg")).includes("不良数が、不良数カウンターで数えた数と違います"), "不良数を変えたら知らせる：" + await p.textContent("#msg"));
+  ok((await p.textContent("#msg")).includes("不良数が、現場ボードで数えた数と違います"), "不良数を変えたら知らせる：" + await p.textContent("#msg"));
   await p.click("#btnDone"); await p.waitForTimeout(200);
-  ok((await p.textContent("#donePack")).includes("キズ カウンター 3 → 日報 5"), "違いを出す：" + await p.textContent("#donePack"));
+  ok((await p.textContent("#donePack")).includes("キズ 現場ボード 3 → 日報 5"), "違いを出す：" + await p.textContent("#donePack"));
   ok(await p.evaluate(() => document.getElementById("doneOnly").disabled), "数えたと確かめるまで完成できない");
 });
 
@@ -875,7 +875,7 @@ test("U7：カウンターが開いていないときは、テンキーの数字
   await p.click('[name="r1_kizu"]');
   await p.keyboard.press("Numpad5");
   eq(await v(p, "r1_kizu"), "", "日報に入らない");
-  ok(/カウンターの画面が開いていない/.test(await p.textContent("#msg")), "知らせが出る");
+  ok(/現場ボードの画面が開いていない/.test(await p.textContent("#msg")), "知らせが出る");
 });
 
 test("U8：Enter で次の欄へ／作業日の Enter で型式へ／F2 でいまの行へ", async ctx => {
@@ -888,9 +888,9 @@ test("U8：Enter で次の欄へ／作業日の Enter で型式へ／F2 でい�
   eq(await p.evaluate(() => document.activeElement.name), "r1_model", "F2 でいまの行");
 });
 
-// 本物の不良数カウンターとの連携。COUNTER_HTML=…/defect-counter.html を指定したときだけ動かす
-const COUNTER = process.env.COUNTER_HTML;
-if (COUNTER) test("カウンター連携：型式の追加・作業開始・不良の取込・休憩・型式の切り替え（作業数の入力）", async ctx => {
+// 本物の現場ボード（genba-board.html）との連携。OLD_COUNTER_HTML=…/defect-counter.html で、前の不良数カウンター（キー操作で切り替える）も確かめる
+const BOARDS = [["現場ボード", path.join(__dirname, "..", "genba-board.html"), true]].concat(process.env.OLD_COUNTER_HTML ? [["前の不良数カウンター", process.env.OLD_COUNTER_HTML, false]] : []);
+BOARDS.forEach(([label, COUNTER, direct]) => test(label + "連携：型式の追加・作業開始・不良の取込・休憩・型式の切り替え（作業数の入力）", async ctx => {
   const c = await ctx.newPage(); c.errors = []; c.on("pageerror", e => c.errors.push(e.message));
   await c.goto("file://" + path.resolve(COUNTER)); await c.waitForTimeout(800);
   const n = await open(ctx);
@@ -917,8 +917,15 @@ if (COUNTER) test("カウンター連携：型式の追加・作業開始・不�
   st = await cst();
   eq(st.lastJob && st.lastJob.prod, 102, "前の作業の作業数");
   eq(st.job.running && st.job.shift, "TEST-B", "カウンターが新しい型式で作業開始");
+  const reply = await n.evaluate(() => JSON.parse(localStorage.getItem("defectCounterCommandReply") || "null"));
+  eq(!!(reply && reply.ok), direct, direct ? "日報からの指示で直接切り替える" : "キー操作で切り替える");
+  ok((await v(n, "r1_kizu")) === "2", "不良はそのまま");
+  if (direct) {
+    ok(!(await c.isVisible("#dayBtn")), "現場ボードに日報のボタンを出さない");
+    eq(await c.title(), "Nライン 現場ボード", "名前");
+  }
   eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
-});
+}));
 
 // ---------- 実行 ----------
 (async () => {

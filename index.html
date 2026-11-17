@@ -421,7 +421,7 @@
 <div class="toolbar">
   <button type="button" id="btnSave">保存</button>
   <input id="qrBox" placeholder="素板QR（ここでも読める）" autocomplete="off">
-  <label class="fwd" id="fwdLabel" title="テンキー（数字・＋−＊／．・テンキーのEnter）を、同じパソコンで開いている不良数カウンターへ送ります"><input type="checkbox" id="chkFwd"> <span id="fwdText">テンキー→カウンター</span></label>
+  <label class="fwd" id="fwdLabel" title="テンキー（数字・＋−＊／．・テンキーのEnter）を、同じパソコンで開いている現場ボードへ送ります"><input type="checkbox" id="chkFwd"> <span id="fwdText">テンキー→現場ボード</span></label>
   <button type="button" id="btnSettings">設定・データ</button>
   <span class="grow"></span>
   <button type="button" id="btnEnd" class="end">終業</button>
@@ -481,7 +481,7 @@
 
 <section id="work" class="noprint" aria-label="作業画面">
   <div class="wgrid">
-    <div class="wcard full"><h3>不良数カウンター<span id="wFwd"></span></h3><div id="wCnt"></div></div>
+    <div class="wcard full"><h3>現場ボード<span id="wFwd"></span></h3><div id="wCnt"></div></div>
     <div class="wcard"><h3>今日の良品の合計<span>型式ごと・作った順</span></h3>
       <div class="wgt" data-k="1"><input data-bind="gt1_model" list="modelList" class="m" placeholder="① 型式を選ぶ"><input data-bind="gt1_good" type="number" min="0" class="n" placeholder="良品"></div>
       <div class="wgt" data-k="2"><input data-bind="gt2_model" list="modelList" class="m" placeholder="② 型式を選ぶ"><input data-bind="gt2_good" type="number" min="0" class="n" placeholder="良品"></div>
@@ -716,11 +716,11 @@
       <label>稼働状況の目盛り <input id="sFrom" type="number" min="0" max="23" style="width:50px;border:1px solid #bbb">時 〜
         <input id="sTo" type="number" min="1" max="24" style="width:50px;border:1px solid #bbb">時</label>
     </div>
-    <h3>不良数カウンター</h3>
+    <h3>現場ボード</h3>
     <div class="row">
-      <button type="button" id="btnCounter" title="不良数カウンターのデータから、不良数と稼働状況を取り込みます">カウンターから取込</button>
+      <button type="button" id="btnCounter" title="現場ボードのデータから、不良数と稼働状況を取り込みます">現場ボードから取込</button>
       <button type="button" id="btnCounterFile" title="取り込むファイルを選び直します">取込ファイルを選び直す</button>
-      <span class="note">同じパソコンでカウンターを開いているときは、自動で取り込むので押さなくてかまいません。</span>
+      <span class="note">同じパソコンで現場ボードを開いているときは、自動で取り込むので押さなくてかまいません。</span>
     </div>
     <h3>共有フォルダへの保存</h3>
     <div class="row">
@@ -774,10 +774,10 @@
   );
   var SUM_KEYS = ["qty", "good", "procNg", "sobanNg"].concat(PROC, SOBAN);
 
-  // 不良数カウンターの不良の種類 → 日報の列（同じ列に入るものは合算）
+  // 現場ボードの不良の種類 → 日報の列（同じ列に入るものは合算）
   var DEF_MAP = { "ワレ": "ware", "割れ": "ware", "キズ": "kizu", "ハマ": "ori_hama", "マーク": "mark",
                   "調整不良": "proc_other", "その他": "proc_other", "泡": "awa", "汚れ": "yogore", "カレット": "cullet" };
-  // 不良数カウンターの停止理由 → 稼働状況のコード
+  // 現場ボードの停止理由 → 稼働状況のコード
   var REASON_CODE = { "段取り": "P", "故障": "T", "材料待ち": "W", "手待ち": "W", "その他": "O" };
   var CODES = { A: "J/C", P: "段取り", T: "故障", W: "手待ち", E: "除外", O: "その他" };
 
@@ -1106,7 +1106,7 @@
     });
   }
   // 最後のロット（いちばん下の行）で、良品＋不良が作業枚数（手で入れた使用数）を超えたら、
-  // 超えた分の不良を、カウンターで先に数えたものから前のロット（1つ上の行）へ移す
+  // 超えた分の不良を、現場ボードで先に数えたものから前のロット（1つ上の行）へ移す
   var REBAL_LABEL = "不良を前のロットへ移す";
   function rebalSig(r) {
     var p = "r" + r + "_";
@@ -1199,7 +1199,7 @@
     markNeed();
     checkPack();
     drawStamps();
-    if (chkFwd) drawCntBar();   // 起動の途中（カウンター連携の準備前）は描かない
+    if (chkFwd) drawCntBar();   // 起動の途中（現場ボード連携の準備前）は描かない
     if (chkFwd) renderWork();
   }
 
@@ -1320,7 +1320,7 @@
     var imp = parseJSON(val("cntImported"), {});
     Object.keys(imp).forEach(function (col) {
       var mine = num("t_" + col);
-      if (imp[col] !== mine) out.push(["r" + (lastActiveRow() || 1) + "_" + col, "不良数（" + (DEF_LBL[col] || col) + "）：不良数カウンターでは " + imp[col] + " 個、日報では " + mine + " 個"]);
+      if (imp[col] !== mine) out.push(["r" + (lastActiveRow() || 1) + "_" + col, "不良数（" + (DEF_LBL[col] || col) + "）：現場ボードでは " + imp[col] + " 個、日報では " + mine + " 個"]);
     });
     return out;
   }
@@ -1333,14 +1333,14 @@
     });
   }
   var PACK_TEXT = "素板の枚数（前残＋使った素板−当残）と、良品＋不良の数が合いません。不良数を変えて合わせる前に、梱包した良品の実数（パレットの中の枚数）を数えて確かめてください（良品の数のほうが違っていることがあります）";
-  // 不良数を手で変えて合わせることが多いので、カウンターで数えた不良数と日報の不良数の違いも見る
+  // 不良数を手で変えて合わせることが多いので、現場ボードで数えた不良数と日報の不良数の違いも見る
   function defectDiffs() {
     var imp = parseJSON(val("cntImported"), {});
     if (!Object.keys(imp).length) return [];
     return PROC.concat(SOBAN).filter(function (k) { return (imp[k] || 0) !== num("t_" + k); })
-      .map(function (k) { return (DEF_LBL[k] || k) + " カウンター " + (imp[k] || 0) + " → 日報 " + num("t_" + k); });
+      .map(function (k) { return (DEF_LBL[k] || k) + " 現場ボード " + (imp[k] || 0) + " → 日報 " + num("t_" + k); });
   }
-  var DEFECT_TEXT = "不良数が、不良数カウンターで数えた数と違います。数を合わせるために不良数を変えた場合は、その前に梱包した良品の実数（パレットの中の枚数）を数えて確かめてください";
+  var DEFECT_TEXT = "不良数が、現場ボードで数えた数と違います。数を合わせるために不良数を変えた場合は、その前に梱包した良品の実数（パレットの中の枚数）を数えて確かめてください";
   function packNeeded() { return (packIssues().length > 0 || defectDiffs().length > 0 || !!val("packWarn")) && !val("packCounted"); }
   function checkPack() {
     if (readOnly) return;
@@ -1375,7 +1375,7 @@
     };
     sec("まだ入っていない欄", iss.miss);
     sec("値がおかしいところ", iss.odd, "bad");
-    sec("計算が合わないところ（素板・端数・カウンター）", iss.cons, "bad");
+    sec("計算が合わないところ（素板・端数・現場ボード）", iss.cons, "bad");
     if (!iss.miss.length && !iss.odd.length && !iss.cons.length) ul.appendChild(el("li", { "class": "okline" }, "✅ 入れ忘れ・計算の食い違いは見つかりませんでした"));
   }
 
@@ -1757,7 +1757,7 @@
           f("r" + prevRow + "_" + e[1]).value = num("r" + prevRow + "_" + e[1]) + 1;
           e[2] = prevRow; moved++;
         });
-        // カウンターの記録がない（手で入れた）不良は、列の順に移す
+        // 現場ボードの記録がない（手で入れた）不良は、列の順に移す
         PROC.concat(SOBAN).forEach(function (k) {
           while (moved < excess && num("r" + last + "_" + k) > 0) {
             f("r" + last + "_" + k).value = num("r" + last + "_" + k) - 1 || "";
@@ -1781,7 +1781,7 @@
   }
   ["gt1_good", "gt2_good", "gt3_good", "gt4_good", "gt1_model", "gt2_model", "gt3_model", "gt4_model", "sb1_to", "sb2_to"].forEach(function (n) {
     f(n).addEventListener("change", function () {
-      // 型式の欄に新しい型式を入れたら、作業中のカウンターもその型式に切り替える
+      // 型式の欄に新しい型式を入れたら、作業中の現場ボードもその型式に切り替える
       if (/_model$/.test(n) && f(n).value.trim() && f(n).value.trim() === gtCurrentModel() && modelOf(f(n).value.trim()) && isToday() && !readOnly && !locked) {
         var cs = cntState(), tgt = f(n).value.trim();
         if (cs && counterAlive() && cs.job && cs.job.running && cs.job.shift !== tgt) setTimeout(function () { switchCounter(tgt); }, 0);
@@ -1908,21 +1908,21 @@
     for (var k = 2; k <= 4; k++) work.querySelector('.wgt[data-k="' + k + '"]').style.display = val("gt" + k + "_model") || val("gt" + (k - 1) + "_model") ? "" : "none";
     var gi = document.getElementById("gtInfo"), wi = document.getElementById("wGtInfo");
     wi.textContent = gi.textContent; wi.className = "whint" + (/warn/.test(gi.className) ? " warn" : "");
-    // カウンター
+    // 現場ボード
     var st = cntState() || {}, alive = counterAlive(), cls = "", txt = "待機中";
     if (st.brk && st.brk.running) { cls = "brk"; txt = "休憩中"; }
     else if (st.downtime && st.downtime.running) { cls = "stop"; txt = "停止中"; }
     else if (st.job && st.job.running) { cls = "run"; txt = "作業中　" + (st.job.shift || ""); }
     var counts = (st.types || []).map(function (t) { var n2 = (st.counts || {})[t.id]; return n2 ? esc(t.name) + " " + n2 : ""; }).filter(Boolean);
     var totNg = (st.types || []).reduce(function (s2, t) { return s2 + ((st.counts || {})[t.id] || 0); }, 0);
-    setHtml("wCnt", !counterLocal() && !alive ? '<span class="whint" style="color:#55606d">このパソコンでカウンターを使っていません</span>' :
+    setHtml("wCnt", !counterLocal() && !alive ? '<span class="whint" style="color:#55606d">このパソコンで現場ボードを使っていません</span>' :
       '<div class="wcnt"><span class="pill ' + cls + '">' + esc(txt) + "</span>" +
       (val("kadoS") ? "<span>開始 " + esc(val("kadoS")) + (val("kadoE") ? "〜" + esc(val("kadoE")) : "") + "</span>" : "") +
       "<span>" + counts.join("　") + "</span>" +
-      (alive ? cntActionHtml(st, alive) : '<span class="warnx">⚠ カウンターの画面が開いていません</span>') +
+      (alive ? cntActionHtml(st, alive) : '<span class="warnx">⚠ 現場ボードの画面が開いていません</span>') +
       '<span class="tot">不良 合計 <b>' + totNg + "</b></span></div>" +
       '<div class="whint" style="color:#55606d">' + esc(document.getElementById("kadoSum").textContent || "") + "</div>");
-    document.getElementById("wFwd").textContent = chkFwd.checked ? "テンキー → カウンター ✓" : "⚠ テンキーは日報に入ります";
+    document.getElementById("wFwd").textContent = chkFwd.checked ? "テンキー → 現場ボード ✓" : "⚠ テンキーは日報に入ります";
     // 素板
     var lots = "";
     [1, 2].forEach(function (n) {
@@ -1994,7 +1994,7 @@
       if (x.a == null) delete autoVals[n]; else autoVals[n] = x.a;
     });
   }
-  // カウンターから入れた不良の記録（どの行に入れたか）を、行の出し入れに合わせる
+  // 現場ボードから入れた不良の記録（どの行に入れたか）を、行の出し入れに合わせる
   function shiftLog(fn) {
     var log = parseJSON(val("cntLog"), []);
     if (!log.length) return;
@@ -2090,14 +2090,14 @@
       var opts = Object.keys(CODES).map(function (k) { return '<option value="' + k + '"' + (k === ev.c ? " selected" : "") + '>' + k + " " + CODES[k] + "</option>"; }).join("");
       var mins = evMin(ev);
       var src = ev.src !== "counter" ? "手入力"
-        : !ev.edited ? "カウンター"
-        : "カウンターから修正（元 " + esc(ev.os || "") + "〜" + esc(ev.oe || "") + (evMin({ s: ev.os, e: ev.oe }) != null ? "・" + evMin({ s: ev.os, e: ev.oe }) + "分" : "") + "）";
+        : !ev.edited ? "現場ボード"
+        : "現場ボードから修正（元 " + esc(ev.os || "") + "〜" + esc(ev.oe || "") + (evMin({ s: ev.os, e: ev.oe }) != null ? "・" + evMin({ s: ev.os, e: ev.oe }) + "分" : "") + "）";
       tr.innerHTML = '<td><input type="time" data-i="' + i + '" data-k="s" value="' + esc(ev.s || "") + '"></td><td>〜</td>' +
         '<td><input type="time" data-i="' + i + '" data-k="e" value="' + esc(ev.e || "") + '"></td>' +
         '<td><input type="number" min="0" step="1" data-i="' + i + '" data-k="min" value="' + (mins == null ? "" : mins) + '" style="width:60px;text-align:right" title="分で直すと、終了の時刻が変わります">分</td>' +
         '<td><select data-i="' + i + '" data-k="c">' + opts + '</select></td>' +
         '<td style="color:' + (ev.edited ? "#b35c00" : "#888") + '">' + src + '</td>' +
-        '<td>' + (ev.edited ? '<button type="button" data-revert="' + i + '">カウンターの値に戻す</button> ' : "") +
+        '<td>' + (ev.edited ? '<button type="button" data-revert="' + i + '">現場ボードの値に戻す</button> ' : "") +
         '<button type="button" data-del="' + i + '">削除</button></td>';
       t.appendChild(tr);
     });
@@ -2105,7 +2105,7 @@
   document.getElementById("kadoEv").addEventListener("change", function (e) {
     var i = e.target.getAttribute("data-i"); if (i == null) return;
     var ev = visibleEvents()[i], k = e.target.getAttribute("data-k");
-    // カウンターの記録を初めて直すときは、元の時刻を残しておく（何を直したか後でわかるように）
+    // 現場ボードの記録を初めて直すときは、元の時刻を残しておく（何を直したか後でわかるように）
     if (ev.src === "counter" && !ev.edited) { ev.os = ev.s; ev.oe = ev.e; }
     if (k === "min") {
       // 分で直したときは、開始はそのままで終了を動かす（例：60分 → 30分）
@@ -2123,7 +2123,7 @@
       setEvents(events()); drawEvList(); changed(); return;
     }
     var i = e.target.getAttribute("data-del"); if (i == null) return;
-    // カウンターから取り込んだものは「消した」印を残し、次の取込で戻らないようにする
+    // 現場ボードから取り込んだものは「消した」印を残し、次の取込で戻らないようにする
     var ev = visibleEvents()[i];
     if (ev.src === "counter") ev.del = true;
     setEvents(events().filter(function (x) { return x !== ev || ev.del; })); drawEvList(); changed();
@@ -2310,7 +2310,7 @@
     if (b) setTimeout(function () { b.blur(); }, 0);
   });
 
-  // ---------- 不良数カウンターの取り込み ----------
+  // ---------- 現場ボードの取り込み ----------
   var idb = null;
   function idbOpen() {
     if (idb) return idb;
@@ -2328,7 +2328,7 @@
 
   function pickCounterFile() {
     if (!window.showOpenFilePicker) { document.getElementById("counterFallback").click(); return Promise.resolve(null); }
-    return window.showOpenFilePicker({ types: [{ description: "不良数カウンターのデータ", accept: { "application/json": [".json"] } }] })
+    return window.showOpenFilePicker({ types: [{ description: "現場ボードのデータ", accept: { "application/json": [".json"] } }] })
       .then(function (hs) { idbSet("counterFile", hs[0]); return hs[0]; })
       .catch(function () { return null; });
   }
@@ -2342,7 +2342,7 @@
     }).then(function (h) {
       if (!h) return;
       return h.getFile().then(function (file) { return file.text(); }).then(function (t) { importCounter(t, h.name); })
-        .catch(function () { msg("カウンターのファイルが読めません。「設定・データ」の「取込ファイルを選び直す」で選び直してください", "warn"); });
+        .catch(function () { msg("現場ボードのファイルが読めません。「設定・データ」の「取込ファイルを選び直す」で選び直してください", "warn"); });
     });
   }
   var fb = el("input", { type: "file", accept: ".json,application/json", id: "counterFallback", hidden: "" });
@@ -2352,7 +2352,7 @@
   function importCounter(text, fname, quiet) {
     var d = parseJSON(text, null);
     var h = d && d.hist;
-    if (!h || !Array.isArray(h.d) || !Array.isArray(h.shifts)) { msg("不良数カウンターのデータではありません（" + fname + "）", "warn"); return; }
+    if (!h || !Array.isArray(h.d) || !Array.isArray(h.shifts)) { msg("現場ボードのデータではありません（" + fname + "）", "warn"); return; }
     if (readOnly) return;
     var st = d.state || {}, date = curDate;
     var dayOf = function (sec) { var t = new Date(sec * 1000); return t.getFullYear() + "-" + pad2(t.getMonth() + 1) + "-" + pad2(t.getDate()); };
@@ -2389,7 +2389,7 @@
         var n = "r" + row + "_" + col, v = num(n) + delta;
         f(n).value = v ? v : "";
       } else {
-        // カウンターで減らした分は、最後に入れたものから外す
+        // 現場ボードで減らした分は、最後に入れたものから外す
         for (var k = 0; k < -delta; k++) {
           var li = -1;
           log.forEach(function (e, idx) { if (e[1] === col && (li < 0 || e[0] >= log[li][0])) li = idx; });
@@ -2412,7 +2412,7 @@
     }
     if (starts.length) setAuto("kadoS", hhmm(Math.min.apply(null, starts)));
     if (ends.length && !running) setAuto("kadoE", hhmm(Math.max.apply(null, ends)));
-    // 手で直した・消したカウンターの記録はそのまま残し、ほかは取り込み直す
+    // 手で直した・消した現場ボードの記録はそのまま残し、ほかは取り込み直す
     var evs = events().filter(function (ev) { return ev.src !== "counter" || ev.edited || ev.del; });
     var kept = function (id) { return evs.some(function (ev) { return ev.id === id; }); };
     (h.w || []).forEach(function (x) {
@@ -2434,7 +2434,7 @@
     evs.sort(function (a, b) { return (a.s || "") < (b.s || "") ? -1 : 1; });
     setEvents(evs); drawEvList();
     recalc(); save();
-    var note = "カウンター取込（" + fname + "）：" + (added.length ? "不良を " + row + " 行目に反映" : "新しい不良なし") +
+    var note = "現場ボード取込（" + fname + "）：" + (added.length ? "不良を " + row + " 行目に反映" : "新しい不良なし") +
       (starts.length ? "／稼働状況を反映" : "／この日の作業記録なし");
     if (quiet && !added.length && !unknown.length) return;
     msg(note + (unknown.length ? "　⚠ 日報に対応のない不良の種類：" + unknown.join("、") : ""), unknown.length ? "warn" : "ok");
@@ -2442,22 +2442,23 @@
   document.getElementById("btnCounter").onclick = function () {
     if (!dlgDirty) dlg.close();
     var c = counterLocal();
-    if (c) importCounter(JSON.stringify(c), "このパソコンのカウンター"); else readCounter(false);
+    if (c) importCounter(JSON.stringify(c), "このパソコンの現場ボード"); else readCounter(false);
   };
   document.getElementById("btnCounterFile").onclick = function () { if (!dlgDirty) dlg.close(); readCounter(true); };
 
-  // ---------- 同じパソコンの不良数カウンターとの連携 ----------
-  // カウンターも日報もパソコンのファイルを Edge / Chrome で開くと、同じ保存場所（localStorage）を使う。
-  // そのため、カウンターのデータを直接読めるうえ、カウンターの「実績グラフ」と同じ仕組みでテンキーを送れる
-  // （カウンター側の変更は不要）。
+  // ---------- 同じパソコンの現場ボードとの連携 ----------
+  // 現場ボードも日報もパソコンのファイルを Edge / Chrome で開くと、同じ保存場所（localStorage）を使う。
+  // そのため、現場ボードのデータを直接読めるうえ、現場ボードの「実績グラフ」と同じ仕組みでテンキーを送れる
+  // （現場ボード側の変更は不要）。
   var CNT = { state: "defectCounterState", hist: "defectCounterHistory", fwd: "defectCounterKeyForward",
-              active: "defectCounterActiveTab", reply: "defectCounterKeyReply", ping: "defectCounterReportPing" };
+              active: "defectCounterActiveTab", reply: "defectCounterKeyReply", ping: "defectCounterReportPing",
+              cmd: "defectCounterCommand", cmdReply: "defectCounterCommandReply" };
   var FWD_KEY = "nline-nippo-fwd";
   var chkFwd = document.getElementById("chkFwd");
   chkFwd.checked = localStorageGet(FWD_KEY) !== "0";
   function drawFwd() {
     document.getElementById("fwdLabel").classList.toggle("off", !chkFwd.checked);
-    document.getElementById("fwdText").textContent = chkFwd.checked ? "テンキー→カウンター" : "テンキーは日報に入ります";
+    document.getElementById("fwdText").textContent = chkFwd.checked ? "テンキー→現場ボード" : "テンキーは日報に入ります";
   }
   chkFwd.onchange = function () { localStorageSet(FWD_KEY, chkFwd.checked ? "1" : "0"); drawFwd(); drawCntBar(); };
   drawFwd();
@@ -2479,27 +2480,27 @@
     else if (st.downtime && st.downtime.running) { cls = "stop"; txt = "停止中"; }
     else if (st.job && st.job.running) { cls = "run"; txt = "作業中　" + (st.job.shift || ""); }
     var counts = (st.types || []).map(function (t) { var n = (st.counts || {})[t.id]; return n ? t.name + " " + n : ""; }).filter(Boolean);
-    var html = "<span>不良数カウンター</span><span class=\"st " + cls + "\">" + esc(txt) + "</span>" +
+    var html = "<span>現場ボード</span><span class=\"st " + cls + "\">" + esc(txt) + "</span>" +
       "<span>" + esc(counts.join("　") || "不良 0") + "</span>" +
-      "<span style=\"opacity:.75\">" + (alive ? (chkFwd.checked ? "テンキー入力はカウンターへ送ります" : "テンキーは日報で使います") : "⚠ カウンターの画面が開いていません") + "</span>" +
+      "<span style=\"opacity:.75\">" + (alive ? (chkFwd.checked ? "テンキー入力は現場ボードへ送ります" : "テンキーは日報で使います") : "⚠ 現場ボードの画面が開いていません") + "</span>" +
       cntActionHtml(st, alive) +
       "<span class=\"key\">" + esc(keyNote) + "</span>";
     // 中身が変わったときだけ描き直す（ボタンを押している途中に作り直されて、押したことが消えないように）
     if (bar.innerHTML !== html && bar.getAttribute("data-html") !== html) { bar.innerHTML = html; bar.setAttribute("data-html", html); }
     bar.className = "on";
   }
-  // 日報の型式とカウンターの製造種類が違うときに知らせ、ボタンで切り替えられるようにする
+  // 日報の型式と現場ボードの製造種類が違うときに知らせ、ボタンで切り替えられるようにする
   function cntActionHtml(st, alive) {
     var m = currentModel();
     if (!alive || !m || readOnly || !isToday() || !(st.features && st.features.jobs)) return "";
-    if (!modelOf(m)) return "<span class=\"warnx\">⚠ 型式「" + esc(m) + "」は登録されていないため、カウンターは切り替えません</span>";
-    if (switching) return "<span class=\"warnx\">カウンターを切り替え中…</span>";
+    if (!modelOf(m)) return "<span class=\"warnx\">⚠ 型式「" + esc(m) + "」は登録されていないため、現場ボードは切り替えません</span>";
+    if (switching) return "<span class=\"warnx\">現場ボードを切り替え中…</span>";
     if (st.job && st.job.running) {
       if (st.job.shift === m) return "";
-      return "<span class=\"warnx\">⚠ 日報は「" + esc(m) + "」、カウンターは「" + esc(st.job.shift || "") + "」</span>" +
-        "<button type=\"button\" data-cnt=\"switch\">カウンターを「" + esc(m) + "」に切り替える</button>";
+      return "<span class=\"warnx\">⚠ 日報は「" + esc(m) + "」、現場ボードは「" + esc(st.job.shift || "") + "」</span>" +
+        "<button type=\"button\" data-cnt=\"switch\">現場ボードを「" + esc(m) + "」に切り替える</button>";
     }
-    return "<button type=\"button\" data-cnt=\"start\">カウンターで作業開始（" + esc(m) + "）</button>";
+    return "<button type=\"button\" data-cnt=\"start\">現場ボードで作業開始（" + esc(m) + "）</button>";
   }
   function showKey(t) { keyNote = t; drawCntBar(); clearTimeout(keyNoteTimer); keyNoteTimer = setTimeout(function () { keyNote = ""; drawCntBar(); }, 1500); }
   var KEY_LABEL = { NumpadAdd: "＋", NumpadSubtract: "−", NumpadMultiply: "＊", NumpadDivide: "／", NumpadDecimal: "．", NumpadEnter: "Enter", Backspace: "←" };
@@ -2514,18 +2515,18 @@
     e.preventDefault(); e.stopImmediatePropagation();
     if (!a) {
       // 不良の数が日報の欄に紛れ込まないよう、日報にも入れない
-      if (!e.repeat) msg("⚠ 不良数カウンターの画面が開いていないため、テンキーの入力はカウンターへ送れませんでした（日報にも入れていません）。カウンターを開くか、上の「テンキー→カウンター」を外してください", "warn");
+      if (!e.repeat) msg("⚠ 現場ボードの画面が開いていないため、テンキーの入力は現場ボードへ送れませんでした（日報にも入れていません）。現場ボードを開くか、上の「テンキー→現場ボード」を外してください", "warn");
       return;
     }
     if (e.repeat) return;
     localStorageSet(CNT.fwd, JSON.stringify({ to: a.id, code: code, key: e.key, shiftKey: e.shiftKey, t: Date.now(), n: Math.random() }));
     var m = /^Numpad(\d)$/.exec(code);
-    showKey("⌨ カウンターへ：" + (m ? m[1] : (KEY_LABEL[code] || e.key)));
+    showKey("⌨ 現場ボードへ：" + (m ? m[1] : (KEY_LABEL[code] || e.key)));
   }, true);
-  // カウンターの画面に「テンキーが記録されません」と出ないように、日報にフォーカスがあることを知らせる
+  // 現場ボードの画面に「テンキーが記録されません」と出ないように、日報にフォーカスがあることを知らせる
   function ping() { if (chkFwd.checked && document.hasFocus()) localStorageSet(CNT.ping, JSON.stringify({ t: Date.now(), focused: true })); }
   setInterval(ping, 2000); window.addEventListener("focus", ping);
-  // カウンターからの返事（音・メッセージ）
+  // 現場ボードからの返事（音・メッセージ）
   var actx = null;
   function tone(freq, dur, delay, vol) {
     try {
@@ -2549,17 +2550,17 @@
     }
     if (e.key === CNT.state || e.key === CNT.hist || e.key === CNT.active) {
       drawCntBar();
-      // 今日の日報を開いているときは、カウンターで数えた不良をその場で今の行へ取り込む
+      // 今日の日報を開いているときは、現場ボードで数えた不良をその場で今の行へ取り込む
       if (e.key !== CNT.active && isToday() && !readOnly && !locked) {
         clearTimeout(autoTimer);
-        autoTimer = setTimeout(function () { var c = counterLocal(); if (c) { importCounter(JSON.stringify(c), "このパソコンのカウンター", true); syncProd(); } }, 800);
+        autoTimer = setTimeout(function () { var c = counterLocal(); if (c) { importCounter(JSON.stringify(c), "このパソコンの現場ボード", true); syncProd(); } }, 800);
       }
     }
   });
   setInterval(function () { drawCntBar(); syncShifts(); }, 5000);
 
-  // ---------- 日報 → カウンター：型式（製造種類）の切り替え ----------
-  // カウンターの画面をテンキーで操作するのと同じ順番でキーを送る（カウンター側の変更は不要）。
+  // ---------- 日報 → 現場ボード：型式（製造種類）の切り替え ----------
+  // 現場ボードの画面をテンキーで操作するのと同じ順番でキーを送る（現場ボード側の変更は不要）。
   //   作業中：＋ ＋（作業終了）→ 作業数 → Enter（保存）→ ．→ 製造種類の番号 → Enter（作業開始）
   //   作業していない：．→ 番号 → Enter
   var switching = false;
@@ -2583,7 +2584,7 @@
     return keys.reduce(function (p, k) { return p.then(function () { sendKey(k[0], k[1]); return sleep(180); }); }, Promise.resolve());
   }
   function digitKeys(s) { return String(s).split("").map(function (d) { return ["Numpad" + d, d]; }); }
-  // カウンターと同じ決め方で製造種類の番号を出す
+  // 現場ボードと同じ決め方で製造種類の番号を出す
   function counterCode(st, name) {
     var codes = st.shiftCodes || {}, used = {}, n = 1, map = {};
     Object.keys(codes).forEach(function (k) { used[codes[k]] = 1; });
@@ -2594,7 +2595,7 @@
     });
     return map[name];
   }
-  // 日報の型式のうち、カウンターの製造種類にないものを足す（カウンターが作業していないときだけ）
+  // 日報の型式のうち、現場ボードの製造種類にないものを足す（現場ボードが作業していないときだけ）
   function syncShifts(extra) {
     var st = cntState();
     if (!st || !counterAlive() || readOnly || (st.job && st.job.running) || !Array.isArray(st.shifts)) return false;
@@ -2602,8 +2603,8 @@
     var missing = names.filter(function (n, i) { return n && names.indexOf(n) === i && st.shifts.indexOf(n) < 0; });
     if (!missing.length) return false;
     st.shifts = st.shifts.concat(missing);
-    localStorageSet(CNT.state, JSON.stringify(st)); // カウンターは別タブの変更を読み込む
-    showKey("カウンターに製造種類を追加：" + missing.join("、"));
+    localStorageSet(CNT.state, JSON.stringify(st)); // 現場ボードは別タブの変更を読み込む
+    showKey("現場ボードに製造種類を追加：" + missing.join("、"));
     return true;
   }
   function currentModel() { var g = gtCurrentModel(); if (g) return g; var r = lastActiveRow(); return r ? val("r" + r + "_model") : ""; }
@@ -2612,7 +2613,7 @@
   function gtCurrentModel() { var m = ""; for (var k = 1; k <= 4; k++) if (val("gt" + k + "_model").trim()) m = val("gt" + k + "_model").trim(); return m; }
   function prevJobQty(shift) {
     if (gtCurrentModel()) {
-      // 前の型式の良品の合計（入っていれば）＋ その作業でカウンターが数えた不良
+      // 前の型式の良品の合計（入っていれば）＋ その作業で現場ボードが数えた不良
       var g = "", st = cntState() || {};
       for (var k = 1; k <= 4; k++) if (val("gt" + k + "_model").trim() === shift && val("gt" + k + "_good") !== "") g = num("gt" + k + "_good");
       if (g === "") return 0;
@@ -2625,17 +2626,35 @@
   function switchCounter(model) {
     var st = cntState();
     if (switching || !st || !counterAlive()) return;
-    if (!modelOf(model)) { msg("⚠ 型式「" + model + "」は登録されていないため、カウンターは切り替えません。型式を直すか、設定で登録してください", "warn"); return; }
-    if (!(st.features && st.features.jobs)) { msg("カウンターの設定で「作業の開始・終了」がオフのため、型式を切り替えられません", "warn"); return; }
+    if (!modelOf(model)) { msg("⚠ 型式「" + model + "」は登録されていないため、現場ボードは切り替えません。型式を直すか、設定で登録してください", "warn"); return; }
+    if (!(st.features && st.features.jobs)) { msg("現場ボードの設定で「作業の開始・終了」がオフのため、型式を切り替えられません", "warn"); return; }
     if (st.job && st.job.running && st.job.shift === model) return;
     switching = true; drawCntBar();
-    var p = Promise.resolve(true), prev = st.job && st.job.running ? st.job.shift : null, qty = prev ? prevJobQty(prev) : 0;
+    var prev0 = st.job && st.job.running ? st.job.shift : null, qty0 = prev0 ? prevJobQty(prev0) : 0;
+    // 現場ボード（新しい版）は、指示を直接受け取って切り替える。古い現場ボードは、テンキーのキー操作をまねて切り替える
+    if (counterAlive().cmd) {
+      var id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      localStorageSet(CNT.cmd, JSON.stringify({ id: id, t: Date.now(), cmd: "switch", model: model, qty: qty0 }));
+      var t0 = Date.now();
+      (function poll() {
+        var r = parseJSON(localStorageGet(CNT.cmdReply), null);
+        if (r && r.id === id) {
+          if (r.ok) msg("現場ボードを「" + model + "」に切り替えました" + (r.same ? "" : r.prev ? "（「" + r.prev + "」の作業を終了" + (r.qty ? "・作業数 " + r.qty + " を入力" : "") + "）" : "（作業開始）"), "ok");
+          else msg("⚠ 現場ボードを切り替えられませんでした（" + r.msg + "）", "warn");
+          switching = false; drawCntBar(); return;
+        }
+        if (Date.now() - t0 > 4000) { msg("⚠ 現場ボードから返事がありません。現場ボードの画面で確かめてください", "warn"); switching = false; drawCntBar(); return; }
+        setTimeout(poll, 100);
+      })();
+      return;
+    }
+    var p = Promise.resolve(true), prev = prev0, qty = qty0;
     if (prev) {
-      // カウンターの確認画面は、開いてから 0.25 秒以内の2回目の ＋ を受け付けない（押し間違い防止）ので間をあける
+      // 現場ボードの確認画面は、開いてから 0.25 秒以内の2回目の ＋ を受け付けない（押し間違い防止）ので間をあける
       p = sendSeq([["NumpadAdd", "+"]]).then(function () { return sleep(450); }).then(function () { return sendSeq([["NumpadAdd", "+"]]); })
         .then(function () { return waitFor(function (s) { return !s.job.running; }, 3000); })
         .then(function (ok) {
-          if (!ok) throw new Error("カウンターの作業を終了できませんでした");
+          if (!ok) throw new Error("現場ボードの作業を終了できませんでした");
           if (!qty) return true;
           return sendSeq(digitKeys(qty).concat([["NumpadEnter", "Enter"]]))
             .then(function () { return waitFor(function (s) { return s.lastJob && s.lastJob.prod === qty; }, 3000); });
@@ -2646,18 +2665,18 @@
       return sleep(300);
     }).then(function () {
       var code = counterCode(cntState() || {}, model);
-      if (!code) throw new Error("カウンターに「" + model + "」が登録されていません");
+      if (!code) throw new Error("現場ボードに「" + model + "」が登録されていません");
       return sendSeq([["NumpadDecimal", "."]].concat(digitKeys(code), [["NumpadEnter", "Enter"]]))
         .then(function () { return waitFor(function (s) { return s.job.running && s.job.shift === model; }, 3000); });
     }).then(function (ok) {
-      if (!ok) throw new Error("カウンターで作業を開始できませんでした");
-      msg("カウンターを「" + model + "」に切り替えました" + (prev ? "（「" + prev + "」の作業を終了" + (qty ? "・作業数 " + qty + " を入力" : "") + "）" : "（作業開始）"), "ok");
+      if (!ok) throw new Error("現場ボードで作業を開始できませんでした");
+      msg("現場ボードを「" + model + "」に切り替えました" + (prev ? "（「" + prev + "」の作業を終了" + (qty ? "・作業数 " + qty + " を入力" : "") + "）" : "（作業開始）"), "ok");
     }).catch(function (err) {
-      msg("⚠ " + err.message + "。カウンターの画面で確認してください", "warn");
+      msg("⚠ " + err.message + "。現場ボードの画面で確認してください", "warn");
     }).then(function () { switching = false; drawCntBar(); });
   }
-  // 良品の合計を、カウンターのその作業の「作業数」へ書き込む（あとから入れても反映する）。
-  // 作業数 ＝ 良品の合計 ＋ その作業のあいだにカウンターで数えた不良。同じ型式の作業が何回かあるときは、順に当てはめる
+  // 良品の合計を、現場ボードのその作業の「作業数」へ書き込む（あとから入れても反映する）。
+  // 作業数 ＝ 良品の合計 ＋ その作業のあいだに現場ボードで数えた不良。同じ型式の作業が何回かあるときは、順に当てはめる
   function syncProd() {
     var h = parseJSON(localStorageGet(CNT.hist), null), st = cntState();
     if (!h || !Array.isArray(h.j) || readOnly) return 0;
@@ -2676,7 +2695,7 @@
       if (job[4] !== prod) { job[4] = prod; changedN++; }
     }
     if (!changedN) return 0;
-    // 日ごと・型式ごとの生産数（カウンターの不良率・良品率に使う）を、作業数の合計に合わせる
+    // 日ごと・型式ごとの生産数（現場ボードの不良率・良品率に使う）を、作業数の合計に合わせる
     h.p = h.p || {};
     h.shifts.forEach(function (name, si) {
       var sum = 0, any = false;
@@ -2688,7 +2707,7 @@
       var lj = h.j.filter(function (x) { return x[3] === st.lastJob.id; })[0];
       if (lj && st.lastJob.prod !== lj[4]) { st.lastJob.prod = lj[4]; localStorageSet(CNT.state, JSON.stringify(st)); }
     }
-    showKey("カウンターの作業数を更新しました（" + changedN + "件）");
+    showKey("現場ボードの作業数を更新しました（" + changedN + "件）");
     return changedN;
   }
   document.getElementById("cntBar").addEventListener("click", function (e) {
@@ -3047,7 +3066,7 @@
   // 型式を選んだら、前の行の素板ロットを引き継ぐ（同じ素板パレットの続き）
   form.addEventListener("change", function (e) {
     var m = /^r(\d+)_model$/.exec(e.target.name || "");
-    // いま入力している行の型式を変えたら、作業中のカウンターも切り替える
+    // いま入力している行の型式を変えたら、作業中の現場ボードも切り替える
     if (m && e.target.value && modelOf(e.target.value) && +m[1] === lastActiveRow() && isToday() && !readOnly) {
       var cs = cntState();
       if (cs && counterAlive() && cs.job && cs.job.running && cs.job.shift !== e.target.value) {
