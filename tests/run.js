@@ -702,6 +702,7 @@ test("カウンターの停止を日報で直す（60分→30分）：元の値�
 
 test("素板のQRのローカルコード（BR）を、明細のローカルコードに入れる（型式の登録にないとき）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
+  await p.waitForTimeout(400);   // 開いた直後は準備中のことがある
   await p.click("body"); await scanQR(p, QR_042); await p.waitForTimeout(200);
   eq(await v(p, "r1_lotSoban") + " " + await v(p, "r1_localCode"), "R7Z446SX042 2N9A", "QRを読んだ行");
   await fill(p, "r1_good", 50); await p.waitForTimeout(200);
@@ -747,6 +748,20 @@ test("確認者の欄も、押して印鑑を選べる（名前が入り、印�
   ok(await p.evaluate(() => document.forms.nippo.elements.m1_checker.classList.contains("has-seal")), "開き直しても出る");
   await p.click('[name="m1_checker"]'); await p.click("#sealClear"); await p.waitForTimeout(200);
   eq(await v(p, "m1_checker"), "", "消せる");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
+test("年月度マーク：1117 と打つと「11月17日」になる（終業の画面でも）", async ctx => {
+  const p = await open(ctx, "2026-11-17T08:00:00");
+  await fill(p, "m1_mark", "1117"); await p.dispatchEvent('[name="m1_mark"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m1_mark"), "11月17日", "4桁");
+  await fill(p, "m2_mark2", "105"); await p.dispatchEvent('[name="m2_mark2"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m2_mark2"), "1月5日", "3桁");
+  await fill(p, "m1_mark2", "1345"); await p.dispatchEvent('[name="m1_mark2"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m1_mark2"), "1345", "月日でない数字はそのまま");
+  await p.click("#btnEnd");
+  await p.fill('#endBody [data-bind="m1_mark"]', "1118"); await p.dispatchEvent('#endBody [data-bind="m1_mark"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m1_mark") + "|" + await p.inputValue('#endBody [data-bind="m1_mark"]'), "11月18日|11月18日", "終業の画面");
   eq(p.errors.join(), "", "ページのエラー");
 });
 

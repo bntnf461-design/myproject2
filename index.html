@@ -1379,6 +1379,24 @@
     if (!iss.miss.length && !iss.odd.length && !iss.cons.length) ul.appendChild(el("li", { "class": "okline" }, "✅ 入れ忘れ・計算の食い違いは見つかりませんでした"));
   }
 
+  // ---------- 年月度マーク：1117 と打つと「11月17日」にする ----------
+  function fmtMark(v) {
+    var t = String(v || "").trim().replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    var m = /^(\d{1,2})(\d{2})$/.exec(t) || /^(\d{1,2})[\/\.\-](\d{1,2})$/.exec(t);
+    if (!m) return v;
+    var mo = +m[1], d = +m[2];
+    return mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ? mo + "月" + d + "日" : v;
+  }
+  document.addEventListener("change", function (e) {
+    var t = e.target, n = t && (t.name || (t.getAttribute && t.getAttribute("data-bind")));
+    if (!n || !/^m[12]_mark2?$/.test(n)) return;
+    var v = fmtMark(t.value);
+    if (v === t.value) return;
+    t.value = v;
+    if (f(n) !== t) { f(n).value = v; f(n).dispatchEvent(new Event("input", { bubbles: true })); }
+    else t.dispatchEvent(new Event("input", { bubbles: true }));
+  }, true);
+
   // ---------- 印鑑（GL・リーダーの欄） ----------
   // 画像がない印鑑は、名前から赤い丸の印鑑を作る（縦書き）
   function sealSvg(name) {
