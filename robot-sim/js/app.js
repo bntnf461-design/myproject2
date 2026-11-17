@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.0';
+  const VERSION = '4.1';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -668,6 +668,7 @@
   };
   function raiseAlarm(key, detail) {
     const [code, msg] = ALM[key] || ALM.prog;
+    (S.almHist = S.almHist || []).unshift({ code, msg: msg + (detail ? '：' + detail : ''), at: new Date() }); if (S.almHist.length > 50) S.almHist.pop();
     // 吸着確認が来ないとき：吸盤がガラスに掛かっていないことが多いので、原因を添える
     if (key === 'wait' && detail && tool.kind === 'vacuum' && handOn() && !S.holding && (detail.includes(`(${io().handIn.n})`) || detail.includes(`[${io().handIn.n}]`)))
       detail += '。吸盤がガラスに掛かっていません（4 つの吸盤すべてがガラスの上にある必要があります）。取出パターンとガラスの寸法・位置が合っているか確認してください';
@@ -703,6 +704,17 @@
   let motLim = null;    // ペンダント操作時の制限 { spdFac, tcpCap(mm/s) }
   let stepKeep = null;  // 1行実行・押している間の運転を止めたときの続き { it, prog, pc }
   const smooth = k => k * k * (3 - 2 * k);
+  /* 速度の形：台形（加速・減速それぞれ ACC_T 秒、その間は指令速度で一定）。
+     移動全体を S 字にすると、サーチ（UNTIL で途中停止）の出だしが極端に遅くなるため */
+  const ACC_T = 0.25;
+  function prof(t, dur, ta) {
+    if (t >= dur) return 1;
+    ta = Math.min(ta, dur / 2);
+    const v = 1 / (dur - ta);
+    if (t < ta) return 0.5 * v * t * t / ta;
+    if (t <= dur - ta) return v * (t - ta / 2);
+    const r = dur - t; return 1 - 0.5 * v * r * r / ta;
+  }
   const ovr = () => S.opts.ovr / 100 * (run ? S.ovrRun / 100 : 1) * (motLim ? motLim.spdFac : 1);
   const tcpCap = () => (motLim && motLim.tcpCap) || 0;
   function canMove() {
@@ -720,11 +732,11 @@
     else {
       const f = clamp(vPct, 0.1, 100) / 100 * ovr();
       for (let i = 0; i < 6; i++) tt = Math.max(tt, Math.abs(to[i] - from[i]) / (robot.vmax[i] * f));
-      tt *= 1.5;
+      tt += ACC_T;
     }
     if (tcpCap()) {   // 教示モード（T1）は TCP 速度 250mm/s まで
       const a = new T.Vector3().setFromMatrixPosition(tcpMatrix(from)), b = new T.Vector3().setFromMatrixPosition(tcpMatrix(to));
-      tt = Math.max(tt, 1.5 * a.distanceTo(b) * 1000 / tcpCap());
+      tt = Math.max(tt, a.distanceTo(b) * 1000 / tcpCap() + ACC_T);
     }
     mv = { kind: 'j', from, to: to.slice(), dur: Math.max(0.12, tt), t: 0, done };
     return true;
@@ -740,13 +752,13 @@
       let s = 0; for (let k = 1; k < r.qs.length; k++) s = Math.max(s, Math.abs(r.qs[k][i] - r.qs[k - 1][i]));
       tj = Math.max(tj, s * (r.qs.length - 1) / robot.vmax[i]);
     }
-    if (opt.dur != null) r.dur = Math.max(0.12, opt.dur / f, 1.5 * tj / f);
+    if (opt.dur != null) r.dur = Math.max(0.12, opt.dur / f, tj / f + ACC_T);
     else {
       const tl = vmm ? (r.dist * 1000) / (clamp(vmm, 0.1, robot.vlMax) * f) : 0;
       const ta = r.ang / ((opt.rot || 180) * f);
-      r.dur = Math.max(0.12, 1.5 * Math.max(tl, ta), 1.5 * tj / f);
+      r.dur = Math.max(0.12, Math.max(tl, ta) + ACC_T, tj / f + ACC_T);
     }
-    if (tcpCap()) r.dur = Math.max(r.dur, 1.5 * r.dist * 1000 / tcpCap());
+    if (tcpCap()) r.dur = Math.max(r.dur, r.dist * 1000 / tcpCap() + ACC_T);
     return r;
   }
   function startL(M, vmm, done, opt) {
@@ -763,7 +775,7 @@
   }
   function stepMotion1(dt) {
     mv.t += dt;
-    const k = Math.min(1, mv.t / mv.dur), e = smooth(k);
+    const k = Math.min(1, mv.t / mv.dur), e = prof(mv.t, mv.dur, ACC_T);
     const prev = S.q.slice();
     if (mv.kind === 'j') for (let i = 0; i < 6; i++) S.q[i] = mv.from[i] + (mv.to[i] - mv.from[i]) * e;
     else {
@@ -774,6 +786,7 @@
     applyPose();
     const c = collisionCheck();
     if (c) { S.q = prev; applyPose(); raiseAlarm('coll', c); return; }
+    if (dt > 0) for (let i = 0; i < 6; i++) pend.shockMax[i] = Math.max(pend.shockMax[i], Math.min(119, Math.round(Math.abs(S.q[i] - prev[i]) / dt / robot.vmax[i] * 90)));
     if (handOn() && !S.holding) tryGrasp();
     if (S.opts.trail && run) addTrail();
     if (mv.stopIf && mv.stopIf()) { const cb = mv.done; mv = null; if (cb) cb(true); return; }
@@ -1958,6 +1971,9 @@
 
   /* =================== ライン操作盤（PLC の代わり） =================== */
   const MASTER_JOB = 'ﾏｽﾀ-';
+  /* マスタジョブ（実機の［ジョブ］→［マスタジョブ］で登録したジョブ）。未登録なら、バックアップの「ﾏｽﾀ-」 */
+  const masterKey = () => 'rs4-masterjob-' + S.sys;
+  function masterJob() { const m = store.get(masterKey(), ''); if (m && lib.progs[m]) return m; return isY() && lib.progs[MASTER_JOB] ? MASTER_JOB : ''; }
   /* 90 度旋回して置けるのは、ジョブの中で「硝子置き90」を呼んでいるパターンだけ（実機では 8 と 58） */
   function canRot90(n) { const p = lib.progs[String(n)]; return !!p && p.lines.some(l => l.includes('硝子置き90')); }
   function renderPlc() {
@@ -1974,7 +1990,7 @@
     const cr = canRot90(S.plc.pattern);
     $('#plcRot').disabled = !cr; $('#plcRot').checked = S.plc.rot90 && cr; $('#plcBlow').checked = S.plc.blow; $('#plcAlt').checked = S.plc.alt;
     $('#plcRot').parentElement.title = cr ? 'ライン側からの「硝子旋回90度」信号（IN#(99)）' : 'このパターンのジョブには 90 度置きがありません';
-    $('#plcNote').textContent = lib.progs[MASTER_JOB]
+    $('#plcNote').textContent = masterJob()
       ? (S.plc.auto ? 'ライン側（PLC）の起動信号が入っています。ジョブ「ﾏｽﾀ-」を再生（スタート）すると、選んだパターンで取り出しを繰り返します。パレットが空になるとターンテーブルが回り、空いた面は補充されます。' : 'サイクル停止中：「サイクルスタート」を押すと、ライン側の起動信号が入ります。')
       : '実機のバックアップ（ZIP か、JBI などのファイル一式）を下の「読み込み」から入れると、実機のジョブで動かせます。';
   }
@@ -1984,14 +2000,15 @@
   $('#plcBlow').addEventListener('change', e => { S.plc.blow = e.target.checked; });
   $('#plcAlt').addEventListener('change', e => { S.plc.alt = e.target.checked; });
   $('#plcMaster').addEventListener('click', () => {
-    if (!lib.progs[MASTER_JOB]) { flash('#progMsg', '実機のジョブ（ﾏｽﾀ-）がありません。バックアップを読み込んでください'); return; }
+    const mj = masterJob();
+    if (!mj) { flash('#progMsg', 'マスタジョブがありません。バックアップを読み込むか、ペンダントの［ジョブ］→［マスタジョブ］で登録してください'); return; }
     stopAll();
     if (S.alarm) { flash('#progMsg', 'アラームをリセットしてから始めてください'); return; }
     // シミュレーターの便宜：持っているガラスを戻し、出力を切り、作業原点から始める（実機では手動で原点へ戻す）
     if (S.holding) { dropWork(true); resetWorks(); }
     for (const k of Object.keys(S.io.out)) { const m = /^([A-Z]+)(\d+)$/.exec(k); if (m && S.io.out[k]) setOut(m[1], +m[2], false); }
     S.q = robot.home.slice(); applyPose();
-    lib.cur = MASTER_JOB; sel = 0; renderProgAll();
+    lib.cur = mj; sel = 0; renderProgAll();
     S.plc.auto = true; renderPlc();
     startRun(0, false);
   });
@@ -2351,6 +2368,141 @@
   const COORDS = ['joint', 'base', 'tool'];
   const pendVisible = () => pend.float || !$('#t-pend').hidden;
   const FMN = { T1: 'テスト1', T2: 'テスト2', AUTO: '自動' };   // 操作盤のモードの表示名
+  /* 実機（DX200）のメニュー・画面のための状態 */
+  Object.assign(pend, { sub: null, pull: null, vsel: 0, jsel: 0, pick: null, posDisp: 'pulse', cyc: 'cont', varType: null, ioType: null, shockMax: [0, 0, 0, 0, 0, 0] });
+  { const c = store.get('rs4-pcoord', 'joint'); if (['joint', 'base', 'tool'].includes(c)) pend.coord = c; }
+  const homeKey = n => `rs4-home${n}-${S.sys}`;
+  function getHome(n) {
+    const h = store.get(homeKey(n), null);
+    if (Array.isArray(h) && h.length === 6 && h.every(v => typeof v === 'number' && isFinite(v))) return h;
+    // 未登録なら、実機のジョブの作業原点（位置変数 P000）、それもなければ機種の初期姿勢
+    const p0 = isY() && vars.pos.P000;
+    if (p0 && p0.k === 'j' && Array.isArray(p0.q) && p0.q.length === 6) return p0.q.slice();
+    return robot.home.slice();
+  }
+  const atHome = n => getHome(n).every((v, i) => Math.abs(v - S.q[i]) < 0.5);   // 作業原点位置（実機の「立方体」の代わりに各軸 0.5° 以内）
+  const YMENU = {
+    job: ['ジョブ', '<span class="mi doc">DOUT<br>MOVE<br>END</span>', [['prog', 'ジョブ内容'], ['jobsel', 'ジョブ選択'], ['master', 'マスタジョブ'], ['jobcap', 'ジョブ容量'], ['cycle', 'サイクル'], ['na', 'プレイジョブ編集'], ['na', 'プレイ中編集ジョブ一覧']]],
+    gen: ['汎用', '<span class="mi">⊤</span>', [['na', 'ハンドリング']]],
+    var: ['変数', '<span class="mi box">B001</span>', [['var:B', 'バイト型'], ['var:I', '整数型'], ['var:D', '倍精度型'], ['var:R', '実数型'], ['var:P', 'ロボット位置型']]],
+    io: ['入出力', '<span class="mi">In⊖Out</span>', [['io:xin', '外部入力'], ['io:xout', '外部出力'], ['io:in', '汎用入力'], ['io:out', '汎用出力']]],
+    robot: ['ロボット', '<span class="mi">⌐</span>', [['pos', '現在値'], ['cmd', '指令値'], ['home', '作業原点'], ['home2', '第2原点'], ['power', '電源オン・オフ'], ['tool', 'ツール'], ['shock', '衝突検出レベル'], ['uf', 'ユーザ座標'], ['shift', 'シフト量'], ['shocknow', '各軸衝突検出レベル現在値']]],
+    sys: ['システム情報', '<span class="mi">∿◷</span>', [['sys', 'バージョン'], ['montime', 'モニタ時間'], ['almhist', 'アラーム履歴']]]
+  };
+  const groupOf = v => Object.keys(YMENU).find(k => YMENU[k][2].some(([id]) => id.split(':')[0] === v)) || '';
+  const VAR_T = { B: 'バイト型', I: '整数型', D: '倍精度型', R: '実数型', P: 'ロボット位置型' };
+  const hms = sec => { sec = Math.floor(sec); return `${String(Math.floor(sec / 3600)).padStart(4, ' ')}:${String(Math.floor(sec / 60) % 60).padStart(2, '0')}'${String(sec % 60).padStart(2, '0')}`; };
+  const pls = q => q.map((v, i) => robot.pulse ? Math.round(v * robot.pulse[i]) : +v.toFixed(3));
+  /* 実機の画面（ジョブ内容・入出力・変数の一部を除く）の行 */
+  function yRows(v) {
+    const ax = robot.axes, rows = [];
+    let title = '', selRow = -1;
+    const listSel = () => { selRow = clamp(pend.vsel, 0, Math.max(0, rows.length - 1)); };
+    switch (v) {
+      case 'jobsel': {
+        title = pend.pick === 'master' ? 'ジョブ選択（マスタジョブに登録するジョブ）' : 'ジョブ選択';
+        const names = Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja'));
+        names.forEach((n, k) => rows.push({ t: `${n === lib.cur ? '▶' : '　'}${n}${n === masterJob() ? '　（マスタ）' : ''}`, job: n, vrow: k }));
+        selRow = clamp(pend.jsel, 0, Math.max(0, rows.length - 1)); break;
+      }
+      case 'master':
+        title = 'マスタジョブ';
+        rows.push({ t: `マスタジョブ　 ${masterJob() || '（未登録）'}` }, { t: '' }, { t: '［選択］：登録するジョブを選ぶ' }, { t: '［マスタ呼出］：マスタジョブを呼び出す' });
+        selRow = 0; break;
+      case 'jobcap': {
+        title = 'ジョブ容量';
+        const ps = Object.values(lib.progs);
+        rows.push({ t: `ジョブ数　　 ${ps.length}` }, { t: `命令の行数　 ${ps.reduce((a, p) => a + p.lines.length, 0)}` }, { t: `位置データ　 ${ps.reduce((a, p) => a + Object.keys(p.pos || {}).length, 0)}` });
+        break;
+      }
+      case 'cycle':
+        title = 'サイクル';
+        [['step', 'ステップ'], ['once', '1サイクル'], ['cont', '連続']].forEach(([k, n], i) => rows.push({ t: `${pend.cyc === k ? '●' : '○'} ${n}`, cyc: k, vrow: i }));
+        listSel(); break;
+      case 'pos': case 'cmd': {
+        title = v === 'pos' ? '現在値' : '指令値';
+        rows.push({ t: `座標　 ${{ pulse: 'パルス', robot: 'ロボット', base: 'ベース' }[pend.posDisp]}　（［選択］で切替）`, vrow: 0 });
+        if (pend.posDisp === 'pulse') pls(S.q).forEach((x, i) => rows.push({ t: `${ax[i]}　${String(x).padStart(10)}` }));
+        else { const Pz = curPose(); [Pz.X, Pz.Y, Pz.Z, Pz.rx, Pz.ry, Pz.rz].forEach((x, i) => rows.push({ t: `${robot.cart[i].padEnd(3)} ${x.toFixed(i < 3 ? 3 : 4).padStart(11)} ${i < 3 ? 'mm' : '°'}` })); rows.push({ t: `形態　 ${RS.configOf(S.q)}` }); }
+        selRow = 0; break;
+      }
+      case 'home': case 'home2': {
+        const n = v === 'home' ? '' : '2', h = getHome(n);
+        title = v === 'home' ? '作業原点' : '第2原点';
+        pls(h).forEach((x, i) => rows.push({ t: `${ax[i]}　${String(x).padStart(10)}` }));
+        rows.push({ t: `${v === 'home' ? '作業原点' : '第2原点'}位置　 ${atHome(n) ? '● ON（ここにいます）' : '○ OFF'}` });
+        rows.push({ t: '［ネクスト］押している間：ここへ移動' }, { t: '［変更］→［エンター］：今の位置を登録' });
+        break;
+      }
+      case 'power': {
+        title = '電源オン・オフ';
+        const t0 = new Date((S.mon && S.mon.t0) || Date.now()), f = d => `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        rows.push({ t: `制御電源 オン　 ${f(t0)}` }, { t: `サーボ電源　　 ${servoOn() ? 'オン' : 'オフ'}` });
+        break;
+      }
+      case 'tool': {
+        title = 'ツール';
+        const mt = master && master.tool, tc = tool.tcp.map(x => (x * 1000).toFixed(3));
+        rows.push({ t: `ツール番号　 00　${mt && mt.name ? mt.name : tool.name}` }, { t: `X　${tc[0].padStart(10)} mm` }, { t: `Y　${tc[1].padStart(10)} mm` }, { t: `Z　${tc[2].padStart(10)} mm` },
+          { t: 'Rx　    0.0000 °' }, { t: 'Ry　    0.0000 °' }, { t: 'Rz　    0.0000 °' }, { t: `W　${mt && isFinite(mt.mass) ? mt.mass.toFixed(3).padStart(10) + ' kg' : '         - kg'}` });
+        break;
+      }
+      case 'shock':
+        title = '衝突検出レベル';
+        rows.push({ t: '条件番号 1　 R1' }); ax.forEach(a => rows.push({ t: `${a}　レベル　120 %` }));
+        rows.push({ t: '（シミュレーターは力では止まりません。干渉チェックで止まります）' });
+        break;
+      case 'shocknow':
+        title = '各軸衝突検出レベル現在値';
+        rows.push({ t: '　　　機能　　　　外力最大値　レベル設定値' });
+        ax.forEach((a, i) => rows.push({ t: `${i ? '　　' : 'R1'}　${i ? '　　' : '有効'}　 ${a}　　 ${String(pend.shockMax[i]).padStart(4)}　　　 120` }));
+        rows.push({ t: '（外力最大値は動きの速さからの目安。［クリア］で 0 に）' });
+        break;
+      case 'uf': {
+        title = 'ユーザ座標';
+        const ks = Object.keys(uframes).sort((a, b) => a - b);
+        if (!ks.length) rows.push({ t: '（登録なし）' });
+        ks.forEach(k => { const u = uframes[k]; rows.push({ t: `UF#${String(k).padStart(2, '0')}　X ${u.X.toFixed(1)}　Y ${u.Y.toFixed(1)}　Z ${u.Z.toFixed(1)}` }); });
+        break;
+      }
+      case 'shift': {
+        title = 'シフト量';
+        const sh = run && run.interp && run.interp.shift;
+        if (!sh) rows.push({ t: 'シフトなし（SFTON 中ではありません）' });
+        else { rows.push({ t: `座標　 ${sh.frame === 'TF' ? 'ツール' : sh.frame === 'UF' ? 'ユーザ' : 'ベース'}` }); ['X', 'Y', 'Z', 'rx', 'ry', 'rz'].forEach((k, i) => rows.push({ t: `${robot.cart[i].padEnd(3)} ${(+sh.p[k] || 0).toFixed(3).padStart(11)}` })); }
+        break;
+      }
+      case 'montime': {
+        title = 'モニタ時間';
+        const M = S.mon || { t0: Date.now(), servo: 0, play: 0, move: 0 };
+        rows.push({ t: `制御電源時間　 ${hms((Date.now() - M.t0) / 1000)}` }, { t: `サーボ電源時間 ${hms(M.servo)}` }, { t: `再生時間　　　 ${hms(M.play)}` }, { t: `移動時間　　　 ${hms(M.move)}` });
+        break;
+      }
+      case 'almhist':
+        title = 'アラーム履歴';
+        if (!(S.almHist || []).length) rows.push({ t: '（履歴なし）' });
+        (S.almHist || []).forEach((a, i) => rows.push({ t: `${String(i + 1).padStart(2, '0')} ${String(a.at.getHours()).padStart(2, '0')}:${String(a.at.getMinutes()).padStart(2, '0')} ${a.code} ${a.msg}`, vrow: i }));
+        listSel(); break;
+      case 'var': {
+        const t = pend.varType;
+        if (!t) return null;
+        title = '変数　' + VAR_T[t];
+        const names = (master && master.varNames) || {};
+        if (t === 'P') {
+          const ks = Object.keys(vars.pos).filter(k => /^P\d{3}$/.test(k)).sort();
+          if (!ks.length) rows.push({ t: '（使用中の位置変数なし）' });
+          ks.forEach((k, i) => { const p = vars.pos[k], c = p && p.k === 'c' ? [p.p.X, p.p.Y, p.p.Z].map(x => x.toFixed(1)).join(' ') : p && p.q ? 'パルス ' + pls(p.q).join(',') : '未設定'; rows.push({ t: `${k} ${names[k] || ''}　${c}`, vrow: i }); });
+        } else {
+          const ks = [...new Set([...usedVars().nums, ...Object.keys(names)])].filter(k => k[0] === t).sort();
+          if (!ks.length) rows.push({ t: '（使用中の変数なし）' });
+          ks.forEach((k, i) => rows.push({ t: `${k}　${String(vars.num[k] || 0).padStart(8)}　${names[k] || ''}`, vrow: i }));
+        }
+        listSel(); break;
+      }
+      default: return null;
+    }
+    return { rows, selRow, title };
+  }
   function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
   function pendJogSpec() {
     const Y = isY();
@@ -2407,6 +2559,7 @@
     const Y = isY(), P = prog(), rows = [];
     let selRow = -1, title = '';
     const v = pend.view;
+    if (Y) { const yr = yRows(v); if (yr) return yr; }
     if (v === 'prog') {
       if (Y) {
         title = 'ジョブ内容';
@@ -2431,11 +2584,13 @@
       if (!Y) rows.push({ t: `姿勢（CONFIG）: ${RS.configOf(S.q)}` });
     } else if (v === 'io') {
       const m = io();
-      title = Y ? '入出力　汎用入出力' : '入出力　ロボット／デジタル';
+      title = Y ? '入出力　' + ({ in: '汎用入力', out: '汎用出力', xin: '外部入力', xout: '外部出力' }[pend.ioType] || '汎用入出力') : '入出力　ロボット／デジタル';
       const lim = m.real ? 99 : 4, byK = {};
       const row = (k, n, v, nm) => rows.push({ t: `${m.fmt(k, n).padEnd(8)} ${v ? '●' : '○'} ${v ? '入 ' : '切'} ${nm || ''}`, ioRow: rows.length });
-      for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n]); }
-      for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
+      const it = Y ? pend.ioType : null;
+      if (it === 'xin' || it === 'xout') rows.push({ t: '（外部入出力の割り当てはありません）' });
+      if (it !== 'in' && it !== 'xin' && it !== 'xout') for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n]); }
+      if (it !== 'out' && it !== 'xin' && it !== 'xout') for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
       selRow = clamp(pend.ioSel || 0, 0, rows.length - 1);
     } else if (v === 'inst') {
       title = '命令一覧（選んで［追加］→［エンター］）';
@@ -2460,14 +2615,16 @@
     let list = '';
     for (let i = 0; i < N; i++) {
       const r = rows[st + i];
-      list += r === undefined ? '<div class="lr"></div>' : `<div class="lr${st + i === selRow ? ' sel' : ''}${r.pc ? ' pcl' : ''}"${r.i != null ? ` data-row="${r.i}"` : ''}${r.inst != null ? ` data-inst="${r.inst}"` : ''}>${esc(r.t)}</div>`;
+      list += r === undefined ? '<div class="lr"></div>' : `<div class="lr${st + i === selRow ? ' sel' : ''}${r.pc ? ' pcl' : ''}"${r.i != null ? ` data-row="${r.i}"` : ''}${r.inst != null ? ` data-inst="${r.inst}"` : ''}${r.vrow != null ? ` data-vrow="${r.vrow}"` : ''}>${esc(r.t)}</div>`;
     }
     const msg = S.alarm ? S.alarm.code + ' ' + S.alarm.msg : (pend.msg || (run ? (run.interp.status() || (Y ? '再生中' : '')) : ''));
     const cn = robot.coordNames[pend.coord];
     if (Y) {
       const v = pend.view, P = prog();
       // 上のメニュー（ジョブ画面は ジョブ／編集／表示／ユーティリティ、他は データ／編集／表示／ユーティリティ）
-      const top = (v === 'prog' || v === 'inst' ? ['ジョブ', '編集', '表示', 'ユーティリティ'] : ['データ', '編集', '表示', 'ユーティリティ']).map(t => `<span class="ytm">${t}</span>`).join('');
+      const jobTop = v === 'prog' || v === 'inst' || groupOf(v) === 'job';
+      const top = (jobTop ? ['ジョブ', '編集', '表示', 'ユーティリティ'] : ['データ', '編集', '表示', 'ユーティリティ']).map((t, i) => i === 0 && jobTop ? `<button class="ytm${pend.pull ? ' on' : ''}" data-act="pull-job">${t}</button>` : `<span class="ytm">${t}</span>`).join('');
+      const pull = pend.pull ? `<div class="ypull"><button class="ysub-b" data-act="master-call">マスタ呼出</button><button class="ysub-b" data-sub="jobsel">ジョブ選択</button></div>` : '';
       // 状態表示（実機の並び：制御グループ・座標・手動速度・セキュリティ・動作サイクル・状態・モード）
       const icon = (txt, title, cls) => `<span class="ysi${cls ? ' ' + cls : ''}" title="${esc(title)}">${txt}</span>`;
       const coordI = { joint: '関', base: '直', tool: 'ツ' }[pend.coord] || '直';
@@ -2480,10 +2637,12 @@
         icon(modeI, 'モード：' + { teach: 'ティーチ', play: 'プレイ', remote: 'リモート' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl') +
         icon(servoOn() ? '<b>S</b>' : 's', servoOn() ? 'サーボオン' : (pend.ready ? 'サーボオンレディ' : 'サーボオフ'), servoOn() ? 'sv' : '');
       // 左のメインメニュー（実機：ジョブ・汎用・変数・入出力・ロボット・システム情報）
-      const mm = [['prog', 'ジョブ', '<span class="mi doc">DOUT<br>MOVE<br>END</span>'], ['na', '汎用', '<span class="mi">⊤</span>'], ['var', '変数', '<span class="mi box">B001</span>'],
-        ['io', '入出力', '<span class="mi">In⊖Out</span>'], ['pos', 'ロボット', '<span class="mi">⌐</span>'], ['sys', 'システム情報', '<span class="mi">∿◷</span>']]
-        .map(([k, n, ic]) => `<button class="ymenu-b${v === k ? ' on' : ''}" ${k === 'na' ? 'data-act="na"' : `data-view="${k}"`}>${n}${ic}</button>`).join('') +
+      const grp = groupOf(v) || (v === 'prog' || v === 'inst' ? 'job' : v === 'io' ? 'io' : v === 'var' ? 'var' : '');
+      const mm = Object.entries(YMENU).map(([k, [n, ic]]) => `<button class="ymenu-b${pend.sub === k || (!pend.sub && grp === k) ? ' on' : ''}" data-mm="${k}">${n}${ic}</button>`).join('') +
         '<div class="ymarrow"><span>◀</span><span>▶</span></div>';
+      const sub = pend.sub && pend.menu ? `<div class="ysub${pend.sub === 'robot' ? ' two' : ''}">${YMENU[pend.sub][2].map(([id, n]) => `<button class="ysub-b" data-sub="${id}">${n}</button>`).join('')}</div>` : '';
+      const fkb = { master: [['master-call', 'マスタ呼出']], jobsel: [['select', pend.pick === 'master' ? '登録' : '開く'], ['view-prog', 'キャンセル']], shocknow: [['shock-clear', 'クリア']], home: [['na', ''], ['na', '']], cycle: [['select', '決定']] }[v] || [];
+      const yfk = [0, 1, 2, 3].map(i => fkb[i] && fkb[i][1] ? `<button class="yfkb" data-act="${fkb[i][0]}">${fkb[i][1]}</button>` : '<span></span>').join('');
       // 画面の見出し（実機の「ジョブ内容」画面：プレイバック中は「プレイバック」）
       let head = `<div class="yth"><b>${esc(title)}</b></div>`;
       if (v === 'prog') {
@@ -2491,7 +2650,7 @@
         head = `<div class="yth"><div><b>${run || pend.mode !== 'teach' ? 'プレイバック' : 'ジョブ内容'}</b><br>J:${esc(P.name)}<br>制御グループ: R1</div><div class="ythr">S:${String(cur).padStart(4, '0')}<br>ツール: ${tool ? '00' : '**'}</div></div>`;
       }
       return `<div class="ysb"><div class="ytopm">${top}</div><div class="ysicons">${status}</div></div>` +
-        `<div class="ymain">${pend.menu ? `<div class="ymenu">${mm}</div>` : ''}<div class="ycont">${head}<div class="ylist">${list}</div><div class="yfk"><span></span><span></span><span></span><span></span></div></div></div>` +
+        `<div class="ymain">${pend.menu ? `<div class="ymenu">${mm}</div>` : ''}${sub}${pull}<div class="ycont">${head}<div class="ylist">${list}</div><div class="yfk">${yfk}</div></div></div>` +
         `<div class="ybot"><button class="ytouch mmb${pend.menu ? ' on' : ''}" data-act="mainmenu">メインメニュー</button><button class="ytouch" data-act="view-prog">簡単メニュー</button>` +
         `<div class="ymsg${S.alarm ? ' alm' : ''}"><span class="mic">▤</span><span>${esc(msg || (pend.interlock ? 'インタロック中' : ''))}</span>${S.alarm ? '<button class="ytouch" data-act="reset">リセット</button>' : ''}</div></div>`;
     }
@@ -2711,6 +2870,15 @@
     e.preventDefault();
     try { b.setPointerCapture(e.pointerId); } catch (x) { /* 無視 */ }
     const k = b.dataset.hold;
+    if (isY() && k === 'fwdY' && (pend.view === 'home' || pend.view === 'home2')) {
+      const w = jogBlock(); if (w) { pend.msg = w; updateLcd(); return; }
+      if (run || mv) return;
+      const n = pend.view === 'home' ? '' : '2';
+      if (atHome(n)) { pend.msg = 'すでに' + (n ? '第2原点' : '作業原点') + 'にいます'; updateLcd(); return; }
+      motLim = pendLim(); pend.msg = (n ? '第2原点' : '作業原点') + 'へ移動中';
+      if (startJ(getHome(n), 100, () => { motLim = null; pend.msg = (n ? '第2原点' : '作業原点') + 'に着きました'; updateLcd(); })) { b.classList.add('hold'); heldMv = true; }
+      updateLcd(); return;
+    }
     sel = Math.max(0, sel);
     const why = jogBlock() || (prog().lines.length ? '' : 'プログラムがありません');
     if (why) { pend.msg = why; updateLcd(); return; }
@@ -2758,6 +2926,7 @@
     const P = pend, pd = P.pending; P.pending = null;
     if (!pd) return false;
     const why = editBlock(); if (why) { P.msg = why; return true; }
+    if (pd.op === 'home') { store.set(homeKey(pd.n), S.q.slice()); P.msg = `${pd.n ? '第2原点' : '作業原点'}を登録しました`; return true; }
     if (pd.op === 'ins') {
       if (pd.inst) {
         if (pd.inst.x && pd.inst.x.move) insertMove(pd.inst.x.move);
@@ -2801,7 +2970,23 @@
       }
       case 'select':
         if (P.view === 'inst') { P.msg = `「${instList()[P.instSel].t}」を選びました。［追加］→［エンター］で追加`; break; }
-        if (P.view !== 'prog') { P.view = 'prog'; break; }
+        if (isY() && P.view === 'jobsel') {
+          const n = Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja'))[P.jsel]; if (!n) break;
+          if (P.pick === 'master') { store.set(masterKey(), n); P.pick = null; P.view = 'master'; P.msg = `マスタジョブに ${n} を登録しました`; renderPlc(); break; }
+          if (run) stopAll();
+          lib.cur = n; sel = 0; stepKeep = null; renderProgAll(); P.view = 'prog'; P.msg = `ジョブ ${n} を開きました`; break;
+        }
+        if (isY() && P.view === 'master') {
+          if (P.mode !== 'teach') { P.msg = 'マスタジョブの登録は ティーチ モードで行います'; break; }
+          P.pick = 'master'; P.view = 'jobsel'; P.jsel = Math.max(0, Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja')).indexOf(masterJob())); break;
+        }
+        if (isY() && P.view === 'cycle') {
+          const k = ['step', 'once', 'cont'][clamp(P.vsel, 0, 2)]; P.cyc = k; P.step = k === 'step';
+          loopEl.checked = k === 'cont'; loopEl.dispatchEvent(new Event('change'));
+          P.msg = `サイクル：${{ step: 'ステップ', once: '1サイクル', cont: '連続' }[k]}`; break;
+        }
+        if (isY() && (P.view === 'pos' || P.view === 'cmd')) { P.posDisp = { pulse: 'robot', robot: 'base', base: 'pulse' }[P.posDisp]; break; }
+        if (P.view !== 'prog') break;   // ほかの画面では何もしない（ジョブ内容へは戻らない）
         { const l = prog().lines[sel]; P.msg = l ? `${String(sel + 1).padStart(4, '0')} ${l}（数字を入れてエンターで速度を変更）` : ''; }
         break;
       case 'num0': case 'num1': case 'num2': case 'num3': case 'num4': case 'num5': case 'num6': case 'num7': case 'num8': case 'num9': case 'numdot': case 'numminus': {
@@ -2850,11 +3035,21 @@
       case 'step': P.step = !P.step; break;
       case 'ovr+': P.ovrI = Math.min(FOV.length - 1, P.ovrI + 1); break;
       case 'ovr-': P.ovrI = Math.max(0, P.ovrI - 1); break;
-      case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; break;
+      case 'coord': P.coord = COORDS[(COORDS.indexOf(P.coord) + 1) % 3]; store.set('rs4-pcoord', P.coord); break;   // 切り替えた座標は保持（勝手に戻らない）
+      case 'pull-job': P.pull = !P.pull; P.sub = null; break;
+      case 'master-call': {
+        P.pull = null;
+        const m = masterJob();
+        if (!m) { P.msg = 'マスタジョブが登録されていません（［ジョブ］→［マスタジョブ］で登録）'; break; }
+        if (run && !run.paused) { P.msg = '再生中は呼び出せません'; break; }
+        if (run) stopAll();
+        lib.cur = m; sel = 0; stepKeep = null; renderProgAll(); P.view = 'prog'; P.msg = `マスタジョブ ${m} を呼び出しました`; break;
+      }
+      case 'shock-clear': P.shockMax = [0, 0, 0, 0, 0, 0]; P.msg = '外力最大値をクリアしました'; break;
       case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); P.menu = a === 'view-prog' ? P.menu : P.menu; break;
       case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
-      case 'up': if (P.view === 'io') P.ioSel = Math.max(0, (P.ioSel || 0) - 1); else if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
-      case 'down': if (P.view === 'io') P.ioSel = (P.ioSel || 0) + 1; else if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view !== 'prog') P.view = 'prog'; else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
+      case 'up': if (P.view === 'io') P.ioSel = Math.max(0, (P.ioSel || 0) - 1); else if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view === 'jobsel') P.jsel = Math.max(0, P.jsel - 1); else if (P.view !== 'prog') P.vsel = Math.max(0, P.vsel - 1); else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
+      case 'down': if (P.view === 'io') P.ioSel = (P.ioSel || 0) + 1; else if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view === 'jobsel') P.jsel = Math.min(Object.keys(lib.progs).length - 1, P.jsel + 1); else if (P.view !== 'prog') P.vsel = Math.min(Math.max(0, screenRows().rows.length - 1), P.vsel + 1); else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
       case 'enter':
         if (doPending()) break;
         if (P.num) {   // 数字を入れて ENTER：選んだ移動命令の速度を変える
@@ -2893,7 +3088,11 @@
         if (sel < 0) { P.msg = 'プログラムがありません'; break; }
         delLine(); P.msg = ''; break;
       }
-      case 'upd': { const why = editBlock(); if (why) { P.msg = why; break; } touchUp(); break; }
+      case 'upd': {
+        const why = editBlock(); if (why) { P.msg = why; break; }
+        if (isY() && (P.view === 'home' || P.view === 'home2')) { P.pending = { op: 'home', n: P.view === 'home' ? '' : '2' }; P.msg = '今の位置を登録します。［エンター］で確定／［キャンセル］で中止'; break; }
+        touchUp(); break;
+      }
       case 'f5':
         if (P.view === 'pos') { P.coord = 'tool'; break; }
         if (P.view !== 'prog') break;
@@ -2905,7 +3104,7 @@
         const why = runBlock(); if (why) { P.msg = why; break; }
         if (run && run.paused) { run.paused = false; refreshState(); P.msg = ''; break; }
         if (run) break;
-        startRun(Math.max(0, sel), false, isY() ? null : { spdFac: FOV[P.ovrI] / 100, tcpCap: 0 }); P.msg = ''; break;
+        startRun(Math.max(0, sel), isY() && P.cyc === 'step', isY() ? null : { spdFac: FOV[P.ovrI] / 100, tcpCap: 0 }); P.msg = ''; break;
       }
       case 'hold': if (run) { run.paused = true; refreshState(); } else { mv = null; } P.msg = 'ホールド中'; break;
       case 'reset': resetAlarm(); P.msg = S.alarm ? P.msg : ''; break;
@@ -2917,6 +3116,20 @@
     if (e.target.id === 'pendPop') { setPendFloat(!pend.float); return; }
     if (e.target.id === 'pendBig') { pendEl.classList.toggle('big'); renderPend(); return; }
     const v = e.target.closest('[data-view]'); if (v) { pend.view = v.dataset.view; renderPend(); return; }
+    const mmb = e.target.closest('[data-mm]'); if (mmb) { pend.sub = pend.sub === mmb.dataset.mm ? null : mmb.dataset.mm; pend.pull = null; renderPend(); return; }
+    const sb = e.target.closest('[data-sub]');
+    if (sb) {
+      const [id, arg] = sb.dataset.sub.split(':');
+      pend.sub = null; pend.pull = null;
+      if (id === 'na') { pend.msg = 'この画面はシミュレーターにはありません'; renderPend(); return; }
+      pend.view = id; pend.vsel = 0; pend.pick = null;
+      if (id === 'var') pend.varType = arg; if (id === 'io') { pend.ioType = arg; pend.ioSel = 0; }
+      if (id === 'cycle') pend.vsel = ['step', 'once', 'cont'].indexOf(pend.cyc);
+      if (id === 'jobsel') pend.jsel = Math.max(0, Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja')).indexOf(lib.cur));
+      renderPend(); return;
+    }
+    const vr = e.target.closest('[data-vrow]');
+    if (vr) { if (pend.view === 'jobsel') pend.jsel = +vr.dataset.vrow; else pend.vsel = +vr.dataset.vrow; if (pend.view === 'pos' || pend.view === 'cmd') pendAct('select'); else updateLcd(); return; }
     const r = e.target.closest('[data-row]'); if (r) { sel = +r.dataset.row; markPc(); renderLineEdit(); updateLcd(); return; }
     const ri = e.target.closest('[data-inst]'); if (ri) { pend.instSel = +ri.dataset.inst; updateLcd(); return; }
     const b = e.target.closest('[data-act]'); if (b) pendAct(b.dataset.act);
@@ -2954,6 +3167,8 @@
   let last = performance.now(), hudT = 0, ioT = 0;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000) * (S.timeScale || 1); last = now;
+    { const M = S.mon || (S.mon = { t0: Date.now(), servo: 0, play: 0, move: 0 }), rd = dt / (S.timeScale || 1);
+      if (servoOn()) M.servo += rd; if (run && !run.paused) M.play += rd; if (mv) M.move += rd; }
     if (jogHold && !mv) stepJog(dt);
     stepMotion(dt);
     stepRun(dt);
