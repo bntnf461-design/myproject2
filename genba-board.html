@@ -3155,6 +3155,28 @@ function nippoSwitch(m) {
   showToast(prev ? `日報から切り替え：${prev} → ${name}` : `日報から作業開始：${name}`);
   return {ok:true, prev, qty:prev ? qty : 0};
 }
+// 日報で合わせた（帳尻を合わせた）不良数を、記録に「修正」として入れる。items：[{model, typeId, delta, t(秒)}]
+function nippoFixDefects(m) {
+  let n = 0;
+  (m.items || []).forEach(it => {
+    const d = Math.round(Number(it.delta) || 0);
+    if (!d || !state.types.some(x => x.id === it.typeId)) return;
+    const ms = it.t * 1000;
+    hist.d.push([Math.round(it.t), it.typeId, d, histShiftIdx(it.model), d > 0 ? 2 : 0]);
+    const lj = state.lastJob;
+    if (lj && lj.shift === it.model && ms >= Date.parse(lj.start) && ms <= Date.parse(lj.end) + 1000) {
+      lj.counts[it.typeId] = Math.max(0, (lj.counts[it.typeId] || 0) + d); if (!lj.counts[it.typeId]) delete lj.counts[it.typeId];
+      lj.total = Math.max(0, (lj.total || 0) + d);
+    }
+    if (state.job.running && state.job.shift === it.model && ms >= sessionStartMs()) {
+      state.counts[it.typeId] = Math.max(0, (state.counts[it.typeId] || 0) + d);
+      state.log.push({ts:new Date(ms).toISOString(), typeId:it.typeId, delta:d, shift:it.model, corr:true});
+    }
+    n++;
+  });
+  if (n) { saveHist(); saveState(); renderAll(); showToast(`日報で合わせた不良数を反映しました（${n}件）`); }
+  return {ok:true, n};
+}
 if (!REPORT_MODE) window.addEventListener("storage", e => {
   if (e.key !== KEY_CMD || !e.newValue) return;
   let m; try { m = JSON.parse(e.newValue); } catch (err) { return; }
@@ -3162,7 +3184,7 @@ if (!REPORT_MODE) window.addEventListener("storage", e => {
   if (!m || !a || a.id !== TAB_ID || m.id === lastCmdId || Date.now() - m.t > 5000) return; // 受け取り役の1タブだけが1回だけ実行
   lastCmdId = m.id;
   let res;
-  try { res = m.cmd === "switch" ? nippoSwitch(m) : {ok:false, msg:"知らない指示です"}; }
+  try { res = m.cmd === "switch" ? nippoSwitch(m) : m.cmd === "fixDefects" ? nippoFixDefects(m) : {ok:false, msg:"知らない指示です"}; }
   catch (err) { res = {ok:false, msg:String(err && err.message || err)}; }
   writeJson(KEY_CMD_REPLY, Object.assign({id:m.id, t:Date.now()}, res));
 });

@@ -1579,8 +1579,9 @@
     } else f("doneAt").value = at;
     f("doneSnap").value = JSON.stringify(snap);
     fixing = false;
+    var synced = syncDefectsToBoard();
     save(true); applyLock();
-    msg(val("fixLog") && fixLog().length && fixLog()[fixLog().length - 1].at === at ? "訂正を記録しました（" + at + "）" : "日報を完成しました（" + at + "）", "ok");
+    msg((val("fixLog") && fixLog().length && fixLog()[fixLog().length - 1].at === at ? "訂正を記録しました（" + at + "）" : "日報を完成しました（" + at + "）") + synced, "ok");
     if (andPrint) setTimeout(function () { prepareLabels(); window.print(); }, 50);
   }
   document.getElementById("btnDone").onclick = function () { if (!readOnly) openDone(); };
@@ -2702,6 +2703,95 @@
     }).catch(function (err) {
       msg("⚠ " + err.message + "。現場ボードの画面で確認してください", "warn");
     }).then(function () { switching = false; drawCntBar(); });
+  }
+  // ---------- 日報で合わせた（帳尻を合わせた）不良数を、現場ボードの記録にも入れる ----------
+  // 型式ごと・日報の列ごとに、日報と現場ボードの差を「修正」として現場ボードに足す（その型式の最後の作業の終わりの時刻で）。
+  // 日報の列に入る現場ボードの種類がないものは反映できないので、知らせる
+  function syncDefectsToBoard() {
+    var h = parseJSON(localStorageGet(CNT.hist), null), st = cntState();
+    if (!h || !Array.isArray(h.d) || !Array.isArray(h.shifts) || readOnly) return "";
+    var types = st && Array.isArray(st.types) ? st.types.map(function (t) { return { id: t.id, name: t.name }; })
+      : Object.keys(h.types || {}).map(function (id) { return { id: id, name: h.types[id].n }; });
+    if (!types.length) return "";
+    var colOf = function (name) { return DEF_MAP[name] || "proc_other"; };
+    var nameOf = function (id) { var t = types.filter(function (x) { return x.id === id; })[0]; return t ? t.name : (h.types && h.types[id] && h.types[id].n) || ""; };
+    var dayOf = function (sec) { return ymd(new Date(sec * 1000)); };
+    var models = [];
+    for (var r = 1; r <= ROWS; r++) { var mv = val("r" + r + "_model"); if (mv && models.indexOf(mv) < 0) models.push(mv); }
+    if (!models.length) return "";
+    // 現場ボード：型式×列、型式×種類の数
+    var board = {}, boardT = {};
+    h.d.forEach(function (x) {
+      if (dayOf(x[0]) !== curDate) return;
+      var m = h.shifts[x[3]]; if (models.indexOf(m) < 0) return;
+      var k = m + "|" + colOf(nameOf(x[1])); board[k] = (board[k] || 0) + x[2];
+      var kt = m + "|" + x[1]; boardT[kt] = (boardT[kt] || 0) + x[2];
+    });
+    // 日報：型式×列
+    var mine = {};
+    for (r = 1; r <= ROWS; r++) {
+      var m2 = val("r" + r + "_model"); if (!m2) continue;
+      PROC.concat(SOBAN).forEach(function (k) { var v = num("r" + r + "_" + k); if (v) mine[m2 + "|" + k] = (mine[m2 + "|" + k] || 0) + v; });
+    }
+    // 修正を入れる時刻：その型式の今日の最後の作業の終わりの1秒前（作業中ならいま）。作業の記録がなければ、いま（今日でなければその日の 23:59）
+    var timeOf = function (m) {
+      var idx = h.shifts.indexOf(m), end = 0;
+      (h.j || []).forEach(function (x) { if (x[2] === idx && dayOf(x[0]) === curDate && x[1]) end = Math.max(end, x[1] - 1); });
+      if (st && st.job && st.job.running && st.job.shift === m && isToday()) return Math.floor(Date.now() / 1000);
+      if (end) return end;
+      return isToday() ? Math.floor(Date.now() / 1000) : Math.floor(new Date(curDate + "T23:59:00").getTime() / 1000);
+    };
+    var PREFER = { proc_other: ["その他", "調整不良"] };
+    var items = [], done = [], ng = [], impDelta = {};
+    models.forEach(function (m) {
+      PROC.concat(SOBAN).forEach(function (col) {
+        var delta = (mine[m + "|" + col] || 0) - (board[m + "|" + col] || 0);
+        if (!delta) return;
+        var cands = types.filter(function (t) { return colOf(t.name) === col; });
+        if (!cands.length) { ng.push(m + " " + (DEF_LBL[col] || col) + " " + (delta > 0 ? "+" : "") + delta); return; }
+        var pref = PREFER[col] || [];
+        cands.sort(function (a, b) { return ((pref.indexOf(a.name) + 1) || 99) - ((pref.indexOf(b.name) + 1) || 99); });
+        var t = timeOf(m);
+        if (delta > 0) items.push({ model: m, typeId: cands[0].id, delta: delta, t: t });
+        else {
+          // 減らすときは、数の多い種類から
+          var left = -delta;
+          cands.slice().sort(function (a, b) { return (boardT[m + "|" + b.id] || 0) - (boardT[m + "|" + a.id] || 0); }).forEach(function (c) {
+            var take = Math.min(left, Math.max(0, boardT[m + "|" + c.id] || 0));
+            if (take > 0) { items.push({ model: m, typeId: c.id, delta: -take, t: t }); left -= take; }
+          });
+        }
+        impDelta[col] = (impDelta[col] || 0) + delta;
+        done.push(m + " " + (DEF_LBL[col] || col) + " " + (delta > 0 ? "+" : "") + delta);
+      });
+    });
+    if (!items.length) return ng.length ? "　⚠ 現場ボードに反映できない不良（現場ボードに種類がありません）：" + ng.join("、") : "";
+    // 日報が取り込んだ数も合わせる（次の取り込みで、日報の数がまた変わらないように）
+    var imported = parseJSON(val("cntImported"), {}), log = parseJSON(val("cntLog"), []);
+    items.forEach(function (it) {
+      var col = colOf(nameOf(it.typeId)), lr = 0;
+      for (var q = ROWS; q >= 1 && !lr; q--) if (val("r" + q + "_model") === it.model) lr = q;
+      if (it.delta > 0) for (var i = 0; i < it.delta; i++) log.push([it.t, col, lr || 1, it.model]);
+      else for (var j = 0; j < -it.delta; j++) {
+        var li = -1;
+        log.forEach(function (e, idx) { if (e[1] === col && (e[3] === it.model || !e[3]) && (li < 0 || e[0] >= log[li][0])) li = idx; });
+        if (li >= 0) log.splice(li, 1);
+      }
+    });
+    Object.keys(impDelta).forEach(function (col) { imported[col] = Math.max(0, (imported[col] || 0) + impDelta[col]); });
+    f("cntImported").value = JSON.stringify(imported);
+    f("cntLog").value = log.length ? JSON.stringify(log) : "";
+    var a = counterAlive();
+    if (a && a.cmd) localStorageSet(CNT.cmd, JSON.stringify({ id: "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), cmd: "fixDefects", items: items }));
+    else {
+      // 現場ボードが開いていない（または前のカウンター）ときは、記録に直接書く。開いたときに読み込まれる
+      items.forEach(function (it) {
+        var si = h.shifts.indexOf(it.model); if (si < 0) { h.shifts.push(it.model); si = h.shifts.length - 1; }
+        h.d.push([it.t, it.typeId, it.delta, si, it.delta > 0 ? 2 : 0]);
+      });
+      localStorageSet(CNT.hist, JSON.stringify(h));
+    }
+    return "　現場ボードの不良数も日報に合わせました（" + done.join("、") + "）" + (ng.length ? "　⚠ 反映できない不良（現場ボードに種類がありません）：" + ng.join("、") : "");
   }
   // 良品の合計を、現場ボードのその作業の「作業数」へ書き込む（あとから入れても反映する）。
   // 作業数 ＝ 良品の合計 ＋ その作業のあいだに現場ボードで数えた不良。同じ型式の作業が何回かあるときは、順に当てはめる

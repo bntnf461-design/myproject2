@@ -1001,6 +1001,37 @@ test("作業者の流れ：日報で型式を選び、テンキー ＋ Enter で
   eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
 });
 
+test("日報で合わせた不良数を、完成したときに現場ボードにも反映する", async ctx => {
+  const c = await ctx.newPage(); c.errors = []; c.on("pageerror", e => c.errors.push(e.message));
+  await c.goto("file://" + path.join(__dirname, "..", "genba-board.html")); await c.waitForTimeout(800);
+  const n = await open(ctx);
+  await importMaster(n); await n.reload(); await n.bringToFront(); await n.waitForTimeout(1200);
+  const key = async (k, w = 350) => { await n.keyboard.press(k); await n.waitForTimeout(w); };
+  await fill(n, "gt1_model", MODEL); await n.dispatchEvent('[name="gt1_model"]', "change"); await n.waitForTimeout(600);
+  await n.click("body"); await key("NumpadAdd", 700); await key("NumpadEnter", 900);
+  for (const k of ["Numpad1", "Numpad1", "Numpad1", "Numpad3", "Numpad3"]) await key(k, 250);   // キズ3・変形2（変形は日報の「その他」）
+  await key("NumpadAdd", 450); await key("NumpadAdd", 1200);
+  await fill(n, "gt1_good", 100); await n.dispatchEvent('[name="gt1_good"]', "change"); await n.waitForTimeout(800);
+  const r = await n.evaluate(() => { const f = document.forms.nippo.elements; for (let i = 19; i >= 1; i--) if (f["r" + i + "_model"].value) return i; });
+  eq(await v(n, `r${r}_kizu`) + "|" + await v(n, `r${r}_proc_other`), "3|2", "取り込んだ不良");
+  // 帳尻を合わせる：キズ 3→5、その他 2→1、割れ 0→1（現場ボードに「割れ」の種類はない）
+  for (const [k, x] of [["kizu", 5], ["proc_other", 1], ["ware", 1]]) await n.evaluate(([nm, x]) => { const e = document.forms.nippo.elements[nm]; e.value = x; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); }, [`r${r}_${k}`, x]);
+  await n.waitForTimeout(400);
+  await n.click("#btnDone"); await n.waitForTimeout(300);
+  if (await n.isVisible("#donePack")) await n.check("#donePackChk");
+  await n.click("#doneOnly"); await n.waitForTimeout(1500);
+  const m = await n.textContent("#msg");
+  ok(m.includes("現場ボードの不良数も日報に合わせました"), "知らせ：" + m);
+  ok(m.includes("反映できない") && m.includes("割れ"), "種類のないものは知らせる：" + m);
+  const sum = await n.evaluate((model) => { const h = JSON.parse(localStorage.getItem("defectCounterHistory")); const o = {}; h.d.forEach(x => { if (h.shifts[x[3]] === model) o[x[1]] = (o[x[1]] || 0) + x[2]; }); return o; }, MODEL);
+  eq((sum.t1 || 0) + "|" + (sum.t3 || 0), "5|1", "現場ボードの記録（キズ・変形）");
+  const lj = await c.evaluate(() => state.lastJob);
+  eq((lj.counts.t1 || 0) + "|" + (lj.counts.t3 || 0) + "|" + lj.total, "5|1|6", "現場ボードの前の作業の不良数");
+  await n.waitForTimeout(2500);
+  eq(await v(n, `r${r}_kizu`) + "|" + await v(n, `r${r}_proc_other`) + "|" + await v(n, `r${r}_ware`), "5|1|1", "日報の数はそのまま（取り込み直しで変わらない）");
+  eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
+});
+
 // ---------- 実行 ----------
 (async () => {
   const only = process.argv.slice(2).map(s => s.toLowerCase());
