@@ -239,6 +239,28 @@ test("日報の列にない不良の種類は、すべて工程不良の「そ�
   eq(p.errors.join(), "", "ページのエラー");
 });
 
+test("型式が2つの日は、現場ボードで数えた不良を、数えたときの型式の行に入れる", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(p);
+  await addModel(p, { name: "TEST-B", pallet: "青PL", wheel: "", cap: 100, local: "" });
+  await p.reload(); await p.waitForTimeout(400);
+  const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+  const data = { state: { types: [], job: {}, downtime: {} },
+    hist: { shifts: [MODEL, "TEST-B"], types: { a: { n: "キズ" }, b: { n: "ワレ" } },
+      d: [[sec(9, 0), "a", 1, 0, 0], [sec(10, 30), "b", 1, 1, 0], [sec(10, 40), "b", 1, 1, 0]], w: [], j: [], b: [] } };
+  const fp = path.join(os.tmpdir(), "counter-two-models.json");
+  fs.writeFileSync(fp, JSON.stringify(data));
+  await fill(p, "gt1_model", MODEL); await fill(p, "gt1_good", 100); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(300);
+  await fill(p, "gt2_model", "TEST-B"); await fill(p, "gt2_good", 50); await p.dispatchEvent('[name="gt2_good"]', "change"); await p.waitForTimeout(300);
+  eq(await v(p, "r1_model") + "|" + await v(p, "r2_model"), MODEL + "|TEST-B", "明細");
+  await p.setInputFiles("#counterFallback", fp); await p.waitForTimeout(300);
+  eq([await v(p, "r1_kizu"), await v(p, "r1_ware"), await v(p, "r2_kizu"), await v(p, "r2_ware")].join(","), "1,,,2", "取り込んだとき");
+  await p.click("#btnBuild"); await p.waitForTimeout(300);
+  eq([await v(p, "r1_kizu"), await v(p, "r1_ware"), await v(p, "r2_kizu"), await v(p, "r2_ware")].join(","), "1,,,2", "明細を作り直しても");
+  eq(await v(p, "r1_qty") + "|" + await v(p, "r2_qty"), "101|52", "作業枚数");
+  eq(p.errors.join(), "", "ページのエラー");
+});
+
 test("〃：上の行と同じ型式・ロットNo.・パレット形態・ローカルコードは〃で表示（値はそのまま・選ぶと見える）", async ctx => {
   const p = await open(ctx, "2026-10-21T08:00:00");
   await importMaster(p);

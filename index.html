@@ -1737,8 +1737,17 @@
       if (pallets[i]) f(p + "pallet").value = pallets[i];
     });
     var last = rows.length;
-    PROC.concat(SOBAN).forEach(function (k) { if (def[k]) f("r" + last + "_" + k).value = def[k]; });
-    log = log.map(function (e) { return [e[0], e[1], last]; });
+    // 不良は、型式ごとの最後の行へ。現場ボードで数えた不良は、数えたときの型式の行に入れる（型式がわからない・手で入れた不良は、いちばん最後の行）
+    var lastOf = {}, put = {};
+    rows.forEach(function (x, i) { lastOf[x.m] = i + 1; });
+    log = log.map(function (e) {
+      var to = (e[3] && lastOf[e[3]]) || last, k = e[1];
+      if ((put[k] || 0) >= (def[k] || 0)) return null;     // 日報で減らした分は記録から外す
+      put[k] = (put[k] || 0) + 1;
+      var n = "r" + to + "_" + k; f(n).value = num(n) + 1;
+      return [e[0], k, to, e[3]];
+    }).filter(Boolean);
+    PROC.concat(SOBAN).forEach(function (k) { var rest = (def[k] || 0) - (put[k] || 0); if (rest > 0) { var n = "r" + last + "_" + k; f(n).value = num(n) + rest; } });
     // 当残を数えて入れているときは、最後の素板で実際に使った枚数がわかる。
     // 最後の素板の行の良品＋不良がそれを超えたら、超えた分の不良を、先に数えたものから前の素板の最後の行へ移す
     var moved = 0, lastSeg = rows[last - 1].seg, segLot = segs[lastSeg] && segs[lastSeg].lot, blk = 0;
@@ -1746,13 +1755,15 @@
     if (blk && manualOf("sb" + blk + "_to") && lastSeg > 0) {
       var usedLast = segs[lastSeg].sheets - num("sb" + blk + "_to");
       var work = 0, prevRow = 0;
-      rows.forEach(function (x, i) { if (x.seg === lastSeg) work += x.good; else prevRow = i + 1; });
-      work += PROC.concat(SOBAN).reduce(function (s2, k) { return s2 + (def[k] || 0); }, 0);
+      rows.forEach(function (x, i) {
+        if (x.seg === lastSeg) work += x.good + PROC.concat(SOBAN).reduce(function (s2, k) { return s2 + num("r" + (i + 1) + "_" + k); }, 0);
+        else prevRow = i + 1;
+      });
       var excess = work - usedLast;
       if (excess > 0 && prevRow) {
         var timed = log.slice().sort(function (a, b) { return a[0] - b[0]; });
         timed.forEach(function (e) {
-          if (moved >= excess || num("r" + last + "_" + e[1]) <= 0) return;
+          if (moved >= excess || e[2] !== last || num("r" + last + "_" + e[1]) <= 0) return;
           f("r" + last + "_" + e[1]).value = num("r" + last + "_" + e[1]) - 1 || "";
           f("r" + prevRow + "_" + e[1]).value = num("r" + prevRow + "_" + e[1]) + 1;
           e[2] = prevRow; moved++;
@@ -1998,7 +2009,7 @@
   function shiftLog(fn) {
     var log = parseJSON(val("cntLog"), []);
     if (!log.length) return;
-    log = log.map(function (e) { return [e[0], e[1], fn(e[2])]; }).filter(function (e) { return e[2] > 0; });
+    log = log.map(function (e) { return [e[0], e[1], fn(e[2]), e[3]]; }).filter(function (e) { return e[2] > 0; });
     f("cntLog").value = log.length ? JSON.stringify(log) : "";
   }
   function deleteRow(r) {
@@ -2376,19 +2387,23 @@
         // 日報の列にない種類は、すべて「工程不良：その他」にまとめる
         if (!col) { col = "proc_other"; if (unknown.indexOf(nm) < 0) unknown.push(nm); }
         var u = units[col] = units[col] || [];
-        for (var i = 0; i < x[2]; i++) u.push(x[0]);
+        for (var i = 0; i < x[2]; i++) u.push([x[0], h.shifts[x[3]] || ""]);   // [数えた時刻, そのときの型式]
         for (var j = 0; j < -x[2]; j++) u.pop();
       });
     var imported = parseJSON(val("cntImported"), {}), row = lastActiveRow() || 1, added = [];
-    var log = parseJSON(val("cntLog"), []);   // [数えた時刻, 列, 入れた行]
+    var log = parseJSON(val("cntLog"), []);   // [数えた時刻, 列, 入れた行, 数えたときの型式]
     Object.keys(units).concat(Object.keys(imported)).filter(function (c, i, a) { return a.indexOf(c) === i; }).forEach(function (col) {
       var list = units[col] || [], had = imported[col] || 0, delta = list.length - had;
       if (!delta) return;
       if (delta > 0) {
-        // 新しく数えた分は、いま入力している行へ
-        list.slice(had).forEach(function (t) { log.push([t, col, row]); });
-        var n = "r" + row + "_" + col, v = num(n) + delta;
-        f(n).value = v ? v : "";
+        // 新しく数えた分は、数えたときの型式の行（明細にあれば、その型式の最後の行）へ。なければ、いま入力している行へ
+        list.slice(had).forEach(function (t) {
+          var rr = 0;
+          if (t[1]) for (var q = ROWS; q >= 1 && !rr; q--) if (val("r" + q + "_model") === t[1]) rr = q;
+          rr = rr || row;
+          log.push([t[0], col, rr, t[1]]);
+          var n = "r" + rr + "_" + col; f(n).value = num(n) + 1;
+        });
       } else {
         // 現場ボードで減らした分は、最後に入れたものから外す
         for (var k = 0; k < -delta; k++) {
