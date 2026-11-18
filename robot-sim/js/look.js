@@ -420,15 +420,17 @@
       /* q: 'auto' | 'high'（実写風）| 'std'（標準）| 'low'（軽量） */
       setQuality(q, keepMode) {
         if (!keepMode) mode = q;
-        const want = q === 'auto' || q === 'high' ? (hasPost ? 'high' : 'std') : q === 'low' ? 'low' : 'std';
+        // 自動は「標準」で始め、重ければ「軽量」へ。実写風（陰り・周辺減光）は選んだときだけ（ノート PC で重くなるため）
+        const want = q === 'high' ? (hasPost ? 'high' : 'std') : q === 'low' ? 'low' : 'std';
         slow = 0; slowN = 0; t0 = 0; lastT = 0;
         if (want === quality && (want !== 'high' || composer)) return;
         quality = want;
         if (quality === 'high') buildPost(); else disposePost();
         if (look.onChange) look.onChange(quality);
       },
-      render(now) {
+      render(now, active) {
         linearize(scene);
+        if (!active) lastT = 0;   // 止まっているとき（間引いて描く）は重さの判定に使わない
         if (quality === 'high' && composer) {
           grade.uniforms.time.value = (now || 0) / 1000;
           composer.render();
@@ -441,7 +443,7 @@
           if (lastT) {
             const dt = now - lastT;
             if (now - t0 > 1500) {   // 切り替え直後（シェーダの準備中）は数えない
-              if (dt > 70) { slow += dt; slowN++; } else { slow = 0; slowN = 0; }
+              if (dt > 60) { slow += dt; slowN++; } else { slow = 0; slowN = 0; }
               // 一時的な引っかかりでは下げない
               if (slow > 2000 && slowN >= 8) { look.setQuality(quality === 'high' ? 'std' : 'low', true); if (look.onAutoDrop) look.onAutoDrop(); }
             }

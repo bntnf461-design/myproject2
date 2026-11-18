@@ -4948,15 +4948,17 @@ body.pendfull .app > .panel{display:none}
       /* q: 'auto' | 'high'（実写風）| 'std'（標準）| 'low'（軽量） */
       setQuality(q, keepMode) {
         if (!keepMode) mode = q;
-        const want = q === 'auto' || q === 'high' ? (hasPost ? 'high' : 'std') : q === 'low' ? 'low' : 'std';
+        // 自動は「標準」で始め、重ければ「軽量」へ。実写風（陰り・周辺減光）は選んだときだけ（ノート PC で重くなるため）
+        const want = q === 'high' ? (hasPost ? 'high' : 'std') : q === 'low' ? 'low' : 'std';
         slow = 0; slowN = 0; t0 = 0; lastT = 0;
         if (want === quality && (want !== 'high' || composer)) return;
         quality = want;
         if (quality === 'high') buildPost(); else disposePost();
         if (look.onChange) look.onChange(quality);
       },
-      render(now) {
+      render(now, active) {
         linearize(scene);
+        if (!active) lastT = 0;   // 止まっているとき（間引いて描く）は重さの判定に使わない
         if (quality === 'high' && composer) {
           grade.uniforms.time.value = (now || 0) / 1000;
           composer.render();
@@ -4969,7 +4971,7 @@ body.pendfull .app > .panel{display:none}
           if (lastT) {
             const dt = now - lastT;
             if (now - t0 > 1500) {   // 切り替え直後（シェーダの準備中）は数えない
-              if (dt > 70) { slow += dt; slowN++; } else { slow = 0; slowN = 0; }
+              if (dt > 60) { slow += dt; slowN++; } else { slow = 0; slowN = 0; }
               // 一時的な引っかかりでは下げない
               if (slow > 2000 && slowN >= 8) { look.setQuality(quality === 'high' ? 'std' : 'low', true); if (look.onAutoDrop) look.onAutoDrop(); }
             }
@@ -6425,7 +6427,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.4';
+  const VERSION = '4.5';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -6536,6 +6538,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   }
   const cellTool = id => (id === 'line' ? (S.sys === 'yaskawa' ? 'glassM' : 'glassV') : RS.DEFAULT_TOOL);
   /* 実機のバックアップから読んだデータ（ツール・入出力名・変数名・システム情報） */
+  let lastRender = 0, sceneDirty = true, camT = 0;   // 描画の間引き（frame 参照）。起動中にも使うので先に宣言
   let master = store.get('rs4-master', null);
   if (!master || typeof master !== 'object') master = null;
   function applyMasterTool() {
@@ -6582,7 +6585,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   /* =================== Three.js シーン =================== */
   const canvas = $('#c'), stage = $('#stage');
   const renderer = new T.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(1.25, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = T.PCFSoftShadowMap;
   const scene = new T.Scene();
@@ -6658,6 +6661,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   }
   let poseDirty = true, cableDirty = true;
   function applyPose() {
+    sceneDirty = true;
     const k = RS.toKin(robot, S.q);
     G.sG.rotation.y = k[0] * D2R;
     G.lG.rotation.z = -k[1] * D2R;
@@ -8602,7 +8606,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   look.onAutoDrop = () => { autoDropped = true; qNote(); };
   // 画質に合わせて画素密度と影の解像度を変える
   look.onChange = q => {
-    renderer.setPixelRatio(q === 'low' ? 0.6 : Math.min(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(q === 'low' ? 0.6 : Math.min(q === 'high' ? 1.5 : 1.25, window.devicePixelRatio || 1));
     const ms = q === 'high' ? 4096 : q === 'std' ? 2048 : 1024;
     if (sun.shadow.mapSize.x !== ms) { sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     resize();
@@ -8797,6 +8801,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   let cam = { theta: 0.95, phi: 0.42, r: 4.3 };
   const VIEWS = { iso: { theta: 0.95, phi: 0.42, r: 4.3 }, front: { theta: Math.PI / 2, phi: 0.12, r: 4.4 }, side: { theta: 0, phi: 0.12, r: 4.4 }, top: { theta: Math.PI / 2, phi: 1.5, r: 4.8 } };
   function updateCam() {
+    sceneDirty = true; camT = performance.now();
     cam.phi = clamp(cam.phi, 0.02, 1.55); cam.r = clamp(cam.r, 0.5, 14);
     camera.position.set(
       target.x + cam.r * Math.cos(cam.phi) * Math.sin(cam.theta),
@@ -8878,7 +8883,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   function resize() {
     const w = stage.clientWidth, h = stage.clientHeight;
     if (!w || !h) return;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); look.setSize(w, h);
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); look.setSize(w, h); sceneDirty = true;
   }
   new ResizeObserver(resize).observe(stage);
 
@@ -9201,12 +9206,12 @@ JSON だけを返す（前後に文章を付けない）。形式：
       const IO_T = { in: '汎用入力', out: '汎用出力', xin: '外部入力', xout: '外部出力', sin: '専用入力', sout: '専用出力', rin: 'RIN', cprin: 'CPRIN', reg: 'レジスタ', aux: '補助リレー', ctl: '制御入力', pseudo: '疑似入力信号', nin: 'ネットワーク入力', nout: 'ネットワーク出力', ana: 'アナログ出力', svp: 'サーボ電源状態' };
       title = Y ? '入出力　' + (IO_T[pend.ioType] || '汎用入出力') : '入出力　ロボット／デジタル';
       const lim = m.real ? 99 : 4, byK = {};
-      const row = (k, n, v, nm) => rows.push({ t: `${m.fmt(k, n).padEnd(8)} ${v ? '●' : '○'} ${v ? '入 ' : '切'} ${nm || ''}`, ioRow: rows.length });
+      const row = (k, n, v, nm, out) => rows.push({ t: `${m.fmt(k, n).padEnd(8)} ${v ? '●' : '○'} ${v ? '入 ' : '切'} ${nm || ''}`, ioRow: rows.length, vrow: rows.length, sig: out ? [k, n] : null });
       const it = Y ? pend.ioType : null;
       const other = it && it !== 'in' && it !== 'out';
       if (it === 'svp') rows.push({ t: `R1　サーボ電源　 ${servoOn() ? '● オン' : '○ オフ'}` });
       else if (other) rows.push({ t: '（シミュレーターでは割り当てていません。ライン側の信号は汎用入力・汎用出力です）' });
-      if (!other && it !== 'in') for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n]); }
+      if (!other && it !== 'in') for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n], true); }
       if (!other && it !== 'out') for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
       selRow = clamp(pend.ioSel || 0, 0, rows.length - 1);
     } else if (v === 'inst') {
@@ -9651,6 +9656,15 @@ JSON だけを返す（前後に文章を付けない）。形式：
           P.msg = `サイクル：${{ step: 'ステップ', once: '1サイクル', cont: '連続' }[k]}`; break;
         }
         if (isY() && (P.view === 'pos' || P.view === 'cmd')) { P.posDisp = { pulse: 'robot', robot: 'base', base: 'pulse' }[P.posDisp]; break; }
+        // 入出力画面：汎用出力は［インタロック］＋［選択］で ON／OFF（実機と同じ。ティーチモード）
+        if (P.view === 'io') {
+          const r = screenRows().rows[clamp(P.ioSel || 0, 0, 999)];
+          if (!r || !r.sig) { P.msg = r && r.ioRow != null ? '入力は切り替えられません（出力の行を選んでください）' : ''; break; }
+          if (isY() && P.mode !== 'teach') { P.msg = '出力の切替は ティーチ モードで行います'; break; }
+          if (!P.interlock) { P.msg = '出力の切替は［インタロック］を押しながら［選択］です'; break; }
+          const [k, n] = r.sig, v = !getOut(k, n); setOut(k, n, v); renderIO();
+          P.msg = `${io().fmt(k, n)} を ${v ? 'ON' : 'OFF'} にしました`; break;
+        }
         if (P.view !== 'prog') break;   // ほかの画面では何もしない（ジョブ内容へは戻らない）
         { const l = prog().lines[sel]; P.msg = l ? `${String(sel + 1).padStart(4, '0')} ${l}（数字を入れてエンターで速度を変更）` : ''; }
         break;
@@ -9818,7 +9832,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
       renderPend(); return;
     }
     const vr = e.target.closest('[data-vrow]');
-    if (vr) { if (pend.view === 'jobsel') pend.jsel = +vr.dataset.vrow; else pend.vsel = +vr.dataset.vrow; if (pend.view === 'pos' || pend.view === 'cmd' || pend.view === 'jobnew') pendAct('select'); else updateLcd(); return; }
+    if (vr) { if (pend.view === 'jobsel') pend.jsel = +vr.dataset.vrow; else if (pend.view === 'io') pend.ioSel = +vr.dataset.vrow; else pend.vsel = +vr.dataset.vrow; if (pend.view === 'pos' || pend.view === 'cmd' || pend.view === 'jobnew') pendAct('select'); else updateLcd(); return; }
     const r = e.target.closest('[data-row]'); if (r) { sel = +r.dataset.row; markPc(); renderLineEdit(); updateLcd(); return; }
     const ri = e.target.closest('[data-inst]'); if (ri) { pend.instSel = +ri.dataset.inst; updateLcd(); return; }
     const b = e.target.closest('[data-act]'); if (b) pendAct(b.dataset.act);
@@ -9856,6 +9870,19 @@ JSON だけを返す（前後に文章を付けない）。形式：
 
   /* =================== メインループ =================== */
   let last = performance.now(), hudT = 0, ioT = 0;
+  /* 描画の頻度：3D の描き直しが PC の負荷のほとんど（JS の計算はごく小さい）。
+     ロボット・ワーク・カメラが動いている間だけ 30 コマ／秒、止まっているときは 4 コマ／秒に落とす */
+  const invalidate = () => { sceneDirty = true; };
+  const FPS_ACTIVE = 30, IDLE_MS = 250;
+  function sceneActive(now) {
+    if (sceneDirty || mv || jogHold || (run && !run.paused) || now - camT < 400) return true;
+    if (Math.abs(S.gripK - (handOn() ? 1 : 0)) > 1e-3) return true;
+    if (works.some(w => w.falling)) return true;
+    if (CELL.conveyor && CELL.conveyor.running > 0) return true;
+    if (CELL.racks && CELL.racks.some(r => r.rotating > 0)) return true;
+    if (blowFx && blowFx.visible) return true;
+    return false;
+  }
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000) * (S.timeScale || 1); last = now;
     if (run && !run.paused && pend.ct) { pend.ct.play += dt; if (mv) pend.ct.move += dt; }
@@ -9883,7 +9910,8 @@ JSON だけを返す（前後に文章を付けない）。形式：
     if (pendVisible() && now - lcdT > 120) { lcdT = now; updateLcd(); }
     if (cableDirty) { cableDirty = false; model.update(); }
     if (CELL.update) CELL.update(dt, { alarm: !!S.alarm, running: !!run });
-    look.render(now);
+    const act = sceneActive(now);
+    if (now - lastRender >= (act ? 1000 / FPS_ACTIVE - 2 : IDLE_MS)) { lastRender = now; sceneDirty = false; look.render(now, act); }
     requestAnimationFrame(frame);
   }
 

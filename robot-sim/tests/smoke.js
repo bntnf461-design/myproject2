@@ -5,6 +5,7 @@ const path = require('path');
 const url = 'file://' + path.resolve(__dirname, '..', process.env.PAGE || 'index.html');
 const shots = process.env.SHOTS || '';
 
+const RSIM_near = (a, b) => Math.abs(a - b) < 0.05;
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
@@ -336,6 +337,20 @@ P[2]{
   check('ラックから取ってコンベアで流れた', !lr.alarm && lr.cnt >= 1 && lr.left < lr.full, lr);
   await ev(() => { if (RSIM.run) document.querySelector('#stopBtn').click(); });
   if (shots) await page.screenshot({ path: shots + '/09-line.png' });
+
+  // 実機のバックアップ（作業原点 OPEORG.DAT など）を読み込んだ状態で起動し直す。
+  // v4.2 では、この状態のときだけロボットが毎フレーム作業原点に引き戻されていた（実機データなしの起動では起きない）。値は試験用の架空のもの
+  const opeorg = '//OPEORG\n///GROUP 1,63\n///ORGPOS\n0,0\n-120000,-79000,-109000,0\n-64000,41000,0,0\n';
+  await ev(t => RSIM.importFiles([{ name: 'OPEORG.DAT', data: new TextEncoder().encode(t) }], true), opeorg);
+  await page.reload(); await page.waitForFunction(() => window.RSIM); await page.waitForTimeout(800);
+  const hq = await ev(() => RSIM.state.q.slice());
+  check('実機データあり：起動時は作業原点の姿勢', RSIM_near(hq[0], -120000 / 1413.5222) && RSIM_near(hq[4], -64000 / 765.2080), hq);
+  await tab('jog');
+  await hold('#cartJog button[aria-label="Z プラス"]', 500);
+  const z1 = await ev(() => RSIM.curPose().Z); await page.waitForTimeout(700);
+  const z2 = await ev(() => RSIM.curPose().Z), zh = await ev(() => RSIM.state.q.slice());
+  check('実機データあり：手動で動かせて、元に戻されない', zh.some((v, i) => Math.abs(v - hq[i]) > 0.05) && Math.abs(z2 - z1) < 0.01, { hq, zh, z1, z2 });
+  await ev(() => localStorage.removeItem('rs4-master'));
 
   check('JSエラーなし', errors.length === 0, errors);
   console.log('OK:\n  ' + ok.join('\n  '));
