@@ -2542,6 +2542,18 @@
   // 現場ボードの画面に「テンキーが記録されません」と出ないように、日報にフォーカスがあることを知らせる
   function ping() { if (chkFwd.checked && document.hasFocus()) localStorageSet(CNT.ping, JSON.stringify({ t: Date.now(), focused: true })); }
   setInterval(ping, 2000); window.addEventListener("focus", ping);
+  // 現場ボードへ、日報が開いていることと、いま選んでいる型式を知らせる（作業開始の画面で、その型式を最初から選んでおくため）
+  var lastAliveModel = null;
+  function nippoAlive() {
+    if (readOnly || !isToday()) return;
+    var m = currentModel();
+    if (m && !modelOf(m)) m = "";   // 登録されていない型式（打ち間違い）は知らせない
+    localStorageSet("nlineNippoAlive", JSON.stringify({ t: Date.now(), model: m }));
+    lastAliveModel = m;
+  }
+  setInterval(nippoAlive, 2000);
+  form.addEventListener("change", function () { setTimeout(function () { if (currentModel() !== lastAliveModel) nippoAlive(); }, 0); });
+  document.getElementById("work").addEventListener("change", function () { setTimeout(function () { if (currentModel() !== lastAliveModel) nippoAlive(); }, 0); });
   // 現場ボードからの返事（音・メッセージ）
   var actx = null;
   function tone(freq, dur, delay, vol) {

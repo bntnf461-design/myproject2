@@ -3120,6 +3120,19 @@ if (!REPORT_MODE) {
    日報が KEY_CMD に {id, t, cmd:"switch", model, qty} を書くと、受け取り役のタブが実行して KEY_CMD_REPLY に結果を返す。
    以前はテンキーのキー操作をまねて切り替えていたが、画面の状態によって失敗することがあったので、直接切り替える。 */
 const KEY_CMD = "defectCounterCommand", KEY_CMD_REPLY = "defectCounterCommandReply";
+// 日報が2秒ごとに書く {t, model}：日報が開いているか、日報でいま選んでいる型式
+const KEY_NIPPO = "nlineNippoAlive";
+function nippoInfo() { const x = readJson(KEY_NIPPO); return x && Date.now() - x.t < 8000 ? x : null; }
+function nippoModel() { const x = nippoInfo(); return x && x.model ? String(x.model).trim() : ""; }
+let lastNippoModel = "";
+if (!REPORT_MODE) window.addEventListener("storage", e => {
+  if (e.key !== KEY_NIPPO) return;
+  const m = nippoModel();
+  if (m === lastNippoModel) return;
+  lastNippoModel = m;
+  renderJob();
+  if (pickOpen) renderPicker();
+});
 let lastCmdId = "";
 function nippoSwitch(m) {
   if (!state.features.jobs) return {ok:false, msg:"現場ボードの設定で「作業の開始・終了」がオフです"};
@@ -3138,6 +3151,7 @@ function nippoSwitch(m) {
   if (prev && qty > 0) saveJobProd(qty);
   if (!state.shifts.includes(name)) state.shifts.push(name);
   startJob(name);
+  state.job.byNippo = Date.now(); saveState();
   showToast(prev ? `日報から切り替え：${prev} → ${name}` : `日報から作業開始：${name}`);
   return {ok:true, prev, qty:prev ? qty : 0};
 }
@@ -4796,15 +4810,19 @@ function renderPicker() {
     h += `<div class="pk-sec">「${esc(q)}」に合う製造種類：${hits.length} 件${hits.length > 60 ? "（はじめの60件）" : ""}</div>`;
     h += hits.length ? hits.slice(0, 60).map((x, i) => item(x, i === 0)).join("") : `<div class="pk-empty">合う製造種類がありません。<kbd>−</kbd> で消して入れ直してください</div>`;
   } else {
-    // 何も入れていないときは、最近使ったもの（なければ一覧の先頭）を黄色にする
+    // 何も入れていないときは、日報で選んでいる型式（なければ最近使ったもの、なければ一覧の先頭）を黄色にする
+    const pref = nippoModel();
+    if (pref && !state.shifts.includes(pref)) { state.shifts.push(pref); saveState(); }
     const codes = shiftCodeMap(), recent = state.recentShifts.filter(n => state.shifts.includes(n)).map(n => ({name:n, code:codes[n]}));
     // 今日の計画がある製造種類（まだ計画に届いていないもの）を先頭に
     const today = dkey(Date.now()), planned = Object.keys(hist.pl || {}).filter(key => key.slice(0, 10) === today && hist.pl[key] > 0).map(key => key.slice(11))
       .filter(n => doneOf(today, n) < planOf(today, n)).sort((a, b) => (state.shifts.indexOf(a) + 1 || 1e6) - (state.shifts.indexOf(b) + 1 || 1e6)).map(n => ({name:n, code:codes[n] || ""}));
-    pickHits = planned.length ? planned : recent.length ? recent : all.slice(0, 1);
-    if (planned.length) h += `<div class="pk-sec">今日の計画</div>` + planned.map((x, i) => item(x, i === 0)).join("");
-    if (recent.length) h += `<div class="pk-sec">最近使った製造種類</div>` + recent.map((x, i) => item(x, !planned.length && i === 0)).join("");
-    h += `<div class="pk-sec">すべての製造種類（${all.length}）</div>` + all.map(x => item(x, !planned.length && !recent.length && x === all[0])).join("");
+    const px = pref ? {name:pref, code:codes[pref] || ""} : null;
+    pickHits = px ? [px] : planned.length ? planned : recent.length ? recent : all.slice(0, 1);
+    if (px) h += `<div class="pk-sec">日報で選んでいる型式（Enter で開始）</div>` + item(px, true);
+    if (planned.length) h += `<div class="pk-sec">今日の計画</div>` + planned.map((x, i) => item(x, !px && i === 0)).join("");
+    if (recent.length) h += `<div class="pk-sec">最近使った製造種類</div>` + recent.map((x, i) => item(x, !px && !planned.length && i === 0)).join("");
+    h += `<div class="pk-sec">すべての製造種類（${state.shifts.length}）</div>` + state.shifts.map(n => ({name:n, code:codes[n]})).map((x, i) => item(x, !px && !planned.length && !recent.length && i === 0)).join("");
   }
   $("pkList").innerHTML = h;
 }
@@ -4862,7 +4880,9 @@ function startJob(name) {
 }
 function askEndJob() {
   const j = state.job, sm = jobSummaryNow();
-  openConfirm("作業終了", `${shiftCode(j.shift)} ${j.shift}　${jobStartLabel(j.start)} 〜 いま（${fmtHM(Date.now() - Date.parse(j.start))}）\n不良 合計 ${sm.total}${unit()}　設備停止 ${sm.downCount}回${breakMsNow() ? `　休憩 ${fmtHM(breakMsNow())}` : ""}\n\n作業を終了するには、もう一度 + を押してください（Enter でキャンセル）。`
+  // 日報で型式を選んで切り替えた直後に ＋ を押したとき（前の作業を終えるつもりの押し間違い）に気づけるように
+  const justSwitched = j.byNippo && Date.now() - j.byNippo < 3 * 60 * 1000 ? `⚠ この作業は ${hm(new Date(j.byNippo).toISOString())} に日報から切り替えて始めたところです（前の作業はもう終わっています）。\n\n` : "";
+  openConfirm("作業終了", justSwitched + `${shiftCode(j.shift)} ${j.shift}　${jobStartLabel(j.start)} 〜 いま（${fmtHM(Date.now() - Date.parse(j.start))}）\n不良 合計 ${sm.total}${unit()}　設備停止 ${sm.downCount}回${breakMsNow() ? `　休憩 ${fmtHM(breakMsNow())}` : ""}\n\n作業を終了するには、もう一度 + を押してください（Enter でキャンセル）。`
     + (jobTooLong() ? "\n※ 本当の終了時刻と違うときは、終了したあと「記録の修正」で直せます。" : ""), () => endJob(), "+");
 }
 function jobSummaryNow() {
@@ -4902,6 +4922,7 @@ function askProdBeforeNext() {
   if (!lj || state.job.running) return false;
   if (jobProdBuf !== null && jobProdBuf !== "") { saveJobProd(Number(jobProdBuf)); jobProdBuf = null; showToast("作業数を保存しました"); return false; }
   if (lj.prod !== null && lj.prod !== undefined) return false;
+  if (nippoInfo()) return false; // 日報を開いているときは、作業数は日報の良品の合計から入るので聞かない
   errorBeep();
   const box = document.querySelector("#jobScreen .js-prodin");
   if (box) { box.classList.remove("nag"); void box.offsetWidth; box.classList.add("nag"); }
@@ -5028,7 +5049,7 @@ function renderJob() {
     // 良品＝作業数−不良。良品率はいつも、不良率は「不良率」の機能を使うときだけ
     const rate = !typing && lj.prod > 0 ? `　良品 <b>${Math.max(0, lj.prod - lj.total).toLocaleString()}</b>（良品率 <b>${(Math.max(0, lj.prod - lj.total) / lj.prod * 100).toFixed(2)}%</b>）` + (state.features.rate ? `　不良率 <b>${(lj.total / lj.prod * 100).toFixed(2)}%</b>` : "") : "";
     const prodHtml = `<div class="js-prodin ${typing || saved ? "" : "need"}">作業数<span class="box ${typing || saved ? "" : "empty"}">${shown}</span>${esc(unit())}${rate}`
-      + `<div class="js-hint">${typing ? "Enter で保存（− で1文字消す）" : saved ? '<span class="ok">✓ 保存しました</span>（数字を入れ直すと修正できます）' : '<b class="ask">作業数を入れてください：テンキーで数字 → Enter</b>'}</div></div>`;
+      + `<div class="js-hint">${typing ? "Enter で保存（− で1文字消す）" : saved ? '<span class="ok">✓ 保存しました</span>（数字を入れ直すと修正できます）' : nippoInfo() ? '作業数は、日報の良品の合計から自動で入ります（ここでテンキーで入れることもできます）' : '<b class="ask">作業数を入れてください：テンキーで数字 → Enter</b>'}</div></div>`;
     const pk = dkey(Date.parse(lj.start)), pp = planOf(pk, lj.shift), pd = doneOf(pk, lj.shift) + (typing ? Number(jobProdBuf) - (lj.prod || 0) : 0); // 入力中の数も合計に入れて見せる
     const planHtml = pp ? `<div class="js-plan">${pk === dkey(Date.now()) ? "今日" : dlabel(pk)}の計画 <b>${pp.toLocaleString()}</b>　作業数の合計 <b>${pd.toLocaleString()}</b>（${pctTxt(pd, pp)}）${pd >= pp ? "　✓ 計画どおり" : `　あと ${(pp - pd).toLocaleString()}`}</div>` : "";
     card = `<div class="js-card"><div class="js-line">前の作業</div>
@@ -5039,7 +5060,7 @@ function renderJob() {
     // 日報は Nライン日報アプリで作るので、ここでは開かない
   }
   $("jobScreen").innerHTML = `${procName() ? `<div class="js-proc">${esc(procName())}</div>` : ""}<div class="js-state">${lj ? "作業終了" : "作業していません"}</div>${card}
-    <div class="js-btns">${dayBtn}${jobFix ? "" : `<button class="js-go" data-go="1">＋ 作業開始<kbd>+</kbd></button>`}</div>
+    <div class="js-btns">${dayBtn}${jobFix ? "" : `<button class="js-go" data-go="1">＋ 作業開始${nippoModel() ? `（${esc(nippoModel())}）` : ""}<kbd>+</kbd></button>`}</div>
     <div class="js-hint">＋キーを押して製造種類を選ぶと、カウントが0から始まります。<kbd>/</kbd> でメニュー</div><div class="js-lang">${langButtonHtml()}</div>`;
 }
 // 作業中の時間が設定を超えたか（作業終了の押し忘れ）

@@ -965,6 +965,42 @@ BOARDS.forEach(([label, COUNTER, direct]) => test(label + "連携：型式の追
   eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
 }));
 
+test("作業者の流れ：日報で型式を選び、テンキー ＋ Enter で現場ボードの作業開始、＋＋で終了（作業数は日報から）", async ctx => {
+  const c = await ctx.newPage(); c.errors = []; c.on("pageerror", e => c.errors.push(e.message));
+  await c.goto("file://" + path.join(__dirname, "..", "genba-board.html")); await c.waitForTimeout(800);
+  const n = await open(ctx);
+  await importMaster(n);
+  await addModel(n, { name: "TEST-B", pallet: "青PL", wheel: "", cap: 100, local: "" });
+  await n.reload(); await n.bringToFront(); await n.waitForTimeout(1200);
+  const cst = () => n.evaluate(() => JSON.parse(localStorage.getItem("defectCounterState")));
+  const key = async (k, w = 400) => { await n.keyboard.press(k); await n.waitForTimeout(w); };
+  await fill(n, "gt1_model", MODEL); await n.dispatchEvent('[name="gt1_model"]', "change"); await n.waitForTimeout(600);
+  await n.click("body");
+  await key("NumpadAdd", 700);
+  ok(await c.evaluate(() => pickOpen), "作業開始の画面が出る");
+  eq(await c.evaluate(() => pickHits[0] && pickHits[0].name), MODEL, "日報の型式を最初から選んでいる");
+  await key("NumpadEnter", 900);
+  eq((await cst()).job.shift, MODEL, "日報の型式で作業開始");
+  await key("Numpad1", 300); await key("NumpadAdd", 450); await key("NumpadAdd", 900);
+  ok(!(await cst()).job.running, "＋＋で作業終了");
+  ok((await c.textContent("#jobScreen")).includes("日報の良品の合計から自動で入ります"), "作業数は日報から入ると出る");
+  await fill(n, "gt2_model", "TEST-B"); await n.dispatchEvent('[name="gt2_model"]', "change"); await n.waitForTimeout(600);
+  await n.click("body");
+  await key("NumpadAdd", 700);
+  ok(await c.evaluate(() => pickOpen && !confirmState), "作業数を聞かずに、すぐ作業開始の画面");
+  eq(await c.evaluate(() => pickHits[0] && pickHits[0].name), "TEST-B", "次の型式を選んでいる");
+  await key("NumpadEnter", 900);
+  eq((await cst()).job.shift, "TEST-B", "次の型式で作業開始");
+  // 作業中に日報で型式を変えると自動で切り替わる。そのすぐあとの ＋ には注意を出す
+  await fill(n, "gt3_model", MODEL); await n.dispatchEvent('[name="gt3_model"]', "change"); await n.waitForTimeout(2500);
+  eq((await cst()).job.shift, MODEL, "日報で選ぶと自動で切り替え");
+  await n.click("body"); await key("NumpadAdd", 600);
+  ok((await c.textContent("#confirmOverlay")).includes("日報から切り替えて始めたところ"), "切り替えた直後の ＋ に注意");
+  await key("NumpadEnter", 500);
+  ok((await cst()).job.running, "Enter でやめられる");
+  eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
+});
+
 // ---------- 実行 ----------
 (async () => {
   const only = process.argv.slice(2).map(s => s.toLowerCase());
