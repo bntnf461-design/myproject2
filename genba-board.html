@@ -3145,6 +3145,8 @@ function nippoSwitch(m) {
   if (typeof dayOpen !== "undefined" && dayOpen) closeDay();
   if (menuOpen) closeMenu();
   if (jobFix) closeJobFix();
+  // 作業終了の画面で作業数を打ちかけていたら、先に保存する（切り替えで消えないように）
+  if (!state.job.running && state.lastJob && jobProdBuf !== null && jobProdBuf !== "") { saveJobProd(Number(jobProdBuf)); jobProdBuf = null; }
   let prev = null;
   if (state.job.running) { prev = state.job.shift; endJob(true); }
   const qty = Math.round(Number(m.qty) || 0);
@@ -3162,7 +3164,7 @@ function nippoFixDefects(m) {
     const d = Math.round(Number(it.delta) || 0);
     if (!d || !state.types.some(x => x.id === it.typeId)) return;
     const ms = it.t * 1000;
-    hist.d.push([Math.round(it.t), it.typeId, d, histShiftIdx(it.model), d > 0 ? 2 : 0]);
+    hist.d.push([Math.round(it.t), it.typeId, d, histShiftIdx(it.model), 2]); // 2＝修正：減らすときも、同じ型式・同じ日の記録から引く
     const lj = state.lastJob;
     if (lj && lj.shift === it.model && ms >= Date.parse(lj.start) && ms <= Date.parse(lj.end) + 1000) {
       lj.counts[it.typeId] = Math.max(0, (lj.counts[it.typeId] || 0) + d); if (!lj.counts[it.typeId]) delete lj.counts[it.typeId];
@@ -4904,8 +4906,8 @@ function askEndJob() {
   const j = state.job, sm = jobSummaryNow();
   // 日報で型式を選んで切り替えた直後に ＋ を押したとき（前の作業を終えるつもりの押し間違い）に気づけるように
   const justSwitched = j.byNippo && Date.now() - j.byNippo < 3 * 60 * 1000 ? `⚠ この作業は ${hm(new Date(j.byNippo).toISOString())} に日報から切り替えて始めたところです（前の作業はもう終わっています）。\n\n` : "";
-  openConfirm("作業終了", justSwitched + `${shiftCode(j.shift)} ${j.shift}　${jobStartLabel(j.start)} 〜 いま（${fmtHM(Date.now() - Date.parse(j.start))}）\n不良 合計 ${sm.total}${unit()}　設備停止 ${sm.downCount}回${breakMsNow() ? `　休憩 ${fmtHM(breakMsNow())}` : ""}\n\n作業を終了するには、もう一度 + を押してください（Enter でキャンセル）。`
-    + (jobTooLong() ? "\n※ 本当の終了時刻と違うときは、終了したあと「記録の修正」で直せます。" : ""), () => endJob(), "+");
+  openConfirm("作業終了", justSwitched + `${shiftCode(j.shift)} ${j.shift}　${jobStartLabel(j.start)} 〜 いま（${fmtHM(Date.now() - Date.parse(j.start))}）\n不良 合計 ${sm.total}${unit()}　設備停止 ${sm.downCount}回${breakMsNow() ? `　休憩 ${fmtHM(breakMsNow())}` : ""}\n\n${justSwitched ? "それでも終了するときは * を押してください（Enter でキャンセル。+ では終了しません）。" : "作業を終了するには、もう一度 + を押してください（Enter でキャンセル）。"}`
+    + (jobTooLong() ? "\n※ 本当の終了時刻と違うときは、終了したあと「記録の修正」で直せます。" : ""), () => endJob(), justSwitched ? "*" : "+");
 }
 function jobSummaryNow() {
   const evs = state.downtime.events;
@@ -4975,7 +4977,7 @@ function jobFixDelta(id, delta, undo) {
   if (cur + delta < 0) { errorBeep(); showToast(`${t.name} は 0 なので、これ以上減らせません`, true); return false; }
   // 記録は作業の終了の直前に入れる（実績グラフ・日報でその作業の不良になるように）
   const ts = Math.max(Date.parse(lj.start), Date.parse(lj.end) - 1000);
-  hist.d.push([Math.round(ts / 1000), id, delta, histShiftIdx(lj.shift), delta > 0 ? 2 : 0]);
+  hist.d.push([Math.round(ts / 1000), id, delta, histShiftIdx(lj.shift), 2]); // 2＝修正：減らすときも、その作業の型式・日の記録から引く（0 だと別の作業の新しい記録から引かれる）
   saveHist();
   lj.counts[id] = cur + delta; if (!lj.counts[id]) delete lj.counts[id];
   lj.total = Math.max(0, (lj.total || 0) + delta);

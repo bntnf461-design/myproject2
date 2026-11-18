@@ -747,6 +747,12 @@ test("素板のQRのローカルコード（BR）を、明細のローカルコ�
   eq(await v(p, "r1_localCode"), "2N9A", "ほかの欄を入れても消えない");
   await p.reload(); await p.waitForTimeout(300);
   eq(await v(p, "r1_localCode"), "2N9A", "開き直しても入っている");
+  // 次の日：前日から続く素板の行にも、ローカルコードを入れる
+  await fill(p, "sb1_to", 75); await p.dispatchEvent('[name="sb1_to"]', "change"); await p.waitForTimeout(700);
+  await setDate(p, "2026-10-22");
+  eq(await v(p, "sb1_carryLot") + " " + await v(p, "sb1_carryLocal"), "R7Z446SX042 2N9A", "前日から続く素板とローカルコード");
+  await fill(p, "r1_lotSoban", "R7Z446SX042"); await fill(p, "r1_good", 10); await p.waitForTimeout(200);
+  eq(await v(p, "r1_localCode"), "2N9A", "前日から続く素板の行のローカルコード");
 });
 
 test("印鑑を登録して、GL・リーダーの欄を押して選ぶ（完成したあとでも押せる）", async ctx => {
@@ -789,12 +795,17 @@ test("確認者の欄も、押して印鑑を選べる（名前が入り、印�
   eq(p.errors.join(), "", "ページのエラー");
 });
 
-test("年月度マーク：1117 と打つと「11月17日」になる（終業の画面でも）", async ctx => {
+test("年月度マーク：1117 と打つと「11月17日」になる（終業の画面でも）／3けた・ない日付は変えない", async ctx => {
   const p = await open(ctx, "2026-11-17T08:00:00");
   await fill(p, "m1_mark", "1117"); await p.dispatchEvent('[name="m1_mark"]', "change"); await p.waitForTimeout(100);
   eq(await v(p, "m1_mark"), "11月17日", "4桁");
-  await fill(p, "m2_mark2", "105"); await p.dispatchEvent('[name="m2_mark2"]', "change"); await p.waitForTimeout(100);
-  eq(await v(p, "m2_mark2"), "1月5日", "3桁");
+  await fill(p, "m2_mark2", "0105"); await p.dispatchEvent('[name="m2_mark2"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m2_mark2"), "1月5日", "0105");
+  await fill(p, "m2_mark", "111"); await p.dispatchEvent('[name="m2_mark"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m2_mark"), "111", "3けたは分からないので変えない");
+  ok((await p.textContent("#msg")).includes("4けた"), "4けたで入れるよう知らせる");
+  await fill(p, "m2_mark", "0230"); await p.dispatchEvent('[name="m2_mark"]', "change"); await p.waitForTimeout(100);
+  eq(await v(p, "m2_mark"), "0230", "ない日付（2月30日）は変えない");
   await fill(p, "m1_mark2", "1345"); await p.dispatchEvent('[name="m1_mark2"]', "change"); await p.waitForTimeout(100);
   eq(await v(p, "m1_mark2"), "1345", "月日でない数字はそのまま");
   await p.click("#btnEnd");
@@ -996,6 +1007,8 @@ test("作業者の流れ：日報で型式を選び、テンキー ＋ Enter で
   eq((await cst()).job.shift, MODEL, "日報で選ぶと自動で切り替え");
   await n.click("body"); await key("NumpadAdd", 600);
   ok((await c.textContent("#confirmOverlay")).includes("日報から切り替えて始めたところ"), "切り替えた直後の ＋ に注意");
+  await key("NumpadAdd", 600);
+  ok((await cst()).job.running, "続けて ＋ を押しても終了しない（* で終了）");
   await key("NumpadEnter", 500);
   ok((await cst()).job.running, "Enter でやめられる");
   eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
@@ -1030,6 +1043,56 @@ test("日報で合わせた不良数を、完成したときに現場ボード�
   await n.waitForTimeout(2500);
   eq(await v(n, `r${r}_kizu`) + "|" + await v(n, `r${r}_proc_other`) + "|" + await v(n, `r${r}_ware`), "5|1|1", "日報の数はそのまま（取り込み直しで変わらない）");
   eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
+});
+
+test("型式A・Bの不良を日報で直しても、作り直し・完成で型式をまたがない（現場ボードの記録も正しい）", async ctx => {
+  const c = await ctx.newPage(); c.errors = []; c.on("pageerror", e => c.errors.push(e.message));
+  await c.goto("file://" + path.join(__dirname, "..", "genba-board.html")); await c.waitForTimeout(800);
+  const n = await open(ctx, "2026-10-21T08:00:00");
+  await importMaster(n);
+  await addModel(n, { name: "TEST-B", pallet: "青PL", wheel: "", cap: 100, local: "" });
+  await n.reload(); await n.waitForTimeout(600);
+  await fill(n, "gt1_model", MODEL); await fill(n, "gt1_good", 100); await n.dispatchEvent('[name="gt1_good"]', "change"); await n.waitForTimeout(300);
+  await fill(n, "gt2_model", "TEST-B"); await fill(n, "gt2_good", 50); await n.dispatchEvent('[name="gt2_good"]', "change"); await n.waitForTimeout(300);
+  // 現場ボードの記録：A キズ3（9時台）、B キズ2（11時台）
+  await c.evaluate((model) => {
+    const sec = (h, m) => Math.floor(new Date(2026, 9, 21, h, m).getTime() / 1000);
+    hist.shifts = [model, "TEST-B"];
+    hist.j = [[sec(9, 0), sec(10, 0), 0, "ja", null], [sec(11, 0), sec(12, 0), 1, "jb", null]];
+    hist.d = [[sec(9, 10), "t1", 1, 0, 0], [sec(9, 20), "t1", 1, 0, 0], [sec(9, 30), "t1", 1, 0, 0], [sec(11, 10), "t1", 1, 1, 0], [sec(11, 20), "t1", 1, 1, 0]];
+    saveHist();
+  }, MODEL);
+  await n.bringToFront(); await n.waitForTimeout(2500);
+  eq(await v(n, "r1_kizu") + "|" + await v(n, "r2_kizu"), "3|2", "取り込み");
+  // A のキズを 3→1 に直し、良品の合計を変えて明細を作り直す
+  await n.evaluate(() => { const e = document.forms.nippo.elements.r1_kizu; e.value = 1; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); });
+  await n.waitForTimeout(300);
+  await fill(n, "gt1_good", 101); await n.dispatchEvent('[name="gt1_good"]', "change"); await n.waitForTimeout(500);
+  eq(await v(n, "r1_kizu") + "|" + await v(n, "r2_kizu"), "1|2", "作り直しても型式をまたがない");
+  await n.click("#btnDone"); await n.waitForTimeout(300);
+  if (await n.isVisible("#donePack")) await n.check("#donePackChk");
+  await n.click("#doneOnly"); await n.waitForTimeout(2000);
+  ok((await n.textContent("#msg")).includes("現場ボードの不良数も日報に合わせました"), "反映した：" + await n.textContent("#msg"));
+  // 現場ボードと同じ数え方（replayHist）で、型式ごとのキズ
+  const cnt = await c.evaluate(() => { const o = {}; replayHist(hist).forEach(it => { o[it.s] = (o[it.s] || 0) + 1; }); return o; });
+  eq((cnt["ZC45PN-ARDR"] || 0) + "|" + (cnt["TEST-B"] || 0), "1|2", "現場ボードの記録：A=1・B=2");
+  await n.waitForTimeout(2500);
+  eq(await v(n, "r1_kizu") + "|" + await v(n, "r2_kizu"), "1|2", "取り込み直しても変わらない");
+  eq(c.errors.concat(n.errors).join(), "", "ページのエラー");
+});
+
+test("良品の合計があるときにQRを読んで「取り消す」と、素板も明細も元に戻る", async ctx => {
+  const p = await open(ctx, "2026-10-21T08:00:00");
+  await makePrevDay(p);
+  await setDate(p, "2026-10-21");
+  await fill(p, "gt1_good", 100); await p.dispatchEvent('[name="gt1_good"]', "change"); await p.waitForTimeout(400);
+  const before = await p.evaluate(() => [document.forms.nippo.elements.sb1_lots.value, document.forms.nippo.elements.r1_lotSoban.value, document.forms.nippo.elements.r2_lotSoban.value].join("|"));
+  await p.click("body"); await scanQR(p, QR_042); await p.waitForTimeout(400);
+  ok((await p.evaluate(() => document.forms.nippo.elements.sb1_lots.value)).includes("R7Z446SX042"), "読んだ");
+  await p.click("#msg button"); await p.waitForTimeout(400);
+  const after = await p.evaluate(() => [document.forms.nippo.elements.sb1_lots.value, document.forms.nippo.elements.r1_lotSoban.value, document.forms.nippo.elements.r2_lotSoban.value].join("|"));
+  eq(after, before, "素板も明細も、読む前に戻る");
+  eq(p.errors.join(), "", "ページのエラー");
 });
 
 // ---------- 実行 ----------
