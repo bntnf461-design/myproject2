@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.3';
+  const VERSION = '4.3.1';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -3411,8 +3411,7 @@
     if (cableDirty) { cableDirty = false; model.update(); }
     if (CELL.update) CELL.update(dt, { alarm: !!S.alarm, running: !!run });
     look.render(now);
-    if (isY() && master && Array.isArray(master.home) && robot.pulse) { S.q = getHome(''); applyPose(); }
-  requestAnimationFrame(frame);
+    requestAnimationFrame(frame);
   }
 
   function renderAll() {
@@ -3435,6 +3434,8 @@
   sel = prog().lines.length ? 0 : -1;
   renderAll();
   resize(); updateCam();
+  // 実機の作業原点（OPEORG.DAT）があれば、起動時はその姿勢から（1 回だけ）
+  if (isY() && master && Array.isArray(master.home) && robot.pulse) { S.q = getHome(''); applyPose(); }
   requestAnimationFrame(frame);
 
   /* 1 ファイル版に実機データが同梱されていれば、最初の 1 回だけ取り込む */
