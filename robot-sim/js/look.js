@@ -448,7 +448,7 @@
               if (slow > 2000 && slowN >= 8) { look.setQuality(quality === 'high' ? 'std' : 'low', true); if (look.onAutoDrop) look.onAutoDrop(); }
             }
           }
-          lastT = now;
+          lastT = active ? now : 0;   // 動いているときだけ続けて測る（間引いた後の間隔は数えない）
         }
       }
     };

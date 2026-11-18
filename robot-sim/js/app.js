@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.5';
+  const VERSION = '4.6';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -315,6 +315,7 @@
     works = [];
   }
   function spawnAt(tbl) {
+    sceneDirty = true;
     const def = workDef(), w = makeWork(def);
     w.g.position.set(tbl.X, tbl.h + def.size[2] / 2, -tbl.Y);
     works.push(w);
@@ -338,6 +339,7 @@
     return new T.Matrix4().makeBasis(x, y, z).setPosition(c);
   }
   function setFace(r, f, count) {
+    sceneDirty = true;
     f.count = Math.max(0, count);
     if (typeof renderGlassCount === 'function') setTimeout(renderGlassCount, 0);
     if (f.front && f.front.rack) { disposeWork(f.front); works.splice(works.indexOf(f.front), 1); }
@@ -414,10 +416,10 @@
       case 55: { const x = g(); return x <= 0.015; }
       case 57: return pl.blow;
       case 65: return pl.auto && STRAIGHT(pl.pattern);
-      case 66: { const r = rackOf('S'); return !!r && !r.rotating && !r.swapReq; }
+      case 66: { const r = rackOf('S'); return !!r && !r.rotating && !r.swapReq && r.faces.some(f => f.count > 0); }
       case 69: return !pl.auto;
       case 81: return pl.auto && !STRAIGHT(pl.pattern);
-      case 82: { const r = rackOf('C'); return !!r && !r.rotating && !r.swapReq; }
+      case 82: { const r = rackOf('C'); return !!r && !r.rotating && !r.swapReq && r.faces.some(f => f.count > 0); }
       case 85: return !pl.auto;
       case 97: return getOut('OT', 97);
       case 98: return !placeBusy() && !(CELL.conveyor.running > 0);
@@ -482,11 +484,13 @@
     return false;
   }
   function attach(w) {
+    sceneDirty = true;
     G.mount.attach(w.g); S.holding = w; w.falling = false; w.vy = 0;
     if (w.rack) { const r = w.rack, f = w.face; w.rack = null; w.face = null; f.front = null; setFace(r, f, f.count - 1); }   // 次の 1 枚が手前になる
     updateToolVis();
   }
   function dropWork(instant) {
+    sceneDirty = true;
     const w = S.holding; if (!w) return;
     scene.attach(w.g);
     const ax = new T.Vector3(1, 0, 0).applyQuaternion(w.g.quaternion);
@@ -516,7 +520,8 @@
         if (S.io.out.OT56) { logMsg('ハンドセンサー異常（OT#(56)）のため、パレットの入替はしません', 'warn'); return; }   // 空ではなく検出の失敗
         const r = rackOf(n === 54 ? 'S' : 'C'); if (r) r.swapReq = true;
         const pl = S.plc, other = pl.pattern + (n === 54 ? 50 : -50);
-        if (pl.alt && (n === 54) === (pl.pattern < 50) && lib.progs[String(other)]) { pl.pattern = other; logMsg(`${n === 54 ? '直進' : '曲進'}側のパレットが空になりました。取出パターンを ${other}（${n === 54 ? '曲進' : '直進'}側）へ切り替えます`); renderPlc(); }
+        const oth = rackOf(n === 54 ? 'C' : 'S');
+        if (pl.alt && (n === 54) === (pl.pattern < 50) && lib.progs[String(other)] && oth && oth.faces.some(f => f.count > 0)) { pl.pattern = other; logMsg(`${n === 54 ? '直進' : '曲進'}側のパレットが空になりました。取出パターンを ${other}（${n === 54 ? '曲進' : '直進'}側）へ切り替えます`); renderPlc(); }
       }
     }
   }
@@ -696,6 +701,7 @@
   $('#alarmReset').addEventListener('click', resetAlarm);
   $('#estopBtn').addEventListener('click', () => {
     S.estop = !S.estop;
+    if (S.estop) { pend.ready = false; pend.enable = false; }   // 非常停止でサーボ電源が切れる
     $('#estopBtn').classList.toggle('on', S.estop);
     $('#estopBtn').textContent = S.estop ? '非常停止 解除' : '非常停止';
     if (S.estop) { pend.ready = false; pend.enable = false; raiseAlarm('estop'); } else refreshState();
@@ -2053,7 +2059,7 @@
     const a = e.target.closest('[data-gcfull]'); if (a) { setRackCount(+a.dataset.gcfull, CELL.glassDef.count); return; }
     const z = e.target.closest('[data-gcempty]'); if (z) { setRackCount(+z.dataset.gcempty, 0); return; }
     if (e.target.id === 'gcFullSet') {
-      if (run || S.holding) { flash('#progMsg', '止めて、ガラスを置いてから変えてください'); return; }
+      if (run || S.holding) { flash('#progMsg', '止めて、ガラスを置いてから変えてください（持っているときは「ハンド：吸着 OFF」で離せます）'); return; }
       const v = +$('#gcFull').value; if (!isFinite(v) || v < 0) return;
       const vals = Object.assign(store.get(lineKey, null) || RS.lineValues(), { 'glass.count': v });
       RS.setLine(vals); store.set(lineKey, RS.lineValues()); rebuildLine();
@@ -2087,6 +2093,7 @@
   $('#plcAlt').addEventListener('change', e => { S.plc.alt = e.target.checked; });
   $('#plcMaster').addEventListener('click', () => {
     const mj = masterJob();
+    if (lineY() && tool.id !== 'glassM') { switchTool('glassM'); logMsg('マスターから自動運転：ハンドを実機のツール0（硝子ハンド）に戻しました', 'warn'); flash('#progMsg', 'ハンドを実機のツール0（硝子ハンド）に戻しました', true); }
     if (!mj) { flash('#progMsg', 'マスタジョブがありません。バックアップを読み込むか、ペンダントの［ジョブ］→［マスタジョブ］で登録してください'); return; }
     stopAll();
     if (S.alarm) { flash('#progMsg', 'アラームをリセットしてから始めてください'); return; }
@@ -2158,7 +2165,7 @@
       return;
     }
     stopAll();
-    const ch = fitToolFor(e.target.value);
+    const ch = CELL.id === 'line' ? false : fitToolFor(e.target.value);   // 実機ラインのハンドは実機ツール0のまま
     if (ch) flash('#jogMsg', `今のハンドでは ${RS.WORKS[e.target.value].name} をつかめないため、ハンドを「${tool.name}」にしました`, true);
     S.workId = e.target.value; store.set('rs3-work', S.workId); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell(); });
   $('#resetWork').addEventListener('click', () => { stopAll(); if (S.holding) dropWork(true); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); S.stats = { count: 0, last: 0, t0: 0 }; updateCycle(); });
@@ -2481,7 +2488,7 @@
   const pendVisible = () => pend.float || !$('#t-pend').hidden;
   const FMN = { T1: 'テスト1', T2: 'テスト2', AUTO: '自動' };   // 操作盤のモードの表示名
   /* 実機（DX200）のメニュー・画面のための状態 */
-  Object.assign(pend, { sub: null, pull: null, vsel: 0, jsel: 0, pick: null, posDisp: 'pulse', cyc: 'cont', varType: null, ioType: null, shockMax: [0, 0, 0, 0, 0, 0] });
+  Object.assign(pend, { sub: null, pull: null, vsel: 0, jsel: 0, pick: null, posDisp: 'pulse', cyc: 'once', varType: null, ioType: null, shockMax: [0, 0, 0, 0, 0, 0] });
   { const c = store.get('rs4-pcoord', 'joint'); if (robot.coordNames[c]) pend.coord = c; }
   const homeKey = n => `rs4-home${n}-${S.sys}`;
   function getHome(n) {
@@ -2530,8 +2537,10 @@
       }
       case 'master':
         title = 'マスタジョブ';
-        rows.push({ t: `マスタジョブ　 ${masterJob() || '（未登録）'}` }, { t: '' }, { t: '［選択］：登録するジョブを選ぶ' }, { t: '［マスタ呼出］：マスタジョブを呼び出す' });
-        selRow = 0; break;
+        rows.push({ t: `マスタジョブ　 ${masterJob() || '（未登録）'}` });
+        if (pend.mdlg) { rows.push({ t: '' }, { t: '　▼ 選択', vrow: -1 }); ['設定（マスタジョブを登録）', 'マスタ呼出', 'キャンセル'].forEach((n, i) => rows.push({ t: '　　' + n, vrow: i })); selRow = 3 + clamp(pend.vsel, 0, 2); }
+        else { rows.push({ t: '' }, { t: '［選択］：設定（登録）／マスタ呼出' }); selRow = 0; }
+        break;
       case 'jobcap': {
         title = 'ジョブ容量';
         const ps = Object.values(lib.progs);
@@ -2695,7 +2704,7 @@
     },
     servo: on => svg16(`<text x="4" y="12" font-size="10" font-weight="700" fill="${on ? '#0a7a2a' : '#999'}" font-family="sans-serif">S</text>`, on ? '#c8f0d0' : '#fff')
   };
-  function resetPend() { Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
+  function resetPend() { pend.kb = null; pend.newJob = null; Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
   function pendJogSpec() {
     const Y = isY();
     return { spd: (Y ? (pend.fast ? YSP[3][1] : YSP[pend.sp][1]) : FOV[pend.ovrI]) / 100, frame: ['tool', 'cyl', 'user'].includes(pend.coord) && (isY() || pend.coord !== 'cyl') ? pend.coord : 'base', check: jogBlock, inch: Y && pend.sp === 0 && !pend.fast };
@@ -3090,7 +3099,7 @@
       const w = jogBlock(); if (w) { pend.msg = w; updateLcd(); return; }
       if (run || mv) return;
       const n = pend.view === 'home' ? '' : '2';
-      if (atHome(n)) { pend.msg = 'すでに' + (n ? '第2原点' : '作業原点') + 'にいます'; updateLcd(); return; }
+      if (getHome(n).every((v, i) => Math.abs(v - S.q[i]) < 0.005)) { pend.msg = 'すでに' + (n ? '第2原点' : '作業原点') + 'にいます'; updateLcd(); return; }
       motLim = pendLim(); pend.msg = (n ? '第2原点' : '作業原点') + 'へ移動中';
       if (startJ(getHome(n), 50, () => { motLim = null; pend.msg = (n ? '第2原点' : '作業原点') + 'に着きました'; updateLcd(); })) { b.classList.add('hold'); heldMv = true; }
       updateLcd(); return;
@@ -3177,6 +3186,9 @@
   function pendAct(a) {
     const P = pend;
     // キーパッドを開いている間：数字キー・エンター・キャンセルはキーパッドへ
+    if (P.kb && !(isY() && P.view === 'jobnew')) P.kb = null;
+    if (P.mdlg && P.view !== 'master') P.mdlg = false;
+    if (P.mdlg && a === 'cancel') { P.mdlg = false; renderPend(); return; }
     if (P.kb) {
       const d = { numdot: '.', numminus: '-' }[a] || (/^num\d$/.test(a) ? a.slice(3) : null);
       if (d != null) { P.kb.text = (P.kb.text + d).slice(0, 32); renderPend(); return; }
@@ -3220,10 +3232,16 @@
         if (isY() && P.view === 'jobsel') {
           const n = Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja'))[P.jsel]; if (!n) break;
           if (P.pick === 'master') { store.set(masterKey(), n); P.pick = null; P.view = 'master'; P.msg = `マスタジョブに ${n} を登録しました`; renderPlc(); break; }
+          if (run && !run.paused) { P.msg = '再生中はジョブを替えられません（ホールドしてから）'; break; }
           if (run) stopAll();
           lib.cur = n; sel = 0; stepKeep = null; renderProgAll(); P.view = 'prog'; P.msg = `ジョブ ${n} を開きました`; break;
         }
         if (isY() && P.view === 'master') {
+          // ［選択］で選択ダイアログ（設定／マスタ呼出／キャンセル）。取扱説明書 4.1.1.2・4.1.1.3
+          if (!P.mdlg) { P.mdlg = true; P.vsel = 0; break; }
+          const opt = clamp(P.vsel, 0, 2); P.mdlg = false;
+          if (opt === 1) { pendAct('master-call'); return; }
+          if (opt === 2) break;
           if (P.mode !== 'teach') { P.msg = 'マスタジョブの登録は ティーチ モードで行います'; break; }
           P.pick = 'master'; P.view = 'jobsel'; P.jsel = Math.max(0, Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja')).indexOf(masterJob())); break;
         }
@@ -3268,14 +3286,16 @@
         break;
       }
       case 'mode':
-        stopAll(); P.mode = { teach: 'play', play: 'remote', remote: 'teach' }[P.mode]; P.sub = null; P.pull = null;
+        stopAll(); P.mode = { teach: 'play', play: 'remote', remote: 'teach' }[P.mode]; P.sub = null; P.pull = null; P.kb = null;
+        if (P.view === 'jobnew') { P.view = 'prog'; P.newJob = null; }
         if (P.mode !== 'remote') P.cyc = 'once';   // モード切替時のサイクル＝1サイクル（取扱説明書 4.1.2.2 の初期設定）
         P.enable = false; P.msg = P.mode === 'remote' ? 'リモート：外部からの起動待ち（シミュレーターでは使いません）' : ''; break;
       case 'ready':
         if (S.estop) { P.msg = '非常停止を解除してください'; break; }
         if (S.alarm) { P.msg = 'アラームをリセットしてください'; break; }
-        P.ready = !P.ready; if (!P.ready) stopAll();
-        P.msg = P.ready ? (P.mode === 'teach' ? 'イネーブルスイッチを握るとサーボが入ります' : '') : 'サーボ電源を切りました'; break;
+        if (P.ready) { P.msg = 'サーボ電源は入っています（切るときは非常停止）'; break; }
+        P.ready = true;
+        P.msg = P.mode === 'teach' ? 'イネーブルスイッチを握るとサーボが入ります' : ''; break;
       case 'enable':
         P.enable = !P.enable;
         if (!P.enable) { endJog(); if ((run || mv) && P.mode === 'teach') holdStop('イネーブルスイッチを離したため停止'); }
@@ -3318,7 +3338,7 @@
       case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); P.menu = a === 'view-prog' ? P.menu : P.menu; break;
       case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
       case 'up': if (P.view === 'io') P.ioSel = Math.max(0, (P.ioSel || 0) - 1); else if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view === 'jobsel') P.jsel = Math.max(0, P.jsel - 1); else if (P.view !== 'prog') P.vsel = Math.max(0, P.vsel - 1); else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
-      case 'down': if (P.view === 'io') P.ioSel = (P.ioSel || 0) + 1; else if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view === 'jobsel') P.jsel = Math.min(Object.keys(lib.progs).length - 1, P.jsel + 1); else if (P.view !== 'prog') P.vsel = Math.min(Math.max(0, screenRows().rows.length - 1), P.vsel + 1); else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
+      case 'down': if (P.view === 'io') P.ioSel = Math.min(Math.max(0, screenRows().rows.length - 1), (P.ioSel || 0) + 1); else if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view === 'jobsel') P.jsel = Math.min(Object.keys(lib.progs).length - 1, P.jsel + 1); else if (P.view !== 'prog') P.vsel = Math.min(P.view === 'jobnew' ? 1 : P.view === 'cycle' || P.view === 'master' ? 2 : Math.max(0, screenRows().rows.length - 1), P.vsel + 1); else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
       case 'enter':
         if (doPending()) break;
         if (P.num) {   // 数字を入れて ENTER：選んだ移動命令の速度を変える
@@ -3377,7 +3397,7 @@
         if (isY()) { loopEl.checked = P.cyc === 'cont'; loopEl.dispatchEvent(new Event('change')); }   // 連続＝繰り返す、1サイクル＝1 回
         startRun(Math.max(0, sel), isY() && P.cyc === 'step', isY() ? null : { spdFac: FOV[P.ovrI] / 100, tcpCap: 0 }); P.msg = ''; break;
       }
-      case 'hold': if (run) { run.paused = true; refreshState(); } else { mv = null; } P.msg = 'ホールド中'; break;
+      case 'hold': if (run) { run.paused = true; refreshState(); P.msg = 'ホールド中'; } else { mv = null; P.msg = ''; } break;
       case 'reset': resetAlarm(); P.msg = S.alarm ? P.msg : ''; break;
       case 'estop': $('#estopBtn').click(); return;
     }
@@ -3397,10 +3417,9 @@
     const sb = e.target.closest('[data-sub]');
     if (sb) {
       const [id, arg] = sb.dataset.sub.split(':');
-      pend.sub = null; pend.pull = null;
+      pend.sub = null; pend.pull = null; pend.kb = null; pend.mdlg = false; if (!S.alarm) pend.msg = '';
       if (id === 'stack' || id === 'header') { pend.view = id; pend.vsel = 0; renderPend(); return; }
       if (id === 'act') { pendAct(arg); return; }
-      if (id === 'master' && ['prog', 'jobsel'].includes(pend.view)) { pendAct('master-call'); return; }
       if (id === 'na') { pend.msg = 'この画面はシミュレーターにはありません'; renderPend(); return; }
       pend.view = id; pend.vsel = 0; pend.pick = null;
       if (id === 'var') pend.varType = arg; if (id === 'io') { pend.ioType = arg; pend.ioSel = 0; }
@@ -3449,10 +3468,9 @@
   let last = performance.now(), hudT = 0, ioT = 0;
   /* 描画の頻度：3D の描き直しが PC の負荷のほとんど（JS の計算はごく小さい）。
      ロボット・ワーク・カメラが動いている間だけ 30 コマ／秒、止まっているときは 4 コマ／秒に落とす */
-  const invalidate = () => { sceneDirty = true; };
   const FPS_ACTIVE = 30, IDLE_MS = 250;
   function sceneActive(now) {
-    if (sceneDirty || mv || jogHold || (run && !run.paused) || now - camT < 400) return true;
+    if (sceneDirty || mv || jogHold || now - camT < 400) return true;
     if (Math.abs(S.gripK - (handOn() ? 1 : 0)) > 1e-3) return true;
     if (works.some(w => w.falling)) return true;
     if (CELL.conveyor && CELL.conveyor.running > 0) return true;
