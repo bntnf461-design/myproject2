@@ -672,7 +672,7 @@
     (S.almHist = S.almHist || []).unshift({ code, msg: msg + (detail ? '：' + detail : ''), at: new Date() }); if (S.almHist.length > 50) S.almHist.pop();
     // 吸着確認が来ないとき：吸盤がガラスに掛かっていないことが多いので、原因を添える
     if (key === 'wait' && detail && tool.kind === 'vacuum' && handOn() && !S.holding && (detail.includes(`(${io().handIn.n})`) || detail.includes(`[${io().handIn.n}]`)))
-      detail += '。吸盤がガラスに掛かっていません（4 つの吸盤すべてがガラスの上にある必要があります）。取出パターンとガラスの寸法・位置が合っているか確認してください';
+      detail += '。吸盤がワークに掛かっていません（すべての吸盤がワークの上にある必要があります）。ワークの寸法・位置と、ハンドが合っているか確認してください';
     S.alarm = { code, msg: msg + (detail ? '：' + detail : '') };
     const errLine = run && run.interp.frame && run.interp.progName === prog().name ? run.interp.pc : -1;
     stopAll();
@@ -1357,6 +1357,17 @@
     S.stats = { count: 0, last: 0, t0: 0 };
     target.set(...CELL.view.target); cam = { ...VIEWS.iso, r: CELL.view.r, theta: CELL.view.theta != null ? CELL.view.theta : VIEWS.iso.theta }; updateCam();
     renderAll();
+  }
+  /* ワークに合うハンドか（吸盤がワークの上面に収まるか、爪が開ける幅か）。合わなければ、そのワークを標準にしているハンドへ替える。替えたら true */
+  function fitToolFor(wid) {
+    const d = RS.WORKS[wid]; if (!d) return false;
+    const [sx, sy] = d.size;
+    const fits = t => t.kind === 'vacuum' ? t.cups.every(([x, y]) => Math.abs(x - t.tcp[0]) + t.cupR * 0.5 <= sx / 2 && Math.abs(y - t.tcp[1]) + t.cupR * 0.5 <= sy / 2)
+      : t.grip && t.grip.open >= Math.min(sx, sy);
+    if (fits(tool)) return false;
+    const t = RS.TOOLS.find(t => t.work === wid && fits(t)) || RS.TOOLS.find(fits);
+    if (!t) return false;
+    switchTool(t.id); return true;
   }
   function switchTool(id) {
     if (id === tool.id) return;
@@ -2095,7 +2106,7 @@
     const line = CELL.id === 'line';
     if (!/^[SC]$/.test(S.opts.pickDir)) S.opts.pickDir = 'S';
     $('#cellSel').value = CELL.id; $('#pickDir').value = S.opts.pickDir;
-    $('#lineOpts').hidden = !line; $('#lineNote').hidden = !line; $('#lineLayout').hidden = !line; $('#workRow').hidden = line;
+    $('#lineOpts').hidden = !line; $('#lineNote').hidden = !line; $('#lineLayout').hidden = !line; $('#workRow').hidden = false;
     $('#autoSupL').textContent = line ? 'ラックが空になったら補充してターンテーブルを回す' : '供給台に自動補充';
     $('#autoOutL').textContent = line ? '置き完了の信号がなくてもコンベアで流す' : '排出台から自動払い出し';
     const d = robot.dims;
@@ -2133,7 +2144,21 @@
   $('#lineReset').addEventListener('click', () => { RS.resetLine(); RS.setLine({}); store.set(lineKey, null); rebuildLine(); $('#lineMsg').textContent = '初期値に戻しました'; });
   renderLineForm();
   $('#pickDir').addEventListener('change', e => { S.opts.pickDir = e.target.value === 'C' ? 'C' : 'S'; saveOpts(); });
-  $('#workSel').addEventListener('change', e => { stopAll(); S.workId = e.target.value; store.set('rs3-work', S.workId); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell(); });
+  $('#workSel').addEventListener('change', e => {
+    // 実機ラインのラックに立てられるのは板ガラスだけ。ほかのワーク（段ボールなど）は標準セル（台 → 台）に切り替えて使う
+    if (CELL.id === 'line' && !/^glass/.test(e.target.value)) {
+      const w = e.target.value; switchCell('table');
+      const ch = fitToolFor(w);
+      S.workId = w; store.set('rs3-work', w); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell();
+      $('#cellSel').value = 'table';
+      flash('#jogMsg', `${RS.WORKS[w].name} は実機ラインのラックには置けないため、標準セル（台 → 台）に切り替えました` + (ch ? `。ハンドも「${tool.name}」にしました` : ''), true);
+      logMsg(`ワークを ${RS.WORKS[w].name} にしました（標準セルに切替）`);
+      return;
+    }
+    stopAll();
+    const ch = fitToolFor(e.target.value);
+    if (ch) flash('#jogMsg', `今のハンドでは ${RS.WORKS[e.target.value].name} をつかめないため、ハンドを「${tool.name}」にしました`, true);
+    S.workId = e.target.value; store.set('rs3-work', S.workId); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); renderCell(); });
   $('#resetWork').addEventListener('click', () => { stopAll(); if (S.holding) dropWork(true); setOut(io().handOut.kind, io().handOut.n, false); resetWorks(); S.stats = { count: 0, last: 0, t0: 0 }; updateCycle(); });
   $('#trailClr').addEventListener('click', clearTrail);
   const bindOpt = (id, key, after) => { const el = $(id); el.checked = !!S.opts[key]; el.addEventListener('change', () => { S.opts[key] = el.checked; saveOpts(); if (after) after(); }); };
