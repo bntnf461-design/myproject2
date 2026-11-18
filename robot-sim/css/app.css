@@ -503,3 +503,17 @@ details[open] summary{margin-bottom:6px}
 /* ペンダントを 3D 画面の上に出したとき：3D 画面を全体に */
 body.pendfull .app{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:100%!important}
 body.pendfull .app > .panel{display:none}
+
+/* ソフトウェアキーパッド（ペンダントの文字入力） */
+.ykb{position:absolute;left:4px;right:4px;bottom:4px;z-index:5;background:#dfe6f0;border:2px solid #1e5fd0;border-radius:4px;padding:4px;font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif}
+.ykbin{background:#fff;border:1px solid #8ea2bf;padding:2px 6px;font-size:11px;min-height:18px;margin-bottom:3px}
+.ykbin i{color:#1e5fd0;font-style:normal;animation:ykbblink 1s steps(1) infinite}
+@keyframes ykbblink{50%{opacity:0}}
+.ykbtabs{display:flex;gap:2px;margin-bottom:3px}
+.ykbtabs button{flex:1;font-size:9px;min-height:18px;padding:0;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:3px}
+.ykbtabs button.on{background:#1e5fd0;color:#fff}
+.ykbkeys{display:grid;grid-template-columns:repeat(13,1fr);gap:2px}
+.ykbkeys button{font-size:10px;min-height:20px;padding:0;background:#fff;border:1px solid #9fb0c8;border-radius:2px;color:#111}
+.ykbkeys button:hover{background:#e6efff}
+.ykbfn{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:3px}
+.ykbfn button{font-size:9px;min-height:20px;padding:0;background:linear-gradient(#f4f6f9,#d5dde8);border:1px solid #8ea2bf;border-radius:3px}
