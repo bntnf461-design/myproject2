@@ -268,5 +268,10 @@
   "ほかの拠点のラベルのようです（この拠点のコードは「{head}」で始まります）: {code}": "Sepertinya label lokasi lain (kode lokasi ini dimulai dengan \"{head}\"): {code}",
   "拠点コードは、英字で始まる半角英数字1〜4文字にしてください（例: A、B、TK1）": "Kode lokasi harus 1–4 huruf/angka setengah lebar, diawali huruf (mis. A, B, TK1)",
   "先に拠点コードを決めて保存してください": "Tentukan dan simpan kode lokasi terlebih dahulu",
-  "{n} 件の品目のコードを「{head}」で始まるコードに変えました。棚のラベルを印刷し直して、貼り替えてください。": "Kode {n} barang diganti menjadi berawalan \"{head}\". Cetak ulang label rak dan ganti."
+  "{n} 件の品目のコードを「{head}」で始まるコードに変えました。棚のラベルを印刷し直して、貼り替えてください。": "Kode {n} barang diganti menjadi berawalan \"{head}\". Cetak ulang label rak dan ganti.",
+  "登録済み": "Sudah terdaftar",
+  "Teams への通知を止める": "Hentikan pemberitahuan Teams",
+  "Teams への通知を止めますか？（登録した URL を消します）": "Hentikan pemberitahuan Teams? (URL yang terdaftar akan dihapus)",
+  "Teams の URL を貼り付けてください": "Tempelkan URL Teams",
+  "このPCからインターネットにつながっている必要があります（オフラインの現場からは送れません）。URL を知っている人は誰でもそのチャンネルに投稿できるので、登録した URL は画面に出しません。ほかの人に教えないでください。": "PC ini harus terhubung ke internet (tidak bisa mengirim dari lokasi offline). Siapa pun yang tahu URL bisa memposting ke channel, jadi URL yang terdaftar tidak ditampilkan di layar. Jangan beri tahu orang lain."
 }

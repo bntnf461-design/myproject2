@@ -60,7 +60,7 @@
 <h2 id="teams" class="section-gap"><span class="step-num">3</span> {{ _("Teams に知らせる") }} <span class="badge badge-ok">{{ _("メールの設定が要らない") }}</span></h2>
 <section class="card">
   <p>{{ _h("発注点を下回った時・在庫切れになった時に、<strong>Teams のチャンネル</strong>にお知らせのカード（品名・今の在庫・発注の目安・発注担当者）を出します。担当者が決まっていない品目も知らせます。") }}</p>
-  <details class="teams-howto" {{ '' if teams_url else 'open' }}>
+  <details class="teams-howto" {{ '' if teams_set else 'open' }}>
     <summary>{{ _("Teams の URL の作り方（最初に一度だけ）") }}</summary>
     <ol>
       <li>{{ _h("Teams で、お知らせを出したい<strong>チャンネル</strong>（例: 発注・備品）を開き、チャンネル名の右の <strong>「…」</strong> を押す。") }}</li>
@@ -72,13 +72,15 @@
   </details>
   <form method="post" action="{{ url_for('buyers_teams') }}" class="form">
     <label>{{ _("Teams の URL") }}
-      <input name="teams_url" value="{{ teams_url }}" placeholder="https://….logic.azure.com/workflows/…" autocomplete="off" spellcheck="false">
+      {% if teams_set %}<span class="badge badge-ok">{{ _("登録済み") }}</span> <span class="muted small mono">{{ teams_hint }}</span>{% endif %}
+      <input name="teams_url" value="" placeholder="{{ _('（変えない時は空欄）') if teams_set else 'https://….logic.azure.com/workflows/…' }}" autocomplete="off" spellcheck="false">
     </label>
     <div class="actions">
       <button class="btn btn-primary" name="action" value="test">{{ _("保存してテスト送信") }}</button>
       <button class="btn" name="action" value="save">{{ _("保存する") }}</button>
+      {% if teams_set %}<button class="btn btn-ghost" name="action" value="clear" onclick="return confirm({{ _('Teams への通知を止めますか？（登録した URL を消します）')|tojson|forceescape }})">{{ _("Teams への通知を止める") }}</button>{% endif %}
     </div>
-    <small class="muted">{{ _("このPCからインターネットにつながっている必要があります（オフラインの現場からは送れません）。止める時は、欄を空にして「保存する」。URL を知っている人は誰でもそのチャンネルに投稿できるので、ほかの人に教えないでください。") }}</small>
+    <small class="muted">{{ _("このPCからインターネットにつながっている必要があります（オフラインの現場からは送れません）。URL を知っている人は誰でもそのチャンネルに投稿できるので、登録した URL は画面に出しません。ほかの人に教えないでください。") }}</small>
   </form>
 </section>
 

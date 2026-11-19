@@ -931,8 +931,14 @@ def test_teams_notice(client, monkeypatch):
     assert "在庫切れ" in _json.dumps(posted[2][1], ensure_ascii=False)
     html = client.get("/buyers").get_data(as_text=True)
     assert "Teams" in html and "送信済" in html
-    # 欄を空にすると止まる
-    client.post("/buyers/teams", data={"teams_url": "", "action": "save"})
+    # 保存した URL (署名入り) は画面の HTML に出さない。サイト名だけ出す
+    assert "sig=x" not in html and "/workflows/abc" not in html and "prod-01.japaneast.logic.azure.com" in html
+    # 欄を空にして保存しても、保存してある URL はそのまま (消えない)
+    client.post("/buyers/teams", data={"teams_url": "", "action": "test"})
+    assert len(posted) == 4 and posted[3][0] == url
+    posted.pop()
+    # 「Teams への通知を止める」で止まる
+    client.post("/buyers/teams", data={"action": "clear"})
     client.post("/api/scan", json={"code": "TM1", "mode": "IN", "qty": 10})
     client.post("/api/scan", json={"code": "TM1", "mode": "OUT", "qty": 10})
     assert len(posted) == 3
@@ -1426,3 +1432,13 @@ def test_import_folders_from_template(client):
     for url in ("/items/template.xlsx", "/items.xlsx"):
         paths = [p for _, p in item_sheet.read_folders(client.get(url).data)]
         assert "清掃/ゴミ袋" in paths and "清掃/モップ/x" in paths and "清掃" not in paths  # 中にフォルダのある「清掃」は書かない
+
+
+def test_security_headers_and_upload_limit(client):
+    import io
+    res = client.get("/items")
+    assert res.headers["X-Frame-Options"] == "SAMEORIGIN" and res.headers["X-Content-Type-Options"] == "nosniff"
+    assert "frame-ancestors 'self'" in res.headers["Content-Security-Policy"]
+    big = io.BytesIO(b"0" * (26 * 1024 * 1024))
+    page = client.post("/items/import", data={"file": (big, "big.csv")}, follow_redirects=True).get_data(as_text=True)
+    assert "ファイルが大きすぎます" in page

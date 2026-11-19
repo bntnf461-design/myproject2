@@ -42,7 +42,7 @@ from i18n import tr
 import report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "2026.11.11-1"  # 画面の右下に表示 (どの版が動いているかの確認用)
+APP_VERSION = "2026.11.19-1"  # 画面の右下に表示 (どの版が動いているかの確認用)
 APP_COPYRIGHT = "© 2026 All rights reserved."  # 著作権表示 (画面の右下に表示)
 USAGE_DAYS = 30  # 平均使用量を計算する期間(日)
 CODE_RE = re.compile(r"^[A-Z0-9\-]{1,32}$")
@@ -59,6 +59,8 @@ app.config.update(
     LICENSE_FILE=os.path.join(BASE_DIR, "license.key"),
     LICENSE_REQUIRED=True,
     LICENSE_PUBLIC_KEY=licensing.PUBLIC_KEY,
+    # 送れるファイルの大きさの上限 (取り込みは20MBまで。大きすぎるデータでサーバのメモリを使い切らせない)
+    MAX_CONTENT_LENGTH=25 * 1024 * 1024,
 )
 
 SCHEMA = """
@@ -717,13 +719,28 @@ def send_teams(url, payload):
 
 @app.post("/buyers/teams")
 def buyers_teams():
-    """Teams の通知先 (Webhook の URL) の保存・テスト送信。"""
+    """Teams の通知先 (Webhook の URL) の保存・テスト送信。
+
+    URL を知っている人は誰でもチャンネルに投稿できるので、保存した URL は画面 (HTML) に出さない。
+    欄が空の時は、保存してある URL をそのまま使う (止める時は「Teams への通知を止める」)。
+    """
+    action = request.form.get("action")
+    if action == "clear":
+        set_setting("teams_url", "")
+        flash(tr("Teams への通知を止めました"), "ok")
+        return redirect(url_for("buyers_page") + "#teams")
     url = request.form.get("teams_url", "").strip()[:2000]
     if url and not TEAMS_URL_RE.match(url):
         flash(tr("Teams の URL は https:// から始まる URL を、そのまま貼り付けてください"), "error")
         return redirect(url_for("buyers_page") + "#teams")
-    set_setting("teams_url", url)
-    if request.form.get("action") == "test" and url:
+    if url:
+        set_setting("teams_url", url)
+    else:
+        url = get_setting("teams_url") or ""
+    if not url:
+        flash(tr("Teams の URL を貼り付けてください"), "error")
+        return redirect(url_for("buyers_page") + "#teams")
+    if action == "test":
         sample = {"name": tr("テスト（軍手）"), "spec": "", "unit": tr("個"), "stock": 3, "reorder_point": 5,
                   "order_qty": 10, "location": "", "supplier": "", "ordered_at": None, "daily_avg": 0}
         try:
@@ -731,11 +748,15 @@ def buyers_teams():
             flash(tr("Teams にテストのお知らせを送りました。チャンネルに届いたか確かめてください"), "ok")
         except Exception as e:
             flash(tr("Teams に送れませんでした: {reason}", reason=str(e)[:200]), "error")
-    elif url:
-        flash(tr("Teams の通知先を保存しました"), "ok")
     else:
-        flash(tr("Teams への通知を止めました"), "ok")
+        flash(tr("Teams の通知先を保存しました"), "ok")
     return redirect(url_for("buyers_page") + "#teams")
+
+
+def teams_hint(url):
+    """保存した Teams の URL の、画面に出してよい部分 (サイト名だけ。署名などの続きは出さない)。"""
+    host = urlsplit(url).hostname or ""
+    return f"https://{host}/…" if host else ""
 
 
 @app.route("/buyers", methods=["GET", "POST"])
@@ -772,7 +793,7 @@ def buyers_page():
         "SELECT n.*, i.name, i.name_id, b.name AS buyer FROM notices n LEFT JOIN items i ON i.id = n.item_id "
         "LEFT JOIN buyers b ON b.id = n.buyer_id ORDER BY n.id DESC LIMIT 20").fetchall()
     return render_template("buyers.html", buyers=active_buyers(db), counts=counts, notices=notices,
-                           mail=mail_settings(), mail_security=MAIL_SECURITY, teams_url=get_setting("teams_url") or "",
+                           mail=mail_settings(), mail_security=MAIL_SECURITY, teams_set=bool(get_setting("teams_url")), teams_hint=teams_hint(get_setting("teams_url") or ""),
                            unassigned=db.execute("SELECT COUNT(*) FROM items WHERE active = 1 AND buyer_id IS NULL").fetchone()[0])
 
 
@@ -995,6 +1016,23 @@ def inject_globals():
             "buyer_list": lambda: active_buyers(get_db()), "folder_list": lambda: folder_paths(get_db()),
             "KIND_LABELS": KIND_LABELS, "nav": request.endpoint, "app_version": APP_VERSION, "app_copyright": APP_COPYRIGHT,
             "asset": lambda name: url_for("static", filename=name, v=APP_VERSION)}
+
+
+@app.after_request
+def security_headers(resp):
+    """ブラウザ側の安全の設定: ほかのサイトの枠 (iframe) の中に、この画面を出させない (だまして押させる攻撃を防ぐ)、
+    ファイルの種類を推測させない、ほかのサイトへ移る時にこのアプリのアドレスを渡さない。"""
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    return resp
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    flash(tr("ファイルが大きすぎます（20MBまで）"), "error")
+    return redirect(url_for("items_list"))
 
 
 @app.before_request
