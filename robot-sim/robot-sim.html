@@ -6427,7 +6427,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
 (function () {
   'use strict';
   const T = window.THREE, RS = window.RS;
-  const VERSION = '4.6';
+  const VERSION = '4.6.1';
   const D2R = Math.PI / 180;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -9125,6 +9125,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
       play: svg16('<path d="M3 5h8l-2-2M13 11H5l2 2" fill="none" stroke="#2a8ad8" stroke-width="1.4"/><text x="5.5" y="11" font-size="7" font-weight="700" fill="#2a8ad8" font-family="sans-serif">P</text>', '#eaf4ff'),
       remote: svg16('<text x="3.5" y="12" font-size="9" font-weight="700" fill="#555" font-family="sans-serif">R</text>')
     },
+    page: svg16('<rect x="3" y="1.5" width="10" height="13" fill="#fff" stroke="#222"/><path d="M6 4.5l5 3.5-5 3.5z" fill="#000"/>'),
     servo: on => svg16(`<text x="4" y="12" font-size="10" font-weight="700" fill="${on ? '#0a7a2a' : '#999'}" font-family="sans-serif">S</text>`, on ? '#c8f0d0' : '#fff')
   };
   function resetPend() { pend.kb = null; pend.newJob = null; Object.assign(pend, { ready: false, enable: false, tp: false, dead: false, shift: false, mode: 'teach', coord: 'joint', msg: '', view: 'prog', interlock: false, fast: false, pending: null, fmode: 'T1' }); }
@@ -9220,6 +9221,16 @@ JSON だけを返す（前後に文章を付けない）。形式：
       const other = it && it !== 'in' && it !== 'out';
       if (it === 'svp') rows.push({ t: `R1　サーボ電源　 ${servoOn() ? '● オン' : '○ オフ'}` });
       else if (other) rows.push({ t: '（シミュレーターでは割り当てていません。ライン側の信号は汎用入力・汎用出力です）' });
+      if (Y && (it === 'in' || it === 'out')) {
+        // 実機と同じく 8 点（1 グループ）ずつのページ。［ページ］で次、［シフト］＋［ページ］で前（端まで行くと反対の端へ）
+        const K = it === 'out' ? 'OT' : 'IN', list = (it === 'out' ? m.outsL : m.insL).filter(([k]) => k === K), maxN = Math.max(8, ...list.map(([, n]) => n));
+        const G = Math.ceil(maxN / 8), g = ((pend.ioPage || 0) % G + G) % G; pend.ioPage = g;
+        rows.push({ t: `${it === 'out' ? 'OG' : 'IG'}#(${g + 1})　${K}#(${g * 8 + 1})〜(${g * 8 + 8})　　ページ ${g + 1}/${G}` });
+        const nm = it === 'out' ? m.outName : m.auto;
+        for (let n = g * 8 + 1; n <= g * 8 + 8; n++) row(K, n, it === 'out' ? getOut(K, n) : getIn(K, n), nm[K + n], it === 'out');
+        selRow = clamp(pend.ioSel || 1, 1, rows.length - 1); pend.ioSel = selRow;
+        return { rows, selRow, title, page: [g + 1, G] };
+      }
       if (!other && it !== 'in') for (const [k, n] of m.outsL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getOut(k, n), m.outName[k + n], true); }
       if (!other && it !== 'out') for (const [k, n] of m.insL) { byK[k] = (byK[k] || 0) + 1; if (byK[k] <= lim) row(k, n, getIn(k, n), m.auto[k + n]); }
       selRow = clamp(pend.ioSel || 0, 0, rows.length - 1);
@@ -9240,7 +9251,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
   }
   function lcdHTML() {
     const Y = isY();
-    const { rows, selRow, title } = screenRows();
+    const { rows, selRow, title, page } = screenRows();
     const N = Y ? (pend.view === 'prog' ? 13 : 11) : 10;
     const st = clamp((selRow >= 0 ? selRow : 0) - 4, 0, Math.max(0, rows.length - N));
     let list = '';
@@ -9276,6 +9287,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
         icon(YICON.key, 'セキュリティ：編集モード') + icon(YICON.cycle[pend.cyc] || YICON.cycle.cont, '動作サイクル：' + ({ step: 'ステップ', once: '1サイクル', cont: '連続' }[pend.cyc] || '連続')) +
         icon(stI, '状態：' + (S.estop ? '非常停止中' : S.alarm ? 'アラーム中' : run ? (run.paused ? 'ホールド中' : '再生中') : '停止中'), S.estop || S.alarm ? 'al' : run && !run.paused ? 'rn' : '') +
         icon(modeI, 'モード：' + { teach: 'ティーチ', play: 'プレイ', remote: 'リモート' }[pend.mode], pend.mode === 'teach' ? 'tc' : 'pl') +
+        (page ? icon(YICON.page, `ページ ${page[0]}/${page[1]}（［ページ］で次、［シフト］＋［ページ］で前）`) : '') +
         icon(YICON.servo(servoOn()), servoOn() ? 'サーボオン' : (pend.ready ? 'サーボオンレディ' : 'サーボオフ'), servoOn() ? 'sv' : '');
       // 左のメインメニュー（実機：ジョブ・汎用・変数・入出力・ロボット・システム情報）
       const grp = groupOf(v) || (v === 'prog' || v === 'inst' || v === 'jobnew' || v === 'header' || v === 'stack' ? 'job' : v === 'io' ? 'io' : v === 'var' ? 'var' : '');
@@ -9647,6 +9659,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
           : !P.enable ? 'イネーブルスイッチを握ってください'
           : '軸キーでジョグ。追加／消去／変更 はエンターで確定。ネクストは押している間だけ'; break;
       case 'page': case 'pageup': {
+        if (isY() && P.view === 'io' && (P.ioType === 'in' || P.ioType === 'out')) { P.ioPage = (P.ioPage || 0) + (a === 'page' ? 1 : -1); break; }
         const n = prog().lines.length; if (!n) break;
         sel = clamp(sel + (a === 'page' ? 8 : -8), 0, n - 1); P.view = 'prog'; markPc(); renderLineEdit(); break;
       }
@@ -9760,7 +9773,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
       case 'shock-clear': P.shockMax = [0, 0, 0, 0, 0, 0]; P.msg = '外力最大値をクリアしました'; break;
       case 'view-prog': case 'view-pos': case 'view-io': case 'view-var': P.view = a.slice(5); P.menu = a === 'view-prog' ? P.menu : P.menu; break;
       case 'ins-type': P.ins = P.ins === 'J' ? 'L' : 'J'; break;
-      case 'up': if (P.view === 'io') P.ioSel = Math.max(0, (P.ioSel || 0) - 1); else if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view === 'jobsel') P.jsel = Math.max(0, P.jsel - 1); else if (P.view !== 'prog') P.vsel = Math.max(0, P.vsel - 1); else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
+      case 'up': if (P.view === 'io') P.ioSel = Math.max(isY() && (P.ioType === 'in' || P.ioType === 'out') ? 1 : 0, (P.ioSel || 0) - 1); else if (P.view === 'inst') P.instSel = Math.max(0, P.instSel - 1); else if (P.view === 'jobsel') P.jsel = Math.max(0, P.jsel - 1); else if (P.view !== 'prog') P.vsel = Math.max(0, P.vsel - 1); else { sel = Math.max(0, sel - 1); markPc(); renderLineEdit(); } break;
       case 'down': if (P.view === 'io') P.ioSel = Math.min(Math.max(0, screenRows().rows.length - 1), (P.ioSel || 0) + 1); else if (P.view === 'inst') P.instSel = Math.min(instList().length - 1, P.instSel + 1); else if (P.view === 'jobsel') P.jsel = Math.min(Object.keys(lib.progs).length - 1, P.jsel + 1); else if (P.view !== 'prog') P.vsel = Math.min(P.view === 'jobnew' ? 1 : P.view === 'cycle' || P.view === 'master' ? 2 : Math.max(0, screenRows().rows.length - 1), P.vsel + 1); else { sel = Math.min(prog().lines.length - 1, sel + 1); markPc(); renderLineEdit(); } break;
       case 'enter':
         if (doPending()) break;
@@ -9845,7 +9858,7 @@ JSON だけを返す（前後に文章を付けない）。形式：
       if (id === 'act') { pendAct(arg); return; }
       if (id === 'na') { pend.msg = 'この画面はシミュレーターにはありません'; renderPend(); return; }
       pend.view = id; pend.vsel = 0; pend.pick = null;
-      if (id === 'var') pend.varType = arg; if (id === 'io') { pend.ioType = arg; pend.ioSel = 0; }
+      if (id === 'var') pend.varType = arg; if (id === 'io') { pend.ioType = arg; pend.ioSel = 1; pend.ioPage = 0; }
       if (id === 'cycle') pend.vsel = ['step', 'once', 'cont'].indexOf(pend.cyc);
       if (id === 'jobsel') pend.jsel = Math.max(0, Object.keys(lib.progs).sort((a, b) => a.localeCompare(b, 'ja')).indexOf(lib.cur));
       renderPend(); return;
